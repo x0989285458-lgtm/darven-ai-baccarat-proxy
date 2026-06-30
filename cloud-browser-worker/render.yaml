@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: darven-cloud-browser-worker
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: MT_LOGIN_URL
+        sync: false
+      - key: HEADLESS
+        value: "true"
+      - key: SNAPSHOT_PATH
+        value: /snapshot
+      - key: INITIAL_SETTLE_MS
+        value: "5000"
+      - key: PAGE_TIMEOUT_MS
+        value: "45000"

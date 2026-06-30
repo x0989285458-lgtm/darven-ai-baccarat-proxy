@@ -1,0 +1,15 @@
+{
+  "name": "darven-cloud-browser-worker",
+  "version": "0.47.0",
+  "private": true,
+  "type": "module",
+  "description": "Darven AI baccarat cloud browser worker for Render. Opens MT login URL and exposes /snapshot JSON for proxy CLOUD_BROWSER_URL.",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "playwright": "1.61.1"
+  },
+  "devDependencies": {}
+}
