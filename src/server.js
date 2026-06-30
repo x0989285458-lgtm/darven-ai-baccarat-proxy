@@ -56,6 +56,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       }
     }
 
+    if (pathname === '/') {
+      return htmlResponse(200, renderBackendHome({ deployMode: deployConfig.deployMode, captureSource, frontendOrigin }), frontendOrigin)
+    }
     if (pathname === '/health') {
       return jsonResponse(200, { ok: true, service: SERVICE, version: VERSION, deployMode: deployConfig.deployMode }, frontendOrigin)
     }
@@ -234,6 +237,60 @@ function jsonResponse(statusCode, payload, frontendOrigin = '*') {
     },
     body: JSON.stringify(payload),
   }
+}
+
+function htmlResponse(statusCode, body, frontendOrigin = '*') {
+  return {
+    statusCode,
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'access-control-allow-origin': frontendOrigin,
+      'access-control-allow-methods': 'GET,POST,OPTIONS',
+      'access-control-allow-headers': 'Content-Type,Authorization',
+    },
+    body,
+  }
+}
+
+function renderBackendHome({ deployMode, captureSource, frontendOrigin }) {
+  return `<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Darven AI 後端 API</title>
+  <style>
+    body{margin:0;background:#0b1020;color:#e5ecff;font-family:"Microsoft JhengHei",system-ui,sans-serif}
+    main{max-width:920px;margin:0 auto;padding:48px 20px}
+    .card{background:linear-gradient(135deg,#121a33,#0f172a);border:1px solid #263756;border-radius:20px;padding:28px;box-shadow:0 18px 60px #0008}
+    h1{margin:0 0 8px;font-size:32px} .ok{color:#22c55e;font-weight:700}.muted{color:#9fb0d0}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:24px 0}
+    .box{background:#0b1226;border:1px solid #23324d;border-radius:14px;padding:16px}
+    a{color:#7dd3fc;text-decoration:none} code{background:#020617;border:1px solid #1f2a44;padding:2px 6px;border-radius:6px}
+  </style>
+</head>
+<body>
+  <main>
+    <section class="card">
+      <div class="ok">● 後端 API 已上線</div>
+      <h1>Darven AI 百家後端</h1>
+      <p class="muted">這裡是 Render 後端，不是前台畫面。前台請開 Cloudflare Pages。</p>
+      <div class="grid">
+        <div class="box"><b>版本</b><br><code>042</code></div>
+        <div class="box"><b>部署模式</b><br><code>${escapeHtml(deployMode)}</code></div>
+        <div class="box"><b>抓取模式</b><br><code>${escapeHtml(captureSource)}</code></div>
+        <div class="box"><b>允許前台</b><br><code>${escapeHtml(frontendOrigin)}</code></div>
+      </div>
+      <p><b>前台網址：</b> <a href="https://darven-ai-baccarat.pages.dev/">https://darven-ai-baccarat.pages.dev/</a></p>
+      <p><b>API 檢查：</b> <a href="/health">/health</a>　<a href="/api/status">/api/status</a>　<a href="/api/tables">/api/tables</a></p>
+    </section>
+  </main>
+</body>
+</html>`
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]))
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
