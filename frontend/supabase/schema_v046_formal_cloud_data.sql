@@ -76,11 +76,16 @@ create table if not exists public.admin_operation_logs (
   created_at timestamptz not null default now()
 );
 
+alter table public.agents drop constraint if exists agents_code_check;
 alter table public.agents add column if not exists role text not null default 'agent';
 alter table public.agents add column if not exists parent_code text references public.agents(code) on update cascade on delete set null;
 alter table public.agents add column if not exists permission text not null default '可建碼';
 alter table public.agents add column if not exists is_active boolean not null default true;
+alter table public.agents add column if not exists updated_at timestamptz not null default now();
+alter table public.members add column if not exists updated_at timestamptz not null default now();
+alter table public.plans add column if not exists updated_at timestamptz not null default now();
 alter table public.licenses add column if not exists member_account text references public.members(account) on update cascade on delete set null;
+alter table public.license_validation_logs add column if not exists member_account text;
 
 create index if not exists idx_agents_parent_code on public.agents(parent_code);
 create index if not exists idx_agents_active_created on public.agents(is_active, created_at desc);
