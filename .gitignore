@@ -1,0 +1,9 @@
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+proxy/node_modules/
+proxy/.env
+proxy/logs/
+proxy/reports/
+proxy/.tmp_*.mjs
+frontend/screenshots/

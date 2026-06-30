@@ -1,0 +1,24 @@
+{
+  "name": "draven-mt-data-proxy-v042",
+  "version": "0.42.0",
+  "private": true,
+  "type": "module",
+  "description": "Draven MT百家資料代理伺服器 v042：雲端Worker串接實測版。",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js",
+    "test": "node --test",
+    "health": "node scripts/health-check.mjs",
+    "update-token": "node scripts/update-token.mjs",
+    "stable-report": "node scripts/stable-capture-report.mjs",
+    "smoke:cloud": "node scripts/smoke-cloud-deploy.mjs",
+    "mock:cloud-worker": "node scripts/mock-cloud-worker.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.13.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "pm2": "^5.4.3"
+  }
+}

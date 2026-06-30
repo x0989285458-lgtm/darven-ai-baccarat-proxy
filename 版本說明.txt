@@ -1,0 +1,23 @@
+Draven 本機整合運行版 版本 042：雲端Worker串接實測版
+
+本版重點：
+1. 延續 v041 正式雲端部署架構與雲端抓取管理 API。
+2. 新增 cloud deploy smoke checker，可對正式 API 與 CLOUD_BROWSER_URL 做上線前實測。
+3. 新增 mock cloud worker，可在沒有正式 worker 前本機模擬 /snapshot 串接流程。
+4. 新增 npm scripts：smoke:cloud、mock:cloud-worker。
+5. 後端版本標示更新為 042。
+6. 保持前台 v010 UI 與既有設定不變。
+
+使用方式：
+- 本機模擬 worker：cd proxy && npm.cmd run mock:cloud-worker
+- 正式 API smoke：cd proxy && set DRAVEN_API_BASE_URL=https://api.your-domain.com && set CLOUD_BROWSER_URL=https://worker/snapshot && npm.cmd run smoke:cloud
+
+已驗證：
+- v042 cloud deploy smoke 測試：2 passed
+- v042 mock cloud worker 測試：1 passed
+- v042 package/version 測試：2 passed
+- 本機 mock worker + backend smoke：success（4 checks passed）
+- proxy 全量測試：113 passed
+- frontend 全量測試：44 passed
+- frontend build：success
+- Git checkpoint/tag：v042-cloud-worker-smoke
