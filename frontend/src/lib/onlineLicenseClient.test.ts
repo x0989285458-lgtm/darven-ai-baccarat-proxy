@@ -38,16 +38,16 @@ describe('onlineLicenseClient v030', () => {
 
   it('creates online license through backend API', async () => {
     const fetchImpl = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, row: { code: 'DVAI0888_015' } }) })) as unknown as typeof fetch
-    const result = await createOnlineLicense({ code: 'DVAI0888_015', agentCode: 'DVAI', durationDays: 30 }, fetchImpl)
+    const result = await createOnlineLicense({ memberAccount: 'User0888', code: 'DVAI0888_015', agentCode: 'DVAI', durationDays: 30, adminAccount: 'DV1788' }, fetchImpl)
     expect(result.row?.code).toBe('DVAI0888_015')
     expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:8787/api/online-license/licenses', expect.objectContaining({ method: 'POST' }))
   })
 
   it('v031 posts suspend extend and delete license operations with DV1788 admin permission', async () => {
     const fetchImpl = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, row: { code: 'DVAI1788_001' } }) })) as unknown as typeof fetch
-    await setOnlineLicenseStatus({ code: 'DVAI1788_001', status: 'suspended' }, fetchImpl)
-    await extendOnlineLicense({ code: 'DVAI1788_001', days: 15 }, fetchImpl)
-    await deleteOnlineLicense({ code: 'DVAI1788_001' }, fetchImpl)
+    await setOnlineLicenseStatus({ code: 'DVAI1788_001', status: 'suspended', adminAccount: 'DV1788' }, fetchImpl)
+    await extendOnlineLicense({ code: 'DVAI1788_001', days: 15, adminAccount: 'DV1788' }, fetchImpl)
+    await deleteOnlineLicense({ code: 'DVAI1788_001', adminAccount: 'DV1788' }, fetchImpl)
     expect(fetchImpl).toHaveBeenNthCalledWith(1, 'http://127.0.0.1:8787/api/online-license/licenses/status', expect.objectContaining({ method: 'POST' }))
     expect(fetchImpl).toHaveBeenNthCalledWith(2, 'http://127.0.0.1:8787/api/online-license/licenses/extend', expect.objectContaining({ method: 'POST' }))
     expect(fetchImpl).toHaveBeenNthCalledWith(3, 'http://127.0.0.1:8787/api/online-license/licenses/delete', expect.objectContaining({ method: 'POST' }))

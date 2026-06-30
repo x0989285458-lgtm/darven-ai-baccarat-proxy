@@ -13,9 +13,28 @@ async function renderApp(path = '/', waitForConnected = true) {
   return result
 }
 
+function proxyTablesFromMocks() {
+  return mockTables.map((table, index) => ({
+    tableId: table.id,
+    displayName: `MT百家樂第${index + 1}桌`,
+    tableType: table.table_type,
+    round: table.trend.current_round,
+    bankerCount: table.trend.total_round_banker,
+    playerCount: table.trend.total_round_player,
+    tieCount: table.trend.total_round_tie,
+    bankerPairCount: table.trend.total_round_banker_pair,
+    playerPairCount: table.trend.total_round_player_pair,
+    beadPlateRaw: table.trend.bead_plate2,
+    bigRoadRaw: table.trend.big2,
+  }))
+}
+
 describe('AI百家預測軟體', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks()) })
+      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tables: proxyTablesFromMocks(), statusText: '已抓到9桌' }) })
+      if (url.includes('/api/cloud-data/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, mtAutoLoginEnabled: false, message: 'MT自動登入未啟用', tableCount: 0 }) })
       if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ configured: true }) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: [], reports: [], strategies: [] }) })
     }))
@@ -149,6 +168,43 @@ describe('AI百家預測軟體', () => {
     expect(document.querySelector('.big-cell.Tie')).not.toBeInTheDocument()
     expect(document.querySelectorAll('.big-cell.Banker')).toHaveLength(11)
     expect(document.querySelectorAll('.big-cell.Player')).toHaveLength(5)
+  })
+
+  it('v046 shows a formal waiting state instead of mock tables when cloud data is empty', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) })
+      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: false, authenticated: false, statusText: 'MT自動登入未啟用，等待手動或Worker資料來源' }) })
+      if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ configured: true, agents: [], licenses: [] }) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
+    }))
+    await renderApp('/', false)
+    expect(await screen.findByRole('heading', { name: '等待雲端資料' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /MT百家樂第1桌/ })).not.toBeInTheDocument()
+    expect(screen.getByText(/MT自動登入未啟用/)).toBeInTheDocument()
+  })
+
+  it('v046 admin create license and agent actions send real member/admin payloads to backend', async () => {
+    const calls: Array<{ url: string; body: any }> = []
+    vi.stubGlobal('prompt', vi.fn()
+      .mockReturnValueOnce('A1688')
+      .mockReturnValueOnce('agent')
+      .mockReturnValueOnce('Admin001'))
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (init?.body) calls.push({ url, body: JSON.parse(String(init.body)) })
+      if (url.includes('/api/cloud-data/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ mtAutoLoginEnabled: false, message: 'MT自動登入未啟用', tableCount: 0 }) })
+      if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ configured: true, agents: [{ code: 'Admin001', role: 'manager', permission: '可開代理 / 可建碼' }], licenses: [] }) })
+      if (url.includes('/api/online-license/licenses')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, row: { code: 'Admin001_001', member_account: 'User1688' } }) })
+      if (url.includes('/api/online-license/agents')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, row: { code: 'A1688' } }) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
+    }))
+    window.sessionStorage.setItem('darven-admin-account', 'Admin001')
+    await renderApp('/admin', false)
+    fireEvent.change(screen.getByPlaceholderText('請輸入會員帳號'), { target: { value: 'User1688' } })
+    fireEvent.click(screen.getByRole('button', { name: '建立授權' }))
+    fireEvent.click(screen.getByRole('button', { name: '增加代理' }))
+    await waitFor(() => expect(calls.some((call) => call.url.includes('/api/online-license/licenses') && call.body.memberAccount === 'User1688' && call.body.adminAccount === 'Admin001')).toBe(true))
+    await waitFor(() => expect(calls.some((call) => call.url.includes('/api/online-license/agents') && call.body.code === 'A1688' && call.body.parentCode === 'Admin001')).toBe(true))
+    expect(screen.getByText(/MT自動登入未啟用/)).toBeInTheDocument()
   })
 
   it('v045 overlays a green tie slash on banker/player big-road cells when a tie appears', async () => {

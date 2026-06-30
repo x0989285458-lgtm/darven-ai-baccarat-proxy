@@ -74,6 +74,15 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     if (pathname === '/api/cloud-capture/status') {
       return jsonResponse(200, buildCloudCaptureManagementStatus(), frontendOrigin)
     }
+    if (pathname === '/api/cloud-data/status') {
+      const snapshot = state.snapshot()
+      try {
+        const formalStatus = await licenseAdminClient.getCloudDataStatus?.()
+        return jsonResponse(200, { ok: true, mtAutoLoginEnabled: false, ...formalStatus, captureSource, deployMode: deployConfig.deployMode, tableCount: snapshot.tables.length, status: snapshot.status }, frontendOrigin)
+      } catch (error) {
+        return jsonResponse(200, { ok: true, mtAutoLoginEnabled: false, captureSource, deployMode: deployConfig.deployMode, tableCount: snapshot.tables.length, status: snapshot.status, error: error?.message ?? String(error) }, frontendOrigin)
+      }
+    }
     if (method === 'POST' && pathname === '/api/cloud-capture/tick') {
       const parsed = await cloudCaptureClient.tick()
       return jsonResponse(200, { ok: Boolean(parsed), running: cloudCaptureClient.isRunning(), status: state.snapshot().status }, frontendOrigin)
@@ -140,6 +149,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     if (method === 'POST' && pathname === '/api/online-license/agent-login') return adminWrite(() => licenseAdminClient.validateAgentLogin?.(parseJsonBody(rawBody)))
     if (method === 'POST' && pathname === '/api/online-license/bootstrap') return adminWrite(() => licenseAdminClient.bootstrap?.(parseJsonBody(rawBody)))
     if (method === 'POST' && pathname === '/api/online-license/agents') return adminWrite(() => licenseAdminClient.createAgent?.(parseJsonBody(rawBody)))
+    if (method === 'POST' && pathname === '/api/online-license/agents/delete') return adminWrite(() => licenseAdminClient.deleteAgents?.(parseJsonBody(rawBody)))
     if (method === 'POST' && pathname === '/api/online-license/licenses') return adminWrite(() => licenseAdminClient.createLicense?.(parseJsonBody(rawBody)))
     if (method === 'POST' && pathname === '/api/online-license/licenses/status') return adminWrite(() => licenseAdminClient.setLicenseStatus?.(parseJsonBody(rawBody)))
     if (method === 'POST' && pathname === '/api/online-license/licenses/extend') return adminWrite(() => licenseAdminClient.extendLicense?.(parseJsonBody(rawBody)))

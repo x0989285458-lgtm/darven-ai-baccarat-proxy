@@ -12,7 +12,7 @@ test('v028 member frontend login uses memberAccount plus verificationPassword pa
   assert.equal(result.memberAccount, 'User001')
   assert.equal(result.license.code, 'Agent001_001')
   assert.ok(queries.some((q) => q.sql.includes('from public.licenses')))
-  assert.deepEqual(queries.find((q) => q.sql.includes('from public.licenses')).params, ['Agent001_001'])
+  assert.deepEqual(queries.find((q) => q.sql.includes('from public.licenses')).params, ['Agent001_001', 'User001'])
 })
 
 test('v028 backend/admin login uses agentAccount only as the public identifier', async () => {

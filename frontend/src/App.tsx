@@ -4,7 +4,7 @@ import { LiveRoadClient, type LiveTable } from './lib/liveClient'
 import { applyAskRoadWeighting, calculatePrediction, calculateBonusPredictions, parseBeadPlate, parseBigRoad } from './lib/roadParser'
 import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from './lib/supabaseClient'
 import { checkOnlineCoreStatus, getOnlineMemoryCenter, getOnlineStrategyAnalysis, updateOnlineAppSetting, updateOnlineFeatureFlag, type OnlineCoreStatus, type OnlineMemoryCenter, type OnlineStrategyAnalysis } from './lib/onlineCoreClient'
-import { agentLogin, createOnlineLicense, deleteOnlineLicense, extendOnlineLicense, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
+import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents, deleteOnlineLicense, extendOnlineLicense, getCloudDataStatus, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
 
 const defaultToken = 'decd8bec9f968ef4f67a437f80430727'
 const label = { Banker: '莊', Player: '閒', Tie: '和' }
@@ -21,9 +21,9 @@ function tableNumber(table: LiveTable, index: number) {
 }
 
 export default function App() {
-  const [tables, setTables] = useState<LiveTable[]>(mockTables)
+  const [tables, setTables] = useState<LiveTable[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const [, setStatus] = useState({ state: 'disconnected', message: '未連線' })
+  const [status, setStatus] = useState({ state: 'disconnected', message: '等待雲端資料來源' })
   const [supabaseStatus, setSupabaseStatus] = useState({ state: isSupabaseConfigured ? 'connecting' : 'error', message: isSupabaseConfigured ? 'Supabase 檢查中' : 'Supabase 未設定' })
   const [onlineCoreStatus, setOnlineCoreStatus] = useState<OnlineCoreStatus>({ state: 'connecting', message: '記憶中心檢查中' })
   const [updatedAt, setUpdatedAt] = useState(new Date())
@@ -91,8 +91,6 @@ export default function App() {
 
   useInactivityLogout(window.location.pathname === '/admin' ? 'admin' : window.location.pathname === '/' || window.location.pathname === '' ? 'member' : null)
 
-  if (!selected) return null
-
   if (window.location.pathname === '/login') {
     return <LoginApp />
   }
@@ -104,6 +102,8 @@ export default function App() {
   if (window.location.pathname === '/admin') {
     return <AdminApp tables={visibleTables} supabaseStatus={supabaseStatus} onlineCoreStatus={onlineCoreStatus} />
   }
+
+  if (!selected) return <WaitingForCloudData status={status} supabaseStatus={supabaseStatus} />
 
   return <main className="app-shell">
     <header className="topbar">
@@ -157,6 +157,21 @@ export default function App() {
         </div>
       </section>
     </div>
+  </main>
+}
+
+function WaitingForCloudData({ status, supabaseStatus }: { status: { state: string; message: string }; supabaseStatus: { state: string; message: string } }) {
+  return <main className="app-shell waiting-shell">
+    <header className="topbar">
+      <div className="promo-block" aria-label="官方資訊"><strong>免費AI百家預測軟體</strong><span>私訊官方賴@Dv1788</span></div>
+      <div className="brand" aria-label="主標題"><h1>AI百家預測軟體</h1><p className="eyebrow">DarevnAI Version 010</p></div>
+      <div className="header-meta"><span className={`status ${supabaseStatus.state}`} title={supabaseConfig.projectRef}>{supabaseStatus.message}</span></div>
+    </header>
+    <section className="waiting-card" aria-label="等待雲端資料">
+      <h2>等待雲端資料</h2>
+      <p>目前沒有 MT 桌況資料，MT 自動登入未啟用；請等待後端 Worker 或手動資料來源寫入。</p>
+      <strong>{status.message || '等待雲端資料來源'}</strong>
+    </section>
   </main>
 }
 
@@ -269,7 +284,8 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const [memoryCenter, setMemoryCenter] = useState<OnlineMemoryCenter>({ state: 'connecting', items: [], reports: [], strategies: [] })
   const [strategyAnalysis, setStrategyAnalysis] = useState<OnlineStrategyAnalysis>({ state: 'connecting', strategyRows: [], weakTables: [], strongTables: [], watchTables: [], suggestions: [] })
   const [licenseStatus, setLicenseStatus] = useState<OnlineLicenseStatus>({ managers: [], agents: [], plans: [], licenses: [], agentRows: [], licenseRows: [] })
-  useEffect(() => { getOnlineMemoryCenter().then(setMemoryCenter); getOnlineStrategyAnalysis().then(setStrategyAnalysis) }, [])
+  const [cloudDataStatus, setCloudDataStatus] = useState<{ mtAutoLoginEnabled?: boolean; message?: string; tableCount?: number }>({ mtAutoLoginEnabled: false, message: 'MT自動登入未啟用' })
+  useEffect(() => { getOnlineMemoryCenter().then(setMemoryCenter); getOnlineStrategyAnalysis().then(setStrategyAnalysis); getCloudDataStatus().then(setCloudDataStatus) }, [])
   useEffect(() => { getOnlineLicenseStatus().then((status) => {
     setLicenseStatus(status)
     if (status.licenseRows.length) {
@@ -279,8 +295,10 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
         setLatestCode(rows[0].code)
         setLatestMember(rows[0].member)
       }
-    } else {
+    } else if (status.configured === false || (!status.agentRows.length && !status.licenseRows.length)) {
       setCodes(pruneExpiredCodes(initialCodes))
+    } else {
+      setCodes([])
     }
   }) }, [])
   const startDate = '2026/06/25'
@@ -295,7 +313,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   }, [clampedPlanDays])
   const createAuthorization = async () => {
     const nextCode = buildLicenseCode(displayManager, displayMember, serialNo)
-    const result = await createOnlineLicense({ code: nextCode, agentCode: displayManager, durationDays: clampedPlanDays })
+    const result = await createOnlineLicense({ memberAccount: displayMember, code: nextCode, agentCode: displayManager, durationDays: clampedPlanDays, adminAccount: displayManager })
     setLatestMember(displayMember)
     setLatestCode(result.row?.code ?? nextCode)
     const nextRows = await getOnlineLicenseStatus()
@@ -322,17 +340,31 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     const rows = selectedCodeRows()
     setCodes((current) => current.filter((row) => !selectedCodeMembers.includes(row.member)))
     setSelectedCodeMembers([])
-    await Promise.all(rows.map((row) => deleteOnlineLicense({ code: row.code }).catch(() => null)))
+    await Promise.all(rows.map((row) => deleteOnlineLicense({ code: row.code, adminAccount: displayManager }).catch(() => null)))
   }
   const suspendSelectedCodes = async () => {
     const rows = selectedCodeRows()
-    await Promise.all(rows.map((row) => setOnlineLicenseStatus({ code: row.code, status: 'suspended' }).catch(() => null)))
+    await Promise.all(rows.map((row) => setOnlineLicenseStatus({ code: row.code, status: 'suspended', adminAccount: displayManager }).catch(() => null)))
     setCodes((current) => current.map((row) => selectedCodeMembers.includes(row.member) ? { ...row, status: '暫停中' } : row))
     await refreshLicenses()
   }
   const extendSelectedCodes = async () => {
     const rows = selectedCodeRows()
-    await Promise.all(rows.map((row) => extendOnlineLicense({ code: row.code, days: clampedPlanDays }).catch(() => null)))
+    await Promise.all(rows.map((row) => extendOnlineLicense({ code: row.code, days: clampedPlanDays, adminAccount: displayManager }).catch(() => null)))
+    await refreshLicenses()
+  }
+  const createAgentFromPrompt = async () => {
+    const code = window.prompt('請輸入代理帳號')?.trim()
+    if (!code) return
+    const role = window.prompt('請輸入角色：manager / agent / viewer', 'agent')?.trim() || 'agent'
+    const parentCode = window.prompt('請輸入上級帳號，空白則使用目前登入帳號', displayManager)?.trim() || displayManager
+    await createOnlineAgent({ code, name: code, role, parentCode, adminAccount: displayManager, permission: role === 'manager' ? '可開代理 / 可建碼' : '可建碼' })
+    await refreshLicenses()
+  }
+  const deleteSelectedAgents = async () => {
+    if (!selectedAgents.length) return
+    await deleteOnlineAgents({ codes: selectedAgents, adminAccount: displayManager })
+    setSelectedAgents([])
     await refreshLicenses()
   }
   const enableMaintenanceMode = () => updateOnlineAppSetting({ scope: 'frontend', key: 'ui_defaults', value: { maintenanceMode: true }, isPublic: true })
@@ -395,7 +427,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
         <div className="admin-action-row compact">
           <button onClick={enableMaintenanceMode}>啟用維護模式</button>
           <button onClick={enableCloudCapture}>啟用雲端抓取</button>
-          <button>同步記憶中心</button>
+          <button title={cloudDataStatus.message}>MT自動登入未啟用｜{cloudDataStatus.tableCount ?? tables.length}桌</button>
         </div>
       </section>
 
@@ -422,7 +454,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       <section className="admin-panel list-panel" aria-label="下級代理">
         <h2>下級代理</h2>
         <input className="search-input" placeholder="尋找代理帳號" value={agentSearch} onChange={(event) => setAgentSearch(event.target.value)} />
-        <div className="admin-action-row compact"><button>增加代理</button><button>刪除代理</button><button>調整等級</button></div>
+        <div className="admin-action-row compact"><button onClick={createAgentFromPrompt}>增加代理</button><button onClick={deleteSelectedAgents}>刪除代理</button><button>調整等級</button></div>
         <div className="scroll-list agent-list hierarchy-list">
           <div className="list-head agent-hierarchy-head"><span></span><span>帳號</span><span>代理等級</span><span>權限</span></div>
           {filteredAgents.map((agent) => {

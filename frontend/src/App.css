@@ -15,6 +15,20 @@ button, input { font: inherit; }
 
 .app-shell { min-height: 100vh; }
 
+.waiting-card {
+  width: min(720px, calc(100vw - 32px));
+  margin: 64px auto;
+  padding: 34px;
+  border: 1px solid #244a68;
+  border-radius: 24px;
+  background: linear-gradient(145deg, #0b1c2dcc, #081424ee);
+  box-shadow: 0 0 28px rgba(45, 180, 255, .16);
+  text-align: center;
+}
+.waiting-card h2 { color: #7ee3ff; margin-bottom: 12px; }
+.waiting-card p { color: #b8c8d8; line-height: 1.7; }
+.waiting-card strong { color: #f5d56a; }
+
 .topbar {
   position: relative;
   min-height: 118px;
