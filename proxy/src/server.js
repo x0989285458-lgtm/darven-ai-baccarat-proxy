@@ -62,11 +62,15 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     if (pathname === '/api/status') {
       const status = state.snapshot().status
       await persistCloudStateSnapshot(status)
-      const nextStatus = state.snapshot().status
-      return jsonResponse(200, { ...nextStatus, deployMode: deployConfig.deployMode, statusText: describeCaptureStatus(nextStatus) }, frontendOrigin)
+      const cloudStatus = await readCloudSnapshotStatus()
+      const nextStatus = { ...state.snapshot().status, ...cloudStatus }
+      return jsonResponse(200, { ...nextStatus, deployMode: deployConfig.deployMode, statusText: cloudStatus?.statusText ?? describeCaptureStatus(nextStatus) }, frontendOrigin)
     }
     if (pathname === '/api/tables') {
-      return jsonResponse(200, state.snapshot().tables, frontendOrigin)
+      const localTables = state.snapshot().tables
+      if (localTables.length > 0) return jsonResponse(200, localTables, frontendOrigin)
+      const cloudSnapshot = await readLatestCloudSnapshot()
+      return jsonResponse(200, cloudSnapshot?.tables ?? [], frontendOrigin)
     }
     if (pathname === '/api/snapshot') {
       return jsonResponse(200, state.snapshot(), frontendOrigin)
@@ -170,6 +174,42 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       state.setStatus({ persistenceStatus: 'ok', persistenceError: null })
     } catch (error) {
       state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+    }
+  }
+
+  async function readLatestCloudSnapshot() {
+    if (!supabaseClient?.configured || typeof supabaseClient.getLatestCloudTableSnapshot !== 'function') return null
+    try {
+      const snapshot = await supabaseClient.getLatestCloudTableSnapshot()
+      if (!snapshot || !Array.isArray(snapshot.tables)) return null
+      return snapshot
+    } catch (error) {
+      state.setStatus({ cloudReadStatus: 'error', cloudReadError: error?.message ?? String(error) })
+      return null
+    }
+  }
+
+  async function readCloudSnapshotStatus() {
+    if (state.snapshot().tables.length > 0) return null
+    if (!supabaseClient?.configured || typeof supabaseClient.getLatestCloudCaptureStatus !== 'function') return null
+    try {
+      const status = await supabaseClient.getLatestCloudCaptureStatus()
+      const snapshot = await readLatestCloudSnapshot()
+      if (!status && !snapshot) return null
+      return {
+        captureSource: status?.capture_source ?? snapshot?.capture_source ?? captureSource,
+        captureMode: status?.capture_source ?? snapshot?.capture_source ?? captureSource,
+        connected: Boolean(status?.connected ?? snapshot?.tables?.length),
+        authenticated: Boolean(status?.authenticated ?? snapshot?.tables?.length),
+        tableCount: Number(status?.table_count ?? snapshot?.table_count ?? snapshot?.tables?.length ?? 0),
+        lastMessageAt: status?.last_message_at ?? snapshot?.snapshot_at ?? null,
+        lastTablesAt: snapshot?.snapshot_at ?? null,
+        statusText: status?.status_text ?? (snapshot?.tables?.length ? `本機VPN抓牌已同步${snapshot.tables.length}桌` : null),
+        errorMessage: status?.error_message ?? null,
+      }
+    } catch (error) {
+      state.setStatus({ cloudReadStatus: 'error', cloudReadError: error?.message ?? String(error) })
+      return null
     }
   }
 

@@ -95,3 +95,25 @@ test('v039 client writes cloud capture data to Supabase REST tables', async () =
   ])
   assert.equal(requests[0].init.headers.Authorization, 'Bearer sb_secret_test_key')
 })
+
+test('v047 client reads latest cloud capture status and table snapshot from Supabase REST', async () => {
+  const requests = []
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co',
+    serviceKey: 'sb_secret_test_key',
+    fetchImpl: async (url, init) => {
+      requests.push({ url: String(url), init })
+      if (String(url).includes('cloud_table_snapshots')) {
+        return { ok: true, json: async () => [{ session_id: 'local-vpn', tables: [{ tableId: 'BAG01' }] }], text: async () => '' }
+      }
+      return { ok: true, json: async () => [{ session_id: 'local-vpn', connected: true, table_count: 1 }], text: async () => '' }
+    },
+  })
+
+  const snapshot = await client.getLatestCloudTableSnapshot()
+  const status = await client.getLatestCloudCaptureStatus()
+
+  assert.equal(snapshot.tables[0].tableId, 'BAG01')
+  assert.equal(status.connected, true)
+  assert.deepEqual(requests.map((request) => new URL(request.url).searchParams.get('order')), ['snapshot_at.desc', 'updated_at.desc'])
+})

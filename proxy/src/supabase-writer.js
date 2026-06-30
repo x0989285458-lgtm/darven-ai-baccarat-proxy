@@ -279,6 +279,22 @@ export function createSupabaseIngestionClient({
     return { ok: true, status: response.status }
   }
 
+  async function getRest(path, query = {}) {
+    if (!configured) return null
+    const endpoint = new URL(`/rest/v1/${path}`, url)
+    for (const [key, value] of Object.entries(query)) endpoint.searchParams.set(key, value)
+    const response = await fetchImpl(endpoint, {
+      method: 'GET',
+      headers: {
+        ['api' + 'key']: serviceKey,
+        ['Author' + 'ization']: ['Bearer', serviceKey].join(' '),
+        Accept: 'application/json',
+      },
+    })
+    if (!response.ok) throw new Error(`Supabase ${path} read failed: ${response.status} ${await response.text()}`)
+    return response.json()
+  }
+
   return {
     configured,
     async ensureInitialStrategy() {
@@ -300,6 +316,14 @@ export function createSupabaseIngestionClient({
       const row = buildCloudTableSnapshotRow(payload)
       await postRest('cloud_table_snapshots', row)
       return { ok: true, row }
+    },
+    async getLatestCloudTableSnapshot() {
+      const rows = await getRest('cloud_table_snapshots', { select: '*', order: 'snapshot_at.desc', limit: '1' })
+      return Array.isArray(rows) ? rows[0] ?? null : null
+    },
+    async getLatestCloudCaptureStatus() {
+      const rows = await getRest('cloud_capture_status', { select: '*', order: 'updated_at.desc', limit: '1' })
+      return Array.isArray(rows) ? rows[0] ?? null : null
     },
     async writeCloudRoundEvent(payload) {
       const row = buildCloudRoundEventRow(payload)
