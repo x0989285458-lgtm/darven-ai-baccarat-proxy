@@ -22,6 +22,8 @@ describe('AI百家預測軟體', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
+    window.sessionStorage.clear()
     vi.unstubAllGlobals()
   })
 
@@ -74,11 +76,12 @@ describe('AI百家預測軟體', () => {
     const sideRow = within(prediction).getByLabelText('副項目預測機率')
     const mainRow = within(prediction).getByLabelText('莊閒預測機率')
 
-    ;['閒龍寶', '閒對', '和局', '超六', '莊對', '莊龍寶'].forEach((label) => {
+    ;['閒龍寶', '閒對', '超六', '莊對', '莊龍寶'].forEach((label) => {
       const item = within(sideRow).getByLabelText(`${label}預測`)
       expect(within(item).getByText(label)).toBeInTheDocument()
       expect(within(item).getByText(/\d+%/)).toHaveClass('probability-value')
     })
+    expect(within(sideRow).queryByLabelText('和局預測')).not.toBeInTheDocument()
 
     ;['閒', '和', '莊'].forEach((label) => {
       const item = within(mainRow).getByLabelText(`${label}預測`)
@@ -88,7 +91,7 @@ describe('AI百家預測軟體', () => {
 
     expect(within(prediction).getByText(/AI預測:/)).toBeInTheDocument()
     expect(within(prediction).getByText(/AI信心值:\d+%/)).toBeInTheDocument()
-    expect(within(sideRow).getByText('和局')).toBeInTheDocument()
+    expect(within(sideRow).queryByText('和局')).not.toBeInTheDocument()
     expect(within(mainRow).getByText('和')).toBeInTheDocument()
     expect(within(prediction).queryByText(/高|中|低/)).not.toBeInTheDocument()
     expect(within(prediction).queryByText(/風險:/)).not.toBeInTheDocument()
@@ -137,7 +140,7 @@ describe('AI百家預測軟體', () => {
     })
   })
 
-  it('renders the original traditional big-road shape from big2 without tie cells', async () => {
+  it('renders the original traditional big-road shape from big2 without standalone tie cells', async () => {
     await renderApp()
     expect(screen.queryByText('珠盤路')).not.toBeInTheDocument()
     expect(document.querySelector('.bead-grid')).not.toBeInTheDocument()
@@ -146,6 +149,28 @@ describe('AI百家預測軟體', () => {
     expect(document.querySelector('.big-cell.Tie')).not.toBeInTheDocument()
     expect(document.querySelectorAll('.big-cell.Banker')).toHaveLength(11)
     expect(document.querySelectorAll('.big-cell.Player')).toHaveLength(5)
+  })
+
+  it('v045 overlays a green tie slash on banker/player big-road cells when a tie appears', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/tables')) return Promise.resolve({ ok: true, json: () => Promise.resolve([{
+        tableId: 'tie-road',
+        displayName: 'MT百家樂第1桌',
+        tableType: 'baccarat',
+        round: 8,
+        bankerCount: 3,
+        playerCount: 3,
+        tieCount: 2,
+        beadPlateRaw: '0101,0303,0202,0303,0101',
+        bigRoadRaw: '0101,0303,0202,0303,0101',
+      }]) })
+      if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ configured: true }) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
+    }))
+    await renderApp('/', false)
+    await waitFor(() => expect(screen.getByLabelText('傳統大路')).toBeInTheDocument())
+    expect(document.querySelectorAll('.big-cell.tie-mark')).toHaveLength(2)
+    expect(document.querySelector('.big-cell.Tie')).not.toBeInTheDocument()
   })
 
   it('keeps the selected table after proxy polling refreshes table data', async () => {
@@ -432,9 +457,9 @@ describe('AI百家預測軟體', () => {
     }))
 
     await renderApp('/admin', false)
-    expect(await screen.findByText(/DV1788/)).toBeInTheDocument()
-    expect(screen.getAllByText('DVAI1788_001').length).toBeGreaterThan(0)
-    expect(screen.queryByText('Agent001')).not.toBeInTheDocument()
+    expect(screen.queryByText(/DV1788/)).not.toBeInTheDocument()
+    expect(document.body.textContent).toContain('DVAI1788_001')
+    await waitFor(() => expect(screen.queryByText('Agent001')).not.toBeInTheDocument())
     expect(screen.queryByText('Agent001_001')).not.toBeInTheDocument()
   })
 
@@ -546,10 +571,15 @@ describe('AI百家預測軟體', () => {
     fireEvent.change(daysInput, { target: { value: '99' } })
     expect(daysInput).toHaveValue(30)
 
-    expect(screen.getByText('超級管理員')).toBeInTheDocument()
+    expect(screen.queryByText('超級管理員')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('勾選 DVAI')).not.toBeInTheDocument()
     expect(screen.getAllByText('管理員').length).toBeGreaterThan(0)
     expect(screen.getAllByText('代理').length).toBeGreaterThan(0)
     expect(screen.getAllByText('觀察者').length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: /收合 Admin001/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /收合 Admin001/ }))
+    expect(screen.queryByText('Agent001')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /展開 Admin001/ }))
     expect(screen.getByLabelText('勾選 Agent001')).toHaveAttribute('type', 'checkbox')
     expect(screen.getByLabelText('勾選 User001')).toHaveAttribute('type', 'checkbox')
 
@@ -578,5 +608,23 @@ describe('AI百家預測軟體', () => {
     fireEvent.click(screen.getByRole('button', { name: '刪除驗證碼' }))
     expect(screen.queryByText('User001')).not.toBeInTheDocument()
     expect(screen.queryByText('User002')).not.toBeInTheDocument()
+  })
+
+  it('v045 admin has logout and frontend/backend inactivity clears login state after 10 minutes', async () => {
+    vi.useFakeTimers()
+    window.sessionStorage.setItem('darven-admin-account', 'DVAI')
+    window.sessionStorage.setItem('darven_admin_login', 'yes')
+    const adminRender = await renderApp('/admin', false)
+    expect(screen.getByRole('button', { name: '登出' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '登出' }))
+    expect(window.sessionStorage.getItem('darven-admin-account')).toBeNull()
+    expect(window.sessionStorage.getItem('darven_admin_login')).toBeNull()
+    adminRender.unmount()
+
+    window.sessionStorage.setItem('darven-member-login', 'yes')
+    await renderApp('/', false)
+    vi.advanceTimersByTime(600001)
+    expect(window.sessionStorage.getItem('darven-member-login')).toBeNull()
+    vi.useRealTimers()
   })
 })

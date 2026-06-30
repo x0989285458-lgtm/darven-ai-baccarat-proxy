@@ -32,7 +32,8 @@ export default function App() {
   const selectedSafeIndex = Math.min(selectedIndex, Math.max(visibleTables.length - 1, 0))
   const selected = visibleTables[selectedSafeIndex] ?? tables[0]
   const fullRoad = useMemo(() => parseBeadPlate(selected?.trend.bead_plate2 ?? ''), [selected])
-  const bigRoad = useMemo(() => parseBigRoad(selected?.trend.big2 ?? '').filter((cell) => cell.outcome !== 'Tie'), [selected])
+  const allBigRoad = useMemo(() => parseBigRoad(selected?.trend.big2 ?? ''), [selected])
+  const bigRoad = useMemo(() => markBigRoadTies(allBigRoad), [allBigRoad])
   const prediction = useMemo(() => calculatePrediction({
     beadCells: fullRoad,
     bigRoadCells: bigRoad,
@@ -88,6 +89,8 @@ export default function App() {
     return () => client.current?.disconnect(false)
   }, [])
 
+  useInactivityLogout(window.location.pathname === '/admin' ? 'admin' : window.location.pathname === '/' || window.location.pathname === '' ? 'member' : null)
+
   if (!selected) return null
 
   if (window.location.pathname === '/login') {
@@ -133,7 +136,6 @@ export default function App() {
           <div className="prediction-row side-prediction-row" aria-label="副項目預測機率">
             <PredictionMetric title="閒龍寶" value={bonusPredictions.playerDragon} tone="Player" />
             <PredictionMetric title="閒對" value={bonusPredictions.playerPair} tone="Player" />
-            <PredictionMetric title="和局" value={bonusPredictions.tie} tone="Tie" />
             <PredictionMetric title="超六" value={bonusPredictions.superSix} tone="Tie" />
             <PredictionMetric title="莊對" value={bonusPredictions.bankerPair} tone="Banker" />
             <PredictionMetric title="莊龍寶" value={bonusPredictions.bankerDragon} tone="Banker" />
@@ -149,7 +151,7 @@ export default function App() {
         <div className="roads-grid single-road">
           <RoadCard title="大路" subtitle="紅圈＝莊　藍圈＝閒">
             <div className="big-road classic-road" aria-label="傳統大路">
-              {bigRoad.map((cell) => <div style={{ gridColumn: cell.column + 1, gridRow: cell.row + 1 }} title={cell.outcome} className={`big-cell ${cell.outcome}`} key={`${cell.code}-${cell.column}-${cell.row}`}>{label[cell.outcome]}</div>)}
+              {bigRoad.map((cell) => <div style={{ gridColumn: cell.column + 1, gridRow: cell.row + 1 }} title={cell.hasTie ? `${cell.outcome} 和局` : cell.outcome} className={`big-cell ${cell.outcome} ${cell.hasTie ? 'tie-mark' : ''}`} key={`${cell.code}-${cell.column}-${cell.row}`}>{label[cell.outcome]}</div>)}
             </div>
           </RoadCard>
         </div>
@@ -170,6 +172,7 @@ function LoginApp() {
         setLoginMessage('登入失敗，請確認會員帳號與驗證密碼')
         return
       }
+      window.sessionStorage.setItem('darven-member-login', 'yes')
       setLoginMessage('登入成功，正在進入前台')
     } catch {
       setLoginMessage('登入失敗，請確認本機代理是否啟動')
@@ -261,6 +264,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const [selectedCodeMembers, setSelectedCodeMembers] = useState<string[]>([])
   const [selectedAgents, setSelectedAgents] = useState<string[]>([])
   const [agentSearch, setAgentSearch] = useState('')
+  const [collapsedAgents, setCollapsedAgents] = useState<string[]>([])
   const [codeSearch, setCodeSearch] = useState('')
   const [memoryCenter, setMemoryCenter] = useState<OnlineMemoryCenter>({ state: 'connecting', items: [], reports: [], strategies: [] })
   const [strategyAnalysis, setStrategyAnalysis] = useState<OnlineStrategyAnalysis>({ state: 'connecting', strategyRows: [], weakTables: [], strongTables: [], watchTables: [], suggestions: [] })
@@ -307,6 +311,12 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   }
   const toggleCode = (member: string) => setSelectedCodeMembers((current) => current.includes(member) ? current.filter((item) => item !== member) : [...current, member])
   const toggleAgent = (account: string) => setSelectedAgents((current) => current.includes(account) ? current.filter((item) => item !== account) : [...current, account])
+  const toggleCollapse = (account: string) => setCollapsedAgents((current) => current.includes(account) ? current.filter((item) => item !== account) : [...current, account])
+  const logoutAdmin = () => {
+    window.sessionStorage.removeItem('darven-admin-account')
+    window.sessionStorage.removeItem('darven_admin_login')
+    window.location.assign('/admin-login')
+  }
   const selectedCodeRows = () => codes.filter((row) => selectedCodeMembers.includes(row.member))
   const deleteSelectedCodes = async () => {
     const rows = selectedCodeRows()
@@ -334,7 +344,8 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const primaryWeakTable = strategyAnalysis.weakTables[0]
   const primaryStrongTable = strategyAnalysis.strongTables[0]
   const agents = useMemo(() => normalizeAgents(licenseStatus.agentRows.length ? licenseStatus.agentRows : initialAgents, displayManager), [licenseStatus.agentRows, displayManager])
-  const filteredAgents = useMemo(() => filterAgents(agents, agentSearch), [agents, agentSearch])
+  const visibleAgents = useMemo(() => filterCollapsedAgents(agents, collapsedAgents), [agents, collapsedAgents])
+  const filteredAgents = useMemo(() => filterAgents(visibleAgents, agentSearch), [visibleAgents, agentSearch])
   const filteredCodes = useMemo(() => filterCodes(codes, codeSearch), [codes, codeSearch])
 
   return <main className="admin-shell admin-v015-shell" style={{ width: '100%', maxWidth: 'none' }}>
@@ -343,6 +354,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
         <h1>AI百家預測後台</h1>
         <span>授權序號 / 會員帳號 / 代理管理 / 驗證碼管理</span>
       </div>
+      <button className="admin-logout" onClick={logoutAdmin}>登出</button>
     </header>
 
     <section className="admin-summary-grid auth-summary v015-summary v044-summary-grid" aria-label="管理總覽" style={{ width: '100%', maxWidth: 'none' }}>
@@ -413,9 +425,17 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
         <div className="admin-action-row compact"><button>增加代理</button><button>刪除代理</button><button>調整等級</button></div>
         <div className="scroll-list agent-list hierarchy-list">
           <div className="list-head agent-hierarchy-head"><span></span><span>帳號</span><span>代理等級</span><span>權限</span></div>
-          {filteredAgents.map((agent) => <div className={`list-row agent-row hierarchy-row depth-${agent.depth ?? 0}`} key={agent.account}>
-            <input aria-label={`勾選 ${agent.account}`} type="checkbox" checked={selectedAgents.includes(agent.account)} onChange={() => toggleAgent(agent.account)} />
-            <span>{agent.account}</span><b className={agent.level.includes('超級') || agent.level.includes('管理員') ? 'green-text' : agent.level.includes('代理') ? 'yellow-text' : ''}>{agent.level}</b><em>{agent.permission}</em></div>)}
+          {filteredAgents.map((agent) => {
+            const collapsible = hasAgentChildren(agents, agent.account)
+            const collapsed = collapsedAgents.includes(agent.account)
+            return <div className={`list-row agent-row hierarchy-row depth-${agent.depth ?? 0}`} key={agent.account}>
+              <span className="agent-select-cell">
+                {collapsible ? <button className="collapse-agent" aria-label={`${collapsed ? '展開' : '收合'} ${agent.account}`} onClick={() => toggleCollapse(agent.account)}>{collapsed ? '▶' : '▼'}</button> : <i />}
+                <input aria-label={`勾選 ${agent.account}`} type="checkbox" checked={selectedAgents.includes(agent.account)} onChange={() => toggleAgent(agent.account)} />
+              </span>
+              <span>{agent.account}</span><b className={agent.level.includes('管理員') ? 'green-text' : agent.level.includes('代理') ? 'yellow-text' : ''}>{agent.level}</b><em>{agent.permission}</em>
+            </div>
+          })}
         </div>
       </section>
 
@@ -437,6 +457,47 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       </section>
     </section>
   </main>
+}
+
+function useInactivityLogout(mode: 'admin' | 'member' | null) {
+  useEffect(() => {
+    if (!mode) return
+    const timeoutMs = 10 * 60 * 1000
+    let timer: ReturnType<typeof setTimeout>
+    const clearLogin = () => {
+      if (mode === 'admin') {
+        window.sessionStorage.removeItem('darven-admin-account')
+        window.sessionStorage.removeItem('darven_admin_login')
+        if (window.location.pathname === '/admin') window.location.assign('/admin-login')
+        return
+      }
+      window.sessionStorage.removeItem('darven-member-login')
+      if (window.location.pathname === '/' || window.location.pathname === '') window.location.assign('/login')
+    }
+    const reset = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(clearLogin, timeoutMs)
+    }
+    ;['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'].forEach((event) => window.addEventListener(event, reset, { passive: true }))
+    reset()
+    return () => {
+      window.clearTimeout(timer)
+      ;['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'].forEach((event) => window.removeEventListener(event, reset))
+    }
+  }, [mode])
+}
+
+function markBigRoadTies(cells: ReturnType<typeof parseBigRoad>) {
+  const visible: Array<ReturnType<typeof parseBigRoad>[number] & { hasTie?: boolean }> = []
+  for (const cell of cells) {
+    if (cell.outcome === 'Tie') {
+      const last = visible.at(-1)
+      if (last) last.hasTie = true
+      continue
+    }
+    visible.push({ ...cell, hasTie: false })
+  }
+  return visible
 }
 
 function clampPlanDays(value: string | number) {
@@ -464,10 +525,24 @@ function normalizeAgents(rows: Array<Partial<AgentRow>>, loginAgent: string): Ag
     parent: row.parent,
     depth: row.depth,
   }))
-  if (!normalized.some((row) => row.account === loginAgent)) {
-    normalized.unshift({ account: loginAgent, level: '超級管理員', permission: '登入帳號 / 最高權限', depth: 0 })
-  }
-  return normalized.map((row) => ({ ...row, depth: row.depth ?? inferAgentDepth(row.level) }))
+  return normalized
+    .filter((row) => !row.level.includes('超級') && row.account !== loginAgent)
+    .map((row) => ({ ...row, depth: Math.max(0, (row.depth ?? inferAgentDepth(row.level)) - 1) }))
+}
+
+function hasAgentChildren(agents: AgentRow[], account: string) {
+  return agents.some((agent) => agent.parent === account)
+}
+
+function filterCollapsedAgents(agents: AgentRow[], collapsed: string[]) {
+  return agents.filter((agent) => {
+    let parent = agent.parent
+    while (parent) {
+      if (collapsed.includes(parent)) return false
+      parent = agents.find((item) => item.account === parent)?.parent
+    }
+    return true
+  })
 }
 
 function inferAgentDepth(level: string) {
