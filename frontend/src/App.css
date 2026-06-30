@@ -1085,3 +1085,76 @@ h1 {
 .admin-v015-shell .scroll-list {
   justify-self: stretch;
 }
+
+/* v044 screenshot-led admin/front UI adjustments. */
+.login-card .admin-login-title {
+  white-space: nowrap;
+  font-size: clamp(25px, 4vw, 38px);
+  letter-spacing: .03em;
+}
+
+.v044-summary-grid,
+.admin-v015-shell .v044-summary-grid {
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+}
+
+.v044-feature-grid,
+.admin-v015-shell .v044-feature-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.v044-feature-grid .feature-card {
+  min-height: 260px;
+  align-content: center;
+}
+
+.v044-feature-grid .feature-card h2 {
+  text-align: center;
+}
+
+.hierarchy-list .agent-hierarchy-head,
+.hierarchy-list .hierarchy-row {
+  grid-template-columns: 34px minmax(110px, .8fr) minmax(96px, .6fr) minmax(150px, 1fr);
+}
+
+.hierarchy-row input[type="checkbox"],
+.code-row input[type="checkbox"] {
+  width: 18px;
+  min-height: 18px;
+  accent-color: #39dfff;
+  justify-self: center;
+}
+
+.hierarchy-row.depth-1 span { padding-left: 14px; }
+.hierarchy-row.depth-2 span { padding-left: 28px; }
+.hierarchy-row.depth-3 span { padding-left: 42px; }
+.hierarchy-row.depth-0 span::before { content: '◆ '; color: #a78bfa; }
+.hierarchy-row.depth-1 span::before { content: '└ '; color: #39dfff; }
+.hierarchy-row.depth-2 span::before { content: '  └ '; color: #ffd166; }
+.hierarchy-row.depth-3 span::before { content: '    └ '; color: #52e6a7; }
+
+.code-row {
+  grid-template-columns: 34px minmax(90px, .75fr) minmax(132px, 1.1fr) minmax(110px, .9fr) minmax(110px, .9fr);
+}
+
+.v015-form-grid input[readonly] {
+  color: #52e6a7;
+  border-color: #1f7a63;
+  background: #041914;
+}
+
+.main-probability-row { grid-template-columns: repeat(3, minmax(100px, 160px)); }
+
+@media (max-width: 720px) {
+  .v044-summary-grid,
+  .admin-v015-shell .v044-summary-grid,
+  .v044-feature-grid,
+  .admin-v015-shell .v044-feature-grid {
+    grid-template-columns: 1fr;
+  }
+  .login-card .admin-login-title {
+    font-size: clamp(22px, 6vw, 30px);
+  }
+  .main-probability-row { grid-template-columns: repeat(3, minmax(72px, 1fr)); }
+}

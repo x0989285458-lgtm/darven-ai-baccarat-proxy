@@ -80,7 +80,7 @@ describe('AI百家預測軟體', () => {
       expect(within(item).getByText(/\d+%/)).toHaveClass('probability-value')
     })
 
-    ;['閒', '莊'].forEach((label) => {
+    ;['閒', '和', '莊'].forEach((label) => {
       const item = within(mainRow).getByLabelText(`${label}預測`)
       expect(within(item).getByText(label)).toBeInTheDocument()
       expect(within(item).getByText(/\d+%/)).toHaveClass('probability-value')
@@ -89,32 +89,44 @@ describe('AI百家預測軟體', () => {
     expect(within(prediction).getByText(/AI預測:/)).toBeInTheDocument()
     expect(within(prediction).getByText(/AI信心值:\d+%/)).toBeInTheDocument()
     expect(within(sideRow).getByText('和局')).toBeInTheDocument()
-    expect(within(mainRow).queryByText('和')).not.toBeInTheDocument()
+    expect(within(mainRow).getByText('和')).toBeInTheDocument()
     expect(within(prediction).queryByText(/高|中|低/)).not.toBeInTheDocument()
     expect(within(prediction).queryByText(/風險:/)).not.toBeInTheDocument()
     expect(within(prediction).queryByText(/最近 \d+ 局/)).not.toBeInTheDocument()
     expect(within(prediction).queryByText('近期莊閒趨勢相近，建議持續觀察。')).not.toBeInTheDocument()
   })
 
-  it('v032 shows clear MT/proxy status after pressing 開始抓取', async () => {
+  it('v044 removes manual token connection controls and reads backend tables automatically', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url.includes('/api/tables')) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
-      if (url.includes('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: false, authenticated: null, tables: [] }) })
+      if (url.includes('/api/tables')) return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTables.map((table, index) => ({
+        tableId: table.id,
+        displayName: `MT百家樂第${index + 1}桌`,
+        tableType: table.table_type,
+        round: Number(table.trend.current_round ?? 0) + 10,
+        bankerCount: table.trend.total_round_banker,
+        playerCount: table.trend.total_round_player,
+        tieCount: table.trend.total_round_tie,
+        beadPlateRaw: table.trend.bead_plate2,
+        bigRoadRaw: table.trend.big2,
+      }))) })
       if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ configured: true }) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
     }))
     await renderApp('/', false)
-    fireEvent.click(screen.getByRole('button', { name: '開始抓取' }))
-    expect(await screen.findByText('proxy已啟動，MT未連線，請確認 Token 是否過期')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '連線控制' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Token')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '開始抓取' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '改用示範資料' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /MT百家樂第1桌 第44局/ })).toBeInTheDocument()
   })
 
-  it('moves verification above connection controls and shows only MT table labels in the requested 1 2 3 3A 5 6 7 8 9 order', async () => {
+  it('keeps Cloudflare verification and MT table labels without manual connection controls', async () => {
     await renderApp()
-    const sidebar = screen.getByLabelText('桌號與連線控制')
+    const sidebar = screen.getByLabelText('桌號與資料選擇')
     expect(sidebar).toHaveClass('balanced-sidebar-line')
     expect(within(sidebar).queryByText('百家樂桌')).not.toBeInTheDocument()
     expect(within(sidebar).getByText('Cloudflare Turnstile')).toBeInTheDocument()
-    expect(within(sidebar).getByRole('heading', { name: '連線控制' })).toBeInTheDocument()
+    expect(within(sidebar).queryByRole('heading', { name: '連線控制' })).not.toBeInTheDocument()
     expect(within(sidebar).queryByText(/BAG/)).not.toBeInTheDocument()
 
     const expectedLabels = ['1', '2', '3', '3A', '5', '6', '7', '8', '9']
@@ -158,8 +170,6 @@ describe('AI百家預測軟體', () => {
     fireEvent.click(tableButtons[1])
     expect(tableButtons[1]).toHaveClass('active')
 
-    fireEvent.click(screen.getByRole('button', { name: '開始抓取' }))
-
     await waitFor(() => expect(screen.getByRole('button', { name: /MT百家樂第1桌 第134局/ })).toBeInTheDocument())
     const refreshedButtons = screen.getAllByRole('button', { name: /MT百家樂第.+桌 第\d+局/ })
     expect(refreshedButtons[1]).toHaveClass('active')
@@ -191,8 +201,6 @@ describe('AI百家預測軟體', () => {
     const tableButtons = screen.getAllByRole('button', { name: /MT百家樂第.+桌 第\d+局/ })
     fireEvent.click(tableButtons[1])
     expect(tableButtons[1]).toHaveClass('active')
-
-    fireEvent.click(screen.getByRole('button', { name: '開始抓取' }))
 
     await waitFor(() => expect(screen.getByRole('button', { name: /MT百家樂第1桌 第234局/ })).toBeInTheDocument())
     const refreshedButtons = screen.getAllByRole('button', { name: /MT百家樂第.+桌 第\d+局/ })
@@ -364,7 +372,6 @@ describe('AI百家預測軟體', () => {
     } as Response))
 
     await renderApp()
-    fireEvent.click(screen.getByRole('button', { name: '開始抓取' }))
 
     await waitFor(() => expect(screen.getByLabelText('莊預測')).toHaveTextContent('54%'))
     expect(screen.getByLabelText('閒預測')).toHaveTextContent('36%')
@@ -425,7 +432,7 @@ describe('AI百家預測軟體', () => {
     }))
 
     await renderApp('/admin', false)
-    expect(await screen.findByText('DV1788')).toBeInTheDocument()
+    expect(await screen.findByText(/DV1788/)).toBeInTheDocument()
     expect(screen.getAllByText('DVAI1788_001').length).toBeGreaterThan(0)
     expect(screen.queryByText('Agent001')).not.toBeInTheDocument()
     expect(screen.queryByText('Agent001_001')).not.toBeInTheDocument()
@@ -502,7 +509,7 @@ describe('AI百家預測軟體', () => {
     expect(within(codePanel).getByRole('button', { name: '暫停驗證碼' })).toBeInTheDocument()
     expect(within(codePanel).getByRole('button', { name: '延長驗證碼' })).toBeInTheDocument()
     expect(within(codePanel).queryByRole('button', { name: '刪除 User001 驗證碼' })).not.toBeInTheDocument()
-    expect(within(codePanel).getByRole('button', { name: '選取 User001' })).toBeInTheDocument()
+    expect(within(codePanel).getByLabelText('勾選 User001')).toHaveAttribute('type', 'checkbox')
   })
 
   it('admin narrow/scaled list rows use the dedicated readable list class so text does not squeeze together', async () => {
@@ -512,20 +519,64 @@ describe('AI百家預測軟體', () => {
     expect(grid).toHaveClass('v015-management-grid')
   })
 
-  it('admin creates login credentials and deletes the selected verification row from the top action controls', async () => {
+  it('v044 applies requested admin layout, search, checkbox, fixed-agent, and 30-day limit behavior', async () => {
+    window.sessionStorage.setItem('darven-admin-account', 'DVAI')
+    await renderApp('/admin')
+
+    const adminLoginHeading = document.querySelector('.admin-login-title')
+    expect(adminLoginHeading).not.toBeInTheDocument()
+
+    const summary = screen.getByLabelText('管理總覽')
+    expect(Array.from(summary.querySelectorAll('.admin-metric')).map((node) => node.textContent)).toEqual([
+      expect.stringContaining('AI策略版本'),
+      expect.stringContaining('今日局數'),
+      expect.stringContaining('SUPABASE'),
+      expect.stringContaining('記憶中心'),
+    ])
+    expect(summary).toHaveClass('v044-summary-grid')
+
+    expect(screen.queryByLabelText('線上授權正式重建')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('後台功能四格')).toHaveClass('v044-feature-grid')
+
+    const agentInput = screen.getByPlaceholderText('請輸入代理帳號')
+    expect(agentInput).toHaveValue('DVAI')
+    expect(agentInput).toHaveAttribute('readonly')
+
+    const daysInput = screen.getByLabelText('方案天數')
+    fireEvent.change(daysInput, { target: { value: '99' } })
+    expect(daysInput).toHaveValue(30)
+
+    expect(screen.getByText('超級管理員')).toBeInTheDocument()
+    expect(screen.getAllByText('管理員').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('代理').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('觀察者').length).toBeGreaterThan(0)
+    expect(screen.getByLabelText('勾選 Agent001')).toHaveAttribute('type', 'checkbox')
+    expect(screen.getByLabelText('勾選 User001')).toHaveAttribute('type', 'checkbox')
+
+    fireEvent.change(screen.getByPlaceholderText('尋找代理帳號'), { target: { value: 'View001' } })
+    expect(screen.getByText('View001')).toBeInTheDocument()
+    expect(screen.queryByText('Agent002')).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByPlaceholderText('尋找驗證碼'), { target: { value: 'User010' } })
+    expect(screen.getByText('User010')).toBeInTheDocument()
+    expect(screen.queryByText('User001')).not.toBeInTheDocument()
+  })
+
+  it('admin creates login credentials and deletes checked verification rows from the top action controls', async () => {
+    window.sessionStorage.setItem('darven-admin-account', 'Agent001')
     await renderApp('/admin')
 
     fireEvent.change(screen.getByPlaceholderText('請輸入會員帳號'), { target: { value: 'User888' } })
-    fireEvent.change(screen.getByPlaceholderText('請輸入代理帳號'), { target: { value: 'Agent009' } })
-    fireEvent.change(screen.getByLabelText('流水號'), { target: { value: '015' } })
     fireEvent.click(screen.getByRole('button', { name: '建立授權' }))
 
     expect(await screen.findByText('最新會員帳號：User888')).toBeInTheDocument()
-    expect(screen.getByText('最新驗證碼：Agent009_015')).toBeInTheDocument()
+    expect(screen.getByText('最新驗證碼：Agent001_003')).toBeInTheDocument()
 
     expect(screen.getByText('User001')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '選取 User001' }))
+    fireEvent.click(screen.getByLabelText('勾選 User001'))
+    fireEvent.click(screen.getByLabelText('勾選 User002'))
     fireEvent.click(screen.getByRole('button', { name: '刪除驗證碼' }))
     expect(screen.queryByText('User001')).not.toBeInTheDocument()
+    expect(screen.queryByText('User002')).not.toBeInTheDocument()
   })
 })

@@ -23,8 +23,7 @@ function tableNumber(table: LiveTable, index: number) {
 export default function App() {
   const [tables, setTables] = useState<LiveTable[]>(mockTables)
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const [token, setToken] = useState(defaultToken)
-  const [status, setStatus] = useState({ state: 'disconnected', message: '未連線' })
+  const [, setStatus] = useState({ state: 'disconnected', message: '未連線' })
   const [supabaseStatus, setSupabaseStatus] = useState({ state: isSupabaseConfigured ? 'connecting' : 'error', message: isSupabaseConfigured ? 'Supabase 檢查中' : 'Supabase 未設定' })
   const [onlineCoreStatus, setOnlineCoreStatus] = useState<OnlineCoreStatus>({ state: 'connecting', message: '記憶中心檢查中' })
   const [updatedAt, setUpdatedAt] = useState(new Date())
@@ -71,7 +70,7 @@ export default function App() {
   const start = () => {
     client.current?.disconnect(false)
     client.current = new LiveRoadClient({
-      token,
+      token: defaultToken,
       onTables: (next) => {
         if (next.length) {
           setTables(next)
@@ -84,13 +83,10 @@ export default function App() {
     client.current.connect()
   }
 
-  const demo = () => {
-    client.current?.disconnect(false)
-    setTables(mockTables)
-    setSelectedIndex(0)
-    setUpdatedAt(new Date())
-    setStatus({ state: 'disconnected', message: '示範資料' })
-  }
+  useEffect(() => {
+    if (window.location.pathname === '/' || window.location.pathname === '') start()
+    return () => client.current?.disconnect(false)
+  }, [])
 
   if (!selected) return null
 
@@ -119,9 +115,8 @@ export default function App() {
       <div className="header-meta"><span className={`status ${supabaseStatus.state}`} title={supabaseConfig.projectRef}>{supabaseStatus.message}</span></div>
     </header>
     <div className="workspace">
-      <aside className="sidebar balanced-sidebar-line" aria-label="桌號與連線控制">
+      <aside className="sidebar balanced-sidebar-line" aria-label="桌號與資料選擇">
         <section className="turnstile"><span>Cloudflare Turnstile</span><code>sitekey: placeholder</code><small>正式登入驗證碼預留區塊</small></section>
-        <section className="control-card"><h2>連線控制</h2><label>Token<input aria-label="Token" value={token} onChange={(event) => setToken(event.target.value)} /></label><div className="button-row"><button className="primary" onClick={start}>開始抓取</button><button onClick={() => client.current?.disconnect()}>停止</button></div><p className={`live-status ${status.state}`}>{status.message}</p><button className="demo" onClick={demo}>改用示範資料</button></section>
         <nav className="table-list" aria-label="桌號選擇">
           {visibleTables.map((table, index) => <button className={`table-item ${index === selectedSafeIndex ? 'active' : ''}`} key={`${String(table.id)}-${index}`} onClick={() => setSelectedIndex(index)}>
             MT百家樂第{tableNumber(table, index)}桌 第{table.trend.current_round ?? 0}局
@@ -130,9 +125,9 @@ export default function App() {
       </aside>
       <section className="content">
         <div className="stats-grid" aria-label="統計資訊">
-          <Stat title="莊" value={String(selected.trend.total_round_banker ?? 0)} tone="Banker" />
-          <Stat title="和" value={String(selected.trend.total_round_tie ?? 0)} tone="Tie" />
           <Stat title="閒" value={String(selected.trend.total_round_player ?? 0)} tone="Player" />
+          <Stat title="和" value={String(selected.trend.total_round_tie ?? 0)} tone="Tie" />
+          <Stat title="莊" value={String(selected.trend.total_round_banker ?? 0)} tone="Banker" />
         </div>
         <section className="prediction-card" aria-label="AI預測結果">
           <div className="prediction-row side-prediction-row" aria-label="副項目預測機率">
@@ -145,6 +140,7 @@ export default function App() {
           </div>
           <div className="prediction-row main-probability-row" aria-label="莊閒預測機率">
             <PredictionMetric title="閒" value={outcomePredictions.player} tone="Player" />
+            <PredictionMetric title="和" value={outcomePredictions.tie} tone="Tie" />
             <PredictionMetric title="莊" value={outcomePredictions.banker} tone="Banker" />
           </div>
           <h2 className="ai-prediction-line">AI預測:<span className={prediction.recommendation}>{label[prediction.recommendation]}</span></h2>
@@ -213,31 +209,35 @@ function AdminLoginApp() {
   }
   return <main className="login-shell">
     <section className="login-card" aria-label="管理後台登入">
-      <h1>AI百家管理後台登入</h1>
+      <h1 className="admin-login-title">AI百家管理後台登入</h1>
       <strong>Darven AI 後台管理</strong>
       <div className="login-chip">管理員 / 代理登入</div>
       <label>管理員或代理帳號<input placeholder="請輸入管理員或代理帳號" value={agentAccount} onChange={(event) => setAgentAccount(event.target.value)} /></label>
       <button onClick={submitLogin}>管理員登入</button>
-      <p>登入後可管理會員授權、驗證碼、代理與線上記憶報表。</p>
-      {loginMessage ? <em>{loginMessage}</em> : <em>例如：DVAI 或正式代理帳號</em>}
+      {loginMessage ? <em>{loginMessage}</em> : null}
     </section>
   </main>
 }
 
-const initialAgents = [
-  { account: 'Agent001', level: '高級代理', permission: '可開下級 / 可建碼' },
-  { account: 'Agent002', level: '普通代理', permission: '不可開下級 / 可建碼' },
-  { account: 'View001', level: '觀察代理', permission: '僅可登入確認' },
-  { account: 'DV1688', level: '高級代理', permission: '可開下級 / 可建碼' },
-  { account: 'A1024', level: '普通代理', permission: '不可開下級 / 可建碼' },
-  { account: 'B7788', level: '觀察代理', permission: '僅可登入確認' },
-  { account: 'M8888', level: '高級代理', permission: '可開下級 / 可建碼' },
-  { account: 'Test009', level: '普通代理', permission: '不可開下級 / 可建碼' },
-  { account: 'C2026', level: '觀察代理', permission: '僅可登入確認' },
-  { account: 'Agent010', level: '高級代理', permission: '可開下級 / 可建碼' },
+type AgentRow = { account: string; level: string; permission: string; parent?: string; depth?: number }
+type CodeRow = { member: string; code: string; status: string; remain: string; expiresOn?: string; suspendedAt?: string }
+
+const initialAgents: AgentRow[] = [
+  { account: 'DVAI', level: '超級管理員', permission: '最高權限 / 可開管理員', depth: 0 },
+  { account: 'Admin001', level: '管理員', permission: '可開代理 / 可建碼', parent: 'DVAI', depth: 1 },
+  { account: 'Agent001', level: '代理', permission: '可開觀察者 / 可建碼', parent: 'Admin001', depth: 2 },
+  { account: 'Agent002', level: '代理', permission: '可建碼', parent: 'Admin001', depth: 2 },
+  { account: 'View001', level: '觀察者', permission: '僅可登入確認', parent: 'Agent001', depth: 3 },
+  { account: 'DV1688', level: '管理員', permission: '可開代理 / 可建碼', parent: 'DVAI', depth: 1 },
+  { account: 'A1024', level: '代理', permission: '可建碼', parent: 'DV1688', depth: 2 },
+  { account: 'B7788', level: '觀察者', permission: '僅可登入確認', parent: 'A1024', depth: 3 },
+  { account: 'M8888', level: '管理員', permission: '可開代理 / 可建碼', parent: 'DVAI', depth: 1 },
+  { account: 'Test009', level: '代理', permission: '可建碼', parent: 'M8888', depth: 2 },
+  { account: 'C2026', level: '觀察者', permission: '僅可登入確認', parent: 'Test009', depth: 3 },
+  { account: 'Agent010', level: '代理', permission: '可建碼', parent: 'M8888', depth: 2 },
 ]
 
-const initialCodes = [
+const initialCodes: CodeRow[] = [
   { member: 'User001', code: 'Agent001_001', status: '啟用中', remain: '30天' },
   { member: 'User002', code: 'Agent001_002', status: '啟用中', remain: '28天' },
   { member: 'User003', code: 'Agent002_001', status: '暫停中', remain: '12天' },
@@ -252,14 +252,16 @@ const initialCodes = [
 
 function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTable[]; supabaseStatus: { state: string; message: string }; onlineCoreStatus: OnlineCoreStatus }) {
   const totalRounds = tables.reduce((sum, table) => sum + Number(table.trend.current_round ?? 0), 0)
+  const loginAgent = window.sessionStorage.getItem('darven-admin-account')?.trim() || 'DVAI'
   const [memberAccount, setMemberAccount] = useState('')
-  const [managerAccount, setManagerAccount] = useState('')
   const [planDays, setPlanDays] = useState('30')
-  const [runningNo, setRunningNo] = useState('001')
   const [latestMember, setLatestMember] = useState('User001')
   const [latestCode, setLatestCode] = useState('DVAI1788_001')
-  const [codes, setCodes] = useState(initialCodes)
-  const [selectedCodeMember, setSelectedCodeMember] = useState('User001')
+  const [codes, setCodes] = useState<CodeRow[]>(() => pruneExpiredCodes(initialCodes))
+  const [selectedCodeMembers, setSelectedCodeMembers] = useState<string[]>([])
+  const [selectedAgents, setSelectedAgents] = useState<string[]>([])
+  const [agentSearch, setAgentSearch] = useState('')
+  const [codeSearch, setCodeSearch] = useState('')
   const [memoryCenter, setMemoryCenter] = useState<OnlineMemoryCenter>({ state: 'connecting', items: [], reports: [], strategies: [] })
   const [strategyAnalysis, setStrategyAnalysis] = useState<OnlineStrategyAnalysis>({ state: 'connecting', strategyRows: [], weakTables: [], strongTables: [], watchTables: [], suggestions: [] })
   const [licenseStatus, setLicenseStatus] = useState<OnlineLicenseStatus>({ managers: [], agents: [], plans: [], licenses: [], agentRows: [], licenseRows: [] })
@@ -267,61 +269,60 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   useEffect(() => { getOnlineLicenseStatus().then((status) => {
     setLicenseStatus(status)
     if (status.licenseRows.length) {
-      setCodes(status.licenseRows)
-      setLatestCode(status.licenseRows[0].code)
-      setLatestMember(status.licenseRows[0].member)
-      setSelectedCodeMember(status.licenseRows[0].member)
+      const rows = pruneExpiredCodes(status.licenseRows as CodeRow[])
+      setCodes(rows)
+      if (rows.length) {
+        setLatestCode(rows[0].code)
+        setLatestMember(rows[0].member)
+      }
     } else {
-      setCodes(initialCodes)
-      setSelectedCodeMember('User001')
+      setCodes(pruneExpiredCodes(initialCodes))
     }
   }) }, [])
   const startDate = '2026/06/25'
-  const displayManager = managerAccount.trim() || 'DVAI'
+  const displayManager = loginAgent
   const displayMember = memberAccount.trim() || 'User001'
+  const serialNo = useMemo(() => findLowestAvailableSerial(codes, displayManager), [codes, displayManager])
+  const clampedPlanDays = clampPlanDays(planDays)
   const expiryDate = useMemo(() => {
-    const parsedDays = Number(planDays) || 0
     const date = new Date('2026-06-25T00:00:00')
-    date.setDate(date.getDate() + parsedDays)
+    date.setDate(date.getDate() + clampedPlanDays)
     return date.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
-  }, [planDays])
+  }, [clampedPlanDays])
   const createAuthorization = async () => {
-    const nextCode = buildLicenseCode(displayManager, displayMember, runningNo || '001')
-    const result = await createOnlineLicense({ code: nextCode, agentCode: displayManager, durationDays: Number(planDays) || 30 })
+    const nextCode = buildLicenseCode(displayManager, displayMember, serialNo)
+    const result = await createOnlineLicense({ code: nextCode, agentCode: displayManager, durationDays: clampedPlanDays })
     setLatestMember(displayMember)
     setLatestCode(result.row?.code ?? nextCode)
     const nextRows = await getOnlineLicenseStatus()
     setLicenseStatus(nextRows)
-    if (nextRows.licenseRows.length) setCodes(nextRows.licenseRows)
-    else setCodes((rows) => [{ member: displayMember, code: result.row?.code ?? nextCode, status: '啟用中', remain: `${planDays || '30'}天` }, ...rows])
+    if (nextRows.licenseRows.length) setCodes(pruneExpiredCodes(nextRows.licenseRows as CodeRow[]))
+    else setCodes((rows) => pruneExpiredCodes([{ member: displayMember, code: result.row?.code ?? nextCode, status: '啟用中', remain: `${clampedPlanDays}天` }, ...rows]))
   }
   const refreshLicenses = async () => {
     const nextRows = await getOnlineLicenseStatus()
     setLicenseStatus(nextRows)
-    if (nextRows.licenseRows.length) {
-      setCodes(nextRows.licenseRows)
-      setSelectedCodeMember(nextRows.licenseRows[0].member)
-    }
+    if (nextRows.licenseRows.length) setCodes(pruneExpiredCodes(nextRows.licenseRows as CodeRow[]))
     return nextRows
   }
-  const findSelectedLicenseCode = () => codes.find((row) => row.member === selectedCodeMember)?.code
-  const deleteCode = async (member: string) => {
-    const code = codes.find((row) => row.member === member)?.code
-    setCodes((rows) => rows.filter((row) => row.member !== member))
-    setSelectedCodeMember((current) => current === member ? '' : current)
-    if (code) await deleteOnlineLicense({ code })
+  const toggleCode = (member: string) => setSelectedCodeMembers((current) => current.includes(member) ? current.filter((item) => item !== member) : [...current, member])
+  const toggleAgent = (account: string) => setSelectedAgents((current) => current.includes(account) ? current.filter((item) => item !== account) : [...current, account])
+  const selectedCodeRows = () => codes.filter((row) => selectedCodeMembers.includes(row.member))
+  const deleteSelectedCodes = async () => {
+    const rows = selectedCodeRows()
+    setCodes((current) => current.filter((row) => !selectedCodeMembers.includes(row.member)))
+    setSelectedCodeMembers([])
+    await Promise.all(rows.map((row) => deleteOnlineLicense({ code: row.code }).catch(() => null)))
   }
-  const suspendSelectedCode = async () => {
-    const code = findSelectedLicenseCode()
-    if (!code) return
-    await setOnlineLicenseStatus({ code, status: 'suspended' })
-    setCodes((rows) => rows.map((row) => row.code === code ? { ...row, status: '暫停中' } : row))
+  const suspendSelectedCodes = async () => {
+    const rows = selectedCodeRows()
+    await Promise.all(rows.map((row) => setOnlineLicenseStatus({ code: row.code, status: 'suspended' }).catch(() => null)))
+    setCodes((current) => current.map((row) => selectedCodeMembers.includes(row.member) ? { ...row, status: '暫停中' } : row))
     await refreshLicenses()
   }
-  const extendSelectedCode = async () => {
-    const code = findSelectedLicenseCode()
-    if (!code) return
-    await extendOnlineLicense({ code, days: Number(planDays) || 30 })
+  const extendSelectedCodes = async () => {
+    const rows = selectedCodeRows()
+    await Promise.all(rows.map((row) => extendOnlineLicense({ code: row.code, days: clampedPlanDays }).catch(() => null)))
     await refreshLicenses()
   }
   const enableMaintenanceMode = () => updateOnlineAppSetting({ scope: 'frontend', key: 'ui_defaults', value: { maintenanceMode: true }, isPublic: true })
@@ -332,6 +333,9 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const bestStrategy = strategyAnalysis.strategyRows[0]
   const primaryWeakTable = strategyAnalysis.weakTables[0]
   const primaryStrongTable = strategyAnalysis.strongTables[0]
+  const agents = useMemo(() => normalizeAgents(licenseStatus.agentRows.length ? licenseStatus.agentRows : initialAgents, displayManager), [licenseStatus.agentRows, displayManager])
+  const filteredAgents = useMemo(() => filterAgents(agents, agentSearch), [agents, agentSearch])
+  const filteredCodes = useMemo(() => filterCodes(codes, codeSearch), [codes, codeSearch])
 
   return <main className="admin-shell admin-v015-shell" style={{ width: '100%', maxWidth: 'none' }}>
     <header className="admin-hero clean-hero v015-hero" style={{ width: '100%', maxWidth: 'none' }}>
@@ -341,11 +345,11 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       </div>
     </header>
 
-    <section className="admin-summary-grid auth-summary v015-summary" aria-label="管理總覽" style={{ width: '100%', maxWidth: 'none' }}>
+    <section className="admin-summary-grid auth-summary v015-summary v044-summary-grid" aria-label="管理總覽" style={{ width: '100%', maxWidth: 'none' }}>
       <AdminMetric title="AI策略版本" value="v1.0.8" tone="purple" />
+      <AdminMetric title="今日局數" value={`${totalRounds} 局`} tone="purple" />
       <AdminMetric title="SUPABASE" value={formatConnectionMetric(supabaseStatus, 'Supabase')} tone={supabaseStatus.state === 'error' ? 'yellow' : 'green'} />
       <AdminMetric title="記憶中心" value={formatConnectionMetric(onlineCoreStatus, '記憶中心')} tone={onlineCoreStatus.state === 'error' ? 'yellow' : 'cyan'} />
-      <AdminMetric title="今日局數" value={`${totalRounds} 局`} tone="purple" />
     </section>
 
     <section className="admin-panel v015-auth-panel" aria-label="建立會員驗證密碼" style={{ width: '100%', maxWidth: 'none' }}>
@@ -353,9 +357,9 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       <h2>建立會員驗證密碼</h2>
       <div className="v015-form-grid">
         <label>會員帳號<input placeholder="請輸入會員帳號" value={memberAccount} onChange={(event) => setMemberAccount(event.target.value)} /></label>
-        <label>代理帳號<input placeholder="請輸入代理帳號" value={managerAccount} onChange={(event) => setManagerAccount(event.target.value)} /></label>
-        <label>方案天數<input aria-label="方案天數" value={planDays} onChange={(event) => setPlanDays(event.target.value)} /></label>
-        <label>流水號<input aria-label="流水號" value={runningNo} onChange={(event) => setRunningNo(event.target.value)} /></label>
+        <label>代理帳號<input placeholder="請輸入代理帳號" value={displayManager} readOnly /></label>
+        <label>方案天數<input aria-label="方案天數" type="number" min="1" max="30" value={String(clampedPlanDays)} onChange={(event) => setPlanDays(String(clampPlanDays(event.target.value)))} /></label>
+        <label>流水號<input aria-label="流水號" value={serialNo} readOnly /></label>
       </div>
       <button className="primary create-auth" onClick={createAuthorization}>建立授權</button>
       <div className="v015-result-grid">
@@ -368,13 +372,13 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       <div className="auth-summary-mini v015-date-grid">
         <span><b>建立日期</b><strong>{startDate}</strong></span>
         <span><b>到期日期</b><strong>{expiryDate}</strong></span>
-        <span><b>方案天數</b><strong>{planDays || '0'} 天</strong></span>
-        <span><b>流水號</b><strong>{runningNo || '001'}</strong></span>
+        <span><b>方案天數</b><strong>{clampedPlanDays} 天</strong></span>
+        <span><b>流水號</b><strong>{serialNo}</strong></span>
       </div>
     </section>
 
-    <section className="v015-management-grid v019-scaled-lists" style={{ width: '100%', maxWidth: 'none' }}>
-      <section className="admin-panel list-panel" aria-label="線上設定管理">
+    <section className="v015-management-grid v019-scaled-lists v044-feature-grid" aria-label="後台功能四格" style={{ width: '100%', maxWidth: 'none' }}>
+      <section className="admin-panel list-panel feature-card" aria-label="線上設定管理">
         <h2>線上設定管理</h2>
         <div className="admin-action-row compact">
           <button onClick={enableMaintenanceMode}>啟用維護模式</button>
@@ -382,23 +386,19 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
           <button>同步記憶中心</button>
         </div>
       </section>
-    </section>
 
-    <section className="v015-management-grid v019-scaled-lists" style={{ width: '100%', maxWidth: 'none' }}>
-      <section className="admin-panel list-panel" aria-label="線上記憶與報表">
+      <section className="admin-panel list-panel feature-card" aria-label="線上記憶與報表">
         <h2>線上記憶與報表</h2>
         <div className="list-head"><span>策略版本</span><span>實測報告</span><span>主命中率</span><span>命中/未中</span></div>
         <div className="list-row agent-row"><span>{latestReport?.strategy_version ?? '尚無策略版本'}</span><b className="green-text">{latestReport ? `${latestReport.rounds ?? 0}局` : '尚無實測報告'}</b><strong>{latestReportHitRate}</strong><em>{latestReportHitMiss}</em></div>
       </section>
-    </section>
 
-    <section className="v015-management-grid v019-scaled-lists" style={{ width: '100%', maxWidth: 'none' }}>
-      <section className="admin-panel list-panel" aria-label="策略版本比較">
+      <section className="admin-panel list-panel feature-card" aria-label="策略版本比較">
         <h2>策略版本比較</h2>
         <div className="list-head"><span>策略版本</span><span>局數</span><span>主命中率</span><span>結論</span></div>
         <div className="list-row agent-row"><span>{bestStrategy?.strategy_version ?? '尚無策略版本'}</span><b className="green-text">{bestStrategy ? `${bestStrategy.rounds ?? 0}局` : '-'}</b><strong>{bestStrategy?.main_hit_rate != null ? `${bestStrategy.main_hit_rate}%` : '-'}</strong><em>{bestStrategy?.conclusion ?? '-'}</em></div>
       </section>
-      <section className="admin-panel list-panel" aria-label="弱桌分析">
+      <section className="admin-panel list-panel feature-card" aria-label="弱桌分析">
         <h2>弱桌分析</h2>
         <div className="list-head"><span>弱桌</span><span>命中率</span><span>強桌參考</span></div>
         <div className="list-row agent-row"><span>{primaryWeakTable?.name ?? '尚無弱桌'}</span><b className="yellow-text">{primaryWeakTable ? `${primaryWeakTable.hitRate}%` : '-'}</b><em>{primaryStrongTable ? `${primaryStrongTable.name} ${primaryStrongTable.hitRate}%` : '尚無強桌'}</em></div>
@@ -407,35 +407,29 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     </section>
 
     <section className="v015-management-grid v019-scaled-lists" style={{ width: '100%', maxWidth: 'none' }}>
-      <section className="admin-panel list-panel" aria-label="線上授權正式重建">
-        <h2>線上授權正式重建</h2>
-        <div className="list-head"><span>正式管理員</span><span>代理階層</span><span>會員授權碼</span></div>
-        <div className="list-row agent-row"><span>{licenseStatus.managers[0]?.username ?? '尚無管理員'}</span><b className="green-text">{licenseStatus.licenses[0]?.plan_name ?? licenseStatus.plans[0]?.name ?? '尚無方案'}</b><em>{licenseStatus.licenses[0]?.code ?? '尚無會員授權碼'}</em></div>
-      </section>
-    </section>
-
-    <section className="v015-management-grid v019-scaled-lists" style={{ width: '100%', maxWidth: 'none' }}>
       <section className="admin-panel list-panel" aria-label="下級代理">
         <h2>下級代理</h2>
-        <input className="search-input" placeholder="尋找代理帳號" />
+        <input className="search-input" placeholder="尋找代理帳號" value={agentSearch} onChange={(event) => setAgentSearch(event.target.value)} />
         <div className="admin-action-row compact"><button>增加代理</button><button>刪除代理</button><button>調整等級</button></div>
-        <div className="scroll-list agent-list">
-          <div className="list-head"><span>帳號</span><span>代理等級</span><span>權限</span></div>
-          {(licenseStatus.agentRows.length ? licenseStatus.agentRows : initialAgents).map((agent) => <div className="list-row agent-row" key={agent.account}><span>{agent.account}</span><b className={agent.level.includes('高級') || agent.level.includes('超級') ? 'green-text' : agent.level.includes('普通') ? 'yellow-text' : ''}>{agent.level}</b><em>{agent.permission}</em></div>)}
+        <div className="scroll-list agent-list hierarchy-list">
+          <div className="list-head agent-hierarchy-head"><span></span><span>帳號</span><span>代理等級</span><span>權限</span></div>
+          {filteredAgents.map((agent) => <div className={`list-row agent-row hierarchy-row depth-${agent.depth ?? 0}`} key={agent.account}>
+            <input aria-label={`勾選 ${agent.account}`} type="checkbox" checked={selectedAgents.includes(agent.account)} onChange={() => toggleAgent(agent.account)} />
+            <span>{agent.account}</span><b className={agent.level.includes('超級') || agent.level.includes('管理員') ? 'green-text' : agent.level.includes('代理') ? 'yellow-text' : ''}>{agent.level}</b><em>{agent.permission}</em></div>)}
         </div>
       </section>
 
       <section className="admin-panel list-panel" aria-label="已建立驗證碼">
         <h2>已建立驗證碼</h2>
-        <input className="search-input" placeholder="尋找驗證碼" />
+        <input className="search-input" placeholder="尋找驗證碼" value={codeSearch} onChange={(event) => setCodeSearch(event.target.value)} />
         <div className="admin-action-row compact code-action-row">
-          <button className="danger" onClick={() => selectedCodeMember && deleteCode(selectedCodeMember)}>刪除驗證碼</button>
-          <button className="warning" onClick={suspendSelectedCode}>暫停驗證碼</button>
-          <button className="extend" onClick={extendSelectedCode}>延長驗證碼</button>
+          <button className="danger" onClick={deleteSelectedCodes}>刪除驗證碼</button>
+          <button className="warning" onClick={suspendSelectedCodes}>暫停驗證碼</button>
+          <button className="extend" onClick={extendSelectedCodes}>延長驗證碼</button>
         </div>
         <div className="scroll-list code-list">
-          {codes.map((row) => <div className="list-row code-row" key={row.member}>
-            <button className={selectedCodeMember === row.member ? 'select-code selected' : 'select-code'} aria-label={`選取 ${row.member}`} onClick={() => setSelectedCodeMember(row.member)}>{selectedCodeMember === row.member ? '已選' : '選取'}</button>
+          {filteredCodes.map((row) => <div className="list-row code-row" key={row.member}>
+            <input aria-label={`勾選 ${row.member}`} type="checkbox" checked={selectedCodeMembers.includes(row.member)} onChange={() => toggleCode(row.member)} />
             <span>{row.member}</span><b>{row.code}</b><em>{row.status}｜{row.remain}</em>
             <input placeholder="延長1-30天" />
           </div>)}
@@ -443,6 +437,77 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       </section>
     </section>
   </main>
+}
+
+function clampPlanDays(value: string | number) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 30
+  return Math.min(30, Math.max(1, Math.floor(parsed)))
+}
+
+function findLowestAvailableSerial(codes: CodeRow[], agentCode: string) {
+  const used = new Set(codes
+    .map((row) => row.code.match(new RegExp(`^${escapeRegExp(agentCode)}_(\\d+)$`))?.[1])
+    .filter(Boolean)
+    .map((value) => Number(value)))
+  for (let index = 1; index <= 999; index += 1) {
+    if (!used.has(index)) return String(index).padStart(3, '0')
+  }
+  return '999'
+}
+
+function normalizeAgents(rows: Array<Partial<AgentRow>>, loginAgent: string): AgentRow[] {
+  const normalized: AgentRow[] = rows.map((row, index) => ({
+    account: String(row.account ?? `Agent${String(index + 1).padStart(3, '0')}`),
+    level: row.level ?? '代理',
+    permission: row.permission ?? '可建碼',
+    parent: row.parent,
+    depth: row.depth,
+  }))
+  if (!normalized.some((row) => row.account === loginAgent)) {
+    normalized.unshift({ account: loginAgent, level: '超級管理員', permission: '登入帳號 / 最高權限', depth: 0 })
+  }
+  return normalized.map((row) => ({ ...row, depth: row.depth ?? inferAgentDepth(row.level) }))
+}
+
+function inferAgentDepth(level: string) {
+  if (level.includes('超級')) return 0
+  if (level.includes('管理員')) return 1
+  if (level.includes('觀察')) return 3
+  return 2
+}
+
+function filterAgents(agents: AgentRow[], query: string) {
+  const text = query.trim().toLowerCase()
+  if (!text) return agents
+  return agents.filter((agent) => `${agent.account} ${agent.level} ${agent.permission}`.toLowerCase().includes(text))
+}
+
+function filterCodes(codes: CodeRow[], query: string) {
+  const text = query.trim().toLowerCase()
+  if (!text) return codes
+  return codes.filter((row) => `${row.member} ${row.code} ${row.status} ${row.remain}`.toLowerCase().includes(text))
+}
+
+function pruneExpiredCodes(codes: CodeRow[]) {
+  const now = new Date()
+  return codes.filter((row) => {
+    if (row.expiresOn) {
+      const expiry = new Date(`${row.expiresOn}T00:00:00`)
+      expiry.setDate(expiry.getDate() + 3)
+      if (now > expiry) return false
+    }
+    if (row.status === '暫停中' && row.suspendedAt) {
+      const suspended = new Date(`${row.suspendedAt}T00:00:00`)
+      suspended.setDate(suspended.getDate() + 7)
+      if (now > suspended) return false
+    }
+    return true
+  })
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function buildLicenseCode(agentCode: string, memberAccount: string, runningNo: string) {
