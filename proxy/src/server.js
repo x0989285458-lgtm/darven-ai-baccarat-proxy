@@ -82,9 +82,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       const snapshot = state.snapshot()
       try {
         const formalStatus = await licenseAdminClient.getCloudDataStatus?.()
+        const cloudStatus = await readCloudSnapshotStatus()
         const todayRoundCount = await readTodayRoundCount()
-        const message = appendTodayRoundMessage(formalStatus?.message, todayRoundCount)
-        return jsonResponse(200, { ok: true, mtAutoLoginEnabled: false, ...formalStatus, message, todayRoundCount, captureSource, deployMode: deployConfig.deployMode, tableCount: snapshot.tables.length, status: snapshot.status }, frontendOrigin)
+        const tableCount = Number(cloudStatus?.tableCount ?? snapshot.tables.length ?? formalStatus?.tableCount ?? 0)
+        const message = appendTodayRoundMessage(formalStatus?.message ?? cloudStatus?.statusText, todayRoundCount)
+        return jsonResponse(200, { ok: true, mtAutoLoginEnabled: false, ...formalStatus, message, todayRoundCount, captureSource: cloudStatus?.captureSource ?? captureSource, deployMode: deployConfig.deployMode, tableCount, status: { ...snapshot.status, ...cloudStatus } }, frontendOrigin)
       } catch (error) {
         return jsonResponse(200, { ok: true, mtAutoLoginEnabled: false, captureSource, deployMode: deployConfig.deployMode, tableCount: snapshot.tables.length, status: snapshot.status, error: error?.message ?? String(error) }, frontendOrigin)
       }
