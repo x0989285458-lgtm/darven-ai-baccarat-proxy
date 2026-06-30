@@ -204,7 +204,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         tableCount: Number(status?.table_count ?? snapshot?.table_count ?? snapshot?.tables?.length ?? 0),
         lastMessageAt: status?.last_message_at ?? snapshot?.snapshot_at ?? null,
         lastTablesAt: snapshot?.snapshot_at ?? null,
-        statusText: status?.status_text ?? (snapshot?.tables?.length ? `本機VPN抓牌已同步${snapshot.tables.length}桌` : null),
+        statusText: snapshot?.tables?.length ? `本機VPN抓牌已同步${snapshot.tables.length}桌` : status?.status_text ?? null,
         errorMessage: status?.error_message ?? null,
       }
     } catch (error) {

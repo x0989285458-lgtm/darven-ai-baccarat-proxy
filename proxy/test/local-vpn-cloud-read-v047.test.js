@@ -36,5 +36,5 @@ test('v047 cloud proxy reads latest Supabase cloud snapshot when in-memory table
   assert.equal(body.authenticated, true)
   assert.equal(body.tableCount, 1)
   assert.equal(body.captureSource, 'local_chrome')
-  assert.equal(body.statusText, '本機VPN抓牌已同步')
+  assert.equal(body.statusText, '本機VPN抓牌已同步1桌')
 })
