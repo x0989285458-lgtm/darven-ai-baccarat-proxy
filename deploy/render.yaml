@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: darven-ai-baccarat-api
+    runtime: node
+    plan: starter
+    rootDir: proxy
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DEPLOY_MODE
+        value: cloud
+      - key: CAPTURE_SOURCE
+        value: cloud_browser
+      - key: PUBLIC_FRONTEND_ORIGIN
+        sync: false
+      - key: CLOUD_BROWSER_URL
+        sync: false
+      - key: CLOUD_CAPTURE_POLL_MS
+        value: "2000"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_DB_CONNECTION_STRING
+        sync: false

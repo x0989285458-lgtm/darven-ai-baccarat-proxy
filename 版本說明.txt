@@ -1,0 +1,52 @@
+Draven_本機整合運行版_版本_023_路單規律擴充與回測診斷
+
+建立位置：
+D:\AI Hermes\百家AI軟體\Draven_本機整合運行版_版本_023_路單規律擴充與回測診斷
+
+本版用途：
+1. 延續 v022：主預測固定只輸出莊/閒，不出觀望；和局不計入主命中率分母。
+2. 主預測仍使用 roadTrend 權重 0.16，牌面點數/剩餘牌數不回到主預測權重。
+3. 新增 11 種可量化路單走勢到 patterns 與 sourceScores.roadTrend：
+   - 三跳 / 三口路
+   - 一莊兩閒
+   - 一閒兩莊
+   - 排排連
+   - 逢莊跳
+   - 逢閒跳
+   - 逢莊連
+   - 逢閒連
+   - 斷單跳
+   - 長龍轉單跳
+   - 單跳轉長龍
+4. 保留 v021/v022 權重反查資料：sourceScores、weightAblation、confidenceCalibration、patterns、tablePerformance、cardShoeFeatures。
+5. 新規律先進入路單走勢分數與診斷，方便後續用 200/300 局報表反查哪些規律真的有效。
+
+主要新增 JSON 欄位：
+- patterns.threeJump
+- patterns.oneBankerTwoPlayer
+- patterns.onePlayerTwoBanker
+- patterns.rowPairRun
+- patterns.bankerThenJump
+- patterns.playerThenJump
+- patterns.bankerThenRun
+- patterns.playerThenRun
+- patterns.brokenSingleJump
+- patterns.longDragonToSingleJump
+- patterns.singleJumpToLongDragon
+
+報表輸出：
+- proxy\reports\stable-report-v023-partial.md/json
+- proxy\reports\stable-report-v023-final.md/json
+- proxy\reports\delta-200-v023-partial.md/json
+- proxy\reports\delta-200-v023-final.md/json
+
+操作方式：
+1. 啟動Draven本機整合運行版.bat
+2. 等 proxy 顯示 connected/authenticated。
+3. 執行 開始10分鐘穩定抓取報表.bat，或在 proxy 內執行：
+   node scripts/delta-200-report.mjs --rounds=200 --tables=9 --interval=2s --max=90m
+4. 查看 proxy\reports 內 v023 final md/json。
+
+注意：
+- token 仍只放 proxy\.env，不可提交。
+- 目前 v023 是路單規律擴充與回測診斷版；不是下注系統，也不保證獲利。
