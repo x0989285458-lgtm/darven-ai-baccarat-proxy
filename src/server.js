@@ -193,7 +193,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         else if (captureUrl) chromeClient.start()
         else mtClient.connect()
       }
-      return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve(server)))
+      const host = process.env.HOST || (deployConfig.deployMode === 'cloud' ? '0.0.0.0' : '127.0.0.1')
+      return new Promise((resolve) => server.listen(port, host, () => resolve(server)))
     },
     stop() {
       mtClient.stop()
