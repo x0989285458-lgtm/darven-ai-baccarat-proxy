@@ -13,7 +13,7 @@ import { chooseCaptureSource, describeCaptureStatus } from './capture-source.js'
 const VERSION = '042'
 const SERVICE = 'Draven MT資料代理伺服器'
 
-export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient() } = {}) {
+export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient() } = {}) {
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
     CAPTURE_SOURCE: requestedCaptureSource,
@@ -194,6 +194,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     res.end(result.body)
   })
 
+  const listenHost = host ?? (deployConfig.deployMode === 'cloud' ? '0.0.0.0' : '127.0.0.1')
+
   return {
     state,
     server,
@@ -203,7 +205,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         else if (captureUrl) chromeClient.start()
         else mtClient.connect()
       }
-      return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve(server)))
+      return new Promise((resolve) => server.listen(port, listenHost, () => resolve(server)))
     },
     stop() {
       mtClient.stop()
