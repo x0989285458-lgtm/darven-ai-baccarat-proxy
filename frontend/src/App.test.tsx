@@ -394,6 +394,25 @@ describe('AI百家預測軟體', () => {
     expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:8787/api/online-license/member-login', expect.objectContaining({ method: 'POST' }))
   })
 
+  it('v043 admin login calls online license API and enters backend dashboard after success', async () => {
+    const fetchMock = vi.fn((url: string, options?: RequestInit) => {
+      if (url.includes('/api/online-license/agent-login')) {
+        expect(options?.body).toBe(JSON.stringify({ agentAccount: 'DVAI' }))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, agent: { code: 'DVAI' } }) })
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true }) })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    await renderApp('/admin-login', false)
+
+    expect(screen.getByRole('heading', { name: 'AI百家管理後台登入' })).toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText('請輸入管理員或代理帳號'), { target: { value: 'DVAI' } })
+    fireEvent.click(screen.getByRole('button', { name: '管理員登入' }))
+
+    expect(await screen.findByText('登入成功，正在進入後台')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:8787/api/online-license/agent-login', expect.objectContaining({ method: 'POST' }))
+  })
+
   it('v030 admin loads real Supabase license rows instead of static placeholder agents and codes', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({

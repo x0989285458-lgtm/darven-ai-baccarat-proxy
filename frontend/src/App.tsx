@@ -4,7 +4,7 @@ import { LiveRoadClient, type LiveTable } from './lib/liveClient'
 import { applyAskRoadWeighting, calculatePrediction, calculateBonusPredictions, parseBeadPlate, parseBigRoad } from './lib/roadParser'
 import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from './lib/supabaseClient'
 import { checkOnlineCoreStatus, getOnlineMemoryCenter, getOnlineStrategyAnalysis, updateOnlineAppSetting, updateOnlineFeatureFlag, type OnlineCoreStatus, type OnlineMemoryCenter, type OnlineStrategyAnalysis } from './lib/onlineCoreClient'
-import { createOnlineLicense, deleteOnlineLicense, extendOnlineLicense, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
+import { agentLogin, createOnlineLicense, deleteOnlineLicense, extendOnlineLicense, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
 
 const defaultToken = 'decd8bec9f968ef4f67a437f80430727'
 const label = { Banker: '莊', Player: '閒', Tie: '和' }
@@ -98,6 +98,10 @@ export default function App() {
     return <LoginApp />
   }
 
+  if (window.location.pathname === '/admin-login' || window.location.pathname === '/後台登入') {
+    return <AdminLoginApp />
+  }
+
   if (window.location.pathname === '/admin') {
     return <AdminApp tables={visibleTables} supabaseStatus={supabaseStatus} onlineCoreStatus={onlineCoreStatus} />
   }
@@ -185,6 +189,37 @@ function LoginApp() {
       <button onClick={submitLogin}>會員登入</button>
       <p>前台登入形式：會員帳號 / 驗證密碼</p>
       {loginMessage ? <em>{loginMessage}</em> : <em>驗證密碼 = 後台建立的會員授權密碼</em>}
+    </section>
+  </main>
+}
+
+function AdminLoginApp() {
+  const [agentAccount, setAgentAccount] = useState('')
+  const [loginMessage, setLoginMessage] = useState('')
+  const submitLogin = async () => {
+    setLoginMessage('後台登入驗證中')
+    try {
+      const result = await agentLogin({ agentAccount })
+      if (!result.ok && !result.skipped) {
+        setLoginMessage('登入失敗，請確認管理員或代理帳號')
+        return
+      }
+      window.sessionStorage.setItem('darven-admin-account', agentAccount.trim())
+      setLoginMessage('登入成功，正在進入後台')
+      window.location.assign('/admin')
+    } catch {
+      setLoginMessage('登入失敗，請確認後端 API 是否上線')
+    }
+  }
+  return <main className="login-shell">
+    <section className="login-card" aria-label="管理後台登入">
+      <h1>AI百家管理後台登入</h1>
+      <strong>Darven AI 後台管理</strong>
+      <div className="login-chip">管理員 / 代理登入</div>
+      <label>管理員或代理帳號<input placeholder="請輸入管理員或代理帳號" value={agentAccount} onChange={(event) => setAgentAccount(event.target.value)} /></label>
+      <button onClick={submitLogin}>管理員登入</button>
+      <p>登入後可管理會員授權、驗證碼、代理與線上記憶報表。</p>
+      {loginMessage ? <em>{loginMessage}</em> : <em>例如：DVAI 或正式代理帳號</em>}
     </section>
   </main>
 }
