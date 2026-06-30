@@ -55,7 +55,7 @@ export async function getOnlineLicenseStatus(fetchImpl = fetch): Promise<OnlineL
   }
 }
 
-export async function getCloudDataStatus(fetchImpl = fetch): Promise<{ ok?: boolean; mtAutoLoginEnabled?: boolean; message?: string; tableCount?: number }> {
+export async function getCloudDataStatus(fetchImpl = fetch): Promise<{ ok?: boolean; mtAutoLoginEnabled?: boolean; message?: string; tableCount?: number; todayRoundCount?: number }> {
   try {
     const response = await fetchImpl(`${proxyUrl}/api/cloud-data/status`, { cache: 'no-store' } as RequestInit)
     if (!response.ok) return { ok: false, mtAutoLoginEnabled: false, message: '雲端資料狀態讀取失敗' }

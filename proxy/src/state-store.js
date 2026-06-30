@@ -16,14 +16,26 @@ export function createProxyState({ onRoundEvent } = {}) {
     tables: [],
   }
 
+  function emitRoundEvent(round, table) {
+    if (typeof onRoundEvent !== 'function') return
+    try {
+      void onRoundEvent(round, table)
+    } catch (error) {
+      state.status.persistenceError = redactSecrets(error?.message ?? String(error))
+    }
+  }
+
   return {
     setStatus(nextStatus = {}) {
       state.status = { ...state.status, ...nextStatus }
       if (nextStatus.connected === true) state.status.errorMessage = null
     },
     setTables(tables = []) {
-      state.tables = Array.isArray(tables) ? mergeExistingRoundData(tables, state.tables) : []
+      const previousTables = state.tables
+      const inferredEvents = Array.isArray(tables) ? inferRoundEventsFromSnapshots(previousTables, tables) : []
+      state.tables = Array.isArray(tables) ? mergeExistingRoundData(tables, previousTables) : []
       state.status.tableCount = state.tables.length
+      for (const item of inferredEvents) emitRoundEvent(item.round, item.predictionTable)
     },
     upsertRoundEvent(event = {}) {
       const tableId = String(event.tableId ?? '')
@@ -70,14 +82,7 @@ export function createProxyState({ onRoundEvent } = {}) {
         state.tables.push({ tableId, displayName: `MT百家樂${tableId}`, tableType: 'BAC', shoe: lastRound.shoe, round: lastRound.round, lastRound })
       }
       state.status.tableCount = state.tables.length
-      if (typeof onRoundEvent === 'function') {
-        try {
-          const table = state.tables.find((item) => String(item.tableId) === tableId) ?? { tableId }
-          void onRoundEvent(lastRound, table)
-        } catch (error) {
-          state.status.persistenceError = redactSecrets(error?.message ?? String(error))
-        }
-      }
+      emitRoundEvent(lastRound, state.tables.find((item) => String(item.tableId) === tableId) ?? { tableId })
     },
     recordError(message) {
       state.status.connected = false
@@ -94,6 +99,63 @@ export function redactSecrets(message) {
     .replace(/token=([^\s&]+)/gi, 'token=[redacted]')
     .replace(/secret=([^\s&]+)/gi, 'secret=[redacted]')
     .replace(/(sb_secret_[A-Za-z0-9._-]+)/g, '[redacted]')
+}
+
+function inferRoundEventsFromSnapshots(previousTables = [], nextTables = []) {
+  const previousById = new Map(previousTables.map((table) => [String(table.tableId), table]))
+  const events = []
+  for (const next of nextTables) {
+    const previous = previousById.get(String(next.tableId))
+    if (!previous) continue
+    const shoeChanged = previous.shoe != null && next.shoe != null && String(previous.shoe) !== String(next.shoe)
+    if (shoeChanged) continue
+    const deltas = {
+      banker: countDelta(previous.bankerCount, next.bankerCount),
+      player: countDelta(previous.playerCount, next.playerCount),
+      tie: countDelta(previous.tieCount, next.tieCount),
+      bankerPair: countDelta(previous.bankerPairCount, next.bankerPairCount),
+      playerPair: countDelta(previous.playerPairCount, next.playerPairCount),
+    }
+    const winners = [...Array(deltas.banker).fill('banker'), ...Array(deltas.player).fill('player'), ...Array(deltas.tie).fill('tie')]
+    const currentRound = Number(next.round ?? previous.round ?? 0)
+    const startRound = Math.max(1, currentRound - winners.length + 1)
+    winners.forEach((winner, index) => {
+      events.push({
+        predictionTable: structuredCloneSafe(previous),
+        round: {
+          tableId: String(next.tableId),
+          shoe: next.shoe ?? previous.shoe ?? null,
+          round: startRound + index,
+          winner,
+          sideActualResults: {
+            bankerPair: deltas.bankerPair > 0,
+            playerPair: deltas.playerPair > 0,
+            tie: winner === 'tie',
+          },
+          rawResult: { inferredFromTableDelta: true, previousCounts: compactCounts(previous), nextCounts: compactCounts(next) },
+          sourceAction: 'table_snapshot_delta',
+          receivedAt: new Date().toISOString(),
+        },
+      })
+    })
+  }
+  return events
+}
+
+function countDelta(before, after) {
+  const delta = Number(after ?? 0) - Number(before ?? 0)
+  return Number.isFinite(delta) && delta > 0 ? Math.min(5, Math.floor(delta)) : 0
+}
+
+function compactCounts(table = {}) {
+  return {
+    bankerCount: Number(table.bankerCount ?? 0),
+    playerCount: Number(table.playerCount ?? 0),
+    tieCount: Number(table.tieCount ?? 0),
+    bankerPairCount: Number(table.bankerPairCount ?? 0),
+    playerPairCount: Number(table.playerPairCount ?? 0),
+    round: table.round ?? null,
+  }
 }
 
 function mergeExistingRoundData(nextTables, currentTables) {

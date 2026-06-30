@@ -284,7 +284,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const [memoryCenter, setMemoryCenter] = useState<OnlineMemoryCenter>({ state: 'connecting', items: [], reports: [], strategies: [] })
   const [strategyAnalysis, setStrategyAnalysis] = useState<OnlineStrategyAnalysis>({ state: 'connecting', strategyRows: [], weakTables: [], strongTables: [], watchTables: [], suggestions: [] })
   const [licenseStatus, setLicenseStatus] = useState<OnlineLicenseStatus>({ managers: [], agents: [], plans: [], licenses: [], agentRows: [], licenseRows: [] })
-  const [cloudDataStatus, setCloudDataStatus] = useState<{ mtAutoLoginEnabled?: boolean; message?: string; tableCount?: number }>({ mtAutoLoginEnabled: false, message: 'MT自動登入未啟用' })
+  const [cloudDataStatus, setCloudDataStatus] = useState<{ mtAutoLoginEnabled?: boolean; message?: string; tableCount?: number; todayRoundCount?: number }>({ mtAutoLoginEnabled: false, message: 'MT自動登入未啟用', todayRoundCount: 0 })
   useEffect(() => { getOnlineMemoryCenter().then(setMemoryCenter); getOnlineStrategyAnalysis().then(setStrategyAnalysis); getCloudDataStatus().then(setCloudDataStatus) }, [])
   useEffect(() => { getOnlineLicenseStatus().then((status) => {
     setLicenseStatus(status)
@@ -391,7 +391,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
 
     <section className="admin-summary-grid auth-summary v015-summary v044-summary-grid" aria-label="管理總覽" style={{ width: '100%', maxWidth: 'none' }}>
       <AdminMetric title="AI策略版本" value="v1.0.8" tone="purple" />
-      <AdminMetric title="今日局數" value={`${totalRounds} 局`} tone="purple" />
+      <AdminMetric title="今日局數" value={`${cloudDataStatus.todayRoundCount ?? totalRounds} 局`} tone="purple" />
       <AdminMetric title="SUPABASE" value={formatConnectionMetric(supabaseStatus, 'Supabase')} tone={supabaseStatus.state === 'error' ? 'yellow' : 'green'} />
       <AdminMetric title="記憶中心" value={formatConnectionMetric(onlineCoreStatus, '記憶中心')} tone={onlineCoreStatus.state === 'error' ? 'yellow' : 'cyan'} />
     </section>
@@ -427,7 +427,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
         <div className="admin-action-row compact">
           <button onClick={enableMaintenanceMode}>啟用維護模式</button>
           <button onClick={enableCloudCapture}>啟用雲端抓取</button>
-          <button title={cloudDataStatus.message}>MT自動登入未啟用｜{cloudDataStatus.tableCount ?? tables.length}桌</button>
+          <button title={cloudDataStatus.message}>MT自動登入未啟用｜{cloudDataStatus.tableCount ?? tables.length}桌｜今日{cloudDataStatus.todayRoundCount ?? 0}局</button>
         </div>
       </section>
 

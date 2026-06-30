@@ -82,7 +82,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       const snapshot = state.snapshot()
       try {
         const formalStatus = await licenseAdminClient.getCloudDataStatus?.()
-        return jsonResponse(200, { ok: true, mtAutoLoginEnabled: false, ...formalStatus, captureSource, deployMode: deployConfig.deployMode, tableCount: snapshot.tables.length, status: snapshot.status }, frontendOrigin)
+        const todayRoundCount = await readTodayRoundCount()
+        const message = appendTodayRoundMessage(formalStatus?.message, todayRoundCount)
+        return jsonResponse(200, { ok: true, mtAutoLoginEnabled: false, ...formalStatus, message, todayRoundCount, captureSource, deployMode: deployConfig.deployMode, tableCount: snapshot.tables.length, status: snapshot.status }, frontendOrigin)
       } catch (error) {
         return jsonResponse(200, { ok: true, mtAutoLoginEnabled: false, captureSource, deployMode: deployConfig.deployMode, tableCount: snapshot.tables.length, status: snapshot.status, error: error?.message ?? String(error) }, frontendOrigin)
       }
@@ -175,6 +177,21 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     } catch (error) {
       state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
     }
+  }
+
+  async function readTodayRoundCount() {
+    if (!supabaseClient?.configured || typeof supabaseClient.countTodayPredictionRounds !== 'function') return 0
+    try {
+      return Number(await supabaseClient.countTodayPredictionRounds()) || 0
+    } catch (error) {
+      state.setStatus({ cloudReadStatus: 'error', cloudReadError: error?.message ?? String(error) })
+      return 0
+    }
+  }
+
+  function appendTodayRoundMessage(message, count) {
+    const base = message || '本機VPN抓牌同步中'
+    return `${base}｜今日已抓${Number(count) || 0}局`
   }
 
   async function readLatestCloudSnapshot() {

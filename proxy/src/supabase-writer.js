@@ -161,6 +161,9 @@ export function buildPredictionResultRow(round = {}, table = {}) {
         playerNatural: facts.playerNatural,
         bankerNatural: facts.bankerNatural,
       },
+      side_predictions: buildSidePredictions(table),
+      side_actual_results: buildSideActualResults(round, facts),
+      side_hits: buildSideHits(buildSidePredictions(table), buildSideActualResults(round, facts)),
       side_results: {
         superSix: facts.superSix,
         bankerDragon: facts.bankerDragon,
@@ -176,6 +179,44 @@ export function buildPredictionResultRow(round = {}, table = {}) {
   }
 }
 
+
+function buildSidePredictions(table = {}) {
+  const banker = Number(table.bankerCount ?? 0)
+  const player = Number(table.playerCount ?? 0)
+  const tie = Number(table.tieCount ?? 0)
+  const total = Math.max(1, banker + player + tie)
+  return {
+    tie: clampPercent(percentValue(tie, total) * 0.65, 0, 80),
+    superSix: clampPercent(percentValue(banker, total) * 0.12, 0, 80),
+    bankerPair: clampPercent(percentValue(Number(table.bankerPairCount ?? 0), total) * 0.55, 0, 80),
+    playerPair: clampPercent(percentValue(Number(table.playerPairCount ?? 0), total) * 0.55, 0, 80),
+    bankerDragon: clampPercent(percentValue(banker, total) * 0.36, 0, 80),
+    playerDragon: clampPercent(percentValue(player, total) * 0.36, 0, 80),
+  }
+}
+
+function buildSideActualResults(round = {}, facts = {}) {
+  return {
+    tie: Boolean(round.sideActualResults?.tie ?? facts.winner === 'tie'),
+    superSix: Boolean(round.sideActualResults?.superSix ?? facts.superSix),
+    bankerPair: Boolean(round.sideActualResults?.bankerPair ?? facts.bankerPair),
+    playerPair: Boolean(round.sideActualResults?.playerPair ?? facts.playerPair),
+    bankerDragon: Boolean(round.sideActualResults?.bankerDragon ?? facts.bankerDragon),
+    playerDragon: Boolean(round.sideActualResults?.playerDragon ?? facts.playerDragon),
+  }
+}
+
+function buildSideHits(predictions = {}, actual = {}) {
+  return Object.fromEntries(Object.entries(predictions).map(([key, value]) => [key, Number(value) >= 10 && Boolean(actual[key])]))
+}
+
+function percentValue(count, total) {
+  return total ? Math.round((Number(count) / Number(total)) * 1000) / 10 : 0
+}
+
+function clampPercent(value, min, max) {
+  return Math.max(min, Math.min(max, Math.round(Number(value) || 0)))
+}
 
 export function buildCloudCaptureStatusRow({ sessionId = null, captureSource = null, status = {}, metadata = {} } = {}) {
   return {
@@ -324,6 +365,12 @@ export function createSupabaseIngestionClient({
     async getLatestCloudCaptureStatus() {
       const rows = await getRest('cloud_capture_status', { select: '*', table_count: 'gt.0', order: 'updated_at.desc', limit: '1' })
       return Array.isArray(rows) ? rows[0] ?? null : null
+    },
+    async countTodayPredictionRounds() {
+      const since = new Date()
+      since.setHours(0, 0, 0, 0)
+      const rows = await getRest('daily_prediction_results', { select: 'id', created_at: `gte.${since.toISOString()}` })
+      return Array.isArray(rows) ? rows.length : 0
     },
     async writeCloudRoundEvent(payload) {
       const row = buildCloudRoundEventRow(payload)

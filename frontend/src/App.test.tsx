@@ -191,7 +191,7 @@ describe('AI百家預測軟體', () => {
       .mockReturnValueOnce('Admin001'))
     vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
       if (init?.body) calls.push({ url, body: JSON.parse(String(init.body)) })
-      if (url.includes('/api/cloud-data/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ mtAutoLoginEnabled: false, message: 'MT自動登入未啟用', tableCount: 0 }) })
+      if (url.includes('/api/cloud-data/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ mtAutoLoginEnabled: false, message: 'MT自動登入未啟用', tableCount: 15, todayRoundCount: 88 }) })
       if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ configured: true, agents: [{ code: 'Admin001', role: 'manager', permission: '可開代理 / 可建碼' }], licenses: [] }) })
       if (url.includes('/api/online-license/licenses')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, row: { code: 'Admin001_001', member_account: 'User1688' } }) })
       if (url.includes('/api/online-license/agents')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, row: { code: 'A1688' } }) })
@@ -205,6 +205,8 @@ describe('AI百家預測軟體', () => {
     await waitFor(() => expect(calls.some((call) => call.url.includes('/api/online-license/licenses') && call.body.memberAccount === 'User1688' && call.body.adminAccount === 'Admin001')).toBe(true))
     await waitFor(() => expect(calls.some((call) => call.url.includes('/api/online-license/agents') && call.body.code === 'A1688' && call.body.parentCode === 'Admin001')).toBe(true))
     expect(screen.getByText(/MT自動登入未啟用/)).toBeInTheDocument()
+    expect(await screen.findByText('88 局')).toBeInTheDocument()
+    expect(screen.getByText(/今日88局/)).toBeInTheDocument()
   })
 
   it('v045 overlays a green tie slash on banker/player big-road cells when a tie appears', async () => {
