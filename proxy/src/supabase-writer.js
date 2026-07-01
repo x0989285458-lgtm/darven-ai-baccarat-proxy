@@ -17,15 +17,15 @@ export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildEqualWeights([
   'table_id', 'display_name', 'table_type', 'room_id', 'dealer_name', 'total_players', 'state', 'order_state', 'source_updated_at',
   'shoe', 'round', 'shoe_stage', 'banker_count', 'player_count', 'tie_count', 'banker_pair_count', 'player_pair_count',
   'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road', 'next_banker_road', 'next_player_road',
-  'previous_winner', 'streak_length', 'near5_banker_player_bias', 'table_recent_hit_rate', 'direction_calibration',
-  'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'pattern_tags', 'historical_backtest',
+  'previous_winner', 'streak_length', 'near5_banker_player_bias', 'road_trend', 'long_dragon', 'jump_pattern', 'single_jump', 'double_jump', 'road_break', 'derived_road_sync', 'ask_road_trend',
+  'table_recent_hit_rate', 'direction_calibration', 'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'remaining_rank_counts', 'pattern_tags', 'historical_backtest',
 ])
 
 export const ALL_MT_EQUAL_SIDE_WEIGHTS = buildEqualWeights([
   'tie_count', 'banker_pair_count', 'player_pair_count', 'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road',
   'next_banker_road', 'next_player_road', 'dealer_name', 'total_players', 'shoe', 'round', 'shoe_stage', 'state', 'order_state',
   'raw_result', 'player_point', 'banker_point', 'point_diff', 'banker_natural', 'player_natural', 'banker_dragon', 'player_dragon', 'super_six',
-  'tie_risk', 'pair_risk', 'ask_road_conflict', 'road_chaos', 'table_side_history',
+  'shoe_remaining_points', 'remaining_rank_counts', 'road_trend', 'long_dragon', 'jump_pattern', 'single_jump', 'double_jump', 'road_break', 'derived_road_sync', 'tie_risk', 'pair_risk', 'ask_road_conflict', 'ask_road_trend', 'road_chaos', 'table_side_history',
 ])
 
 const DEFAULT_EQUAL_WEIGHTS = Object.freeze({
@@ -232,11 +232,20 @@ function buildMtContextFeatures(table = {}) {
 function buildDerivedMainFeatures(round = {}, table = {}, facts = {}, probabilities = {}, tablePerformance = {}) {
   const bead = String(table.beadPlateRaw ?? '')
   const roundNo = numberOrZero(table.round ?? round.round)
+  const trend = inferRoadTrendFeatures(bead || table.bigRoadRaw || '')
   return {
     shoeStage: roundNo <= 10 ? 'early' : roundNo <= 40 ? 'middle' : 'late',
     previousWinner: inferPreviousWinner(bead),
     streakLength: inferCurrentStreakLength(bead),
     near5BankerPlayerBias: inferNear5Bias(bead),
+    roadTrend: trend.roadTrend,
+    longDragon: trend.longDragon,
+    jumpPattern: trend.jumpPattern,
+    singleJump: trend.singleJump,
+    doubleJump: trend.doubleJump,
+    roadBreak: trend.roadBreak,
+    derivedRoadSync: inferDerivedRoadSync(table),
+    askRoadTrend: inferAskRoadTrend(table),
     directionCalibration: probabilities.banker >= probabilities.player ? 'banker_bias' : 'player_bias',
     probabilityGap: Math.abs(Number(probabilities.banker ?? 0) - Number(probabilities.player ?? 0)),
     tableRecentHitRate: tablePerformance.recentHitRate,
@@ -283,6 +292,14 @@ function scoreAllMtFeature(key, ctx) {
     case 'probability_gap': return ratioScore(probabilities.banker, probabilities.player)
     case 'round': return Number(table.round ?? 0) % 2 === 0 ? { banker: 0.51, player: 0.49 } : { banker: 0.49, player: 0.51 }
     case 'shoe_stage': return derived.shoeStage === 'late' ? { banker: 0.52, player: 0.48 } : neutralScore()
+    case 'road_trend': return winnerScore(derived.roadTrend)
+    case 'long_dragon': return derived.longDragon ? winnerScore(derived.previousWinner) : neutralScore()
+    case 'jump_pattern': return derived.jumpPattern ? invertWinnerScore(derived.previousWinner) : neutralScore()
+    case 'single_jump': return derived.singleJump ? invertWinnerScore(derived.previousWinner) : neutralScore()
+    case 'double_jump': return derived.doubleJump ? winnerScore(derived.previousWinner) : neutralScore()
+    case 'road_break': return derived.roadBreak ? invertWinnerScore(derived.previousWinner) : neutralScore()
+    case 'derived_road_sync': return derived.derivedRoadSync === 'banker' ? { banker: 0.55, player: 0.45 } : derived.derivedRoadSync === 'player' ? { banker: 0.45, player: 0.55 } : neutralScore()
+    case 'ask_road_trend': return derived.askRoadTrend === 'banker' ? { banker: 0.55, player: 0.45 } : derived.askRoadTrend === 'player' ? { banker: 0.45, player: 0.55 } : neutralScore()
     default: return neutralScore()
   }
 }
@@ -334,6 +351,42 @@ function inferCurrentStreakLength(bead = '') {
 function inferNear5Bias(bead = '') {
   const tokens = (String(bead).match(/[12BP]/gi) || []).slice(-5)
   return tokens.reduce((sum, v) => sum + ((v === '2' || String(v).toUpperCase() === 'B') ? 1 : -1), 0)
+}
+
+function inferRoadTrendFeatures(raw = '') {
+  const tokens = (String(raw).match(/[12BP]/gi) || []).map((v) => (v === '1' || String(v).toUpperCase() === 'P') ? 'player' : 'banker')
+  if (tokens.length < 2) {
+    return { roadTrend: null, longDragon: false, jumpPattern: false, singleJump: false, doubleJump: false, roadBreak: false }
+  }
+  const streakLength = inferCurrentStreakLength(tokens.join(''))
+  const recent = tokens.slice(-6)
+  const alternations = recent.slice(1).filter((v, i) => v !== recent[i]).length
+  const pairs = recent.length >= 4 && recent.slice(-4).every((v, i, arr) => i < 2 ? v === arr[0] : v === arr[2]) && recent.at(-1) !== recent.at(-3)
+  return {
+    roadTrend: tokens.at(-1),
+    longDragon: streakLength >= 4,
+    jumpPattern: alternations >= Math.max(2, recent.length - 2),
+    singleJump: alternations === recent.length - 1,
+    doubleJump: Boolean(pairs),
+    roadBreak: tokens.length >= 2 && tokens.at(-1) !== tokens.at(-2),
+  }
+}
+
+function inferDerivedRoadSync(table = {}) {
+  const scores = [roadColorScore(table.bigEyeRaw), roadColorScore(table.smallRoadRaw), roadColorScore(table.cockroachRaw)]
+  const banker = scores.filter((score) => score.banker > score.player).length
+  const player = scores.filter((score) => score.player > score.banker).length
+  if (banker > player) return 'banker'
+  if (player > banker) return 'player'
+  return 'neutral'
+}
+
+function inferAskRoadTrend(table = {}) {
+  const banker = askRoadScore(table.nextBankerRaw, 'banker').banker
+  const player = askRoadScore(table.nextPlayerRaw, 'player').player
+  if (banker > player) return 'banker'
+  if (player > banker) return 'player'
+  return 'neutral'
 }
 
 
