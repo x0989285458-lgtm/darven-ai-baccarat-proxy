@@ -2,7 +2,7 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
-export const SHORT_RUN_STRATEGY_VERSION = 'v013_short_run_adjusted'
+export const SHORT_RUN_STRATEGY_VERSION = 'v049_no_observe_confidence_30_80'
 
 const DEFAULT_EQUAL_WEIGHTS = Object.freeze({
   bead_road: 0.125,
@@ -52,9 +52,9 @@ export function buildShortRunAdjustedStrategy() {
       auto_adjust: true,
       low_performance_threshold: 0.45,
       high_performance_threshold: 0.65,
-      description: '短測桌況加權；低表現桌降信心/觀望，高表現桌小幅加信心，路單與問路權重小幅提高。',
+      description: '短測桌況加權；低表現桌保留莊/閒方向但降信心，高表現桌小幅加信心且信心限制30-80，路單與問路權重小幅提高。',
     },
-    notes: 'v013 short-run table performance weighting seed for five-minute table-condition adjustment.',
+    notes: 'v049 no-observe confidence calibration for live round learning: every main row remains banker/player and confidence stays 30-80.',
   }
 }
 
@@ -489,25 +489,25 @@ function applyShortRunTablePerformanceAdjustment({ predictedResult, probabilitie
   const rate = tablePerformance.recentHitRate
   if (rate != null && rate < 0.45) {
     return {
-      predictedResult: 'observe',
-      confidence: Math.min(50, baseConfidence),
+      predictedResult,
+      confidence: clampPercent(Math.min(50, baseConfidence), 30, 80),
     }
   }
   if (rate != null && rate > 0.65) {
     const boost = rate >= 0.80 ? 10 : 5
     return {
       predictedResult,
-      confidence: Math.min(100, baseConfidence + boost),
+      confidence: clampPercent(baseConfidence + boost, 30, 80),
     }
   }
-  return { predictedResult, confidence: baseConfidence }
+  return { predictedResult, confidence: clampPercent(baseConfidence, 30, 80) }
 }
 
 function buildShortRunAdjustmentSummary({ basePrediction, adjusted, tablePerformance }) {
   const rate = tablePerformance.recentHitRate
   if (rate != null && rate < 0.45) {
     return {
-      rule: 'low_performance_observe_or_cap',
+      rule: 'low_performance_confidence_cap',
       recentHitRate: rate,
       basePrediction,
       adjustedPrediction: adjusted.predictedResult,
@@ -557,7 +557,7 @@ function calculateInitialProbabilities(table = {}) {
 }
 
 function pickPrediction(probabilities) {
-  if (probabilities.banker === probabilities.player) return 'observe'
+  if (probabilities.banker === probabilities.player) return 'banker'
   return probabilities.banker > probabilities.player ? 'banker' : 'player'
 }
 

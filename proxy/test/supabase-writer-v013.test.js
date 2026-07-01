@@ -29,10 +29,10 @@ const bankerLeaningTable = {
   nextPlayerRaw: 'player-bad',
 }
 
-test('v013 short-run strategy weights sum to 1 and match required proportions', () => {
+test('v049 short-run strategy weights sum to 1 and match required proportions', () => {
   const strategy = buildShortRunAdjustedStrategy()
-  assert.equal(SHORT_RUN_STRATEGY_VERSION, 'v013_short_run_adjusted')
-  assert.equal(strategy.version, 'v013_short_run_adjusted')
+  assert.equal(SHORT_RUN_STRATEGY_VERSION, 'v049_no_observe_confidence_30_80')
+  assert.equal(strategy.version, 'v049_no_observe_confidence_30_80')
   assert.equal(strategy.status, 'active')
   assert.deepEqual(strategy.weights, {
     bead_road: 0.15,
@@ -48,24 +48,34 @@ test('v013 short-run strategy weights sum to 1 and match required proportions', 
   assert.equal(Number(total.toFixed(10)), 1)
 })
 
-test('v013 low-performing table below 45% becomes observe or caps confidence at 50', () => {
+test('v049 low-performing table below 45% keeps banker/player prediction and caps confidence without observe', () => {
   const prediction = buildPredictionResultRow(baseRound, {
     ...bankerLeaningTable,
     recentHitRate: 0.44,
     recentPredictionCount: 25,
   })
 
-  assert.equal(prediction.strategy_version, 'v013_short_run_adjusted')
+  assert.equal(prediction.strategy_version, 'v049_no_observe_confidence_30_80')
   assert.equal(prediction.prediction_features.table_performance.recentHitRate, 0.44)
-  assert.equal(
-    prediction.predicted_result === 'observe' || prediction.confidence <= 50,
-    true,
-    `expected observe or confidence <= 50, got ${prediction.predicted_result} ${prediction.confidence}`,
-  )
+  assert.match(prediction.predicted_result, /^(banker|player)$/)
   assert.equal(prediction.confidence <= 50, true)
+  assert.equal(prediction.short_run_adjustment.rule, 'low_performance_confidence_cap')
 })
 
-test('v013 high-performing table above 65% boosts confidence but never above 100', () => {
+test('v049 equal banker/player probabilities choose banker instead of observe', () => {
+  const prediction = buildPredictionResultRow(baseRound, {
+    ...bankerLeaningTable,
+    bankerCount: 10,
+    playerCount: 10,
+    tieCount: 0,
+  })
+
+  assert.equal(prediction.predicted_result, 'banker')
+  assert.equal(prediction.confidence >= 30, true)
+  assert.equal(prediction.confidence <= 80, true)
+})
+
+test('v049 high-performing table above 65% boosts confidence but never above 80', () => {
   const neutralPrediction = buildPredictionResultRow(baseRound, {
     ...bankerLeaningTable,
     bankerCount: 8,
@@ -83,8 +93,8 @@ test('v013 high-performing table above 65% boosts confidence but never above 100
     recentPredictionCount: 25,
   })
 
-  assert.equal(neutralPrediction.strategy_version, 'v013_short_run_adjusted')
+  assert.equal(neutralPrediction.strategy_version, 'v049_no_observe_confidence_30_80')
   assert.equal(neutralPrediction.confidence > neutralPrediction.probabilities[neutralPrediction.predicted_result], true)
-  assert.equal(neutralPrediction.confidence <= 100, true)
-  assert.equal(boostedPrediction.confidence, 100)
+  assert.equal(neutralPrediction.confidence <= 80, true)
+  assert.equal(boostedPrediction.confidence, 80)
 })
