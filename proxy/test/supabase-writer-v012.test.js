@@ -84,12 +84,13 @@ test('v012 builds Supabase roadmap and prediction rows for short-retention learn
   assert.equal(event.super_six, false)
   assert.equal(event.raw_event.sourceAction.includes('summary'), true)
 
-  assert.equal(prediction.strategy_version, 'v012_equal_weight_seed')
+  assert.equal(prediction.strategy_version, 'v050_all_mt_equal_weight')
   assert.equal(prediction.predicted_result, 'banker')
   assert.equal(prediction.actual_result, 'banker')
   assert.equal(prediction.is_hit, true)
   assert.equal(prediction.probabilities.banker >= prediction.probabilities.player, true)
-  assert.equal(prediction.feature_weights.ask_road, 0.125)
+  assert.equal(Object.keys(prediction.feature_weights).includes('next_banker_road'), true)
+  assert.equal(Object.keys(prediction.prediction_features.side_weights).includes('tie_risk'), true)
 })
 
 test('v012 Supabase client posts strategy, roadmap event and prediction result with service key headers', async () => {
