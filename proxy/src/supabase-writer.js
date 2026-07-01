@@ -17,15 +17,20 @@ export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildEqualWeights([
   'table_id', 'display_name', 'table_type', 'room_id', 'dealer_name', 'total_players', 'state', 'order_state', 'source_updated_at',
   'shoe', 'round', 'shoe_stage', 'banker_count', 'player_count', 'tie_count', 'banker_pair_count', 'player_pair_count',
   'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road', 'next_banker_road', 'next_player_road',
-  'previous_winner', 'streak_length', 'near5_banker_player_bias', 'road_trend', 'long_dragon', 'jump_pattern', 'single_jump', 'double_jump', 'road_break', 'derived_road_sync', 'ask_road_trend',
-  'table_recent_hit_rate', 'direction_calibration', 'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'remaining_rank_counts', 'pattern_tags', 'historical_backtest',
+  'previous_winner', 'streak_length', 'near5_banker_player_bias', 'road_trend', 'long_dragon', 'double_dragon', 'up_slope', 'down_slope',
+  'jump_pattern', 'single_jump', 'double_jump', 'three_jump', 'one_banker_two_player', 'one_player_two_banker', 'row_pair_run',
+  'banker_then_jump', 'player_then_jump', 'banker_then_run', 'player_then_run', 'broken_single_jump', 'long_dragon_to_single_jump', 'single_jump_to_long_dragon',
+  'road_break', 'derived_road_sync', 'ask_road_trend', 'table_recent_hit_rate', 'direction_calibration', 'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'remaining_rank_counts', 'pattern_tags', 'historical_backtest',
 ])
 
 export const ALL_MT_EQUAL_SIDE_WEIGHTS = buildEqualWeights([
   'tie_count', 'banker_pair_count', 'player_pair_count', 'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road',
   'next_banker_road', 'next_player_road', 'dealer_name', 'total_players', 'shoe', 'round', 'shoe_stage', 'state', 'order_state',
   'raw_result', 'player_point', 'banker_point', 'point_diff', 'banker_natural', 'player_natural', 'banker_dragon', 'player_dragon', 'super_six',
-  'shoe_remaining_points', 'remaining_rank_counts', 'road_trend', 'long_dragon', 'jump_pattern', 'single_jump', 'double_jump', 'road_break', 'derived_road_sync', 'tie_risk', 'pair_risk', 'ask_road_conflict', 'ask_road_trend', 'road_chaos', 'table_side_history',
+  'shoe_remaining_points', 'remaining_rank_counts', 'road_trend', 'long_dragon', 'double_dragon', 'up_slope', 'down_slope',
+  'jump_pattern', 'single_jump', 'double_jump', 'three_jump', 'one_banker_two_player', 'one_player_two_banker', 'row_pair_run',
+  'banker_then_jump', 'player_then_jump', 'banker_then_run', 'player_then_run', 'broken_single_jump', 'long_dragon_to_single_jump', 'single_jump_to_long_dragon',
+  'road_break', 'derived_road_sync', 'tie_risk', 'pair_risk', 'ask_road_conflict', 'ask_road_trend', 'road_chaos', 'table_side_history',
 ])
 
 const DEFAULT_EQUAL_WEIGHTS = Object.freeze({
@@ -240,9 +245,23 @@ function buildDerivedMainFeatures(round = {}, table = {}, facts = {}, probabilit
     near5BankerPlayerBias: inferNear5Bias(bead),
     roadTrend: trend.roadTrend,
     longDragon: trend.longDragon,
+    doubleDragon: trend.doubleDragon,
+    upSlope: trend.upSlope,
+    downSlope: trend.downSlope,
     jumpPattern: trend.jumpPattern,
     singleJump: trend.singleJump,
     doubleJump: trend.doubleJump,
+    threeJump: trend.threeJump,
+    oneBankerTwoPlayer: trend.oneBankerTwoPlayer,
+    onePlayerTwoBanker: trend.onePlayerTwoBanker,
+    rowPairRun: trend.rowPairRun,
+    bankerThenJump: trend.bankerThenJump,
+    playerThenJump: trend.playerThenJump,
+    bankerThenRun: trend.bankerThenRun,
+    playerThenRun: trend.playerThenRun,
+    brokenSingleJump: trend.brokenSingleJump,
+    longDragonToSingleJump: trend.longDragonToSingleJump,
+    singleJumpToLongDragon: trend.singleJumpToLongDragon,
     roadBreak: trend.roadBreak,
     derivedRoadSync: inferDerivedRoadSync(table),
     askRoadTrend: inferAskRoadTrend(table),
@@ -294,9 +313,23 @@ function scoreAllMtFeature(key, ctx) {
     case 'shoe_stage': return derived.shoeStage === 'late' ? { banker: 0.52, player: 0.48 } : neutralScore()
     case 'road_trend': return winnerScore(derived.roadTrend)
     case 'long_dragon': return derived.longDragon ? winnerScore(derived.previousWinner) : neutralScore()
+    case 'double_dragon': return derived.doubleDragon ? winnerScore(derived.previousWinner) : neutralScore()
+    case 'up_slope': return derived.upSlope ? winnerScore(derived.previousWinner) : neutralScore()
+    case 'down_slope': return derived.downSlope ? invertWinnerScore(derived.previousWinner) : neutralScore()
     case 'jump_pattern': return derived.jumpPattern ? invertWinnerScore(derived.previousWinner) : neutralScore()
     case 'single_jump': return derived.singleJump ? invertWinnerScore(derived.previousWinner) : neutralScore()
     case 'double_jump': return derived.doubleJump ? winnerScore(derived.previousWinner) : neutralScore()
+    case 'three_jump': return derived.threeJump ? invertWinnerScore(derived.previousWinner) : neutralScore()
+    case 'one_banker_two_player': return derived.oneBankerTwoPlayer ? { banker: 0.55, player: 0.45 } : neutralScore()
+    case 'one_player_two_banker': return derived.onePlayerTwoBanker ? { banker: 0.45, player: 0.55 } : neutralScore()
+    case 'row_pair_run': return derived.rowPairRun ? invertWinnerScore(derived.previousWinner) : neutralScore()
+    case 'banker_then_jump': return derived.bankerThenJump ? invertWinnerScore(derived.previousWinner) : neutralScore()
+    case 'player_then_jump': return derived.playerThenJump ? invertWinnerScore(derived.previousWinner) : neutralScore()
+    case 'banker_then_run': return derived.bankerThenRun ? { banker: 0.55, player: 0.45 } : neutralScore()
+    case 'player_then_run': return derived.playerThenRun ? { banker: 0.45, player: 0.55 } : neutralScore()
+    case 'broken_single_jump': return derived.brokenSingleJump ? winnerScore(derived.previousWinner) : neutralScore()
+    case 'long_dragon_to_single_jump': return derived.longDragonToSingleJump ? invertWinnerScore(derived.previousWinner) : neutralScore()
+    case 'single_jump_to_long_dragon': return derived.singleJumpToLongDragon ? winnerScore(derived.previousWinner) : neutralScore()
     case 'road_break': return derived.roadBreak ? invertWinnerScore(derived.previousWinner) : neutralScore()
     case 'derived_road_sync': return derived.derivedRoadSync === 'banker' ? { banker: 0.55, player: 0.45 } : derived.derivedRoadSync === 'player' ? { banker: 0.45, player: 0.55 } : neutralScore()
     case 'ask_road_trend': return derived.askRoadTrend === 'banker' ? { banker: 0.55, player: 0.45 } : derived.askRoadTrend === 'player' ? { banker: 0.45, player: 0.55 } : neutralScore()
@@ -356,20 +389,90 @@ function inferNear5Bias(bead = '') {
 function inferRoadTrendFeatures(raw = '') {
   const tokens = (String(raw).match(/[12BP]/gi) || []).map((v) => (v === '1' || String(v).toUpperCase() === 'P') ? 'player' : 'banker')
   if (tokens.length < 2) {
-    return { roadTrend: null, longDragon: false, jumpPattern: false, singleJump: false, doubleJump: false, roadBreak: false }
+    return {
+      roadTrend: null,
+      longDragon: false,
+      doubleDragon: false,
+      upSlope: false,
+      downSlope: false,
+      jumpPattern: false,
+      singleJump: false,
+      doubleJump: false,
+      threeJump: false,
+      oneBankerTwoPlayer: false,
+      onePlayerTwoBanker: false,
+      rowPairRun: false,
+      bankerThenJump: false,
+      playerThenJump: false,
+      bankerThenRun: false,
+      playerThenRun: false,
+      brokenSingleJump: false,
+      longDragonToSingleJump: false,
+      singleJumpToLongDragon: false,
+      roadBreak: false,
+    }
   }
+  const recent = tokens.slice(-18)
+  const groups = groupRuns(recent)
   const streakLength = inferCurrentStreakLength(tokens.join(''))
-  const recent = tokens.slice(-6)
-  const alternations = recent.slice(1).filter((v, i) => v !== recent[i]).length
-  const pairs = recent.length >= 4 && recent.slice(-4).every((v, i, arr) => i < 2 ? v === arr[0] : v === arr[2]) && recent.at(-1) !== recent.at(-3)
+  const last6 = recent.slice(-6)
+  const alternations = last6.slice(1).filter((v, i) => v !== last6[i]).length
+  const strongestRun = groups.reduce((best, run) => run.length > best.length ? run : best, { side: null, length: 0 })
+  const lengths = groups.map((run) => run.length).slice(-4)
+  const lastGroups3 = groups.slice(-3)
   return {
     roadTrend: tokens.at(-1),
-    longDragon: streakLength >= 4,
-    jumpPattern: alternations >= Math.max(2, recent.length - 2),
-    singleJump: alternations === recent.length - 1,
-    doubleJump: Boolean(pairs),
+    longDragon: streakLength >= 3 || strongestRun.length >= 3,
+    doubleDragon: groups.length >= 2 && groups.slice(-2).every((run) => run.length >= 3),
+    upSlope: lengths.length >= 3 && lengths.every((length, index) => index === 0 || length >= lengths[index - 1]) && lengths.at(-1) > lengths[0],
+    downSlope: lengths.length >= 3 && lengths.every((length, index) => index === 0 || length <= lengths[index - 1]) && lengths.at(-1) < lengths[0],
+    jumpPattern: alternations >= Math.max(2, last6.length - 2),
+    singleJump: last6.length >= 5 && last6.slice(-5).every((value, index, arr) => index === 0 || value !== arr[index - 1]),
+    doubleJump: last6.length >= 6 && last6[0] === last6[1] && last6[2] === last6[3] && last6[4] === last6[5] && last6[0] !== last6[2] && last6[2] !== last6[4],
+    threeJump: lastGroups3.length === 3 && lastGroups3.every((run) => run.length === 3) && lastGroups3[0].side === lastGroups3[2].side && lastGroups3[0].side !== lastGroups3[1].side,
+    oneBankerTwoPlayer: tailMatches(recent, ['banker', 'player', 'player', 'banker', 'player', 'player']),
+    onePlayerTwoBanker: tailMatches(recent, ['player', 'banker', 'banker', 'player', 'banker', 'banker']),
+    rowPairRun: groups.length >= 4 && groups.slice(-4).every((run) => run.length >= 2),
+    bankerThenJump: countFollowedBy(recent, 'banker', 'player') >= 3,
+    playerThenJump: countFollowedBy(recent, 'player', 'banker') >= 3,
+    bankerThenRun: countRunPattern(recent, ['banker', 'banker', 'player']) >= 2 || tailMatches(recent, ['banker', 'banker', 'player', 'banker']),
+    playerThenRun: countRunPattern(recent, ['player', 'player', 'banker']) >= 2 || tailMatches(recent, ['player', 'player', 'banker', 'player']),
+    brokenSingleJump: last6.length === 6 && last6.slice(0, 5).every((value, index, arr) => index === 0 || value !== arr[index - 1]) && last6[5] === last6[4],
+    longDragonToSingleJump: groups.length >= 4 && groups.slice(-4)[0].length >= 3 && groups.slice(-3).every((run) => run.length === 1),
+    singleJumpToLongDragon: groups.length >= 4 && groups.at(-1).length >= 2 && groups.slice(0, -1).slice(-4).every((run) => run.length === 1),
     roadBreak: tokens.length >= 2 && tokens.at(-1) !== tokens.at(-2),
   }
+}
+
+function groupRuns(seq = []) {
+  return seq.reduce((groups, side) => {
+    const last = groups.at(-1)
+    if (last?.side === side) last.length += 1
+    else groups.push({ side, length: 1 })
+    return groups
+  }, [])
+}
+
+function tailMatches(seq = [], pattern = []) {
+  if (seq.length < pattern.length) return false
+  const tail = seq.slice(-pattern.length)
+  return pattern.every((value, index) => tail[index] === value)
+}
+
+function countFollowedBy(seq = [], fromSide, toSide) {
+  let count = 0
+  for (let index = 0; index < seq.length - 1; index += 1) {
+    if (seq[index] === fromSide && seq[index + 1] === toSide) count += 1
+  }
+  return count
+}
+
+function countRunPattern(seq = [], pattern = []) {
+  let count = 0
+  for (let index = 0; index <= seq.length - pattern.length; index += 1) {
+    if (pattern.every((value, patternIndex) => seq[index + patternIndex] === value)) count += 1
+  }
+  return count
 }
 
 function inferDerivedRoadSync(table = {}) {

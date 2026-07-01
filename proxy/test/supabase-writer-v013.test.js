@@ -83,14 +83,19 @@ test('v050 all MT equal strategy includes every captured and requested main/side
     'table_id', 'display_name', 'table_type', 'room_id', 'dealer_name', 'total_players', 'state', 'order_state', 'source_updated_at',
     'shoe', 'round', 'shoe_stage', 'banker_count', 'player_count', 'tie_count', 'banker_pair_count', 'player_pair_count',
     'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road', 'next_banker_road', 'next_player_road',
-    'previous_winner', 'streak_length', 'near5_banker_player_bias', 'road_trend', 'long_dragon', 'jump_pattern', 'single_jump', 'double_jump', 'road_break', 'derived_road_sync', 'ask_road_trend',
-    'table_recent_hit_rate', 'direction_calibration', 'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'remaining_rank_counts', 'pattern_tags', 'historical_backtest',
+    'previous_winner', 'streak_length', 'near5_banker_player_bias', 'road_trend', 'long_dragon', 'double_dragon', 'up_slope', 'down_slope',
+    'jump_pattern', 'single_jump', 'double_jump', 'three_jump', 'one_banker_two_player', 'one_player_two_banker', 'row_pair_run',
+    'banker_then_jump', 'player_then_jump', 'banker_then_run', 'player_then_run', 'broken_single_jump', 'long_dragon_to_single_jump', 'single_jump_to_long_dragon',
+    'road_break', 'derived_road_sync', 'ask_road_trend', 'table_recent_hit_rate', 'direction_calibration', 'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'remaining_rank_counts', 'pattern_tags', 'historical_backtest',
   ]
   const sideKeys = [
     'tie_count', 'banker_pair_count', 'player_pair_count', 'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road',
     'next_banker_road', 'next_player_road', 'dealer_name', 'total_players', 'shoe', 'round', 'shoe_stage', 'state', 'order_state',
     'raw_result', 'player_point', 'banker_point', 'point_diff', 'banker_natural', 'player_natural', 'banker_dragon', 'player_dragon', 'super_six',
-    'shoe_remaining_points', 'remaining_rank_counts', 'road_trend', 'long_dragon', 'jump_pattern', 'single_jump', 'double_jump', 'road_break', 'derived_road_sync', 'tie_risk', 'pair_risk', 'ask_road_conflict', 'ask_road_trend', 'road_chaos', 'table_side_history',
+    'shoe_remaining_points', 'remaining_rank_counts', 'road_trend', 'long_dragon', 'double_dragon', 'up_slope', 'down_slope',
+    'jump_pattern', 'single_jump', 'double_jump', 'three_jump', 'one_banker_two_player', 'one_player_two_banker', 'row_pair_run',
+    'banker_then_jump', 'player_then_jump', 'banker_then_run', 'player_then_run', 'broken_single_jump', 'long_dragon_to_single_jump', 'single_jump_to_long_dragon',
+    'road_break', 'derived_road_sync', 'tie_risk', 'pair_risk', 'ask_road_conflict', 'ask_road_trend', 'road_chaos', 'table_side_history',
   ]
   assert.deepEqual(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).sort(), mainKeys.sort())
   assert.deepEqual(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).sort(), sideKeys.sort())
