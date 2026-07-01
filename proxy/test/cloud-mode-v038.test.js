@@ -23,6 +23,7 @@ test('v038 cloud API status and empty tables are cloud-ready before worker is at
     deployMode: 'cloud',
     captureSource: 'cloud_browser',
     frontendOrigin: 'https://app.darvenai.example',
+    supabaseClient: { configured: false },
   })
 
   const status = await app.inject({ method: 'GET', url: '/api/status' })

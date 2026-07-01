@@ -116,7 +116,9 @@ function inferRoundEventsFromSnapshots(previousTables = [], nextTables = []) {
       bankerPair: countDelta(previous.bankerPairCount, next.bankerPairCount),
       playerPair: countDelta(previous.playerPairCount, next.playerPairCount),
     }
-    const winners = [...Array(deltas.banker).fill('banker'), ...Array(deltas.player).fill('player'), ...Array(deltas.tie).fill('tie')]
+    const winners = inferWinnersFromCountDeltas(deltas)
+    const roundDelta = countDelta(previous.round, next.round)
+    if (winners.length === 0 && roundDelta > 0) winners.push(...inferWinnersFromRoadChange(previous, next, roundDelta))
     const currentRound = Number(next.round ?? previous.round ?? 0)
     const startRound = Math.max(1, currentRound - winners.length + 1)
     winners.forEach((winner, index) => {
@@ -132,7 +134,7 @@ function inferRoundEventsFromSnapshots(previousTables = [], nextTables = []) {
             playerPair: deltas.playerPair > 0,
             tie: winner === 'tie',
           },
-          rawResult: { inferredFromTableDelta: true, previousCounts: compactCounts(previous), nextCounts: compactCounts(next) },
+          rawResult: { inferredFromTableDelta: true, inferredFromRoundDelta: winners.length > inferWinnersFromCountDeltas(deltas).length, previousCounts: compactCounts(previous), nextCounts: compactCounts(next) },
           sourceAction: 'table_snapshot_delta',
           receivedAt: new Date().toISOString(),
         },
@@ -145,6 +147,26 @@ function inferRoundEventsFromSnapshots(previousTables = [], nextTables = []) {
 function countDelta(before, after) {
   const delta = Number(after ?? 0) - Number(before ?? 0)
   return Number.isFinite(delta) && delta > 0 ? Math.min(5, Math.floor(delta)) : 0
+}
+
+function inferWinnersFromCountDeltas(deltas = {}) {
+  return [...Array(deltas.banker ?? 0).fill('banker'), ...Array(deltas.player ?? 0).fill('player'), ...Array(deltas.tie ?? 0).fill('tie')]
+}
+
+function inferWinnersFromRoadChange(previous = {}, next = {}, roundDelta = 1) {
+  const nextOutcomes = parseBeadOutcomeCodes(next.beadPlateRaw)
+  const previousOutcomes = parseBeadOutcomeCodes(previous.beadPlateRaw)
+  const added = nextOutcomes.length > previousOutcomes.length ? nextOutcomes.slice(previousOutcomes.length) : nextOutcomes.slice(-roundDelta)
+  return added.slice(-roundDelta)
+}
+
+function parseBeadOutcomeCodes(raw = '') {
+  return String(raw).split('#').flatMap((column) => (column.match(/\d{2}/g) ?? []).map((code) => {
+    if (code[1] === '1') return 'player'
+    if (code[1] === '2') return 'banker'
+    if (code[1] === '3') return 'tie'
+    return null
+  }).filter(Boolean))
 }
 
 function compactCounts(table = {}) {

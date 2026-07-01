@@ -20,6 +20,19 @@ test('v048 infers new rounds from table snapshot deltas and keeps previous table
   assert.equal(events[0].table.bankerCount, 10)
 })
 
+test('v048 infers new rounds from round number and bead road even when aggregate counts do not change', async () => {
+  const events = []
+  const state = createProxyState({ onRoundEvent: async (round, table) => events.push({ round, table }) })
+  state.setTables([{ tableId: 'BAG03', displayName: 'MT百家樂第3桌', shoe: 15109, round: 27, bankerCount: 10, playerCount: 10, tieCount: 1, beadPlateRaw: '10113#0102', bigRoadRaw: '#0702,,,,,' }])
+  state.setTables([{ tableId: 'BAG03', displayName: 'MT百家樂第3桌', shoe: 15109, round: 28, bankerCount: 10, playerCount: 10, tieCount: 1, beadPlateRaw: '113#010202', bigRoadRaw: '2,0902,,,,' }])
+  await new Promise((resolve) => setTimeout(resolve, 0))
+
+  assert.equal(events.length, 1)
+  assert.equal(events[0].round.round, 28)
+  assert.equal(events[0].round.winner, 'banker')
+  assert.equal(events[0].round.rawResult.inferredFromRoundDelta, true)
+})
+
 test('v048 prediction result row stores main and side prediction/actual learning payload', () => {
   const row = buildPredictionResultRow(
     { tableId: 'BAG01', shoe: 10, round: 21, winner: 'banker', sideActualResults: { bankerPair: true, playerPair: false, tie: false } },

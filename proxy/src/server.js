@@ -215,16 +215,19 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       const status = await supabaseClient.getLatestCloudCaptureStatus()
       const snapshot = await readLatestCloudSnapshot()
       if (!status && !snapshot) return null
+      const snapshotTableCount = Array.isArray(snapshot?.tables) ? snapshot.tables.length : Number(snapshot?.table_count ?? 0)
+      const preferSnapshot = snapshotTableCount > Number(status?.table_count ?? 0)
+      const source = preferSnapshot ? snapshot?.capture_source : (status?.capture_source ?? snapshot?.capture_source)
       return {
-        captureSource: status?.capture_source ?? snapshot?.capture_source ?? captureSource,
-        captureMode: status?.capture_source ?? snapshot?.capture_source ?? captureSource,
-        connected: Boolean(status?.connected ?? snapshot?.tables?.length),
-        authenticated: Boolean(status?.authenticated ?? snapshot?.tables?.length),
-        tableCount: Number(status?.table_count ?? snapshot?.table_count ?? snapshot?.tables?.length ?? 0),
-        lastMessageAt: status?.last_message_at ?? snapshot?.snapshot_at ?? null,
+        captureSource: source ?? captureSource,
+        captureMode: source ?? captureSource,
+        connected: Boolean(preferSnapshot ? snapshotTableCount : (status?.connected ?? snapshotTableCount)),
+        authenticated: Boolean(preferSnapshot ? snapshotTableCount : (status?.authenticated ?? snapshotTableCount)),
+        tableCount: Number(preferSnapshot ? snapshotTableCount : (status?.table_count ?? snapshot?.table_count ?? snapshotTableCount ?? 0)),
+        lastMessageAt: preferSnapshot ? snapshot?.snapshot_at ?? status?.last_message_at ?? null : status?.last_message_at ?? snapshot?.snapshot_at ?? null,
         lastTablesAt: snapshot?.snapshot_at ?? null,
-        statusText: snapshot?.tables?.length ? `本機VPN抓牌已同步${snapshot.tables.length}桌` : status?.status_text ?? null,
-        errorMessage: status?.error_message ?? null,
+        statusText: snapshotTableCount ? `本機VPN抓牌已同步${snapshotTableCount}桌` : status?.status_text ?? null,
+        errorMessage: preferSnapshot ? null : status?.error_message ?? null,
       }
     } catch (error) {
       state.setStatus({ cloudReadStatus: 'error', cloudReadError: error?.message ?? String(error) })
