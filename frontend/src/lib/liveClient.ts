@@ -47,13 +47,16 @@ const pollIntervalMs = Number(import.meta.env.VITE_DRAVEN_PROXY_POLL_MS ?? 2000)
 export class LiveRoadClient {
   private timer?: number
   private stopped = true
+  private lastGoodTables: LiveTable[] = []
+  private consecutiveFailures = 0
 
   constructor(private readonly options: LiveClientOptions) {}
 
   connect() {
     this.disconnect(false)
     this.stopped = false
-    this.options.onStatus({ state: 'connecting', message: '正在讀取本機代理資料…' })
+    this.consecutiveFailures = 0
+    this.options.onStatus({ state: 'connecting', message: '正在讀取雲端資料…' })
     void this.poll()
     this.timer = window.setInterval(() => void this.poll(), pollIntervalMs)
   }
@@ -62,7 +65,7 @@ export class LiveRoadClient {
     this.stopped = true
     if (this.timer) window.clearInterval(this.timer)
     this.timer = undefined
-    if (notify) this.options.onStatus({ state: 'disconnected', message: '已停止讀取本機代理' })
+    if (notify) this.options.onStatus({ state: 'disconnected', message: '已停止讀取雲端資料' })
   }
 
   private async poll() {
@@ -73,14 +76,27 @@ export class LiveRoadClient {
       const payload = await response.json()
       const tables = normalizeProxyTables(Array.isArray(payload) ? payload : [])
       if (tables.length) {
+        this.lastGoodTables = tables
+        this.consecutiveFailures = 0
         this.options.onTables(tables)
-        this.options.onStatus({ state: 'connected', message: `本機代理已連線（${tables.length}桌）` })
-      } else {
-        const status = await readProxyStatus()
-        this.options.onStatus(status)
+        this.options.onStatus({ state: 'connected', message: `雲端資料已連線（${tables.length}桌）` })
+        return
       }
+      this.consecutiveFailures += 1
+      if (this.lastGoodTables.length) {
+        this.options.onTables(this.lastGoodTables)
+        this.options.onStatus({ state: 'connected', message: `保留上一筆雲端資料（${this.lastGoodTables.length}桌）` })
+        return
+      }
+      if (this.consecutiveFailures >= 3) this.options.onStatus(await readProxyStatus())
     } catch {
-      this.options.onStatus({ state: 'error', message: '本機代理未啟動或無法讀取資料' })
+      this.consecutiveFailures += 1
+      if (this.lastGoodTables.length && this.consecutiveFailures < 5) {
+        this.options.onTables(this.lastGoodTables)
+        this.options.onStatus({ state: 'connected', message: `雲端短暫延遲，保留上一筆資料（${this.lastGoodTables.length}桌）` })
+        return
+      }
+      this.options.onStatus({ state: 'error', message: '雲端代理暫時無法讀取資料' })
     }
   }
 }
@@ -93,14 +109,14 @@ async function readProxyStatus(): Promise<Status> {
     if (typeof status.statusText === 'string' && status.statusText) {
       return { state: status.connected ? 'connected' : 'connecting', message: status.statusText }
     }
-    const tableCount = Array.isArray(status.tables) ? status.tables.length : 0
+    const tableCount = Number(status.tableCount ?? (Array.isArray(status.tables) ? status.tables.length : 0))
     if (status.connected && status.authenticated && tableCount === 0) return { state: 'connecting', message: 'MT已驗證，等待桌況資料…' }
     if (status.connected && status.authenticated && tableCount > 0) return { state: 'connected', message: `已抓到${tableCount}桌` }
     if (status.connected && !status.authenticated) return { state: 'connecting', message: 'MT已連線，Token驗證中…' }
     if (status.connected === false) return { state: 'error', message: 'proxy已啟動，MT未連線，請確認 Token 是否過期' }
     return { state: 'connecting', message: 'proxy已啟動，等待 MT 桌況…' }
   } catch {
-    return { state: 'error', message: '本機代理未啟動或無法讀取狀態' }
+    return { state: 'error', message: '雲端代理未啟動或無法讀取狀態' }
   }
 }
 

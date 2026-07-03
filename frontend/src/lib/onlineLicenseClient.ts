@@ -12,11 +12,11 @@ export type OnlineLicenseStatus = {
   licenseRows: Array<{ member: string; code: string; status: string; remain: string; agentCode?: string; expiresOn?: string }>
 }
 
-export async function memberLogin(payload: { memberAccount: string; verificationPassword: string }, fetchImpl = fetch) {
+export async function memberLogin(payload: { memberAccount: string; verificationPassword: string; turnstileToken?: string }, fetchImpl = fetch) {
   return postJson('/api/online-license/member-login', payload, fetchImpl)
 }
 
-export async function agentLogin(payload: { agentAccount: string }, fetchImpl = fetch) {
+export async function agentLogin(payload: { agentAccount: string; turnstileToken?: string }, fetchImpl = fetch) {
   return postJson('/api/online-license/agent-login', payload, fetchImpl)
 }
 
@@ -44,9 +44,12 @@ export async function deleteOnlineLicense(payload: { code: string; adminAccount?
   return postJson('/api/online-license/licenses/delete', payload, fetchImpl)
 }
 
-export async function getOnlineLicenseStatus(fetchImpl = fetch): Promise<OnlineLicenseStatus> {
+export async function getOnlineLicenseStatus(adminAccountOrFetch?: string | typeof fetch, fetchImpl = fetch): Promise<OnlineLicenseStatus> {
   try {
-    const response = await fetchImpl(`${proxyUrl}/api/online-license/status`)
+    const adminAccount = typeof adminAccountOrFetch === 'string' ? adminAccountOrFetch : undefined
+    const resolvedFetch = typeof adminAccountOrFetch === 'function' ? adminAccountOrFetch : fetchImpl
+    const suffix = adminAccount ? `?adminAccount=${encodeURIComponent(adminAccount)}` : ''
+    const response = await resolvedFetch(`${proxyUrl}/api/online-license/status${suffix}`)
     if (!response.ok) return emptyStatus()
     const body = await response.json()
     return mapStatus(body)

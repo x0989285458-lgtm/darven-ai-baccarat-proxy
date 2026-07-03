@@ -148,7 +148,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
     if (pathname === '/api/online-license/status') {
       try {
-        return jsonResponse(200, await licenseAdminClient.getStatus?.(), frontendOrigin)
+        return jsonResponse(200, await licenseAdminClient.getStatus?.({ adminAccount: searchParams.get('adminAccount') }), frontendOrigin)
       } catch (error) {
         return jsonResponse(200, { configured: Boolean(licenseAdminClient?.configured), managers: [], agents: [], plans: [], licenses: [], error: error?.message ?? String(error) }, frontendOrigin)
       }

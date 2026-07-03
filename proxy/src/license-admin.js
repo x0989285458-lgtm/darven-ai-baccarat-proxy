@@ -6,10 +6,10 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
   const configured = Boolean(pool || resolvedConnectionString)
   const db = pool ?? (resolvedConnectionString ? new pg.Pool({ connectionString: resolvedConnectionString, ssl: { rejectUnauthorized: false }, max: 2 }) : null)
 
-  async function getStatus() {
+  async function getStatus({ adminAccount = null } = {}) {
     if (!configured) return { configured: false, managers: [], agents: [], plans: [], licenses: [], agentRows: [], licenseRows: [] }
     const [managers, agents, plans, licenses] = await Promise.all([
-      db.query('select id, username, role, is_active, created_at from public.manager_accounts order by created_at desc limit 50'),
+      db.query("select id, username, role, is_active, created_at from public.manager_accounts where lower(username) = 'dv1788' order by created_at desc limit 50"),
       db.query(`select id, code, name, role, parent_code, is_active, permission, created_at
                 from public.agents where coalesce(is_active, true) = true order by created_at desc limit 100`),
       db.query('select id, name, duration_days, created_at from public.plans order by duration_days asc limit 50'),
@@ -20,14 +20,17 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
                 where l.status <> 'expired'
                 order by l.created_at desc limit 100`),
     ])
+    const scopedAgents = scopeAgents(agents.rows, adminAccount)
+    const scopedCodes = new Set(scopedAgents.map((agent) => agent.code))
+    const scopedLicenses = isSuperAdmin(adminAccount) || !adminAccount ? licenses.rows : licenses.rows.filter((license) => scopedCodes.has(license.agent_code) || license.agent_code === adminAccount)
     return {
       configured: true,
       managers: managers.rows,
-      agents: agents.rows,
+      agents: scopedAgents,
       plans: plans.rows,
-      licenses: licenses.rows,
-      agentRows: buildAgentRows(agents.rows),
-      licenseRows: licenses.rows.map((license, index) => ({
+      licenses: scopedLicenses,
+      agentRows: buildAgentRows(scopedAgents),
+      licenseRows: scopedLicenses.map((license, index) => ({
         member: license.member_account ?? `User${String(index + 1).padStart(3, '0')}`,
         code: license.code,
         status: license.status === 'active' ? '啟用中' : license.status === 'suspended' ? '暫停中' : '已過期',
@@ -68,9 +71,10 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     return result.rows[0]
   }
 
-  async function createAgent({ code, name, role = 'agent', parentCode = null, permission = '可建碼', adminAccount = 'DVAI' } = {}) {
+  async function createAgent({ code, name, role = 'agent', parentCode = null, permission = '可建碼', adminAccount = 'dv1788' } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
     if (!code) throw new Error('Agent code is required')
+    await assertCanManageRole(adminAccount, role)
     const displayName = name || code
     const existing = await db.query('select id from public.agents where code = $1 limit 1', [code])
     const result = existing.rows[0]
@@ -83,7 +87,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     return { ok: true, row: result.rows[0] }
   }
 
-  async function deleteAgents({ codes = [], adminAccount = 'DVAI' } = {}) {
+  async function deleteAgents({ codes = [], adminAccount = 'dv1788' } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
     const list = Array.isArray(codes) ? codes.filter(Boolean) : []
     if (!list.length) throw new Error('Agent codes are required')
@@ -94,7 +98,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     return { ok: true, rows: result.rows }
   }
 
-  async function createLicense({ memberAccount, code, agentCode, planName = '正式月卡', durationDays = 30, startsOn = todayIso(), adminAccount = 'DVAI' } = {}) {
+  async function createLicense({ memberAccount, code, agentCode, planName = '正式月卡', durationDays = 30, startsOn = todayIso(), adminAccount = 'dv1788' } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
     if (!code || !agentCode) throw new Error('license code and agentCode are required')
     const resolvedMemberAccount = memberAccount || `User${String(code).match(/(\d+)/)?.[1]?.slice(-4)?.padStart(4, '0') ?? '0001'}`
@@ -200,7 +204,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     const result = await db.query('select id, code, name, role, parent_code, permission, created_at from public.agents where code = $1 and coalesce(is_active, true) = true limit 1', [agentAccount])
     const agent = result.rows[0] ?? null
     if (agent) return { ok: true, agent, account: { ...agent, type: 'agent', permission: agent.permission ?? 'agent' } }
-    const managerResult = await db.query('select id, username, role, is_active, created_at from public.manager_accounts where username = $1 and is_active = true limit 1', [agentAccount])
+    const managerResult = await db.query("select id, username, role, is_active, created_at from public.manager_accounts where lower(username) = lower($1) and lower(username) = 'dv1788' and is_active = true limit 1", [agentAccount])
     const manager = managerResult.rows[0] ?? null
     if (!manager) return { ok: false, agent: null, account: null }
     return { ok: true, agent: null, account: { ...manager, type: 'manager', permission: manager.role === 'total' ? 'all' : 'limited' } }
@@ -220,6 +224,43 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
       return null
     }
   }
+
+
+function isSuperAdmin(account) {
+  return String(account ?? '').toLowerCase() === 'dv1788'
+}
+
+function scopeAgents(agents, adminAccount) {
+  if (!adminAccount || isSuperAdmin(adminAccount)) return agents.filter((agent) => String(agent.code).toLowerCase() !== 'dv1788')
+  return agents.filter((agent) => isDescendantAgent(agent, adminAccount, agents))
+}
+
+function isDescendantAgent(agent, ancestor, agents) {
+  let parent = agent.parent_code
+  while (parent) {
+    if (parent === ancestor) return true
+    parent = agents.find((item) => item.code === parent)?.parent_code
+  }
+  return false
+}
+
+async function assertCanManageRole(adminAccount, role) {
+  if (isSuperAdmin(adminAccount)) return true
+  const admin = await dbQueryAgentRole(adminAccount)
+  if (!admin) throw new Error('管理者未開通')
+  if (admin.role === 'viewer') throw new Error('觀察者不可開設帳號')
+  if (admin.role === 'agent' && role === 'viewer') throw new Error('代理不能開設觀察者')
+  return true
+}
+
+async function dbQueryAgentRole(code) {
+  try {
+    const result = await db.query('select role from public.agents where code = $1 and coalesce(is_active, true) = true limit 1', [code])
+    return result.rows[0] ?? null
+  } catch {
+    return null
+  }
+}
 
   return { configured, getStatus, bootstrap, createAgent, deleteAgents, createLicense, setLicenseStatus, extendLicense, deleteLicense, validateMemberLogin, validateAgentLogin, getCloudDataStatus }
 }
