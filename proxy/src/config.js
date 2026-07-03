@@ -38,7 +38,7 @@ export function resolveDeployConfig(env = process.env) {
     captureSource,
     frontendOrigin: env.PUBLIC_FRONTEND_ORIGIN || '*',
     cloudBrowserUrl: env.CLOUD_BROWSER_URL ?? '',
-    cloudCapturePollMs: Number(env.CLOUD_CAPTURE_POLL_MS ?? 2000),
+    cloudCapturePollMs: Number(env.CLOUD_CAPTURE_POLL_MS ?? 1000),
     chromeCaptureUrl: env.CHROME_CAPTURE_URL ?? '',
     token: env.MT_TOKEN ?? '',
     autoConnect: deployMode === 'cloud' ? false : env.AUTO_CONNECT !== 'false',

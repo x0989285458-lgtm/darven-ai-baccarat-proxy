@@ -42,10 +42,13 @@ type ProxyTable = {
 }
 
 const proxyApiUrl = dravenApiBaseUrl
-const pollIntervalMs = Number(import.meta.env.VITE_DRAVEN_PROXY_POLL_MS ?? 2000)
+const pollIntervalMs = Number(import.meta.env.VITE_DRAVEN_PROXY_POLL_MS ?? 3000)
 
 export class LiveRoadClient {
   private timer?: number
+  private stream?: EventSource
+  private streamWatchdog?: number
+  private lastStreamAt = 0
   private stopped = true
   private lastGoodTables: LiveTable[] = []
   private consecutiveFailures = 0
@@ -56,16 +59,53 @@ export class LiveRoadClient {
     this.disconnect(false)
     this.stopped = false
     this.consecutiveFailures = 0
-    this.options.onStatus({ state: 'connecting', message: '正在讀取雲端資料…' })
-    void this.poll()
-    this.timer = window.setInterval(() => void this.poll(), pollIntervalMs)
+    this.options.onStatus({ state: 'connecting', message: '正在建立即時同步…' })
+    this.connectStream()
+    this.streamWatchdog = window.setInterval(() => {
+      if (this.stopped) return
+      if (!this.lastStreamAt || Date.now() - this.lastStreamAt > 4000) void this.poll()
+    }, pollIntervalMs)
   }
 
   disconnect(notify = true) {
     this.stopped = true
     if (this.timer) window.clearInterval(this.timer)
+    if (this.streamWatchdog) window.clearInterval(this.streamWatchdog)
+    this.stream?.close()
     this.timer = undefined
+    this.streamWatchdog = undefined
+    this.stream = undefined
     if (notify) this.options.onStatus({ state: 'disconnected', message: '已停止讀取雲端資料' })
+  }
+
+  private connectStream() {
+    try {
+      this.stream?.close()
+      this.stream = new EventSource(`${proxyApiUrl}/api/tables/stream?ts=${Date.now()}`)
+      this.stream.onopen = () => {
+        this.lastStreamAt = Date.now()
+        this.options.onStatus({ state: 'connecting', message: '即時同步已連線，等待最新桌況…' })
+      }
+      this.stream.addEventListener('tables', (event) => {
+        if (this.stopped) return
+        this.lastStreamAt = Date.now()
+        const payload = JSON.parse((event as MessageEvent).data)
+        const tables = normalizeProxyTables(Array.isArray(payload?.tables) ? payload.tables : [])
+        if (!tables.length) return
+        this.lastGoodTables = tables
+        this.consecutiveFailures = 0
+        this.options.onTables(tables)
+        this.options.onStatus({ state: 'connected', message: `即時同步中（${tables.length}桌）` })
+      })
+      this.stream.addEventListener('heartbeat', () => { this.lastStreamAt = Date.now() })
+      this.stream.onerror = () => {
+        if (this.stopped) return
+        this.options.onStatus({ state: 'connecting', message: '即時同步重連中，暫用輪詢備援…' })
+        window.setTimeout(() => { if (!this.stopped) this.connectStream() }, 2000)
+      }
+    } catch {
+      void this.poll()
+    }
   }
 
   private async poll() {

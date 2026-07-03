@@ -68,10 +68,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       return jsonResponse(200, { ...nextStatus, deployMode: deployConfig.deployMode, statusText: cloudStatus?.statusText ?? describeCaptureStatus(nextStatus) }, frontendOrigin)
     }
     if (pathname === '/api/tables') {
-      const localTables = state.snapshot().tables
-      if (localTables.length > 0) return jsonResponse(200, localTables, frontendOrigin)
-      const cloudSnapshot = await readLatestCloudSnapshot()
-      return jsonResponse(200, cloudSnapshot?.tables ?? [], frontendOrigin)
+      return jsonResponse(200, await readBestTables(), frontendOrigin)
     }
     if (pathname === '/api/snapshot') {
       return jsonResponse(200, state.snapshot(), frontendOrigin)
@@ -210,6 +207,14 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
   }
 
+  async function readBestTables() {
+    const localTables = state.snapshot().tables
+    if (localTables.length > 0) return localTables
+    const cloudSnapshot = await readLatestCloudSnapshot()
+    return cloudSnapshot?.tables ?? []
+  }
+
+
   async function readCloudSnapshotStatus() {
     if (state.snapshot().tables.length > 0) return null
     if (!supabaseClient?.configured || typeof supabaseClient.getLatestCloudCaptureStatus !== 'function') return null
@@ -252,11 +257,58 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   }
 
   const server = http.createServer(async (req, res) => {
+    const requestUrl = new URL(req.url ?? '/', 'http://127.0.0.1')
+    if ((req.method ?? 'GET') === 'GET' && requestUrl.pathname === '/api/tables/stream') {
+      return streamTables(res)
+    }
     const rawBody = await readRequestBody(req)
     const result = await handle(req.method ?? 'GET', req.url ?? '/', rawBody)
     res.writeHead(result.statusCode, result.headers)
     res.end(result.body)
   })
+
+  function streamTables(res) {
+    res.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'pragma': 'no-cache',
+      'connection': 'keep-alive',
+      'x-accel-buffering': 'no',
+      'access-control-allow-origin': frontendOrigin,
+      'access-control-allow-methods': 'GET,POST,OPTIONS',
+      'access-control-allow-headers': 'Content-Type,Authorization',
+    })
+    let closed = false
+    let lastSignature = ''
+    const send = (event, payload) => res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`)
+    const tick = async () => {
+      if (closed) return
+      try {
+        const tables = await readBestTables()
+        const signature = JSON.stringify(tables.map((table) => ({
+          id: table.tableId ?? table.table_id ?? table.id,
+          shoe: table.shoe ?? table.trend?.current_shoe,
+          round: table.round ?? table.trend?.current_round,
+          bead: table.beadPlateRaw ?? table.trend?.bead_plate2,
+          big: table.bigRoadRaw ?? table.trend?.big2,
+          banker: table.bankerCount ?? table.trend?.total_round_banker,
+          player: table.playerCount ?? table.trend?.total_round_player,
+          tie: table.tieCount ?? table.trend?.total_round_tie,
+        })))
+        if (tables.length && signature !== lastSignature) {
+          lastSignature = signature
+          send('tables', { tables, updatedAt: new Date().toISOString(), tableCount: tables.length })
+        } else {
+          send('heartbeat', { updatedAt: new Date().toISOString(), tableCount: tables.length })
+        }
+      } catch (error) {
+        send('error', { message: error?.message ?? String(error), updatedAt: new Date().toISOString() })
+      }
+    }
+    tick()
+    const timer = setInterval(tick, 1000)
+    res.on('close', () => { closed = true; clearInterval(timer) })
+  }
 
   const listenHost = host ?? (deployConfig.deployMode === 'cloud' ? '0.0.0.0' : '127.0.0.1')
 
@@ -306,6 +358,8 @@ function jsonResponse(statusCode, payload, frontendOrigin = '*') {
       'access-control-allow-origin': frontendOrigin,
       'access-control-allow-methods': 'GET,POST,OPTIONS',
       'access-control-allow-headers': 'Content-Type,Authorization',
+      'cache-control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      pragma: 'no-cache',
     },
     body: JSON.stringify(payload),
   }
