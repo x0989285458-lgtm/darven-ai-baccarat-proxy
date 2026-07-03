@@ -1287,3 +1287,47 @@ h1 {
 .code-action-row .activate { border-color: #52e6a7; background: #124635; }
 
 .agent-select-cell{justify-content:center}.agent-parent-hint{word-break:break-all}
+
+
+/* custom login background */
+.login-shell {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: #06101d url('/assets/ruiwen-login-bg.jpg') center center / cover no-repeat !important;
+}
+.login-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background: linear-gradient(90deg, rgba(3, 8, 18, .24), rgba(3, 8, 18, .08) 46%, rgba(3, 8, 18, .18));
+}
+.login-shell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(circle at 50% 48%, rgba(2, 8, 18, .08), rgba(2, 8, 18, .35) 72%);
+  pointer-events: none;
+}
+.login-card {
+  background: rgba(5, 14, 27, .58) !important;
+  border-color: rgba(210, 167, 72, .38) !important;
+  box-shadow: 0 28px 90px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.08) !important;
+  backdrop-filter: blur(9px) saturate(1.18);
+  -webkit-backdrop-filter: blur(9px) saturate(1.18);
+}
+.login-card input,
+.login-chip,
+.system-status {
+  background-color: rgba(3, 8, 18, .72) !important;
+}
+@media (max-width: 720px) {
+  .login-shell {
+    background-position: 62% center !important;
+  }
+  .login-card {
+    background: rgba(5, 14, 27, .68) !important;
+  }
+}
