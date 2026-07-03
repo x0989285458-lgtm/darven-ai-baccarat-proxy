@@ -1294,21 +1294,21 @@ h1 {
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  background: #06101d url('/assets/ruiwen-login-bg.jpg') center center / cover no-repeat !important;
+  background: #06101d url('/assets/ruiwen-login-bg-hq.png') center center / cover no-repeat !important;
 }
 .login-shell::before {
   content: '';
   position: absolute;
   inset: 0;
   z-index: -2;
-  background: linear-gradient(90deg, rgba(3, 8, 18, .24), rgba(3, 8, 18, .08) 46%, rgba(3, 8, 18, .18));
+  background: linear-gradient(90deg, rgba(3, 8, 18, .18), rgba(3, 8, 18, .05) 46%, rgba(3, 8, 18, .12));
 }
 .login-shell::after {
   content: '';
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: radial-gradient(circle at 50% 48%, rgba(2, 8, 18, .08), rgba(2, 8, 18, .35) 72%);
+  background: radial-gradient(circle at 50% 48%, rgba(2, 8, 18, .04), rgba(2, 8, 18, .28) 72%);
   pointer-events: none;
 }
 .login-card {
@@ -1325,7 +1325,7 @@ h1 {
 }
 @media (max-width: 720px) {
   .login-shell {
-    background-position: 62% center !important;
+    background-position: 68% center !important;
   }
   .login-card {
     background: rgba(5, 14, 27, .68) !important;
