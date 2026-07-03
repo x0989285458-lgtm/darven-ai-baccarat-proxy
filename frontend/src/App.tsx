@@ -335,10 +335,22 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const [licenseStatus, setLicenseStatus] = useState<OnlineLicenseStatus>({ managers: [], agents: [], plans: [], licenses: [], agentRows: [], licenseRows: [] })
   const [cloudDataStatus, setCloudDataStatus] = useState<{ mtAutoLoginEnabled?: boolean; message?: string; tableCount?: number; todayRoundCount?: number; tableStats?: Array<{ tableId: string; mainHitRate: string; sideHitRate: string }>; dailyReports?: Array<Record<string, any>> }>({ mtAutoLoginEnabled: false, message: '資料抓取待確認', todayRoundCount: 0, tableStats: [], dailyReports: [] })
   useEffect(() => {
-    const loadReports = () => { getOnlineMemoryCenter().then(setMemoryCenter); getOnlineStrategyAnalysis().then(setStrategyAnalysis); getCloudDataStatus().then(setCloudDataStatus) }
+    let cloudLoaded = false
+    const loadReports = () => {
+      getOnlineMemoryCenter().then(setMemoryCenter)
+      getOnlineStrategyAnalysis().then(setStrategyAnalysis)
+      getCloudDataStatus().then((status) => {
+        setCloudDataStatus((previous) => status.todayRoundCount != null ? status : previous)
+        if (status.todayRoundCount != null) cloudLoaded = true
+      })
+    }
     loadReports()
-    const timer = window.setInterval(loadReports, 300000)
-    return () => window.clearInterval(timer)
+    const slowTimer = window.setInterval(loadReports, 300000)
+    const fastTimer = window.setInterval(() => {
+      if (cloudLoaded) { window.clearInterval(fastTimer); return }
+      loadReports()
+    }, 5000)
+    return () => { window.clearInterval(slowTimer); window.clearInterval(fastTimer) }
   }, [])
   useEffect(() => {
     if (onlineCoreStatus.maintenanceMode && !isSuper) logoutAdmin()
