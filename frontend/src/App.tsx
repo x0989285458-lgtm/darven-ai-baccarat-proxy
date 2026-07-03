@@ -3,15 +3,14 @@ import { mockTables } from './data/mockTables'
 import { LiveRoadClient, type LiveTable } from './lib/liveClient'
 import { applyAskRoadWeighting, calculatePrediction, calculateBonusPredictions, parseBeadPlate, parseBigRoad } from './lib/roadParser'
 import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from './lib/supabaseClient'
-import { checkOnlineCoreStatus, getOnlineMemoryCenter, getOnlineStrategyAnalysis, updateOnlineAppSetting, updateOnlineFeatureFlag, type OnlineCoreStatus, type OnlineMemoryCenter, type OnlineStrategyAnalysis } from './lib/onlineCoreClient'
+import { checkOnlineCoreStatus, getOnlineMemoryCenter, getOnlineStrategyAnalysis, updateOnlineAppSetting, type OnlineCoreStatus, type OnlineMemoryCenter, type OnlineStrategyAnalysis } from './lib/onlineCoreClient'
 import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents, deleteOnlineLicense, extendOnlineLicense, getCloudDataStatus, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
 
 const defaultToken = 'decd8bec9f968ef4f67a437f80430727'
-const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY ?? ''
 const SUPER_ADMIN = 'dv1788'
 const sideThresholds = { playerDragon: 40, playerPair: 25, superSix: 32, bankerPair: 25, bankerDragon: 38 }
 const label = { Banker: '莊', Player: '閒', Tie: '和' }
-const tableDisplayOrder = ['1', '2', '3', '3A', '5', '6', '7', '8', '9']
+const tableDisplayOrder = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
 
 function pct(count: number, total: number) {
   if (!total) return 0
@@ -28,6 +27,7 @@ export default function App() {
   const memberLoggedIn = window.sessionStorage.getItem('darven-member-login') === 'yes'
   const adminLoggedIn = Boolean(window.sessionStorage.getItem('darven-admin-account'))
   const [tables, setTables] = useState<LiveTable[]>([])
+  const [stableSelected, setStableSelected] = useState<LiveTable | null>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [status, setStatus] = useState({ state: 'disconnected', message: '等待雲端資料來源' })
   const [supabaseStatus, setSupabaseStatus] = useState({ state: isSupabaseConfigured ? 'connecting' : 'error', message: isSupabaseConfigured ? 'Supabase 檢查中' : 'Supabase 未設定' })
@@ -37,27 +37,31 @@ export default function App() {
   const visibleTables = useMemo(() => tables.slice(0, 9), [tables])
   const selectedSafeIndex = Math.min(selectedIndex, Math.max(visibleTables.length - 1, 0))
   const selected = visibleTables[selectedSafeIndex] ?? tables[0]
-  const fullRoad = useMemo(() => parseBeadPlate(selected?.trend.bead_plate2 ?? ''), [selected])
-  const allBigRoad = useMemo(() => parseBigRoad(selected?.trend.big2 ?? ''), [selected])
+  useEffect(() => {
+    if (isCompleteTableUpdate(selected)) setStableSelected(selected)
+  }, [selected])
+  const displaySelected = stableSelected ?? selected
+  const fullRoad = useMemo(() => parseBeadPlate(displaySelected?.trend.bead_plate2 ?? ''), [displaySelected])
+  const allBigRoad = useMemo(() => parseBigRoad(displaySelected?.trend.big2 ?? ''), [displaySelected])
   const bigRoad = useMemo(() => markBigRoadTies(allBigRoad), [allBigRoad])
   const prediction = useMemo(() => calculatePrediction({
     beadCells: fullRoad,
     bigRoadCells: bigRoad,
-    askRoad: selected?.trend,
+    askRoad: displaySelected?.trend,
     tableStats: {
-      total_round_banker: selected?.trend.total_round_banker,
-      total_round_player: selected?.trend.total_round_player,
-      total_round_tie: selected?.trend.total_round_tie,
+      total_round_banker: displaySelected?.trend.total_round_banker,
+      total_round_player: displaySelected?.trend.total_round_player,
+      total_round_tie: displaySelected?.trend.total_round_tie,
     },
-  }), [fullRoad, bigRoad, selected])
-  const bonusPredictions = useMemo(() => calculateBonusPredictions(fullRoad, selected?.trend), [fullRoad, selected])
+  }), [fullRoad, bigRoad, displaySelected])
+  const bonusPredictions = useMemo(() => calculateBonusPredictions(fullRoad, displaySelected?.trend), [fullRoad, displaySelected])
   const outcomePredictions = useMemo(() => {
-    const banker = Number(selected?.trend.total_round_banker ?? 0)
-    const player = Number(selected?.trend.total_round_player ?? 0)
-    const tie = Number(selected?.trend.total_round_tie ?? 0)
+    const banker = Number(displaySelected?.trend.total_round_banker ?? 0)
+    const player = Number(displaySelected?.trend.total_round_player ?? 0)
+    const tie = Number(displaySelected?.trend.total_round_tie ?? 0)
     const total = banker + player + tie
-    return applyAskRoadWeighting({ banker: pct(banker, total), player: pct(player, total), tie: pct(tie, total) }, selected?.trend)
-  }, [selected])
+    return applyAskRoadWeighting({ banker: pct(banker, total), player: pct(player, total), tie: pct(tie, total) }, displaySelected?.trend)
+  }, [displaySelected])
 
   useEffect(() => () => client.current?.disconnect(false), [])
   useEffect(() => {
@@ -114,23 +118,22 @@ export default function App() {
 
   if ((path === '/' || path === '') && !memberLoggedIn) return <LoginApp />
 
-  if (!selected) return <WaitingForCloudData status={status} supabaseStatus={supabaseStatus} />
+  if (!displaySelected) return <WaitingForCloudData status={status} supabaseStatus={supabaseStatus} />
 
   return <main className="app-shell">
     <header className="topbar">
       <div className="promo-block" aria-label="官方資訊">
-        <strong>免費AI百家預測軟體</strong>
+        <strong>免費智慧百家預測軟體</strong>
         <span>私訊官方賴@Dv1788</span>
       </div>
       <div className="brand" aria-label="主標題">
-        <h1>AI百家預測軟體</h1>
-        <p className="eyebrow">DarevnAI Version 010</p>
+        <h1>智慧百家預測軟體</h1>
+        <p className="eyebrow">瑞文智慧版 010</p>
       </div>
       <div className="header-meta"><span className={`status ${supabaseStatus.state}`} title={supabaseConfig.projectRef}>{supabaseStatus.message}</span></div>
     </header>
     <div className="workspace">
       <aside className="sidebar balanced-sidebar-line" aria-label="桌號與資料選擇">
-        <TurnstileBox />
         <nav className="table-list" aria-label="桌號選擇">
           {visibleTables.map((table, index) => <button className={`table-item ${index === selectedSafeIndex ? 'active' : ''}`} key={`${String(table.id)}-${index}`} onClick={() => setSelectedIndex(index)}>
             MT百家樂第{tableNumber(table, index)}桌 第{table.trend.current_round ?? 0}局
@@ -139,9 +142,9 @@ export default function App() {
       </aside>
       <section className="content">
         <div className="stats-grid" aria-label="統計資訊">
-          <Stat title="閒" value={String(selected.trend.total_round_player ?? 0)} tone="Player" />
-          <Stat title="和" value={String(selected.trend.total_round_tie ?? 0)} tone="Tie" />
-          <Stat title="莊" value={String(selected.trend.total_round_banker ?? 0)} tone="Banker" />
+          <Stat title="閒" value={String(displaySelected.trend.total_round_player ?? 0)} tone="Player" />
+          <Stat title="和" value={String(displaySelected.trend.total_round_tie ?? 0)} tone="Tie" />
+          <Stat title="莊" value={String(displaySelected.trend.total_round_banker ?? 0)} tone="Banker" />
         </div>
         <section className="prediction-card" aria-label="AI預測結果">
           <div className="prediction-row side-prediction-row" aria-label="副項目預測機率">
@@ -153,11 +156,11 @@ export default function App() {
           </div>
           <div className="prediction-row main-probability-row" aria-label="莊閒預測機率">
             <PredictionMetric title="閒" value={outcomePredictions.player} tone="Player" active={prediction.recommendation === 'Player'} />
-            <PredictionMetric title="和" value={outcomePredictions.tie} tone="Tie" active={outcomePredictions.tie >= 25} />
+            <PredictionMetric title="和" value={outcomePredictions.tie} tone="Tie" active={label[prediction.recommendation] === '和'} />
             <PredictionMetric title="莊" value={outcomePredictions.banker} tone="Banker" active={prediction.recommendation === 'Banker'} />
           </div>
-          <h2 className="ai-prediction-line">AI預測:<span className={prediction.recommendation}>{label[prediction.recommendation]}</span></h2>
-          <strong className="ai-confidence-line">AI信心值:{prediction.confidence}%</strong>
+          <h2 className="ai-prediction-line">智慧預測:<span className={prediction.recommendation}>{label[prediction.recommendation]}</span></h2>
+          <strong className="ai-confidence-line">智慧信心值:{prediction.confidence}%</strong>
         </section>
         <div className="roads-grid single-road">
           <RoadCard title="大路" subtitle="紅圈＝莊　藍圈＝閒">
@@ -174,8 +177,8 @@ export default function App() {
 function WaitingForCloudData({ status, supabaseStatus }: { status: { state: string; message: string }; supabaseStatus: { state: string; message: string } }) {
   return <main className="app-shell waiting-shell">
     <header className="topbar">
-      <div className="promo-block" aria-label="官方資訊"><strong>免費AI百家預測軟體</strong><span>私訊官方賴@Dv1788</span></div>
-      <div className="brand" aria-label="主標題"><h1>AI百家預測軟體</h1><p className="eyebrow">DarevnAI Version 010</p></div>
+      <div className="promo-block" aria-label="官方資訊"><strong>免費智慧百家預測軟體</strong><span>私訊官方賴@Dv1788</span></div>
+      <div className="brand" aria-label="主標題"><h1>智慧百家預測軟體</h1><p className="eyebrow">瑞文智慧版 010</p></div>
       <div className="header-meta"><span className={`status ${supabaseStatus.state}`} title={supabaseConfig.projectRef}>{supabaseStatus.message}</span></div>
     </header>
     <section className="waiting-card" aria-label="等待雲端資料">
@@ -186,21 +189,14 @@ function WaitingForCloudData({ status, supabaseStatus }: { status: { state: stri
   </main>
 }
 
-function TurnstileBox() {
-  return <section className="turnstile live-turnstile">
-    <span>登入驗證碼</span>
-    {TURNSTILE_SITE_KEY
-      ? <div className="cf-turnstile" data-sitekey={TURNSTILE_SITE_KEY}>Cloudflare Turnstile 已啟用</div>
-      : <strong>正式驗證待填入 Turnstile sitekey</strong>}
-    <small>正式上線驗證區塊</small>
-  </section>
-}
-
 function LoginApp() {
+  const [coreStatus, setCoreStatus] = useState<OnlineCoreStatus>({ state: 'connecting', message: '系統狀態檢查中' })
+  useEffect(() => { checkOnlineCoreStatus().then(setCoreStatus) }, [])
   const [memberAccount, setMemberAccount] = useState('')
   const [verificationPassword, setVerificationPassword] = useState('')
   const [loginMessage, setLoginMessage] = useState('')
   const submitLogin = async () => {
+    if (coreStatus.maintenanceMode) { setLoginMessage('系統維護中，暫停登入'); return }
     setLoginMessage('登入驗證中')
     try {
       const result = await memberLogin({ memberAccount, verificationPassword })
@@ -222,7 +218,6 @@ function LoginApp() {
       <div className="login-chip">前台登入驗證</div>
       <label>會員帳號<input placeholder="請輸入會員帳號" value={memberAccount} onChange={(event) => setMemberAccount(event.target.value)} /></label>
       <label>驗證密碼<input placeholder="請輸入驗證密碼" type="password" value={verificationPassword} onChange={(event) => setVerificationPassword(event.target.value)} /></label>
-      <TurnstileBox />
       <button onClick={submitLogin}>會員登入</button>
       <p>前台登入形式：會員帳號 / 驗證密碼</p>
       {loginMessage ? <em>{loginMessage}</em> : <em>驗證密碼 = 後台建立的會員授權密碼</em>}
@@ -231,9 +226,12 @@ function LoginApp() {
 }
 
 function AdminLoginApp() {
+  const [coreStatus, setCoreStatus] = useState<OnlineCoreStatus>({ state: 'connecting', message: '系統狀態檢查中' })
+  useEffect(() => { checkOnlineCoreStatus().then(setCoreStatus) }, [])
   const [agentAccount, setAgentAccount] = useState('')
   const [loginMessage, setLoginMessage] = useState('')
   const submitLogin = async () => {
+    if (coreStatus.maintenanceMode && agentAccount.trim().toLowerCase() !== SUPER_ADMIN) { setLoginMessage('系統維護中，僅超級管理員可登入'); return }
     setLoginMessage('後台登入驗證中')
     try {
       const result = await agentLogin({ agentAccount })
@@ -242,6 +240,7 @@ function AdminLoginApp() {
         return
       }
       window.sessionStorage.setItem('darven-admin-account', agentAccount.trim())
+      window.sessionStorage.setItem('darven-admin-role', normalizeRole(result.account?.role ?? result.agent?.role ?? (agentAccount.trim().toLowerCase() === SUPER_ADMIN ? 'super' : 'viewer')))
       setLoginMessage('登入成功，正在進入後台')
       window.location.assign('/admin')
     } catch {
@@ -251,10 +250,9 @@ function AdminLoginApp() {
   return <main className="login-shell">
     <section className="login-card" aria-label="管理後台登入">
       <h1 className="admin-login-title">AI百家管理後台登入</h1>
-      <strong>Darven AI 後台管理</strong>
+      <strong>瑞文智慧後台管理</strong>
       <div className="login-chip">管理員 / 代理登入</div>
       <label>管理員或代理帳號<input placeholder="請輸入管理員或代理帳號" value={agentAccount} onChange={(event) => setAgentAccount(event.target.value)} /></label>
-      <TurnstileBox />
       <button onClick={submitLogin}>管理員登入</button>
       {loginMessage ? <em>{loginMessage}</em> : null}
     </section>
@@ -295,6 +293,8 @@ const initialCodes: CodeRow[] = [
 function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTable[]; supabaseStatus: { state: string; message: string }; onlineCoreStatus: OnlineCoreStatus }) {
   const totalRounds = tables.reduce((sum, table) => sum + Number(table.trend.current_round ?? 0), 0)
   const loginAgent = window.sessionStorage.getItem('darven-admin-account')?.trim() || SUPER_ADMIN
+  const loginRoleName = normalizeRole(window.sessionStorage.getItem('darven-admin-role') || (loginAgent.toLowerCase() === SUPER_ADMIN ? 'super' : 'viewer'))
+  const isSuper = loginRoleName === 'super' || loginAgent.toLowerCase() === SUPER_ADMIN
   const [memberAccount, setMemberAccount] = useState('')
   const [planDays, setPlanDays] = useState('30')
   const [latestMember, setLatestMember] = useState('User001')
@@ -311,14 +311,16 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const [memoryCenter, setMemoryCenter] = useState<OnlineMemoryCenter>({ state: 'connecting', items: [], reports: [], strategies: [] })
   const [strategyAnalysis, setStrategyAnalysis] = useState<OnlineStrategyAnalysis>({ state: 'connecting', strategyRows: [], weakTables: [], strongTables: [], watchTables: [], suggestions: [] })
   const [licenseStatus, setLicenseStatus] = useState<OnlineLicenseStatus>({ managers: [], agents: [], plans: [], licenses: [], agentRows: [], licenseRows: [] })
-  const [cloudDataStatus, setCloudDataStatus] = useState<{ mtAutoLoginEnabled?: boolean; message?: string; tableCount?: number; todayRoundCount?: number }>({ mtAutoLoginEnabled: false, message: 'MT自動登入未啟用', todayRoundCount: 0 })
+  const [cloudDataStatus, setCloudDataStatus] = useState<{ mtAutoLoginEnabled?: boolean; message?: string; tableCount?: number; todayRoundCount?: number }>({ mtAutoLoginEnabled: false, message: '資料抓取待確認', todayRoundCount: 0 })
   useEffect(() => {
-    getOnlineMemoryCenter().then(setMemoryCenter); getOnlineStrategyAnalysis().then(setStrategyAnalysis)
-    const loadCloud = () => getCloudDataStatus().then(setCloudDataStatus)
-    loadCloud()
-    const timer = window.setInterval(loadCloud, 3000)
+    const loadReports = () => { getOnlineMemoryCenter().then(setMemoryCenter); getOnlineStrategyAnalysis().then(setStrategyAnalysis); getCloudDataStatus().then(setCloudDataStatus) }
+    loadReports()
+    const timer = window.setInterval(loadReports, 300000)
     return () => window.clearInterval(timer)
   }, [])
+  useEffect(() => {
+    if (onlineCoreStatus.maintenanceMode && !isSuper) logoutAdmin()
+  }, [onlineCoreStatus.maintenanceMode, isSuper])
   useEffect(() => { getOnlineLicenseStatus(displayManager).then((status) => {
     setLicenseStatus(status)
     if (status.licenseRows.length) {
@@ -347,6 +349,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     return date.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
   }, [clampedPlanDays])
   const createAuthorization = async () => {
+    if (!canManageCodes) return notify('此角色不能建立驗證碼')
     const nextCode = buildLicenseCode(displayManager, displayMember, serialNo)
     const result = await createOnlineLicense({ memberAccount: displayMember, code: nextCode, agentCode: displayManager, durationDays: clampedPlanDays, adminAccount: displayManager })
     setLatestMember(displayMember)
@@ -372,18 +375,21 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   }
   const selectedCodeRows = () => codes.filter((row) => selectedCodeMembers.includes(row.member))
   const deleteSelectedCodes = async () => {
+    if (!canManageCodes) return notify('此角色不能管理驗證碼')
     const rows = selectedCodeRows()
     setCodes((current) => current.filter((row) => !selectedCodeMembers.includes(row.member)))
     setSelectedCodeMembers([])
     await Promise.all(rows.map((row) => deleteOnlineLicense({ code: row.code, adminAccount: displayManager }).catch(() => null)))
   }
   const suspendSelectedCodes = async () => {
+    if (!canManageCodes) return notify('此角色不能管理驗證碼')
     const rows = selectedCodeRows()
     await Promise.all(rows.map((row) => setOnlineLicenseStatus({ code: row.code, status: 'suspended', adminAccount: displayManager }).catch(() => null)))
     setCodes((current) => current.map((row) => selectedCodeMembers.includes(row.member) ? { ...row, status: '暫停中' } : row))
     await refreshLicenses()
   }
   const extendSelectedCodes = async () => {
+    if (!canManageCodes) return notify('此角色不能管理驗證碼')
     const rows = selectedCodeRows()
     await Promise.all(rows.map((row) => extendOnlineLicense({ code: row.code, days: clampedPlanDays, adminAccount: displayManager }).catch(() => null)))
     await refreshLicenses()
@@ -392,15 +398,19 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const copyText = async (text: string, message: string) => { await navigator.clipboard?.writeText(text); notify(message) }
   const createAgentFromForm = async () => {
     const code = newAgentCode.trim()
-    if (!code) return notify('請輸入代理帳號')
-    if (loginRole(displayManager, agents) === 'agent' && newAgentRole === 'viewer') return notify('代理不能開設觀察者')
+    if (!canManageAgents) return notify('此角色不能開設代理')
+    if (!code) return notify('請輸入帳號')
+    if (!roleOptions.includes(newAgentRole)) return notify('下級等級不能高於或平級於上級')
     await createOnlineAgent({ code, name: code, role: newAgentRole, parentCode: displayManager, adminAccount: displayManager, permission: rolePermission(newAgentRole) })
     setNewAgentCode('')
     await refreshLicenses()
     notify('代理帳號已建立')
   }
   const adjustSelectedAgents = async () => {
+    if (!canManageAgents) return notify('此角色不能調整等級')
+    if (!canManageAgents) return notify('此角色不能刪除代理')
     if (!selectedAgents.length) return notify('請先勾選代理')
+    if (!roleOptions.includes(newAgentRole)) return notify('下級等級不能高於或平級於上級')
     await Promise.all(selectedAgents.map((code) => {
       const current = agents.find((agent) => agent.account === code)
       return createOnlineAgent({ code, name: code, role: newAgentRole, parentCode: current?.parent ?? displayManager, adminAccount: displayManager, permission: rolePermission(newAgentRole) })
@@ -409,18 +419,29 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     notify('代理角色已調整')
   }
   const deleteSelectedAgents = async () => {
+    if (!canManageAgents) return notify('此角色不能刪除代理')
     if (!selectedAgents.length) return
     await deleteOnlineAgents({ codes: selectedAgents, adminAccount: displayManager })
     setSelectedAgents([])
     await refreshLicenses()
   }
-  const enableMaintenanceMode = () => updateOnlineAppSetting({ scope: 'frontend', key: 'ui_defaults', value: { maintenanceMode: true }, isPublic: true })
+  const enableMaintenanceMode = async () => {
+    if (!isSuper) return notify('只有超級管理員可以啟用維護模式')
+    await updateOnlineAppSetting({ scope: 'frontend', key: 'ui_defaults', value: { maintenanceMode: true, enabledAt: new Date().toISOString() }, isPublic: true })
+    notify('維護模式已啟用')
+    window.location.reload()
+  }
   const latestReport = memoryCenter.reports[0]
   const latestReportHitRate = latestReport?.main_hit_rate != null ? `${latestReport.main_hit_rate}%` : '-'
+    const actualRounds = cloudDataStatus.todayRoundCount ?? latestReport?.rounds ?? totalRounds
   const agents = useMemo(() => normalizeAgents(licenseStatus.configured === false ? initialAgents : licenseStatus.agentRows, displayManager), [licenseStatus.configured, licenseStatus.agentRows, displayManager])
   const visibleAgents = useMemo(() => filterCollapsedAgents(agents, collapsedAgents), [agents, collapsedAgents])
   const filteredAgents = useMemo(() => filterAgents(visibleAgents, agentSearch), [visibleAgents, agentSearch])
   const filteredCodes = useMemo(() => filterCodes(codes, codeSearch), [codes, codeSearch])
+  const canManageCodes = ['super','manager','agent'].includes(loginRoleName)
+  const canManageAgents = ['super','manager'].includes(loginRoleName)
+  const canOnlyObserve = loginRoleName === 'viewer'
+  const roleOptions = allowedChildRoles(loginRoleName)
 
   return <main className="admin-shell admin-v015-shell" style={{ width: '100%', maxWidth: 'none' }}>
     {toast ? <div className="toast">{toast}</div> : null}
@@ -433,9 +454,9 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     </header>
 
     <section className="admin-summary-grid auth-summary v015-summary v044-summary-grid" aria-label="管理總覽" style={{ width: '100%', maxWidth: 'none' }}>
-      <AdminMetric title="今日局數" value={`${cloudDataStatus.todayRoundCount ?? totalRounds} 局`} tone="purple" />
-      <AdminMetric title="數據抓取" value={`${cloudDataStatus.tableCount ?? tables.length}桌`} tone="cyan" />
-      <AdminMetric title="SUPABASE" value={formatConnectionMetric(supabaseStatus, 'Supabase')} tone={supabaseStatus.state === 'error' ? 'yellow' : 'green'} />
+      <article className="admin-metric purple settings-metric"><span>線上設定管理</span>{isSuper ? <button onClick={enableMaintenanceMode}>啟用維護模式</button> : <strong>僅超級管理員</strong>}</article>
+      <AdminMetric title="數據抓取" value={`已抓 ${actualRounds} 局`} tone="cyan" />
+      <AdminMetric title="資料庫" value={formatConnectionMetric(supabaseStatus, '資料庫')} tone={supabaseStatus.state === 'error' ? 'yellow' : 'green'} />
       <AdminMetric title="記憶中心" value={formatConnectionMetric(onlineCoreStatus, '記憶中心')} tone={onlineCoreStatus.state === 'error' ? 'yellow' : 'cyan'} />
     </section>
 
@@ -448,7 +469,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
         <label>方案天數<input aria-label="方案天數" type="number" min="1" max="30" value={String(clampedPlanDays)} onChange={(event) => setPlanDays(String(clampPlanDays(event.target.value)))} /></label>
         <label>流水號<input aria-label="流水號" value={serialNo} readOnly /></label>
       </div>
-      <button className="primary create-auth" onClick={createAuthorization}>建立授權</button>
+      <button className="primary create-auth" disabled={!canManageCodes} onClick={createAuthorization}>建立授權</button>
       <div className="v015-result-grid">
         <div className="serial-box member-box">會員帳號：{latestMember || '尚未建立'}</div>
         <div className="serial-box code-box">驗證碼：{latestCode || '尚未建立'}</div>
@@ -468,9 +489,9 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       <section className="admin-panel list-panel" aria-label="下級代理">
         <h2>下級代理</h2>
         <input className="search-input" placeholder="尋找代理帳號" value={agentSearch} onChange={(event) => setAgentSearch(event.target.value)} />
-        <div className="admin-action-row compact agent-action-form"><input placeholder="輸入代理帳號" value={newAgentCode} onChange={(event) => setNewAgentCode(event.target.value)} /><select value={newAgentRole} onChange={(event) => setNewAgentRole(event.target.value as 'viewer' | 'agent' | 'manager')}><option value="viewer">觀察者</option><option value="agent">代理</option><option value="manager">管理員</option></select><button onClick={createAgentFromForm}>增加代理</button><button onClick={deleteSelectedAgents}>刪除代理</button><button onClick={adjustSelectedAgents}>調整等級</button></div>
+        <div className="admin-action-row compact agent-action-form"><input placeholder="輸入帳號" value={newAgentCode} onChange={(event) => setNewAgentCode(event.target.value)} /><select value={newAgentRole} onChange={(event) => setNewAgentRole(event.target.value as 'viewer' | 'agent' | 'manager')}>{roleOptions.map((role) => <option value={role} key={role}>{roleLabelText(role)}</option>)}</select><button disabled={!canManageAgents} onClick={createAgentFromForm}>增加代理</button><button disabled={!canManageAgents} onClick={deleteSelectedAgents}>刪除代理</button><button disabled={!canManageAgents} onClick={adjustSelectedAgents}>調整等級</button></div>
         <div className="scroll-list agent-list hierarchy-list">
-          <div className="list-head agent-hierarchy-head"><span></span><span>帳號</span><span>代理等級</span><span>權限</span></div>
+          <div className="list-head agent-hierarchy-head"><span></span><span>帳號</span><span>代理等級</span><span>增加代理</span></div>
           {filteredAgents.map((agent) => {
             const collapsible = hasAgentChildren(agents, agent.account)
             const collapsed = collapsedAgents.includes(agent.account)
@@ -479,7 +500,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
                 {collapsible ? <button className="collapse-agent" aria-label={`${collapsed ? '展開' : '收合'} ${agent.account}`} onClick={() => toggleCollapse(agent.account)}>{collapsed ? '▶' : '▼'}</button> : <i />}
                 <input aria-label={`勾選 ${agent.account}`} type="checkbox" checked={selectedAgents.includes(agent.account)} onChange={() => toggleAgent(agent.account)} />
               </span>
-              <span>{agent.account}</span><b className={agent.level.includes('管理員') ? 'green-text' : agent.level.includes('代理') ? 'yellow-text' : ''}>{agent.level}</b><em>{agent.permission}</em>
+              <span>{agent.account}</span><b className={agent.level.includes('管理員') ? 'green-text' : agent.level.includes('代理') ? 'yellow-text' : ''}>{agent.level}</b><button className="inline-add-agent" disabled={!canCreateUnder(agent.level, loginRoleName)} onClick={() => { setNewAgentCode(''); setNewAgentRole(defaultChildRole(agent.level)); notify(`請在上方輸入帳號，將新增到 ${agent.account} 底下`) }}>增加代理</button>
             </div>
           })}
         </div>
@@ -489,9 +510,9 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
         <h2>已建立驗證碼</h2>
         <input className="search-input" placeholder="尋找驗證碼" value={codeSearch} onChange={(event) => setCodeSearch(event.target.value)} />
         <div className="admin-action-row compact code-action-row">
-          <button className="danger" onClick={deleteSelectedCodes}>刪除驗證碼</button>
-          <button className="warning" onClick={suspendSelectedCodes}>暫停驗證碼</button>
-          <button className="extend" onClick={extendSelectedCodes}>延長驗證碼</button>
+          <button className="danger" disabled={!canManageCodes} onClick={deleteSelectedCodes}>刪除驗證碼</button>
+          <button className="warning" disabled={!canManageCodes} onClick={suspendSelectedCodes}>暫停驗證碼</button>
+          <button className="extend" disabled={!canManageCodes} onClick={extendSelectedCodes}>延長驗證碼</button>
         </div>
         <div className="scroll-list code-list">
           {filteredCodes.map((row) => <div className="list-row code-row" key={row.member}>
@@ -503,25 +524,15 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       </section>
     </section>
 
-    <section className="v015-management-grid v019-scaled-lists v044-feature-grid" aria-label="後台功能四格" style={{ width: '100%', maxWidth: 'none' }}>
-      <section className="admin-panel list-panel feature-card" aria-label="線上設定管理">
-        <h2>線上設定管理</h2>
-        <div className="admin-action-row compact">
-          <button onClick={enableMaintenanceMode}>啟用維護模式</button>
-        </div>
-      </section>
+    <section className="admin-panel list-panel weak-panel" aria-label="弱桌分析">
+      <h2>弱桌分析</h2>
+      <div className="weak-grid">{tableDisplayOrder.map((name, index) => <article className="weak-card" key={name}><strong>{name}桌</strong><span>主命中率 {tableHitRate(strategyAnalysis, index, 'main')}</span><span>副命中率 {tableHitRate(strategyAnalysis, index, 'side')}</span></article>)}</div>
+    </section>
 
-      <section className="admin-panel list-panel feature-card" aria-label="線上記憶與報表">
-        <h2>線上記憶與報表</h2>
-        <div className="list-head"><span>日期</span><span>總抓局數</span><span>主命中率</span><span>副命中率</span></div>
-        <div className="list-row agent-row"><span>{new Date().toLocaleDateString('zh-TW')}</span><b className="green-text">{cloudDataStatus.todayRoundCount ?? latestReport?.rounds ?? 0}局</b><strong>{latestReportHitRate}</strong><em>{formatSideHitRate(latestReport)}</em></div>
-      </section>
-
-      <section className="admin-panel list-panel feature-card" aria-label="弱桌分析">
-        <h2>弱桌分析</h2>
-        <div className="list-head"><span>桌號</span><span>主命中率</span><span>副命中率</span></div>
-        {tableDisplayOrder.map((name, index) => <div className="list-row agent-row" key={name}><span>{name}桌</span><b className="yellow-text">{tableHitRate(strategyAnalysis, index, 'main')}</b><em>{tableHitRate(strategyAnalysis, index, 'side')}</em></div>)}
-      </section>
+    <section className="admin-panel list-panel report-panel" aria-label="線上記憶與報表">
+      <h2>線上記憶與報表</h2>
+      <div className="report-wide-row report-head"><span>日期</span><span>當日總局數</span><span>莊命中率</span><span>閒命中率</span><span>和命中率</span><span>龍寶命中率</span><span>對子命中率</span><span>超六命中率</span></div>
+      <div className="report-wide-row"><span>{new Date().toLocaleDateString('zh-TW')}</span><b>{actualRounds}局</b><span>{categoryHitRate(latestReport, 'banker')}</span><span>{categoryHitRate(latestReport, 'player')}</span><span>{categoryHitRate(latestReport, 'tie')}</span><span>{categoryHitRate(latestReport, 'dragon')}</span><span>{categoryHitRate(latestReport, 'pair')}</span><span>{categoryHitRate(latestReport, 'six')}</span></div>
     </section>
 
   </main>
@@ -553,6 +564,54 @@ function useInactivityLogout(mode: 'admin' | 'member' | null) {
       ;['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'].forEach((event) => window.removeEventListener(event, reset))
     }
   }, [mode])
+}
+
+function isCompleteTableUpdate(table?: LiveTable) {
+  const trend = table?.trend
+  if (!trend) return false
+  const round = Number(trend.current_round ?? 0)
+  const road = String(trend.bead_plate2 ?? '') || String(trend.big2 ?? '')
+  return round > 0 && road.length > 0
+}
+
+function normalizeRole(role?: string | null) {
+  const value = String(role ?? '').toLowerCase()
+  if (value.includes('total') || value.includes('super')) return 'super'
+  if (value.includes('manager') || value.includes('管理')) return 'manager'
+  if (value.includes('agent') || value.includes('代理')) return 'agent'
+  if (value.includes('viewer') || value.includes('觀察')) return 'viewer'
+  return 'viewer'
+}
+
+function roleLabelText(role: string) {
+  if (role === 'manager') return '管理員'
+  if (role === 'agent') return '代理'
+  return '觀察者'
+}
+
+function allowedChildRoles(role: string) {
+  if (role === 'super') return ['manager', 'agent', 'viewer']
+  if (role === 'manager') return ['agent', 'viewer']
+  return []
+}
+
+function canCreateUnder(parentLevel: string, loginRoleName: string) {
+  if (!['super','manager'].includes(loginRoleName)) return false
+  return parentLevel.includes('超級') || parentLevel.includes('管理員')
+}
+
+function defaultChildRole(parentLevel: string): 'viewer' | 'agent' | 'manager' {
+  if (parentLevel.includes('超級')) return 'manager'
+  if (parentLevel.includes('管理員')) return 'agent'
+  return 'viewer'
+}
+
+function categoryHitRate(report: any, key: string) {
+  const direct = report?.[`${key}_hit_rate`] ?? report?.raw_summary?.[`${key}_hit_rate`] ?? report?.metadata?.[`${key}_hit_rate`]
+  if (direct != null) return `${direct}%`
+  if (key === 'banker' || key === 'player') return report?.main_hit_rate != null ? `${report.main_hit_rate}%` : '-'
+  if (['dragon','pair','six','tie'].includes(key)) return formatSideHitRate(report)
+  return '-'
 }
 
 function markBigRoadTies(cells: ReturnType<typeof parseBigRoad>) {
@@ -696,7 +755,7 @@ function tableHitRate(analysis: OnlineStrategyAnalysis, index: number, kind: 'ma
 
 function formatConnectionMetric(status: { state: string; message: string }, label: string) {
   if (status.state === 'connected') return '已連線'
-  if (status.state === 'error') return status.message.replace(`${label} `, '').replace('Supabase ', '')
+  if (status.state === 'error') return status.message.replace(`${label} `, '').replace('Supabase ', '').replace('SUPABASE', '資料庫')
   if (status.state === 'connecting') return '檢查中'
   return status.message || '未設定'
 }

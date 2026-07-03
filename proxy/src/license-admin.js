@@ -101,6 +101,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
   async function createLicense({ memberAccount, code, agentCode, planName = '正式月卡', durationDays = 30, startsOn = todayIso(), adminAccount = 'dv1788' } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
     if (!code || !agentCode) throw new Error('license code and agentCode are required')
+    await assertCanManageCodes(adminAccount)
     const resolvedMemberAccount = memberAccount || `User${String(code).match(/(\d+)/)?.[1]?.slice(-4)?.padStart(4, '0') ?? '0001'}`
     const plan = await getOrCreatePlan({ name: planName, durationDays })
     const agent = await getOrCreateAgentByCode(agentCode)
@@ -125,7 +126,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
 
   async function setLicenseStatus({ code, status, adminAccount = 'DVAI' } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
-    rejectPlainAgentAdmin(adminAccount)
+    await assertCanManageCodes(adminAccount)
     if (!code || !status) throw new Error('License code and status are required')
     const result = await db.query(
       `update public.licenses set status = $2, updated_at = now() where code = $1 returning id, code, status, expires_on`,
@@ -138,6 +139,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
   async function extendLicense({ code, days = 30, adminAccount = 'DVAI' } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
     if (!code) throw new Error('License code is required')
+    await assertCanManageCodes(adminAccount)
     const result = await db.query(
       `update public.licenses set expires_on = expires_on + ($2::int * interval '1 day'), updated_at = now() where code = $1 returning id, code, status, expires_on`,
       [code, Number(days)],
@@ -149,6 +151,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
   async function deleteLicense({ code, adminAccount = 'DVAI' } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
     if (!code) throw new Error('License code is required')
+    await assertCanManageCodes(adminAccount)
     const result = await db.query(
       `update public.licenses set status = 'expired', updated_at = now() where code = $1 returning id, code, status, expires_on`,
       [code],
@@ -250,6 +253,14 @@ async function assertCanManageRole(adminAccount, role) {
   if (!admin) throw new Error('管理者未開通')
   if (admin.role === 'viewer') throw new Error('觀察者不可開設帳號')
   if (admin.role === 'agent' && role === 'viewer') throw new Error('代理不能開設觀察者')
+  return true
+}
+
+async function assertCanManageCodes(adminAccount) {
+  if (isSuperAdmin(adminAccount)) return true
+  const admin = await dbQueryAgentRole(adminAccount)
+  if (!admin) throw new Error('管理者未開通')
+  if (admin.role === 'viewer') throw new Error('觀察者不能管理驗證碼')
   return true
 }
 

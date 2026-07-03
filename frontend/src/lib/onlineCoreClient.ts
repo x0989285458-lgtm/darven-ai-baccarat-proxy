@@ -5,6 +5,8 @@ export type OnlineCoreStatus = {
   message: string
   projectName?: string
   featureFlags?: Record<string, boolean>
+  settings?: Record<string, any>
+  maintenanceMode?: boolean
 }
 
 export type OnlineMemoryCenter = {
@@ -36,6 +38,8 @@ export async function checkOnlineCoreStatus(fetchImpl = fetch): Promise<OnlineCo
       message: '記憶中心已連線',
       projectName: body.project?.name ?? body.project?.slug,
       featureFlags: body.featureFlags ?? {},
+      settings: body.settings ?? {},
+      maintenanceMode: Boolean(body.settings?.frontend?.ui_defaults?.maintenanceMode ?? body.settings?.frontend?.maintenance?.enabled ?? body.featureFlags?.maintenance_mode),
     }
   } catch {
     return { state: 'error', message: '記憶中心未連線' }
