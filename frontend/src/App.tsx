@@ -873,10 +873,12 @@ function buildChildAgentAccount(parentCode: string, rawCode: string) {
 }
 
 function buildLicenseCode(agentCode: string, memberAccount: string, runningNo: string) {
-  const safeAgent = String(agentCode || '').replace(/[^A-Za-z0-9]/g, '') || SUPER_ADMIN
-  if (/\d/.test(safeAgent)) return `${safeAgent}_${runningNo || '001'}`
-  const memberDigits = memberAccount.match(/\d+/)?.[0]?.padStart(4, '0').slice(-4) ?? '0001'
-  return `${safeAgent}${memberDigits}_${runningNo || '001'}`
+  const safeAgent = String(agentCode || SUPER_ADMIN).replace(/[^A-Za-z0-9]/g, '') || SUPER_ADMIN
+  const letters = safeAgent.match(/[A-Za-z]+/)?.[0] ?? 'dv'
+  const agentDigits = safeAgent.replace(/\D/g, '')
+  const memberDigits = memberAccount.match(/\d+/)?.[0] ?? ''
+  const digits = (agentDigits || memberDigits || '0001').slice(-4).padStart(4, '0')
+  return `${letters}${digits}_${runningNo || '001'}`
 }
 
 function rolePermission(role: string) {
