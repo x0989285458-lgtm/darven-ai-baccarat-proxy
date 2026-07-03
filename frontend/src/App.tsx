@@ -522,7 +522,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       await deleteOnlineAgents({ codes: selectedAgents, adminAccount: displayManager })
       setSelectedAgents([])
       await refreshLicenses()
-      notify('代理已刪除')
+      notify('已刪除選取帳號；若選取管理員，其附屬下級也已刪除')
     } catch (error: any) {
       notify(error?.message || '刪除代理失敗')
     } finally {

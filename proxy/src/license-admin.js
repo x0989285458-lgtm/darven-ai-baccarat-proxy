@@ -93,11 +93,13 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
     const list = Array.isArray(codes) ? codes.filter(Boolean) : []
     if (!list.length) throw new Error('Agent codes are required')
+    const allAgents = await db.query(`select code, parent_code, role from public.agents where coalesce(is_active, true) = true`)
+    const toDelete = collectAgentDeleteCodes(list, allAgents.rows)
     const result = await db.query(`update public.agents set is_active = false, updated_at = now()
                                   where code = any($1::text[])
-                                  returning id, code, name, role, parent_code, is_active`, [list])
-    await logAdminOperation({ adminAccount, action: 'delete_agents', targetType: 'agent', targetCode: list.join(','), payload: { codes: list } })
-    return { ok: true, rows: result.rows }
+                                  returning id, code, name, role, parent_code, is_active`, [toDelete])
+    await logAdminOperation({ adminAccount, action: 'delete_agents', targetType: 'agent', targetCode: toDelete.join(','), payload: { requestedCodes: list, deletedCodes: toDelete } })
+    return { ok: true, rows: result.rows, deletedCodes: toDelete }
   }
 
   async function createLicense({ memberAccount, code, agentCode, planName = '正式月卡', durationDays = 30, startsOn = todayIso(), adminAccount = 'dv1788' } = {}) {
@@ -341,6 +343,18 @@ function isDescendantAgent(agent, ancestor, agents) {
     parent = agents.find((item) => item.code === parent)?.parent_code
   }
   return false
+}
+
+function collectAgentDeleteCodes(requestedCodes, agents) {
+  const requested = new Set(requestedCodes.map(String))
+  const deleteSet = new Set(requested)
+  const selectedManagers = agents.filter((agent) => requested.has(agent.code) && String(agent.role).toLowerCase().includes('manager'))
+  for (const manager of selectedManagers) {
+    for (const agent of agents) {
+      if (isDescendantAgent(agent, manager.code, agents)) deleteSet.add(agent.code)
+    }
+  }
+  return Array.from(deleteSet)
 }
 
 async function assertCanManageRole(adminAccount, role) {
