@@ -76,14 +76,15 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     if (!code) throw new Error('Agent code is required')
     await assertCanManageRole(adminAccount, role)
     const displayName = name || code
+    const resolvedParentCode = isSuperAdmin(parentCode) ? null : parentCode
     const existing = await db.query('select id from public.agents where code = $1 limit 1', [code])
     const result = existing.rows[0]
       ? await db.query(`update public.agents set name = $2, role = $3, parent_code = $4, permission = $5, is_active = true, updated_at = now()
-                       where code = $1 returning id, code, name, role, parent_code, permission, is_active, created_at`, [code, displayName, role, parentCode, permission])
+                       where code = $1 returning id, code, name, role, parent_code, permission, is_active, created_at`, [code, displayName, role, resolvedParentCode, permission])
       : await db.query(`insert into public.agents(code, name, role, parent_code, permission, is_active)
                        values ($1, $2, $3, $4, $5, true)
-                       returning id, code, name, role, parent_code, permission, is_active, created_at`, [code, displayName, role, parentCode, permission])
-    await logAdminOperation({ adminAccount, action: 'create_agent', targetType: 'agent', targetCode: code, payload: { role, parentCode, permission } })
+                       returning id, code, name, role, parent_code, permission, is_active, created_at`, [code, displayName, role, resolvedParentCode, permission])
+    await logAdminOperation({ adminAccount, action: 'create_agent', targetType: 'agent', targetCode: code, payload: { role, parentCode: resolvedParentCode, permission } })
     return { ok: true, row: result.rows[0] }
   }
 
