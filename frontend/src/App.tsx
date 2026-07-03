@@ -328,10 +328,12 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
         setLatestCode(rows[0].code)
         setLatestMember(rows[0].member)
       }
-    } else if (status.configured === false || (!status.agentRows.length && !status.licenseRows.length)) {
+    } else if (status.configured === false) {
       setCodes(pruneExpiredCodes(initialCodes))
     } else {
       setCodes([])
+      setLatestCode('')
+      setLatestMember('')
     }
   }) }, [])
   const startDate = '2026/06/25'
@@ -415,7 +417,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const enableMaintenanceMode = () => updateOnlineAppSetting({ scope: 'frontend', key: 'ui_defaults', value: { maintenanceMode: true }, isPublic: true })
   const latestReport = memoryCenter.reports[0]
   const latestReportHitRate = latestReport?.main_hit_rate != null ? `${latestReport.main_hit_rate}%` : '-'
-  const agents = useMemo(() => normalizeAgents(licenseStatus.agentRows.length ? licenseStatus.agentRows : initialAgents, displayManager), [licenseStatus.agentRows, displayManager])
+  const agents = useMemo(() => normalizeAgents(licenseStatus.configured === false ? initialAgents : licenseStatus.agentRows, displayManager), [licenseStatus.configured, licenseStatus.agentRows, displayManager])
   const visibleAgents = useMemo(() => filterCollapsedAgents(agents, collapsedAgents), [agents, collapsedAgents])
   const filteredAgents = useMemo(() => filterAgents(visibleAgents, agentSearch), [visibleAgents, agentSearch])
   const filteredCodes = useMemo(() => filterCodes(codes, codeSearch), [codes, codeSearch])
@@ -448,11 +450,11 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       </div>
       <button className="primary create-auth" onClick={createAuthorization}>建立授權</button>
       <div className="v015-result-grid">
-        <div className="serial-box member-box">會員帳號：{latestMember}</div>
-        <div className="serial-box code-box">驗證碼：{latestCode}</div>
+        <div className="serial-box member-box">會員帳號：{latestMember || '尚未建立'}</div>
+        <div className="serial-box code-box">驗證碼：{latestCode || '尚未建立'}</div>
       </div>
       <div className="v015-copy-row">
-        <button onClick={() => copyText(latestMember, '會員帳號已複製')}>複製帳號</button><button onClick={() => copyText(latestCode, '驗證碼已複製')}>複製驗證碼</button><button onClick={() => copyText(`會員帳號：${latestMember}\n驗證碼：${latestCode}`, '帳密已複製')}>複製帳密</button>
+        <button onClick={() => copyText(latestMember || '', '會員帳號已複製')}>複製帳號</button><button onClick={() => copyText(latestCode || '', '驗證碼已複製')}>複製驗證碼</button><button onClick={() => copyText(`會員帳號：${latestMember}\n驗證碼：${latestCode}`, '帳密已複製')}>複製帳密</button>
       </div>
       <div className="auth-summary-mini v015-date-grid">
         <span><b>建立日期</b><strong>{startDate}</strong></span>
