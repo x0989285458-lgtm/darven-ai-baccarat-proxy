@@ -329,6 +329,8 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const [codeSearch, setCodeSearch] = useState('')
   const [newAgentCode, setNewAgentCode] = useState('')
   const [newAgentRole, setNewAgentRole] = useState<'viewer' | 'agent' | 'manager'>('agent')
+  const [newAgentParent, setNewAgentParent] = useState('')
+  const [agentActionBusy, setAgentActionBusy] = useState(false)
   const [toast, setToast] = useState('')
   const [memoryCenter, setMemoryCenter] = useState<OnlineMemoryCenter>({ state: 'connecting', items: [], reports: [], strategies: [] })
   const [strategyAnalysis, setStrategyAnalysis] = useState<OnlineStrategyAnalysis>({ state: 'connecting', strategyRows: [], weakTables: [], strongTables: [], watchTables: [], suggestions: [] })
@@ -429,36 +431,60 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     await Promise.all(rows.map((row) => extendOnlineLicense({ code: row.code, days: clampedPlanDays, adminAccount: displayManager }).catch(() => null)))
     await refreshLicenses()
   }
-  const notify = (message: string) => { setToast(message); window.alert(message); window.setTimeout(() => setToast(''), 2200) }
+  const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2600) }
   const copyText = async (text: string, message: string) => { await navigator.clipboard?.writeText(text); notify(message) }
   const createAgentFromForm = async () => {
     const code = newAgentCode.trim()
     if (!canManageAgents) return notify('此角色不能開設代理')
     if (!code) return notify('請輸入帳號')
     if (!roleOptions.includes(newAgentRole)) return notify('下級等級不能高於或平級於上級')
-    await createOnlineAgent({ code, name: code, role: newAgentRole, parentCode: displayManager, adminAccount: displayManager, permission: rolePermission(newAgentRole) })
-    setNewAgentCode('')
-    await refreshLicenses()
-    notify('代理帳號已建立')
+    const parentCode = newAgentParent || displayManager
+    setAgentActionBusy(true)
+    try {
+      const result = await createOnlineAgent({ code, name: code, role: newAgentRole, parentCode, adminAccount: displayManager, permission: rolePermission(newAgentRole) })
+      if (!result.ok && !result.skipped) throw new Error(result.error || '建立失敗')
+      setNewAgentCode('')
+      setNewAgentParent('')
+      await refreshLicenses()
+      notify(`代理帳號已建立：${code}`)
+    } catch (error: any) {
+      notify(error?.message || '建立代理失敗')
+    } finally {
+      setAgentActionBusy(false)
+    }
   }
   const adjustSelectedAgents = async () => {
     if (!canManageAgents) return notify('此角色不能調整等級')
-    if (!canManageAgents) return notify('此角色不能刪除代理')
     if (!selectedAgents.length) return notify('請先勾選代理')
     if (!roleOptions.includes(newAgentRole)) return notify('下級等級不能高於或平級於上級')
-    await Promise.all(selectedAgents.map((code) => {
-      const current = agents.find((agent) => agent.account === code)
-      return createOnlineAgent({ code, name: code, role: newAgentRole, parentCode: current?.parent ?? displayManager, adminAccount: displayManager, permission: rolePermission(newAgentRole) })
-    }))
-    await refreshLicenses()
-    notify('代理角色已調整')
+    setAgentActionBusy(true)
+    try {
+      await Promise.all(selectedAgents.map((code) => {
+        const current = agents.find((agent) => agent.account === code)
+        return createOnlineAgent({ code, name: code, role: newAgentRole, parentCode: current?.parent ?? displayManager, adminAccount: displayManager, permission: rolePermission(newAgentRole) })
+      }))
+      await refreshLicenses()
+      notify('代理角色已調整')
+    } catch (error: any) {
+      notify(error?.message || '調整等級失敗')
+    } finally {
+      setAgentActionBusy(false)
+    }
   }
   const deleteSelectedAgents = async () => {
     if (!canManageAgents) return notify('此角色不能刪除代理')
-    if (!selectedAgents.length) return
-    await deleteOnlineAgents({ codes: selectedAgents, adminAccount: displayManager })
-    setSelectedAgents([])
-    await refreshLicenses()
+    if (!selectedAgents.length) return notify('請先勾選代理')
+    setAgentActionBusy(true)
+    try {
+      await deleteOnlineAgents({ codes: selectedAgents, adminAccount: displayManager })
+      setSelectedAgents([])
+      await refreshLicenses()
+      notify('代理已刪除')
+    } catch (error: any) {
+      notify(error?.message || '刪除代理失敗')
+    } finally {
+      setAgentActionBusy(false)
+    }
   }
   const enableMaintenanceMode = async () => {
     if (!isSuper) return notify('只有超級管理員可以啟用維護模式')
@@ -524,7 +550,8 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       <section className="admin-panel list-panel" aria-label="下級代理">
         <h2>下級代理</h2>
         <input className="search-input" placeholder="尋找代理帳號" value={agentSearch} onChange={(event) => setAgentSearch(event.target.value)} />
-        <div className="admin-action-row compact agent-action-form"><input placeholder="輸入帳號" value={newAgentCode} onChange={(event) => setNewAgentCode(event.target.value)} /><select value={newAgentRole} onChange={(event) => setNewAgentRole(event.target.value as 'viewer' | 'agent' | 'manager')}>{roleOptions.map((role) => <option value={role} key={role}>{roleLabelText(role)}</option>)}</select><button disabled={!canManageAgents} onClick={createAgentFromForm}>增加代理</button><button disabled={!canManageAgents} onClick={deleteSelectedAgents}>刪除代理</button><button disabled={!canManageAgents} onClick={adjustSelectedAgents}>調整等級</button></div>
+        {newAgentParent && <div className="agent-parent-hint">新增位置：{newAgentParent} 的下級 <button onClick={() => setNewAgentParent('')}>改回根層</button></div>}
+        <div className="admin-action-row compact agent-action-form"><input placeholder="輸入新帳號" value={newAgentCode} onChange={(event) => setNewAgentCode(event.target.value)} /><select value={newAgentRole} onChange={(event) => setNewAgentRole(event.target.value as 'viewer' | 'agent' | 'manager')}>{roleOptions.map((role) => <option value={role} key={role}>{roleLabelText(role)}</option>)}</select><button disabled={!canManageAgents || agentActionBusy} onClick={createAgentFromForm}>新增帳號</button><button disabled={!canManageAgents || agentActionBusy} onClick={deleteSelectedAgents}>刪除帳號</button><button disabled={!canManageAgents || agentActionBusy} onClick={adjustSelectedAgents}>調整等級</button></div>
         <div className="scroll-list agent-list hierarchy-list">
           <div className="list-head agent-hierarchy-head"><span></span><span>帳號</span><span>代理等級</span><span>增加代理</span></div>
           {filteredAgents.map((agent) => {
@@ -535,7 +562,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
                 {collapsible ? <button className="collapse-agent" aria-label={`${collapsed ? '展開' : '收合'} ${agent.account}`} onClick={() => toggleCollapse(agent.account)}>{collapsed ? '▶' : '▼'}</button> : <i />}
                 <input aria-label={`勾選 ${agent.account}`} type="checkbox" checked={selectedAgents.includes(agent.account)} onChange={() => toggleAgent(agent.account)} />
               </span>
-              <span>{agent.account}</span><b className={agent.level.includes('管理員') ? 'green-text' : agent.level.includes('代理') ? 'yellow-text' : ''}>{agent.level}</b><button className="inline-add-agent" disabled={!canCreateUnder(agent.level, loginRoleName)} onClick={() => { setNewAgentCode(''); setNewAgentRole(defaultChildRole(agent.level)); notify(`請在上方輸入帳號，將新增到 ${agent.account} 底下`) }}>增加代理</button>
+              <span>{agent.account}</span><b className={agent.level.includes('管理員') ? 'green-text' : agent.level.includes('代理') ? 'yellow-text' : ''}>{agent.level}</b><button className="inline-add-agent" disabled={!canCreateUnder(agent.level, loginRoleName)} onClick={() => { setNewAgentCode(''); setNewAgentParent(agent.account); setNewAgentRole(defaultChildRole(agent.level)); notify(`請在上方輸入帳號，將新增到 ${agent.account} 底下`) }}>新增下級</button>
             </div>
           })}
         </div>
