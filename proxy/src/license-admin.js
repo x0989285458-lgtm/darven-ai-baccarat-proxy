@@ -181,8 +181,23 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     return result.rows[0] ?? { account, agent_id: agentId, status: 'active' }
   }
 
+
+  async function isMaintenanceMode() {
+    try {
+      const result = await db.query(`select s.value
+        from public.online_app_settings s
+        join public.online_projects p on p.id = s.project_id
+        where p.slug = 'ai-baccarat' and s.scope = 'frontend' and s.key = 'ui_defaults'
+        limit 1`)
+      return Boolean(result.rows[0]?.value?.maintenanceMode)
+    } catch {
+      return false
+    }
+  }
+
   async function validateMemberLogin({ memberAccount, verificationPassword } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
+    if (await isMaintenanceMode()) return { ok: false, maintenanceMode: true, error: '系統維護中，暫停登入' }
     if (!memberAccount || !verificationPassword) throw new Error('Member account and verification password are required')
     const result = await db.query(
       `select l.id, l.code, l.member_account, l.status, l.expires_on, a.code as agent_code, p.name as plan_name
@@ -204,6 +219,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
 
   async function validateAgentLogin({ agentAccount } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
+    if (await isMaintenanceMode() && !isSuperAdmin(agentAccount)) return { ok: false, maintenanceMode: true, error: '系統維護中，僅超級管理員可登入' }
     if (!agentAccount) throw new Error('Agent account is required')
     const result = await db.query('select id, code, name, role, parent_code, permission, created_at from public.agents where code = $1 and coalesce(is_active, true) = true limit 1', [agentAccount])
     const agent = result.rows[0] ?? null
@@ -269,7 +285,8 @@ async function assertCanManageRole(adminAccount, role) {
   const admin = await dbQueryAgentRole(adminAccount)
   if (!admin) throw new Error('管理者未開通')
   if (admin.role === 'viewer') throw new Error('觀察者不可開設帳號')
-  if (admin.role === 'agent' && role === 'viewer') throw new Error('代理不能開設觀察者')
+  if (admin.role === 'agent') throw new Error('代理不能開設下級')
+  if (admin.role === 'manager' && role === 'manager') throw new Error('下級等級不能高於或平級於上級')
   return true
 }
 

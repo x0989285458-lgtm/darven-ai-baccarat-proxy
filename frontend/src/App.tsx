@@ -73,11 +73,14 @@ export default function App() {
       if (!active) return
       setSupabaseStatus({ state: result.ok ? 'connected' : 'error', message: result.message })
     })
-    checkOnlineCoreStatus().then((result) => {
+    const loadCoreStatus = () => checkOnlineCoreStatus().then((result) => {
       if (!active) return
       setOnlineCoreStatus(result)
+      enforceMaintenanceLogout(result, path, client.current)
     })
-    return () => { active = false }
+    loadCoreStatus()
+    const timer = window.setInterval(loadCoreStatus, 5000)
+    return () => { active = false; window.clearInterval(timer) }
   }, [path, memberLoggedIn, adminLoggedIn])
 
   const start = () => {
@@ -172,6 +175,27 @@ export default function App() {
       </section>
     </div>
   </main>
+}
+
+
+function enforceMaintenanceLogout(status: OnlineCoreStatus, path: string, liveClient: LiveRoadClient | null) {
+  if (!status.maintenanceMode) return
+  if (path === '/' || path === '') {
+    window.sessionStorage.removeItem('darven-member-login')
+    liveClient?.disconnect(false)
+    if (window.location.pathname !== '/login') window.location.assign('/login')
+    return
+  }
+  if (path === '/admin') {
+    const account = window.sessionStorage.getItem('darven-admin-account')?.trim().toLowerCase()
+    const role = normalizeRole(window.sessionStorage.getItem('darven-admin-role'))
+    if (account !== SUPER_ADMIN && role !== 'super') {
+      window.sessionStorage.removeItem('darven-admin-account')
+      window.sessionStorage.removeItem('darven-admin-role')
+      window.sessionStorage.removeItem('darven_admin_login')
+      if (window.location.pathname !== '/admin-login') window.location.assign('/admin-login')
+    }
+  }
 }
 
 function WaitingForCloudData({ status, supabaseStatus }: { status: { state: string; message: string }; supabaseStatus: { state: string; message: string } }) {
@@ -440,7 +464,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const canManageCodes = ['super','manager','agent'].includes(loginRoleName)
   const canManageAgents = ['super','manager'].includes(loginRoleName)
   const canOnlyObserve = loginRoleName === 'viewer'
-  const roleOptions = allowedChildRoles(loginRoleName)
+  const roleOptions = allowedChildRoles(isSuper ? 'super' : loginRoleName)
 
   return <main className="admin-shell admin-v015-shell" style={{ width: '100%', maxWidth: 'none' }}>
     {toast ? <div className="toast">{toast}</div> : null}
