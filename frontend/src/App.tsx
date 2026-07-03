@@ -607,10 +607,16 @@ function defaultChildRole(parentLevel: string): 'viewer' | 'agent' | 'manager' {
 
 function categoryHitRate(report: any, key: string) {
   const direct = report?.[`${key}_hit_rate`] ?? report?.[`${key}HitRate`] ?? report?.raw_summary?.[`${key}_hit_rate`] ?? report?.metadata?.[`${key}_hit_rate`]
-  if (direct != null) return `${direct}%`
-  if (key === 'banker' || key === 'player') return report?.main_hit_rate != null ? `${report.main_hit_rate}%` : '-'
+  if (direct != null) return formatPercentValue(direct)
+  if (key === 'banker' || key === 'player') return report?.main_hit_rate != null ? formatPercentValue(report.main_hit_rate) : '-'
   if (['dragon','pair','six','tie'].includes(key)) return formatSideHitRate(report)
   return '-'
+}
+
+function formatPercentValue(value: any) {
+  if (value == null || value === '-') return '-'
+  const text = String(value)
+  return text.endsWith('%') ? text : `${text}%`
 }
 
 function markBigRoadTies(cells: ReturnType<typeof parseBigRoad>) {
