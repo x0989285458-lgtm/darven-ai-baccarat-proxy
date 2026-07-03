@@ -232,17 +232,76 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
 
   async function getDailyAnalytics() {
     if (!configured) return { todayRoundCount: 0, tableStats: [], dailyReports: [] }
-    const todayRows = await db.query(`select table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, prediction_features
+    const todayCount = await db.query(`select count(distinct table_id || ':' || shoe_no || ':' || round_no)::int as rounds
       from public.daily_prediction_results
       where created_at >= date_trunc('day', now())`)
-    const reportRows = await db.query(`select to_char(created_at::date, 'YYYY-MM-DD') as day, table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, prediction_features
-      from public.daily_prediction_results
-      where created_at >= (current_date - interval '7 days') and created_at < current_date
-      order by day desc`)
+    const tableRows = await db.query(`with scoped as (
+        select table_id, actual_result, is_hit, prediction_features
+        from public.daily_prediction_results
+        where created_at >= date_trunc('day', now())
+      ), side as (
+        select table_id,
+          sum(
+            case when coalesce((prediction_features->'side_predictions'->>'tie')::numeric,0) >= 25 then 1 else 0 end +
+            case when coalesce((prediction_features->'side_predictions'->>'superSix')::numeric,0) >= 32 then 1 else 0 end +
+            case when coalesce((prediction_features->'side_predictions'->>'bankerPair')::numeric,0) >= 25 then 1 else 0 end +
+            case when coalesce((prediction_features->'side_predictions'->>'playerPair')::numeric,0) >= 25 then 1 else 0 end +
+            case when coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) >= 38 then 1 else 0 end +
+            case when coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) >= 40 then 1 else 0 end
+          )::int as side_actions,
+          sum(
+            case when coalesce((prediction_features->'side_predictions'->>'tie')::numeric,0) >= 25 and (prediction_features->'side_hits'->>'tie')::boolean is true then 1 else 0 end +
+            case when coalesce((prediction_features->'side_predictions'->>'superSix')::numeric,0) >= 32 and (prediction_features->'side_hits'->>'superSix')::boolean is true then 1 else 0 end +
+            case when coalesce((prediction_features->'side_predictions'->>'bankerPair')::numeric,0) >= 25 and (prediction_features->'side_hits'->>'bankerPair')::boolean is true then 1 else 0 end +
+            case when coalesce((prediction_features->'side_predictions'->>'playerPair')::numeric,0) >= 25 and (prediction_features->'side_hits'->>'playerPair')::boolean is true then 1 else 0 end +
+            case when coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) >= 38 and (prediction_features->'side_hits'->>'bankerDragon')::boolean is true then 1 else 0 end +
+            case when coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) >= 40 and (prediction_features->'side_hits'->>'playerDragon')::boolean is true then 1 else 0 end
+          )::int as side_hits
+        from scoped group by table_id
+      ) select s.table_id,
+          count(*) filter (where s.actual_result is not null)::int as main_total,
+          count(*) filter (where s.is_hit is true)::int as main_hits,
+          coalesce(side.side_actions,0)::int as side_actions,
+          coalesce(side.side_hits,0)::int as side_hits
+        from scoped s left join side on side.table_id=s.table_id
+        group by s.table_id, side.side_actions, side.side_hits`)
+    const reportRows = await db.query(`with scoped as (
+        select created_at::date as day, table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, prediction_features
+        from public.daily_prediction_results
+        where created_at >= (current_date - interval '7 days') and created_at < current_date
+      ), grouped as (
+        select day,
+          count(distinct table_id || ':' || shoe_no || ':' || round_no)::int as rounds,
+          count(*) filter (where predicted_result='banker')::int as banker_total,
+          count(*) filter (where predicted_result='banker' and actual_result='banker')::int as banker_hits,
+          count(*) filter (where predicted_result='player')::int as player_total,
+          count(*) filter (where predicted_result='player' and actual_result='player')::int as player_hits,
+          count(*) filter (where predicted_result='tie')::int as tie_total,
+          count(*) filter (where predicted_result='tie' and actual_result='tie')::int as tie_hits,
+          sum(case when coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) >= 38 then 1 else 0 end + case when coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) >= 40 then 1 else 0 end)::int as dragon_total,
+          sum(case when coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) >= 38 and (prediction_features->'side_hits'->>'bankerDragon')::boolean is true then 1 else 0 end + case when coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) >= 40 and (prediction_features->'side_hits'->>'playerDragon')::boolean is true then 1 else 0 end)::int as dragon_hits,
+          sum(case when coalesce((prediction_features->'side_predictions'->>'bankerPair')::numeric,0) >= 25 then 1 else 0 end + case when coalesce((prediction_features->'side_predictions'->>'playerPair')::numeric,0) >= 25 then 1 else 0 end)::int as pair_total,
+          sum(case when coalesce((prediction_features->'side_predictions'->>'bankerPair')::numeric,0) >= 25 and (prediction_features->'side_hits'->>'bankerPair')::boolean is true then 1 else 0 end + case when coalesce((prediction_features->'side_predictions'->>'playerPair')::numeric,0) >= 25 and (prediction_features->'side_hits'->>'playerPair')::boolean is true then 1 else 0 end)::int as pair_hits,
+          sum(case when coalesce((prediction_features->'side_predictions'->>'superSix')::numeric,0) >= 32 then 1 else 0 end)::int as six_total,
+          sum(case when coalesce((prediction_features->'side_predictions'->>'superSix')::numeric,0) >= 32 and (prediction_features->'side_hits'->>'superSix')::boolean is true then 1 else 0 end)::int as six_hits
+        from scoped group by day
+      ) select to_char(day, 'YYYY-MM-DD') as date, rounds,
+          case when banker_total>0 then round((banker_hits::numeric/banker_total)*100,1)::text || '%' else '-' end as banker_hit_rate,
+          case when player_total>0 then round((player_hits::numeric/player_total)*100,1)::text || '%' else '-' end as player_hit_rate,
+          case when tie_total>0 then round((tie_hits::numeric/tie_total)*100,1)::text || '%' else '-' end as tie_hit_rate,
+          case when dragon_total>0 then round((dragon_hits::numeric/dragon_total)*100,1)::text || '%' else '-' end as dragon_hit_rate,
+          case when pair_total>0 then round((pair_hits::numeric/pair_total)*100,1)::text || '%' else '-' end as pair_hit_rate,
+          case when six_total>0 then round((six_hits::numeric/six_total)*100,1)::text || '%' else '-' end as six_hit_rate
+        from grouped order by day desc limit 7`)
+    const rowsByTable = new Map(tableRows.rows.map((row) => [row.table_id, row]))
+    const order = ['BAG01','BAG02','BAG03','BAG04','BAG05','BAG06','BAG07','BAG08','BAG09']
     return {
-      todayRoundCount: countDistinctRounds(todayRows.rows),
-      tableStats: buildTableStats(todayRows.rows),
-      dailyReports: buildDailyReports(reportRows.rows),
+      todayRoundCount: Number(todayCount.rows[0]?.rounds ?? 0),
+      tableStats: order.map((tableId) => {
+        const row = rowsByTable.get(tableId) ?? (tableId === 'BAG04' ? rowsByTable.get('BAG03A') : null) ?? {}
+        return { tableId, tableName: tableLabel(tableId), rounds: 0, mainHitRate: pctText(Number(row.main_hits ?? 0), Number(row.main_total ?? 0)), sideHitRate: pctText(Number(row.side_hits ?? 0), Number(row.side_actions ?? 0)) }
+      }),
+      dailyReports: reportRows.rows,
     }
   }
 
