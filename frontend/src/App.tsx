@@ -237,7 +237,7 @@ function LoginApp() {
   }
   return <main className="login-shell">
     <section className="login-card" aria-label="前台登入驗證">
-      <h1>瑞文智慧預測百家</h1>
+      <h1>瑞文AI百家預測</h1>
       <strong>免費版請私訊官方賴@Dv1788</strong>
       <div className="login-chip">前台登入驗證</div>
       <input aria-label="會員帳號" placeholder="請輸入會員帳號" value={memberAccount} onChange={(event) => setMemberAccount(event.target.value)} />
@@ -272,7 +272,7 @@ function AdminLoginApp() {
   }
   return <main className="login-shell">
     <section className="login-card" aria-label="管理後台登入">
-      <h1 className="admin-login-title">智慧百家管理後台登入</h1>
+      <h1 className="admin-login-title">瑞文AI百家管理後台</h1>
       <strong>瑞文智慧後台管理</strong>
       <input aria-label="帳號" placeholder="請輸入帳號" value={agentAccount} onChange={(event) => setAgentAccount(event.target.value)} />
       <button onClick={submitLogin}>登入</button>
@@ -593,15 +593,15 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       <section className="admin-panel list-panel" aria-label="下級代理">
         <h2>下級代理</h2>
         <input className="search-input" placeholder="尋找代理帳號" value={agentSearch} onChange={(event) => setAgentSearch(event.target.value)} />
-        <div className="agent-parent-hint">上級：{newAgentParent || displayManager}｜新增後帳號：{buildChildAgentAccount(newAgentParent || displayManager, newAgentCode.trim() || '代理帳號')} {newAgentParent && <button onClick={() => setNewAgentParent('')}>改回根層</button>}</div>
         <div className="admin-action-row compact agent-action-form"><input placeholder="輸入代理帳號尾碼" value={newAgentCode} onChange={(event) => setNewAgentCode(event.target.value)} /><select value={newAgentRole} onChange={(event) => setNewAgentRole(event.target.value as 'viewer' | 'agent' | 'manager')}>{roleOptions.map((role) => <option value={role} key={role}>{roleLabelText(role)}</option>)}</select><button disabled={!canManageAgents || agentActionBusy} onClick={createAgentFromForm}>新增帳號</button><button disabled={!canManageAgents || agentActionBusy} onClick={deleteSelectedAgents}>刪除選取帳號</button><button disabled={!canManageAgents || agentActionBusy} onClick={adjustSelectedAgents}>調整等級</button></div>
         <div className="scroll-list agent-list hierarchy-list">
-          <div className="list-head agent-hierarchy-head"><span></span><span>帳號</span><span>代理等級</span><span>增加代理</span></div>
+          <div className="list-head agent-hierarchy-head"><span>展開</span><span>帳號</span><span>代理等級</span><span>增加代理</span></div>
           {filteredAgents.map((agent) => {
             const collapsible = hasAgentChildren(agents, agent.account)
             const collapsed = collapsedAgents.includes(agent.account)
             return <div className={`list-row agent-row hierarchy-row depth-${agent.depth ?? 0}`} key={agent.account}>
               <span className="agent-select-cell">
+                <button className="collapse-agent" disabled={!collapsible} aria-label={`${collapsed ? '展開' : '收合'} ${agent.account}`} onClick={() => toggleCollapse(agent.account)}>{collapsible ? (collapsed ? '▸' : '▾') : '•'}</button>
                 <input aria-label={`勾選 ${agent.account}`} type="checkbox" checked={selectedAgents.includes(agent.account)} onChange={() => toggleAgent(agent.account)} />
               </span>
               <span>{agent.account}</span><b className={agent.level.includes('管理員') ? 'green-text' : agent.level.includes('代理') ? 'yellow-text' : ''}>{agent.level}</b><button className="inline-add-agent" disabled={!canCreateUnder(agent.level, loginRoleName)} onClick={() => { setNewAgentCode(''); setNewAgentParent(agent.account); setNewAgentRole(defaultChildRole(agent.level)); notify(`請在上方輸入帳號尾碼，帳號將建立為 ${agent.account}-代理帳號`) }}>新增下級</button>

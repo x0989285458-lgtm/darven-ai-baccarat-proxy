@@ -1331,3 +1331,69 @@ h1 {
     background: rgba(5, 14, 27, .68) !important;
   }
 }
+
+
+/* recorded admin login/agent list UI changes */
+.login-card {
+  width: min(470px, 92vw) !important;
+  min-height: auto !important;
+  gap: 18px !important;
+  padding: clamp(30px, 5vw, 54px) clamp(26px, 5vw, 46px) !important;
+  align-content: center !important;
+}
+.login-card h1 {
+  font-size: clamp(34px, 7vw, 48px) !important;
+  line-height: 1.06 !important;
+  text-align: center !important;
+  width: 100%;
+}
+.login-card .admin-login-title {
+  font-size: clamp(28px, 5vw, 40px) !important;
+  white-space: normal !important;
+}
+.login-card > strong {
+  text-align: center !important;
+  width: 100%;
+}
+.login-card input {
+  min-height: 44px !important;
+  font-size: clamp(15px, 2.2vw, 18px) !important;
+}
+.login-card button {
+  min-height: 54px !important;
+}
+.agent-hierarchy-head,
+.hierarchy-row {
+  grid-template-columns: 82px minmax(160px, 1fr) minmax(120px, .75fr) minmax(120px, .8fr) !important;
+  text-align: center !important;
+  align-items: center !important;
+}
+.agent-hierarchy-head > *,
+.hierarchy-row > *,
+.code-row > * {
+  text-align: center !important;
+  justify-self: center !important;
+}
+.agent-select-cell {
+  width: 100%;
+  justify-content: center !important;
+}
+.hierarchy-row.depth-1 span,
+.hierarchy-row.depth-2 span,
+.hierarchy-row.depth-3 span {
+  padding-left: 0 !important;
+}
+.hierarchy-row.depth-0 span::before,
+.hierarchy-row.depth-1 span::before,
+.hierarchy-row.depth-2 span::before,
+.hierarchy-row.depth-3 span::before {
+  content: '' !important;
+}
+.collapse-agent:disabled {
+  opacity: .45;
+}
+@media (max-width: 720px) {
+  .login-card { width: min(440px, 92vw) !important; padding: 28px 22px !important; gap: 15px !important; }
+  .agent-hierarchy-head,
+  .hierarchy-row { grid-template-columns: 74px minmax(120px,1fr) 92px 96px !important; }
+}
