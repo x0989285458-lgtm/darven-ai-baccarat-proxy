@@ -6,7 +6,7 @@ import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from '.
 import { checkOnlineCoreStatus, getOnlineMemoryCenter, getOnlineStrategyAnalysis, updateOnlineAppSetting, type OnlineCoreStatus, type OnlineMemoryCenter, type OnlineStrategyAnalysis } from './lib/onlineCoreClient'
 import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents, deleteOnlineLicense, extendOnlineLicense, getCloudDataStatus, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
 
-const defaultToken = 'decd8bec9f968ef4f67a437f80430727'
+const defaultToken = '178837268894477862ce6a102d64dc2a'
 const SUPER_ADMIN = 'dv1788'
 const sideThresholds = { playerDragon: 40, playerPair: 25, superSix: 32, bankerPair: 25, bankerDragon: 38 }
 const label = { Banker: '莊', Player: '閒', Tie: '和' }
