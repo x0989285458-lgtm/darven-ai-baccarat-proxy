@@ -213,11 +213,15 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     )
     const license = result.rows[0] ?? null
     const ok = Boolean(license && license.status === 'active' && dateOnly(license.expires_on) >= todayIso())
-    await db.query(
-      'insert into public.license_validation_logs(license_id, member_account, submitted_code, result) values ($1, $2, $3, $4)',
-      [license?.id ?? null, memberAccount, verificationPassword, ok ? 'valid' : 'invalid'],
-    )
-    return { ok, memberAccount, license }
+    try {
+      await db.query(
+        'insert into public.license_validation_logs(license_id, member_account, submitted_code, result) values ($1, $2, $3, $4)',
+        [license?.id ?? null, memberAccount, verificationPassword, ok ? 'valid' : 'failed'],
+      )
+    } catch (error) {
+      console.warn('[license-validation-log-skipped]', error?.message || error)
+    }
+    return { ok, memberAccount, license, error: ok ? undefined : (license?.status === 'suspended' ? '驗證碼已暫停' : '會員帳號或驗證碼錯誤') }
   }
 
   async function validateAgentLogin({ agentAccount } = {}) {

@@ -225,14 +225,14 @@ function LoginApp() {
     try {
       const result = await memberLogin({ memberAccount, verificationPassword })
       if (!result.ok) {
-        setLoginMessage('登入失敗，請確認會員帳號與驗證密碼')
+        setLoginMessage(result.error || '登入失敗，請確認會員帳號與驗證密碼')
         return
       }
       window.sessionStorage.setItem('darven-member-login', 'yes')
       setLoginMessage('登入成功，正在進入前台')
       window.location.assign('/')
     } catch {
-      setLoginMessage('登入失敗，請確認本機代理是否啟動')
+      setLoginMessage('登入失敗，請重新整理後再試')
     }
   }
   return <main className="login-shell">
