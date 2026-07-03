@@ -726,7 +726,10 @@ function normalizeAgents(rows: Array<Partial<AgentRow>>, loginAgent: string): Ag
 
 function isDescendant(row: AgentRow, ancestor: string, agents: AgentRow[]) {
   let parent = row.parent
+  const seen = new Set<string>()
   while (parent) {
+    if (seen.has(parent)) return false
+    seen.add(parent)
     if (parent === ancestor) return true
     parent = agents.find((agent) => agent.account === parent)?.parent
   }
@@ -740,7 +743,10 @@ function hasAgentChildren(agents: AgentRow[], account: string) {
 function filterCollapsedAgents(agents: AgentRow[], collapsed: string[]) {
   return agents.filter((agent) => {
     let parent = agent.parent
+    const seen = new Set<string>()
     while (parent) {
+      if (seen.has(parent)) return true
+      seen.add(parent)
       if (collapsed.includes(parent)) return false
       parent = agents.find((item) => item.account === parent)?.parent
     }

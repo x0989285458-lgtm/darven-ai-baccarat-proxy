@@ -77,6 +77,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     await assertCanManageRole(adminAccount, role)
     const displayName = name || code
     const resolvedParentCode = isSuperAdmin(parentCode) ? null : parentCode
+    if (resolvedParentCode && String(resolvedParentCode).toLowerCase() === String(code).toLowerCase()) throw new Error('不能把帳號新增到自己底下')
     const existing = await db.query('select id from public.agents where code = $1 limit 1', [code])
     const result = existing.rows[0]
       ? await db.query(`update public.agents set name = $2, role = $3, parent_code = $4, permission = $5, is_active = true, updated_at = now()
@@ -332,7 +333,10 @@ function scopeAgents(agents, adminAccount) {
 
 function isDescendantAgent(agent, ancestor, agents) {
   let parent = agent.parent_code
+  const seen = new Set()
   while (parent) {
+    if (seen.has(parent)) return false
+    seen.add(parent)
     if (parent === ancestor) return true
     parent = agents.find((item) => item.code === parent)?.parent_code
   }
