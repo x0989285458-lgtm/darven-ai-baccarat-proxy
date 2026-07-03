@@ -267,6 +267,62 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     res.end(result.body)
   })
 
+  const streamClients = new Set()
+  let streamTimer = null
+  let streamLastSignature = ''
+
+  function compactTableSignature(table) {
+    const bead = String(table.beadPlateRaw ?? table.trend?.bead_plate2 ?? '')
+    const big = String(table.bigRoadRaw ?? table.trend?.big2 ?? '')
+    return {
+      id: table.tableId ?? table.table_id ?? table.id,
+      shoe: table.shoe ?? table.trend?.current_shoe,
+      round: table.round ?? table.trend?.current_round,
+      beadLen: bead.length,
+      beadTail: bead.slice(-24),
+      bigLen: big.length,
+      bigTail: big.slice(-32),
+      banker: table.bankerCount ?? table.trend?.total_round_banker,
+      player: table.playerCount ?? table.trend?.total_round_player,
+      tie: table.tieCount ?? table.trend?.total_round_tie,
+    }
+  }
+
+  function writeSse(res, event, payload) {
+    if (res.destroyed || res.writableEnded) return
+    res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`)
+  }
+
+  async function broadcastTables(force = false) {
+    if (!streamClients.size) return
+    try {
+      const tables = await readBestTables()
+      const signature = JSON.stringify(tables.map(compactTableSignature))
+      const payload = { tables, updatedAt: new Date().toISOString(), tableCount: tables.length }
+      if (tables.length && (force || signature !== streamLastSignature)) {
+        streamLastSignature = signature
+        for (const client of streamClients) writeSse(client, 'tables', payload)
+      } else {
+        const heartbeat = { updatedAt: new Date().toISOString(), tableCount: tables.length }
+        for (const client of streamClients) writeSse(client, 'heartbeat', heartbeat)
+      }
+    } catch (error) {
+      const payload = { message: error?.message ?? String(error), updatedAt: new Date().toISOString() }
+      for (const client of streamClients) writeSse(client, 'error', payload)
+    }
+  }
+
+  function ensureStreamTimer() {
+    if (streamTimer) return
+    streamTimer = setInterval(() => { void broadcastTables(false) }, 1500)
+  }
+
+  function stopStreamTimerIfIdle() {
+    if (streamClients.size || !streamTimer) return
+    clearInterval(streamTimer)
+    streamTimer = null
+  }
+
   function streamTables(res) {
     res.writeHead(200, {
       'content-type': 'text/event-stream; charset=utf-8',
@@ -278,38 +334,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       'access-control-allow-methods': 'GET,POST,OPTIONS',
       'access-control-allow-headers': 'Content-Type,Authorization',
     })
-    let closed = false
-    let lastSignature = ''
-    const send = (event, payload) => res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`)
-    const tick = async () => {
-      if (closed) return
-      try {
-        const tables = await readBestTables()
-        const signature = JSON.stringify(tables.map((table) => ({
-          id: table.tableId ?? table.table_id ?? table.id,
-          shoe: table.shoe ?? table.trend?.current_shoe,
-          round: table.round ?? table.trend?.current_round,
-          bead: table.beadPlateRaw ?? table.trend?.bead_plate2,
-          big: table.bigRoadRaw ?? table.trend?.big2,
-          banker: table.bankerCount ?? table.trend?.total_round_banker,
-          player: table.playerCount ?? table.trend?.total_round_player,
-          tie: table.tieCount ?? table.trend?.total_round_tie,
-        })))
-        if (tables.length && signature !== lastSignature) {
-          lastSignature = signature
-          send('tables', { tables, updatedAt: new Date().toISOString(), tableCount: tables.length })
-        } else {
-          send('heartbeat', { updatedAt: new Date().toISOString(), tableCount: tables.length })
-        }
-      } catch (error) {
-        send('error', { message: error?.message ?? String(error), updatedAt: new Date().toISOString() })
-      }
-    }
-    tick()
-    const timer = setInterval(tick, 1000)
-    res.on('close', () => { closed = true; clearInterval(timer) })
+    streamClients.add(res)
+    ensureStreamTimer()
+    void broadcastTables(true)
+    res.on('close', () => { streamClients.delete(res); stopStreamTimerIfIdle() })
   }
-
   const listenHost = host ?? (deployConfig.deployMode === 'cloud' ? '0.0.0.0' : '127.0.0.1')
 
   return {
