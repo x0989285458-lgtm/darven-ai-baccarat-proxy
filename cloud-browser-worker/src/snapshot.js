@@ -81,9 +81,22 @@ function normalizeRound(payload = {}) {
 
 function collectCandidates(value, output, seen = new WeakSet()) {
   if (value == null) return
+  if (typeof value === 'string') {
+    const parsed = parseMaybeJson(value)
+    if (parsed && typeof parsed === 'object' && !parsed.rawText) {
+      collectCandidates(parsed, output, seen)
+    } else {
+      output.tableCandidates.push(...parseBaccaratTablesFromText(value))
+    }
+    return
+  }
   if (typeof value !== 'object') return
   if (seen.has(value)) return
   seen.add(value)
+
+  for (const textKey of ['rawText', 'bodyProbe', 'body', 'text']) {
+    if (typeof value[textKey] === 'string') output.tableCandidates.push(...parseBaccaratTablesFromText(value[textKey]))
+  }
 
   if (Array.isArray(value)) {
     if (value.some(isTableLike)) output.tableCandidates.push(...value.filter(isTableLike))
@@ -94,9 +107,41 @@ function collectCandidates(value, output, seen = new WeakSet()) {
   if (isTableLike(value)) output.tableCandidates.push(value)
   if (isRoundLike(value)) output.roundCandidates.push(value)
 
-  for (const key of ['tables', 'tableList', 'rooms', 'games', 'list', 'data', 'result', 'payload', 'snapshot', 'round', 'roundResult']) {
+  for (const key of ['tables', 'tableList', 'rooms', 'games', 'list', 'data', 'result', 'payload', 'payloads', 'arr', 'snapshot', 'round', 'roundResult']) {
     if (value[key] != null) collectCandidates(value[key], output, seen)
   }
+}
+
+function parseBaccaratTablesFromText(text = '') {
+  const lines = String(text)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const tables = []
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index] !== '百家樂') continue
+    const tableName = lines[index + 1]
+    const shoe = toNullableNumber(lines[index + 2])
+    const roundLine = lines.slice(index + 2, index + 9).find((line) => /^局數\s*\d+/.test(line))
+    const bankerLine = lines.slice(index + 2, index + 10).find((line) => /^莊\s*\d+/.test(line))
+    const playerLine = lines.slice(index + 2, index + 10).find((line) => /^閒\s*\d+/.test(line))
+    const tieLine = lines.slice(index + 2, index + 10).find((line) => /^和\s*\d+/.test(line))
+    if (!tableName || !roundLine || !bankerLine || !playerLine || !tieLine) continue
+    const normalized = String(tableName).padStart(2, '0')
+    tables.push({
+      table_id: `BAG${normalized}`,
+      table_name: tableName,
+      table_type: 'BAC',
+      current_shoe: shoe,
+      current_round: Number(roundLine.match(/\d+/)?.[0] ?? 0),
+      total_round_banker: Number(bankerLine.match(/\d+/)?.[0] ?? 0),
+      total_round_player: Number(playerLine.match(/\d+/)?.[0] ?? 0),
+      total_round_tie: Number(tieLine.match(/\d+/)?.[0] ?? 0),
+      bead_plate2: '',
+      big2: '',
+    })
+  }
+  return tables
 }
 
 function isTableLike(value) {

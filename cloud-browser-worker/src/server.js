@@ -80,7 +80,11 @@ async function ensurePage() {
   if (pagePromise) return pagePromise
   pagePromise = (async () => {
     const browser = await ensureBrowser()
-    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
+    const page = await browser.newPage({
+      viewport: { width: 1440, height: 1000 },
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
+      locale: 'zh-TW',
+    })
     attachCaptureHooks(page)
     await page.goto(MT_LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: PAGE_TIMEOUT_MS })
     await page.waitForTimeout(Number(process.env.INITIAL_SETTLE_MS ?? 5000))
