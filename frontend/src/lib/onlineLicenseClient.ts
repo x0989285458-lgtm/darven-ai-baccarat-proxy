@@ -106,10 +106,11 @@ function mapStatus(body: any): OnlineLicenseStatus {
 }
 
 function roleLabel(role?: string, fallback?: string) {
-  if (String(role).includes('manager')) return '管理員'
-  if (String(role).includes('viewer')) return '觀察者'
-  if (String(role).includes('super')) return '超級管理員'
-  return fallback ?? '代理'
+  const value = String(role ?? '').toLowerCase()
+  if (value.includes('manager')) return '管理員'
+  if (value.includes('viewer')) return '觀察者'
+  if (value.includes('super') || value.includes('total')) return '超級管理員'
+  return '代理'
 }
 
 function inferDepth(role?: string) {

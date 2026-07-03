@@ -1000,7 +1000,7 @@ h1 {
 /* v017 code action layout: right panel actions moved to top as three equal controls. */
 .code-action-row {
   width: 100%;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 .code-action-row .danger { border-color: #ff5d7d; background: #6b1f35; }
 .code-action-row .warning { border-color: #ffd166; background: #493a10; }
@@ -1283,3 +1283,7 @@ h1 {
 .agent-parent-hint { margin: 8px 0 10px; padding: 8px 12px; border: 1px solid rgba(56, 189, 248, .35); border-radius: 12px; color: #bfdbfe; background: rgba(14, 165, 233, .08); font-weight: 800; }
 .agent-parent-hint button { margin-left: 10px; padding: 4px 10px; border-radius: 8px; border: 1px solid rgba(148, 163, 184, .35); background: rgba(15, 23, 42, .9); color: #e5e7eb; }
 .agent-action-form button:disabled, .inline-add-agent:disabled { opacity: .45; cursor: not-allowed; }
+
+.code-action-row .activate { border-color: #52e6a7; background: #124635; }
+
+.agent-select-cell{justify-content:center}.agent-parent-hint{word-break:break-all}

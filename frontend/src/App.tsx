@@ -331,6 +331,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const [newAgentRole, setNewAgentRole] = useState<'viewer' | 'agent' | 'manager'>('agent')
   const [newAgentParent, setNewAgentParent] = useState('')
   const [agentActionBusy, setAgentActionBusy] = useState(false)
+  const [codeActionBusy, setCodeActionBusy] = useState(false)
   const [toast, setToast] = useState('')
   const [memoryCenter, setMemoryCenter] = useState<OnlineMemoryCenter>({ state: 'connecting', items: [], reports: [], strategies: [] })
   const [strategyAnalysis, setStrategyAnalysis] = useState<OnlineStrategyAnalysis>({ state: 'connecting', strategyRows: [], weakTables: [], strongTables: [], watchTables: [], suggestions: [] })
@@ -410,35 +411,77 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     window.sessionStorage.removeItem('darven_admin_login')
     window.location.assign('/admin-login')
   }
-  const selectedCodeRows = () => codes.filter((row) => selectedCodeMembers.includes(row.member))
+  const selectedCodeRows = () => codes.filter((row) => selectedCodeMembers.includes(row.code))
   const deleteSelectedCodes = async () => {
     if (!canManageCodes) return notify('此角色不能管理驗證碼')
     const rows = selectedCodeRows()
-    setCodes((current) => current.filter((row) => !selectedCodeMembers.includes(row.member)))
-    setSelectedCodeMembers([])
-    await Promise.all(rows.map((row) => deleteOnlineLicense({ code: row.code, adminAccount: displayManager }).catch(() => null)))
+    if (!rows.length) return notify('請先勾選驗證碼')
+    setCodeActionBusy(true)
+    try {
+      await Promise.all(rows.map((row) => deleteOnlineLicense({ code: row.code, adminAccount: displayManager })))
+      setSelectedCodeMembers([])
+      await refreshLicenses()
+      notify('已刪除選取驗證碼')
+    } catch (error: any) {
+      notify(error?.message || '刪除驗證碼失敗')
+    } finally {
+      setCodeActionBusy(false)
+    }
   }
   const suspendSelectedCodes = async () => {
     if (!canManageCodes) return notify('此角色不能管理驗證碼')
     const rows = selectedCodeRows()
-    await Promise.all(rows.map((row) => setOnlineLicenseStatus({ code: row.code, status: 'suspended', adminAccount: displayManager }).catch(() => null)))
-    setCodes((current) => current.map((row) => selectedCodeMembers.includes(row.member) ? { ...row, status: '暫停中' } : row))
-    await refreshLicenses()
+    if (!rows.length) return notify('請先勾選驗證碼')
+    setCodeActionBusy(true)
+    try {
+      await Promise.all(rows.map((row) => setOnlineLicenseStatus({ code: row.code, status: 'suspended', adminAccount: displayManager })))
+      await refreshLicenses()
+      notify('已暫停選取驗證碼')
+    } catch (error: any) {
+      notify(error?.message || '暫停驗證碼失敗')
+    } finally {
+      setCodeActionBusy(false)
+    }
+  }
+  const activateSelectedCodes = async () => {
+    if (!canManageCodes) return notify('此角色不能管理驗證碼')
+    const rows = selectedCodeRows()
+    if (!rows.length) return notify('請先勾選驗證碼')
+    setCodeActionBusy(true)
+    try {
+      await Promise.all(rows.map((row) => setOnlineLicenseStatus({ code: row.code, status: 'active', adminAccount: displayManager })))
+      await refreshLicenses()
+      notify('已開啟選取驗證碼')
+    } catch (error: any) {
+      notify(error?.message || '開啟驗證碼失敗')
+    } finally {
+      setCodeActionBusy(false)
+    }
   }
   const extendSelectedCodes = async () => {
     if (!canManageCodes) return notify('此角色不能管理驗證碼')
     const rows = selectedCodeRows()
-    await Promise.all(rows.map((row) => extendOnlineLicense({ code: row.code, days: clampedPlanDays, adminAccount: displayManager }).catch(() => null)))
-    await refreshLicenses()
+    if (!rows.length) return notify('請先勾選驗證碼')
+    setCodeActionBusy(true)
+    try {
+      await Promise.all(rows.map((row) => extendOnlineLicense({ code: row.code, days: clampedPlanDays, adminAccount: displayManager })))
+      await refreshLicenses()
+      notify(`已延長選取驗證碼 ${clampedPlanDays} 天`)
+    } catch (error: any) {
+      notify(error?.message || '延長驗證碼失敗')
+    } finally {
+      setCodeActionBusy(false)
+    }
   }
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2600) }
   const copyText = async (text: string, message: string) => { await navigator.clipboard?.writeText(text); notify(message) }
   const createAgentFromForm = async () => {
-    const code = newAgentCode.trim()
+    const rawCode = newAgentCode.trim()
     if (!canManageAgents) return notify('此角色不能開設代理')
-    if (!code) return notify('請輸入帳號')
+    if (!rawCode) return notify('請輸入帳號')
     if (!roleOptions.includes(newAgentRole)) return notify('下級等級不能高於或平級於上級')
     const parentCode = newAgentParent || displayManager
+    const code = buildChildAgentAccount(parentCode, rawCode)
     setAgentActionBusy(true)
     try {
       const result = await createOnlineAgent({ code, name: code, role: newAgentRole, parentCode, adminAccount: displayManager, permission: rolePermission(newAgentRole) })
@@ -550,8 +593,8 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       <section className="admin-panel list-panel" aria-label="下級代理">
         <h2>下級代理</h2>
         <input className="search-input" placeholder="尋找代理帳號" value={agentSearch} onChange={(event) => setAgentSearch(event.target.value)} />
-        {newAgentParent && <div className="agent-parent-hint">新增位置：{newAgentParent} 的下級 <button onClick={() => setNewAgentParent('')}>改回根層</button></div>}
-        <div className="admin-action-row compact agent-action-form"><input placeholder="輸入新帳號" value={newAgentCode} onChange={(event) => setNewAgentCode(event.target.value)} /><select value={newAgentRole} onChange={(event) => setNewAgentRole(event.target.value as 'viewer' | 'agent' | 'manager')}>{roleOptions.map((role) => <option value={role} key={role}>{roleLabelText(role)}</option>)}</select><button disabled={!canManageAgents || agentActionBusy} onClick={createAgentFromForm}>新增帳號</button><button disabled={!canManageAgents || agentActionBusy} onClick={deleteSelectedAgents}>刪除帳號</button><button disabled={!canManageAgents || agentActionBusy} onClick={adjustSelectedAgents}>調整等級</button></div>
+        <div className="agent-parent-hint">上級：{newAgentParent || displayManager}｜新增後帳號：{buildChildAgentAccount(newAgentParent || displayManager, newAgentCode.trim() || '代理帳號')} {newAgentParent && <button onClick={() => setNewAgentParent('')}>改回根層</button>}</div>
+        <div className="admin-action-row compact agent-action-form"><input placeholder="輸入代理帳號尾碼" value={newAgentCode} onChange={(event) => setNewAgentCode(event.target.value)} /><select value={newAgentRole} onChange={(event) => setNewAgentRole(event.target.value as 'viewer' | 'agent' | 'manager')}>{roleOptions.map((role) => <option value={role} key={role}>{roleLabelText(role)}</option>)}</select><button disabled={!canManageAgents || agentActionBusy} onClick={createAgentFromForm}>新增帳號</button><button disabled={!canManageAgents || agentActionBusy} onClick={deleteSelectedAgents}>刪除選取帳號</button><button disabled={!canManageAgents || agentActionBusy} onClick={adjustSelectedAgents}>調整等級</button></div>
         <div className="scroll-list agent-list hierarchy-list">
           <div className="list-head agent-hierarchy-head"><span></span><span>帳號</span><span>代理等級</span><span>增加代理</span></div>
           {filteredAgents.map((agent) => {
@@ -559,10 +602,9 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
             const collapsed = collapsedAgents.includes(agent.account)
             return <div className={`list-row agent-row hierarchy-row depth-${agent.depth ?? 0}`} key={agent.account}>
               <span className="agent-select-cell">
-                {collapsible ? <button className="collapse-agent" aria-label={`${collapsed ? '展開' : '收合'} ${agent.account}`} onClick={() => toggleCollapse(agent.account)}>{collapsed ? '▶' : '▼'}</button> : <i />}
                 <input aria-label={`勾選 ${agent.account}`} type="checkbox" checked={selectedAgents.includes(agent.account)} onChange={() => toggleAgent(agent.account)} />
               </span>
-              <span>{agent.account}</span><b className={agent.level.includes('管理員') ? 'green-text' : agent.level.includes('代理') ? 'yellow-text' : ''}>{agent.level}</b><button className="inline-add-agent" disabled={!canCreateUnder(agent.level, loginRoleName)} onClick={() => { setNewAgentCode(''); setNewAgentParent(agent.account); setNewAgentRole(defaultChildRole(agent.level)); notify(`請在上方輸入帳號，將新增到 ${agent.account} 底下`) }}>新增下級</button>
+              <span>{agent.account}</span><b className={agent.level.includes('管理員') ? 'green-text' : agent.level.includes('代理') ? 'yellow-text' : ''}>{agent.level}</b><button className="inline-add-agent" disabled={!canCreateUnder(agent.level, loginRoleName)} onClick={() => { setNewAgentCode(''); setNewAgentParent(agent.account); setNewAgentRole(defaultChildRole(agent.level)); notify(`請在上方輸入帳號尾碼，帳號將建立為 ${agent.account}-代理帳號`) }}>新增下級</button>
             </div>
           })}
         </div>
@@ -572,13 +614,14 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
         <h2>已建立驗證碼</h2>
         <input className="search-input" placeholder="尋找驗證碼" value={codeSearch} onChange={(event) => setCodeSearch(event.target.value)} />
         <div className="admin-action-row compact code-action-row">
-          <button className="danger" disabled={!canManageCodes} onClick={deleteSelectedCodes}>刪除驗證碼</button>
-          <button className="warning" disabled={!canManageCodes} onClick={suspendSelectedCodes}>暫停驗證碼</button>
-          <button className="extend" disabled={!canManageCodes} onClick={extendSelectedCodes}>延長驗證碼</button>
+          <button className="danger" disabled={!canManageCodes || codeActionBusy} onClick={deleteSelectedCodes}>刪除驗證碼</button>
+          <button className="warning" disabled={!canManageCodes || codeActionBusy} onClick={suspendSelectedCodes}>暫停驗證碼</button>
+          <button className="activate" disabled={!canManageCodes || codeActionBusy} onClick={activateSelectedCodes}>開啟驗證碼</button>
+          <button className="extend" disabled={!canManageCodes || codeActionBusy} onClick={extendSelectedCodes}>延長驗證碼</button>
         </div>
         <div className="scroll-list code-list">
           {filteredCodes.map((row) => <div className="list-row code-row" key={row.member}>
-            <input aria-label={`勾選 ${row.member}`} type="checkbox" checked={selectedCodeMembers.includes(row.member)} onChange={() => toggleCode(row.member)} />
+            <input aria-label={`勾選 ${row.code}`} type="checkbox" checked={selectedCodeMembers.includes(row.code)} onChange={() => toggleCode(row.code)} />
             <span>{row.member}</span><b>{row.code}</b><em>{row.status}｜{row.remain}</em>
             <input placeholder="延長1-30天" />
           </div>)}
@@ -793,6 +836,14 @@ function pruneExpiredCodes(codes: CodeRow[]) {
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function buildChildAgentAccount(parentCode: string, rawCode: string) {
+  const parent = String(parentCode || SUPER_ADMIN).trim()
+  const child = String(rawCode || '').trim().replace(/^[-\s]+|[-\s]+$/g, '')
+  if (!child) return parent ? `${parent}-代理帳號` : '代理帳號'
+  if (parent && child.toLowerCase().startsWith(`${parent.toLowerCase()}-`)) return child
+  return parent ? `${parent}-${child}` : child
 }
 
 function buildLicenseCode(agentCode: string, memberAccount: string, runningNo: string) {
