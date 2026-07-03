@@ -763,8 +763,34 @@ function normalizeAgents(rows: Array<Partial<AgentRow>>, loginAgent: string): Ag
     parent: row.parent,
     depth: row.depth,
   }))
-  const scoped = loginAgent.toLowerCase() === SUPER_ADMIN ? normalized.filter((row) => !row.level.includes('超級')) : normalized.filter((row) => row.account !== loginAgent && isDescendant(row, loginAgent, normalized))
-  return scoped.map((row) => ({ ...row, depth: Math.max(0, (row.depth ?? inferAgentDepth(row.level)) - (loginAgent.toLowerCase() === SUPER_ADMIN ? 1 : inferAgentDepth(normalized.find((agent) => agent.account === loginAgent)?.level ?? '管理員'))) }))
+  const scoped = loginAgent.toLowerCase() === SUPER_ADMIN
+    ? normalized.filter((row) => !row.level.includes('超級'))
+    : normalized.filter((row) => row.account !== loginAgent && isDescendant(row, loginAgent, normalized))
+  return sortAgentsByHierarchy(scoped)
+}
+
+function sortAgentsByHierarchy(agents: AgentRow[]) {
+  const byParent = new Map<string, AgentRow[]>()
+  const accounts = new Set(agents.map((agent) => agent.account))
+  for (const agent of agents) {
+    const parent = agent.parent && accounts.has(agent.parent) ? agent.parent : '__root__'
+    if (!byParent.has(parent)) byParent.set(parent, [])
+    byParent.get(parent)!.push(agent)
+  }
+  for (const list of byParent.values()) list.sort((a, b) => a.account.localeCompare(b.account, 'zh-Hant-u-nu-latn'))
+  const output: AgentRow[] = []
+  const seen = new Set<string>()
+  const walk = (parent: string, depth: number) => {
+    for (const agent of byParent.get(parent) ?? []) {
+      if (seen.has(agent.account)) continue
+      seen.add(agent.account)
+      output.push({ ...agent, depth })
+      walk(agent.account, depth + 1)
+    }
+  }
+  walk('__root__', 0)
+  for (const agent of agents) if (!seen.has(agent.account)) output.push({ ...agent, depth: Math.max(0, agent.depth ?? inferAgentDepth(agent.level)) })
+  return output
 }
 
 function isDescendant(row: AgentRow, ancestor: string, agents: AgentRow[]) {
@@ -847,9 +873,10 @@ function buildChildAgentAccount(parentCode: string, rawCode: string) {
 }
 
 function buildLicenseCode(agentCode: string, memberAccount: string, runningNo: string) {
-  if (/\d/.test(agentCode)) return `${agentCode}_${runningNo || '001'}`
+  const safeAgent = String(agentCode || '').replace(/[^A-Za-z0-9]/g, '') || SUPER_ADMIN
+  if (/\d/.test(safeAgent)) return `${safeAgent}_${runningNo || '001'}`
   const memberDigits = memberAccount.match(/\d+/)?.[0]?.padStart(4, '0').slice(-4) ?? '0001'
-  return `${agentCode}${memberDigits}_${runningNo || '001'}`
+  return `${safeAgent}${memberDigits}_${runningNo || '001'}`
 }
 
 function rolePermission(role: string) {
