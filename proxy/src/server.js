@@ -44,7 +44,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const cloudCaptureClient = createCloudCaptureClient({ url: cloudBrowserUrl, state, writer: supabaseClient, fetchImpl, pollMs: deployConfig.cloudCapturePollMs })
 
   async function handle(method, url, rawBody = '') {
-    const pathname = new URL(url, 'http://127.0.0.1').pathname
+    const requestUrl = new URL(url, 'http://127.0.0.1')
+    const pathname = requestUrl.pathname
     if (method === 'OPTIONS') return jsonResponse(204, {}, frontendOrigin)
     if (!['GET', 'POST'].includes(method)) return jsonResponse(405, { error: 'Method Not Allowed' }, frontendOrigin)
 
@@ -148,7 +149,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
     if (pathname === '/api/online-license/status') {
       try {
-        return jsonResponse(200, await licenseAdminClient.getStatus?.({ adminAccount: searchParams.get('adminAccount') }), frontendOrigin)
+        return jsonResponse(200, await licenseAdminClient.getStatus?.({ adminAccount: requestUrl.searchParams.get('adminAccount') }), frontendOrigin)
       } catch (error) {
         return jsonResponse(200, { configured: Boolean(licenseAdminClient?.configured), managers: [], agents: [], plans: [], licenses: [], error: error?.message ?? String(error) }, frontendOrigin)
       }
