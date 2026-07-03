@@ -213,14 +213,13 @@ function LoginApp() {
   }
   return <main className="login-shell">
     <section className="login-card" aria-label="前台登入驗證">
-      <h1>瑞文AI預測百家</h1>
-      <strong>免費AI請私訊官方賴@Dv1788</strong>
+      <h1>瑞文智慧預測百家</h1>
+      <strong>免費版請私訊官方賴@Dv1788</strong>
       <div className="login-chip">前台登入驗證</div>
-      <label>會員帳號<input placeholder="請輸入會員帳號" value={memberAccount} onChange={(event) => setMemberAccount(event.target.value)} /></label>
-      <label>驗證密碼<input placeholder="請輸入驗證密碼" type="password" value={verificationPassword} onChange={(event) => setVerificationPassword(event.target.value)} /></label>
+      <input aria-label="會員帳號" placeholder="請輸入會員帳號" value={memberAccount} onChange={(event) => setMemberAccount(event.target.value)} />
+      <input aria-label="驗證密碼" placeholder="請輸入驗證密碼" type="password" value={verificationPassword} onChange={(event) => setVerificationPassword(event.target.value)} />
       <button onClick={submitLogin}>會員登入</button>
-      <p>前台登入形式：會員帳號 / 驗證密碼</p>
-      {loginMessage ? <em>{loginMessage}</em> : <em>驗證密碼 = 後台建立的會員授權密碼</em>}
+      <em className={coreStatus.maintenanceMode ? 'system-status maintenance' : 'system-status normal'}>{loginMessage || (coreStatus.maintenanceMode ? '系統維護中' : '系統正常')}</em>
     </section>
   </main>
 }
@@ -249,11 +248,10 @@ function AdminLoginApp() {
   }
   return <main className="login-shell">
     <section className="login-card" aria-label="管理後台登入">
-      <h1 className="admin-login-title">AI百家管理後台登入</h1>
+      <h1 className="admin-login-title">智慧百家管理後台登入</h1>
       <strong>瑞文智慧後台管理</strong>
-      <div className="login-chip">管理員 / 代理登入</div>
-      <label>管理員或代理帳號<input placeholder="請輸入管理員或代理帳號" value={agentAccount} onChange={(event) => setAgentAccount(event.target.value)} /></label>
-      <button onClick={submitLogin}>管理員登入</button>
+      <input aria-label="帳號" placeholder="請輸入帳號" value={agentAccount} onChange={(event) => setAgentAccount(event.target.value)} />
+      <button onClick={submitLogin}>登入</button>
       {loginMessage ? <em>{loginMessage}</em> : null}
     </section>
   </main>
@@ -311,7 +309,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const [memoryCenter, setMemoryCenter] = useState<OnlineMemoryCenter>({ state: 'connecting', items: [], reports: [], strategies: [] })
   const [strategyAnalysis, setStrategyAnalysis] = useState<OnlineStrategyAnalysis>({ state: 'connecting', strategyRows: [], weakTables: [], strongTables: [], watchTables: [], suggestions: [] })
   const [licenseStatus, setLicenseStatus] = useState<OnlineLicenseStatus>({ managers: [], agents: [], plans: [], licenses: [], agentRows: [], licenseRows: [] })
-  const [cloudDataStatus, setCloudDataStatus] = useState<{ mtAutoLoginEnabled?: boolean; message?: string; tableCount?: number; todayRoundCount?: number }>({ mtAutoLoginEnabled: false, message: '資料抓取待確認', todayRoundCount: 0 })
+  const [cloudDataStatus, setCloudDataStatus] = useState<{ mtAutoLoginEnabled?: boolean; message?: string; tableCount?: number; todayRoundCount?: number; tableStats?: Array<{ tableId: string; mainHitRate: string; sideHitRate: string }>; dailyReports?: Array<Record<string, any>> }>({ mtAutoLoginEnabled: false, message: '資料抓取待確認', todayRoundCount: 0, tableStats: [], dailyReports: [] })
   useEffect(() => {
     const loadReports = () => { getOnlineMemoryCenter().then(setMemoryCenter); getOnlineStrategyAnalysis().then(setStrategyAnalysis); getCloudDataStatus().then(setCloudDataStatus) }
     loadReports()
@@ -340,6 +338,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   }) }, [])
   const startDate = '2026/06/25'
   const displayManager = loginAgent
+  const displayManagerLabel = isSuper ? '超級管理員帳號' : displayManager
   const displayMember = memberAccount.trim() || 'User001'
   const serialNo = useMemo(() => findLowestAvailableSerial(codes, displayManager), [codes, displayManager])
   const clampedPlanDays = clampPlanDays(planDays)
@@ -431,9 +430,9 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     notify('維護模式已啟用')
     window.location.reload()
   }
-  const latestReport = memoryCenter.reports[0]
-  const latestReportHitRate = latestReport?.main_hit_rate != null ? `${latestReport.main_hit_rate}%` : '-'
-    const actualRounds = cloudDataStatus.todayRoundCount ?? latestReport?.rounds ?? totalRounds
+  const dailyReports = cloudDataStatus.dailyReports ?? []
+  const latestReport = dailyReports[0] ?? memoryCenter.reports[0]
+  const actualRounds = cloudDataStatus.todayRoundCount ?? latestReport?.rounds ?? totalRounds
   const agents = useMemo(() => normalizeAgents(licenseStatus.configured === false ? initialAgents : licenseStatus.agentRows, displayManager), [licenseStatus.configured, licenseStatus.agentRows, displayManager])
   const visibleAgents = useMemo(() => filterCollapsedAgents(agents, collapsedAgents), [agents, collapsedAgents])
   const filteredAgents = useMemo(() => filterAgents(visibleAgents, agentSearch), [visibleAgents, agentSearch])
@@ -447,7 +446,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     {toast ? <div className="toast">{toast}</div> : null}
     <header className="admin-hero clean-hero v015-hero" style={{ width: '100%', maxWidth: 'none' }}>
       <div className="admin-title-block">
-        <h1>AI百家預測後台</h1>
+        <h1>智慧百家預測後台</h1>
         <span>授權序號 / 會員帳號 / 代理管理 / 驗證碼管理</span>
       </div>
       <button className="admin-logout" onClick={logoutAdmin}>登出</button>
@@ -465,7 +464,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       <h2>建立會員驗證密碼</h2>
       <div className="v015-form-grid">
         <label>會員帳號<input placeholder="請輸入會員帳號" value={memberAccount} onChange={(event) => setMemberAccount(event.target.value)} /></label>
-        <label>代理帳號<input placeholder="請輸入代理帳號" value={displayManager} readOnly /></label>
+        <label>代理帳號<input placeholder="請輸入代理帳號" value={displayManagerLabel} readOnly /></label>
         <label>方案天數<input aria-label="方案天數" type="number" min="1" max="30" value={String(clampedPlanDays)} onChange={(event) => setPlanDays(String(clampPlanDays(event.target.value)))} /></label>
         <label>流水號<input aria-label="流水號" value={serialNo} readOnly /></label>
       </div>
@@ -526,13 +525,13 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
 
     <section className="admin-panel list-panel weak-panel" aria-label="弱桌分析">
       <h2>弱桌分析</h2>
-      <div className="weak-grid">{tableDisplayOrder.map((name, index) => <article className="weak-card" key={name}><strong>{name}桌</strong><span>主命中率 {tableHitRate(strategyAnalysis, index, 'main')}</span><span>副命中率 {tableHitRate(strategyAnalysis, index, 'side')}</span></article>)}</div>
+      <div className="weak-grid">{tableDisplayOrder.map((name, index) => <article className="weak-card" key={name}><strong>{name}桌</strong><span>主命中率 {cloudDataStatus.tableStats?.[index]?.mainHitRate ?? tableHitRate(strategyAnalysis, index, 'main')}</span><span>副命中率 {cloudDataStatus.tableStats?.[index]?.sideHitRate ?? tableHitRate(strategyAnalysis, index, 'side')}</span></article>)}</div>
     </section>
 
     <section className="admin-panel list-panel report-panel" aria-label="線上記憶與報表">
       <h2>線上記憶與報表</h2>
       <div className="report-wide-row report-head"><span>日期</span><span>當日總局數</span><span>莊命中率</span><span>閒命中率</span><span>和命中率</span><span>龍寶命中率</span><span>對子命中率</span><span>超六命中率</span></div>
-      <div className="report-wide-row"><span>{new Date().toLocaleDateString('zh-TW')}</span><b>{actualRounds}局</b><span>{categoryHitRate(latestReport, 'banker')}</span><span>{categoryHitRate(latestReport, 'player')}</span><span>{categoryHitRate(latestReport, 'tie')}</span><span>{categoryHitRate(latestReport, 'dragon')}</span><span>{categoryHitRate(latestReport, 'pair')}</span><span>{categoryHitRate(latestReport, 'six')}</span></div>
+      {(dailyReports.length ? dailyReports : [latestReport]).filter(Boolean).map((report: any) => <div className="report-wide-row" key={report.date ?? report.created_at ?? 'latest'}><span>{report.date ?? new Date().toLocaleDateString('zh-TW')}</span><b>{report.rounds ?? actualRounds}局</b><span>{categoryHitRate(report, 'banker')}</span><span>{categoryHitRate(report, 'player')}</span><span>{categoryHitRate(report, 'tie')}</span><span>{categoryHitRate(report, 'dragon')}</span><span>{categoryHitRate(report, 'pair')}</span><span>{categoryHitRate(report, 'six')}</span></div>)}
     </section>
 
   </main>
@@ -607,7 +606,7 @@ function defaultChildRole(parentLevel: string): 'viewer' | 'agent' | 'manager' {
 }
 
 function categoryHitRate(report: any, key: string) {
-  const direct = report?.[`${key}_hit_rate`] ?? report?.raw_summary?.[`${key}_hit_rate`] ?? report?.metadata?.[`${key}_hit_rate`]
+  const direct = report?.[`${key}_hit_rate`] ?? report?.[`${key}HitRate`] ?? report?.raw_summary?.[`${key}_hit_rate`] ?? report?.metadata?.[`${key}_hit_rate`]
   if (direct != null) return `${direct}%`
   if (key === 'banker' || key === 'player') return report?.main_hit_rate != null ? `${report.main_hit_rate}%` : '-'
   if (['dragon','pair','six','tie'].includes(key)) return formatSideHitRate(report)

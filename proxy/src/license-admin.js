@@ -214,6 +214,22 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     return { ok: true, agent: null, account: { ...manager, type: 'manager', permission: manager.role === 'total' ? 'all' : 'limited' } }
   }
 
+  async function getDailyAnalytics() {
+    if (!configured) return { todayRoundCount: 0, tableStats: [], dailyReports: [] }
+    const todayRows = await db.query(`select table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, prediction_features
+      from public.daily_prediction_results
+      where created_at >= date_trunc('day', now())`)
+    const reportRows = await db.query(`select to_char(created_at::date, 'YYYY-MM-DD') as day, table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, prediction_features
+      from public.daily_prediction_results
+      where created_at >= (current_date - interval '7 days') and created_at < current_date
+      order by day desc`)
+    return {
+      todayRoundCount: countDistinctRounds(todayRows.rows),
+      tableStats: buildTableStats(todayRows.rows),
+      dailyReports: buildDailyReports(reportRows.rows),
+    }
+  }
+
   async function getCloudDataStatus() {
     return { ok: true, mtAutoLoginEnabled: false, captureSource: process.env.CAPTURE_SOURCE || 'manual_or_worker', message: 'MT自動登入未啟用，等待手動或Worker資料來源', tableCount: 0 }
   }
@@ -274,7 +290,62 @@ async function dbQueryAgentRole(code) {
   }
 }
 
-  return { configured, getStatus, bootstrap, createAgent, deleteAgents, createLicense, setLicenseStatus, extendLicense, deleteLicense, validateMemberLogin, validateAgentLogin, getCloudDataStatus }
+  return { configured, getStatus, bootstrap, createAgent, deleteAgents, createLicense, setLicenseStatus, extendLicense, deleteLicense, validateMemberLogin, validateAgentLogin, getCloudDataStatus, getDailyAnalytics }
+}
+
+
+function countDistinctRounds(rows) {
+  return new Set(rows.map((r) => `${r.table_id}:${r.shoe_no}:${r.round_no}`)).size
+}
+function pctText(hits, total) { return total ? `${((hits / total) * 100).toFixed(1)}%` : '-' }
+function sideScore(features, key) { return Number(features?.side_predictions?.[key] ?? 0) || 0 }
+function sideHit(features, key) { return features?.side_hits?.[key] === true }
+const SIDE_THRESHOLDS = { tie:25, superSix:32, bankerPair:25, playerPair:25, bankerDragon:38, playerDragon:40 }
+function sideActionStats(rows, keys) {
+  let actions = 0, hits = 0
+  for (const r of rows) for (const key of keys) {
+    const f = r.prediction_features ?? {}
+    if (sideScore(f, key) >= SIDE_THRESHOLDS[key]) { actions += 1; if (sideHit(f, key)) hits += 1 }
+  }
+  return { actions, hits, rate: pctText(hits, actions) }
+}
+function tableLabel(tableId) {
+  const map = { BAG01:'1桌', BAG02:'2桌', BAG03:'3桌', BAG04:'4桌', BAG05:'5桌', BAG06:'6桌', BAG07:'7桌', BAG08:'8桌', BAG09:'9桌' }
+  return map[tableId] ?? String(tableId ?? '')
+}
+function buildTableStats(rows) {
+  const order = ['BAG01','BAG02','BAG03','BAG04','BAG05','BAG06','BAG07','BAG08','BAG09']
+  return order.map((tableId) => {
+    const list = rows.filter((r) => r.table_id === tableId || (tableId === 'BAG04' && r.table_id === 'BAG03A'))
+    const mainTotal = list.filter((r) => r.actual_result).length
+    const mainHits = list.filter((r) => r.is_hit === true).length
+    const side = sideActionStats(list, ['tie','superSix','bankerPair','playerPair','bankerDragon','playerDragon'])
+    return { tableId, tableName: tableLabel(tableId), rounds: countDistinctRounds(list), mainHitRate: pctText(mainHits, mainTotal), sideHitRate: side.rate }
+  })
+}
+function buildDailyReports(rows) {
+  const groups = new Map()
+  for (const r of rows) {
+    const key = String(r.day).slice(0, 10)
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(r)
+  }
+  return [...groups.entries()].sort((a,b)=>b[0].localeCompare(a[0])).slice(0,7).map(([date, list]) => {
+    const category = (name) => {
+      const rows = list.filter((r) => r.predicted_result === name)
+      return pctText(rows.filter((r) => r.actual_result === name).length, rows.length)
+    }
+    return {
+      date,
+      rounds: countDistinctRounds(list),
+      banker_hit_rate: category('banker'),
+      player_hit_rate: category('player'),
+      tie_hit_rate: category('tie'),
+      dragon_hit_rate: sideActionStats(list, ['bankerDragon','playerDragon']).rate,
+      pair_hit_rate: sideActionStats(list, ['bankerPair','playerPair']).rate,
+      six_hit_rate: sideActionStats(list, ['superSix']).rate,
+    }
+  })
 }
 
 export function hashManagerPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
