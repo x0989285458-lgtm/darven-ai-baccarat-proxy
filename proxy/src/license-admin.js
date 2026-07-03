@@ -186,7 +186,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     try {
       const result = await db.query(`select s.value
         from public.online_app_settings s
-        join public.online_projects p on p.id = s.project_id
+        join public.memory_projects p on p.id = s.project_id
         where p.slug = 'ai-baccarat' and s.scope = 'frontend' and s.key = 'ui_defaults'
         limit 1`)
       return Boolean(result.rows[0]?.value?.maintenanceMode)
@@ -221,13 +221,13 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
     if (await isMaintenanceMode() && !isSuperAdmin(agentAccount)) return { ok: false, maintenanceMode: true, error: '系統維護中，僅超級管理員可登入' }
     if (!agentAccount) throw new Error('Agent account is required')
-    const result = await db.query('select id, code, name, role, parent_code, permission, created_at from public.agents where code = $1 and coalesce(is_active, true) = true limit 1', [agentAccount])
-    const agent = result.rows[0] ?? null
-    if (agent) return { ok: true, agent, account: { ...agent, type: 'agent', permission: agent.permission ?? 'agent' } }
     const managerResult = await db.query("select id, username, role, is_active, created_at from public.manager_accounts where lower(username) = lower($1) and lower(username) = 'dv1788' and is_active = true limit 1", [agentAccount])
     const manager = managerResult.rows[0] ?? null
-    if (!manager) return { ok: false, agent: null, account: null }
-    return { ok: true, agent: null, account: { ...manager, type: 'manager', permission: manager.role === 'total' ? 'all' : 'limited' } }
+    if (manager) return { ok: true, agent: null, account: { ...manager, type: 'manager', permission: manager.role === 'total' ? 'all' : 'limited' } }
+    const result = await db.query("select id, code, name, role, parent_code, permission, created_at from public.agents where code = $1 and lower(code) <> 'dv1788' and coalesce(is_active, true) = true limit 1", [agentAccount])
+    const agent = result.rows[0] ?? null
+    if (agent) return { ok: true, agent, account: { ...agent, type: 'agent', permission: agent.permission ?? 'agent' } }
+    return { ok: false, agent: null, account: null }
   }
 
   async function getDailyAnalytics() {
