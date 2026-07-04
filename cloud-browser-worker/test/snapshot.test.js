@@ -77,3 +77,37 @@ test('redacts token and secret values from login URL before exposing diagnostics
     'https://gsa.ofalive99.net/?token=[redacted]&lang=zhtw&secret=[redacted]',
   )
 })
+
+test('extracts MT tables from msg.tables with nested trend roads', () => {
+  const snapshot = extractSnapshotFromPayloads([
+    JSON.stringify({
+      action: '/api/v1/gametype/*/game/*/room/*/tables',
+      err: 0,
+      msg: {
+        tables: [
+          {
+            table_id: 'BAG01',
+            table_name: '1',
+            table_type: 'BAC',
+            trend: {
+              current_shoe: '12',
+              current_round: '34',
+              total_round_banker: '11',
+              total_round_player: '10',
+              total_round_tie: '2',
+              bead_plate2: '0102#0201',
+              big2: '0102,0201',
+            },
+          },
+        ],
+      },
+    }),
+  ], { sessionId: 'test-session', now: '2026-06-30T00:00:00.000Z' })
+
+  assert.equal(snapshot.tables.length, 1)
+  assert.equal(snapshot.tables[0].tableId, 'BAG01')
+  assert.equal(snapshot.tables[0].round, 34)
+  assert.equal(snapshot.tables[0].bankerCount, 11)
+  assert.equal(snapshot.tables[0].beadPlateRaw, '0102#0201')
+  assert.equal(snapshot.tables[0].bigRoadRaw, '0102,0201')
+})

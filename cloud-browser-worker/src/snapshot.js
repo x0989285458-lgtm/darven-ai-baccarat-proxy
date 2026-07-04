@@ -13,18 +13,19 @@ export function normalizeWinner(value) {
 }
 
 export function normalizeTable(table = {}, index = 0) {
+  const trend = table?.trend && typeof table.trend === 'object' ? table.trend : {}
   const tableId = firstValue(table, ['tableId', 'table_id', 'tableID', 'id', 'code', 'gameTableId']) ?? String(index + 1)
   return {
     tableId: String(tableId),
     displayName: String(firstValue(table, ['displayName', 'name', 'table_name', 'tableName', 'title']) ?? `MT百家樂第${index + 1}桌`),
     tableType: String(firstValue(table, ['tableType', 'table_type', 'gameType']) ?? 'BAC'),
-    shoe: toNullableNumber(firstValue(table, ['shoe', 'current_shoe', 'currentShoe', 'shoeNo', 'shoe_no', 'boot'])),
-    round: toNullableNumber(firstValue(table, ['round', 'current_round', 'currentRound', 'roundNo', 'round_no', 'gameNo'])),
-    bankerCount: toNumber(firstValue(table, ['bankerCount', 'total_round_banker', 'banker_count', 'bankerTotal']), 0),
-    playerCount: toNumber(firstValue(table, ['playerCount', 'total_round_player', 'player_count', 'playerTotal']), 0),
-    tieCount: toNumber(firstValue(table, ['tieCount', 'total_round_tie', 'tie_count', 'tieTotal']), 0),
-    beadPlateRaw: String(firstValue(table, ['beadPlateRaw', 'bead_plate2', 'beadPlate', 'beadRoad', 'road']) ?? ''),
-    bigRoadRaw: String(firstValue(table, ['bigRoadRaw', 'big2', 'bigRoad', 'bigRoadMap']) ?? ''),
+    shoe: toNullableNumber(firstValueIn([table, trend], ['shoe', 'current_shoe', 'currentShoe', 'shoeNo', 'shoe_no', 'boot'])),
+    round: toNullableNumber(firstValueIn([table, trend], ['round', 'current_round', 'currentRound', 'roundNo', 'round_no', 'gameNo'])),
+    bankerCount: toNumber(firstValueIn([table, trend], ['bankerCount', 'total_round_banker', 'banker_count', 'bankerTotal']), 0),
+    playerCount: toNumber(firstValueIn([table, trend], ['playerCount', 'total_round_player', 'player_count', 'playerTotal']), 0),
+    tieCount: toNumber(firstValueIn([table, trend], ['tieCount', 'total_round_tie', 'tie_count', 'tieTotal']), 0),
+    beadPlateRaw: String(firstValueIn([table, trend], ['beadPlateRaw', 'bead_plate2', 'beadPlate', 'beadRoad', 'road']) ?? ''),
+    bigRoadRaw: String(firstValueIn([table, trend], ['bigRoadRaw', 'big2', 'bigRoad', 'bigRoadMap']) ?? ''),
   }
 }
 
@@ -107,7 +108,7 @@ function collectCandidates(value, output, seen = new WeakSet()) {
   if (isTableLike(value)) output.tableCandidates.push(value)
   if (isRoundLike(value)) output.roundCandidates.push(value)
 
-  for (const key of ['tables', 'tableList', 'rooms', 'games', 'list', 'data', 'result', 'payload', 'payloads', 'arr', 'snapshot', 'round', 'roundResult']) {
+  for (const key of ['tables', 'tableList', 'rooms', 'games', 'list', 'data', 'result', 'msg', 'body', 'payload', 'payloads', 'arr', 'snapshot', 'round', 'roundResult']) {
     if (value[key] != null) collectCandidates(value[key], output, seen)
   }
 }
@@ -146,9 +147,10 @@ function parseBaccaratTablesFromText(text = '') {
 
 function isTableLike(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const trend = value.trend && typeof value.trend === 'object' ? value.trend : {}
   const hasId = firstValue(value, ['tableId', 'table_id', 'tableID', 'id', 'code', 'gameTableId']) != null
-  const hasBaccaratRoad = firstValue(value, ['beadPlateRaw', 'bead_plate2', 'bigRoadRaw', 'big2', 'bigRoad', 'road']) != null
-  const hasRound = firstValue(value, ['round', 'current_round', 'currentRound', 'roundNo', 'round_no', 'gameNo']) != null
+  const hasBaccaratRoad = firstValueIn([value, trend], ['beadPlateRaw', 'bead_plate2', 'bigRoadRaw', 'big2', 'bigRoad', 'road']) != null
+  const hasRound = firstValueIn([value, trend], ['round', 'current_round', 'currentRound', 'roundNo', 'round_no', 'gameNo']) != null
   const hasTableName = firstValue(value, ['displayName', 'name', 'table_name', 'tableName', 'title']) != null
   return hasId && (hasBaccaratRoad || hasRound || hasTableName)
 }
@@ -176,6 +178,14 @@ function parseMaybeJson(value) {
 function firstValue(object, keys) {
   for (const key of keys) {
     if (object?.[key] !== undefined && object?.[key] !== null && object?.[key] !== '') return object[key]
+  }
+  return null
+}
+
+function firstValueIn(objects, keys) {
+  for (const object of objects) {
+    const value = firstValue(object, keys)
+    if (value != null) return value
   }
   return null
 }
