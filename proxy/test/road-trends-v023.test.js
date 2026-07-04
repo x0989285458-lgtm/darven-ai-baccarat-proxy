@@ -33,22 +33,22 @@ test('v023 detects requested expanded baccarat road trends', () => {
   assert.equal(detectRoadTrends(['莊', '閒', '莊', '閒', '莊', '莊', '莊']).singleJumpToLongDragon, true)
 })
 
-test('v023 expanded road trends affect main roadTrend source score', () => {
+test('v023 expanded road trends affect main recentTrend source score', () => {
   const oneBankerTwoPlayer = evaluateFiveRoadPrediction(tableFromOutcomes(['莊', '閒', '閒', '莊', '閒', '閒']))
   assert.equal(oneBankerTwoPlayer.patterns.oneBankerTwoPlayer, true)
-  assert.ok(oneBankerTwoPlayer.sourceScores.roadTrend.banker > oneBankerTwoPlayer.sourceScores.roadTrend.player)
+  assert.ok(oneBankerTwoPlayer.sourceScores.recentTrend.banker > oneBankerTwoPlayer.sourceScores.recentTrend.player)
 
   const onePlayerTwoBanker = evaluateFiveRoadPrediction(tableFromOutcomes(['閒', '莊', '莊', '閒', '莊', '莊']))
   assert.equal(onePlayerTwoBanker.patterns.onePlayerTwoBanker, true)
-  assert.ok(onePlayerTwoBanker.sourceScores.roadTrend.player > onePlayerTwoBanker.sourceScores.roadTrend.banker)
+  assert.ok(onePlayerTwoBanker.sourceScores.recentTrend.player > onePlayerTwoBanker.sourceScores.recentTrend.banker)
 
   const brokenSingleJump = evaluateFiveRoadPrediction(tableFromOutcomes(['莊', '閒', '莊', '閒', '莊', '莊']))
   assert.equal(brokenSingleJump.patterns.brokenSingleJump, true)
-  assert.ok(brokenSingleJump.sourceScores.roadTrend.banker > brokenSingleJump.sourceScores.roadTrend.player)
+  assert.ok(brokenSingleJump.sourceScores.recentTrend.banker > brokenSingleJump.sourceScores.recentTrend.player)
 })
 
 test('v023 report and package version labels are updated', () => {
   const prediction = evaluateFiveRoadPrediction(tableFromOutcomes(['莊', '莊', '莊', '閒', '閒', '閒', '莊', '莊', '莊']))
   assert.equal(prediction.patterns.threeJump, true)
-  assert.equal(prediction.weights.roadTrend, 0.16)
+  assert.equal(prediction.weights.recentTrend, 0.17)
 })

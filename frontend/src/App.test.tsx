@@ -417,7 +417,7 @@ describe('AI百家預測軟體', () => {
     expect(detectRoadTrends(['Banker', 'Banker', 'Banker', 'Player', 'Player', 'Banker', 'Player']).downSlope).toBe(true)
   })
 
-  it('v017 main prediction combines five roads, ask-road, table stats, global stats, and trend weights', () => {
+  it('v061 main prediction uses the unified high-hit weights across frontend and backend', () => {
     const prediction = evaluateFiveRoadPrediction({
       beadCells: [
         { code: '02', outcome: 'Banker' },
@@ -433,13 +433,26 @@ describe('AI百家預測軟體', () => {
     expect(prediction.recommendation).toBe('Banker')
     expect(prediction.confidence).toBeGreaterThanOrEqual(30)
     expect(prediction.confidence).toBeLessThanOrEqual(80)
-    expect(prediction.weights.beadRoad).toBeCloseTo(0.18)
-    expect(prediction.weights.bigRoad).toBeCloseTo(0.24)
-    expect(prediction.weights.bigEyeRoad).toBeCloseTo(0.14)
-    expect(prediction.weights.smallRoad).toBeCloseTo(0.10)
-    expect(prediction.weights.cockroachRoad).toBeCloseTo(0.10)
+    expect(prediction.weights.shoeRoad).toBeCloseTo(0.30)
+    expect(prediction.weights.askRoad).toBeCloseTo(0.18)
+    expect(prediction.weights.recentTrend).toBeCloseTo(0.17)
+    expect(prediction.weights.bankerPlayerStats).toBeCloseTo(0.13)
+    expect(prediction.weights.auxiliaryRoads).toBeCloseTo(0.12)
+    expect(prediction.weights.beadRoad).toBeCloseTo(0.10)
     expect(prediction.patterns.longDragon.side).toBe('Banker')
-    expect(prediction.sourceScores.bigRoad.banker).toBeGreaterThan(prediction.sourceScores.bigRoad.player)
+    expect(prediction.sourceScores.shoeRoad.banker).toBeGreaterThan(prediction.sourceScores.shoeRoad.player)
+  })
+
+  it('v061 main probability row follows the AI prediction confidence instead of raw banker-player counts', async () => {
+    window.sessionStorage.setItem('darven-member-login', 'yes')
+    await renderApp()
+    const prediction = screen.getByLabelText('AI預測結果')
+    const line = within(prediction).getByText(/AI預測:/)
+    const confidenceText = within(prediction).getByText(/AI信心值:\d+%/).textContent ?? ''
+    const confidence = Number(confidenceText.match(/(\d+)%/)?.[1] ?? 0)
+    const activeSide = line.textContent?.includes('莊') ? '莊' : '閒'
+
+    expect(within(prediction).getByLabelText(`${activeSide}預測`)).toHaveTextContent(`${confidence}%`)
   })
 
   it('v017 report-facing prediction still hides internal source-weight hit rates from UI text', async () => {

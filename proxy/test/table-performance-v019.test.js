@@ -31,7 +31,7 @@ test('v019 table performance tracker keeps banker/player prediction but lowers c
   assert.equal(prediction.tablePerformance.hitRate, 16.7)
   assert.equal(prediction.tablePerformance.tier, 'low')
   assert.ok(prediction.confidence <= 52)
-  assert.equal(prediction.weights.tablePerformance, 0.10)
+  assert.equal(prediction.weights.bankerPlayerStats, 0.13)
 })
 
 test('v019 stable report continuously verifies each table hit rate while still outputting banker/player prediction', () => {

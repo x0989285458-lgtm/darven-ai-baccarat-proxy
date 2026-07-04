@@ -35,7 +35,7 @@ test('v021 low hit-rate table records actual-side bias and corrects direction fa
   assert.ok(prediction.confidence <= 42)
 })
 
-test('v023 main prediction removes card and shoe weights and adds explicit road-trend weight', () => {
+test('v061 main prediction removes card/shoe weights and uses unified recent-trend weight', () => {
   const prediction = evaluateFiveRoadPrediction(bankerBiasedTable({
     // alternating tail should produce a road-trend score independent of raw bead/big counts
     beadPlateRaw: '02#01#02#01#02#01',
@@ -46,9 +46,9 @@ test('v023 main prediction removes card and shoe weights and adds explicit road-
   assert.equal(prediction.weights.shoeRemaining, undefined)
   assert.equal(prediction.sourceScores.cardPoints, undefined)
   assert.equal(prediction.sourceScores.shoeRemaining, undefined)
-  assert.equal(prediction.weights.roadTrend, 0.16)
-  assert.ok(prediction.sourceScores.roadTrend)
-  assert.ok(prediction.weightAblation.sources.some((item) => item.key === 'roadTrend'))
+  assert.equal(prediction.weights.recentTrend, 0.17)
+  assert.ok(prediction.sourceScores.recentTrend)
+  assert.ok(prediction.weightAblation.sources.some((item) => item.key === 'recentTrend'))
 })
 
 test('v021 prediction exposes weight ablation and confidence calibration diagnostics', () => {
@@ -56,7 +56,7 @@ test('v021 prediction exposes weight ablation and confidence calibration diagnos
 
   assert.ok(prediction.weightAblation)
   assert.ok(Array.isArray(prediction.weightAblation.sources))
-  assert.ok(prediction.weightAblation.sources.some((item) => item.key === 'bigRoad'))
+  assert.ok(prediction.weightAblation.sources.some((item) => item.key === 'shoeRoad'))
   assert.ok(prediction.confidenceCalibration)
   assert.equal(typeof prediction.confidenceCalibration.rawConfidence, 'number')
   assert.equal(typeof prediction.confidenceCalibration.finalConfidence, 'number')

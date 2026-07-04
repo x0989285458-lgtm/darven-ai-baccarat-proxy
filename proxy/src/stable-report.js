@@ -18,16 +18,12 @@ export const SIDE_PREDICTION_THRESHOLDS = {
 export const MAIN_ACTION_CONFIDENCE_THRESHOLD = 50
 
 export const MAIN_PREDICTION_WEIGHTS = {
-  beadRoad: 0.14,
-  bigRoad: 0.18,
-  bigEyeRoad: 0.10,
-  smallRoad: 0.07,
-  cockroachRoad: 0.07,
-  askRoad: 0.09,
-  tableStats: 0.05,
-  globalStats: 0.04,
-  roadTrend: 0.16,
-  tablePerformance: 0.10,
+  shoeRoad: 0.30,
+  askRoad: 0.18,
+  recentTrend: 0.17,
+  bankerPlayerStats: 0.13,
+  auxiliaryRoads: 0.12,
+  beadRoad: 0.10,
 }
 
 export function createStableReportSession({ targetTableCount = 9, startedAt = new Date().toISOString(), labelOrder = DEFAULT_LABELS, globalStats = null } = {}) {
@@ -264,17 +260,23 @@ export function evaluateFiveRoadPrediction(table = {}, { globalStats = null, tab
   const bigRoad = parseBigRoadOutcomes(table.bigRoadRaw)
   const cardShoe = scoreCardShoeInfluence({ lastRound: table.lastRound ?? {}, shoeState: table.shoeState ?? null })
   const performance = normalizeTablePerformance(tablePerformance ?? table.tablePerformance)
+  const shoeOutcomes = bigRoad.length ? bigRoad : bead
+  const auxiliaryRoads = addScores(
+    derivedRoadScore(bigRoad, 1),
+    derivedRoadScore(bigRoad, 2),
+    derivedRoadScore(bigRoad, 3),
+  )
   const sourceScores = {
-    beadRoad: directionalScore(bead),
-    bigRoad: directionalScore(bigRoad),
-    bigEyeRoad: derivedRoadScore(bigRoad, 1),
-    smallRoad: derivedRoadScore(bigRoad, 2),
-    cockroachRoad: derivedRoadScore(bigRoad, 3),
+    shoeRoad: directionalScore(shoeOutcomes),
     askRoad: askRoadScore(table),
-    tableStats: { banker: Number(table.bankerCount ?? 0), player: Number(table.playerCount ?? 0) },
-    globalStats: { banker: Number(globalStats?.banker ?? 0), player: Number(globalStats?.player ?? 0) },
-    roadTrend: roadTrendScore(bigRoad.length ? bigRoad : bead),
-    tablePerformance: performance.directionScore,
+    recentTrend: roadTrendScore(shoeOutcomes),
+    bankerPlayerStats: addScores(
+      { banker: Number(table.bankerCount ?? 0), player: Number(table.playerCount ?? 0) },
+      { banker: Number(globalStats?.banker ?? 0), player: Number(globalStats?.player ?? 0) },
+      performance.directionScore,
+    ),
+    auxiliaryRoads,
+    beadRoad: directionalScore(bead),
   }
   const totalScore = combineWeightedScores(sourceScores, MAIN_PREDICTION_WEIGHTS)
   const rawMain = totalScore.banker >= totalScore.player ? '莊' : '閒'
@@ -609,6 +611,13 @@ function parseBigRoadOutcomes(raw = '') {
     if (last === '2') return '莊'
     return null
   }).filter(Boolean))
+}
+
+function addScores(...scores) {
+  return scores.reduce((acc, score) => ({
+    banker: acc.banker + Number(score?.banker ?? 0),
+    player: acc.player + Number(score?.player ?? 0),
+  }), { banker: 0, player: 0 })
 }
 
 function directionalScore(outcomes, sampleSize = 12) {

@@ -65,14 +65,12 @@ export const SIDE_PREDICTION_THRESHOLDS = {
 } as const
 
 export const MAIN_PREDICTION_WEIGHTS = {
-  beadRoad: 0.18,
-  bigRoad: 0.24,
-  bigEyeRoad: 0.14,
-  smallRoad: 0.10,
-  cockroachRoad: 0.10,
-  askRoad: 0.12,
-  tableStats: 0.06,
-  globalStats: 0.06,
+  shoeRoad: 0.30,
+  askRoad: 0.18,
+  recentTrend: 0.17,
+  bankerPlayerStats: 0.13,
+  auxiliaryRoads: 0.12,
+  beadRoad: 0.10,
 } as const
 
 export type MainPredictionWeights = typeof MAIN_PREDICTION_WEIGHTS
@@ -262,6 +260,13 @@ function derivedRoadScore(bigRoad: BigRoadCell[], offset: number): DirectionScor
   return directionalScoreFromOutcomes(derived, 12)
 }
 
+function addScores(...scores: DirectionScore[]): DirectionScore {
+  return scores.reduce((acc, score) => ({
+    banker: acc.banker + Number(score.banker ?? 0),
+    player: acc.player + Number(score.player ?? 0),
+  }), { banker: 0, player: 0 })
+}
+
 function statsScore(stats?: PredictionStats): DirectionScore {
   const banker = toNumber(stats?.banker ?? stats?.total_round_banker)
   const player = toNumber(stats?.player ?? stats?.total_round_player)
@@ -286,15 +291,19 @@ export function evaluateFiveRoadPrediction(input: FiveRoadPredictionInput): Pred
   const weights = { ...MAIN_PREDICTION_WEIGHTS, ...(input.weights ?? {}) }
   const beadOutcomes = (input.beadCells ?? []).map((cell) => cell.outcome)
   const bigRoadOutcomes = (input.bigRoadCells ?? []).map((cell) => cell.outcome)
+  const shoeOutcomes = bigRoadOutcomes.length ? bigRoadOutcomes : beadOutcomes
+  const auxiliaryRoads = addScores(
+    derivedRoadScore(input.bigRoadCells ?? [], 1),
+    derivedRoadScore(input.bigRoadCells ?? [], 2),
+    derivedRoadScore(input.bigRoadCells ?? [], 3),
+  )
   const sourceScores: Record<string, DirectionScore> = {
-    beadRoad: directionalScoreFromOutcomes(beadOutcomes),
-    bigRoad: directionalScoreFromOutcomes(bigRoadOutcomes),
-    bigEyeRoad: derivedRoadScore(input.bigRoadCells ?? [], 1),
-    smallRoad: derivedRoadScore(input.bigRoadCells ?? [], 2),
-    cockroachRoad: derivedRoadScore(input.bigRoadCells ?? [], 3),
+    shoeRoad: directionalScoreFromOutcomes(shoeOutcomes),
     askRoad: askRoadDirectionScore(input.askRoad),
-    tableStats: statsScore(input.tableStats),
-    globalStats: statsScore(input.globalStats),
+    recentTrend: directionalScoreFromOutcomes(shoeOutcomes, 8),
+    bankerPlayerStats: addScores(statsScore(input.tableStats), statsScore(input.globalStats)),
+    auxiliaryRoads,
+    beadRoad: directionalScoreFromOutcomes(beadOutcomes),
   }
   const totals = Object.entries(weights).reduce((acc, [key, weight]) => {
     const score = sourceScores[key] ?? { banker: 0, player: 0 }
@@ -323,4 +332,12 @@ export function calculatePrediction(input: RoadCell[] | FiveRoadPredictionInput)
     return evaluateFiveRoadPrediction({ beadCells: input })
   }
   return evaluateFiveRoadPrediction(input)
+}
+
+export function calculateMainOutcomeProbabilities(prediction: Pick<Prediction, 'recommendation' | 'confidence'>, tieProbability = 0): OutcomeProbabilities {
+  const confidence = clamp(Number(prediction.confidence ?? 0), 0, 100)
+  const opposite = clamp(100 - confidence, 0, 100)
+  return prediction.recommendation === 'Banker'
+    ? { banker: confidence, player: opposite, tie: clamp(tieProbability, 0, 100) }
+    : { banker: opposite, player: confidence, tie: clamp(tieProbability, 0, 100) }
 }

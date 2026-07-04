@@ -3,7 +3,7 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v049_no_observe_confidence_30_80'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v050_all_mt_equal_weight'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v061_unified_high_hit_main_weights'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -13,15 +13,14 @@ function buildEqualWeights(keys) {
   return Object.freeze(weights)
 }
 
-export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildEqualWeights([
-  'table_id', 'display_name', 'table_type', 'room_id', 'dealer_name', 'total_players', 'state', 'order_state', 'source_updated_at',
-  'shoe', 'round', 'shoe_stage', 'banker_count', 'player_count', 'tie_count', 'banker_pair_count', 'player_pair_count',
-  'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road', 'next_banker_road', 'next_player_road',
-  'previous_winner', 'streak_length', 'near5_banker_player_bias', 'road_trend', 'long_dragon', 'double_dragon', 'up_slope', 'down_slope',
-  'jump_pattern', 'single_jump', 'double_jump', 'three_jump', 'one_banker_two_player', 'one_player_two_banker', 'row_pair_run',
-  'banker_then_jump', 'player_then_jump', 'banker_then_run', 'player_then_run', 'broken_single_jump', 'long_dragon_to_single_jump', 'single_jump_to_long_dragon',
-  'road_break', 'derived_road_sync', 'ask_road_trend', 'table_recent_hit_rate', 'direction_calibration', 'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'remaining_rank_counts', 'pattern_tags', 'historical_backtest',
-])
+export const ALL_MT_EQUAL_MAIN_WEIGHTS = Object.freeze({
+  shoe_road: 0.30,
+  ask_road: 0.18,
+  recent_trend: 0.17,
+  banker_player_stats: 0.13,
+  auxiliary_roads: 0.12,
+  bead_road: 0.10,
+})
 
 export const ALL_MT_EQUAL_SIDE_WEIGHTS = buildEqualWeights([
   'tie_count', 'banker_pair_count', 'player_pair_count', 'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road',
@@ -183,7 +182,7 @@ export function buildPredictionResultRow(round = {}, table = {}) {
     table_recent_hit_rate: tablePerformance.recentHitRate,
     table_recent_prediction_count: tablePerformance.recentPredictionCount,
     short_run_adjustment: {
-      rule: 'all_mt_and_user_requested_equal_weight',
+      rule: 'unified_high_hit_main_weights',
       includedMainWeightCount: Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length,
       includedSideWeightCount: Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).length,
       baseProbabilities: probabilities,
@@ -191,7 +190,7 @@ export function buildPredictionResultRow(round = {}, table = {}) {
     prediction_features: {
       mt_context: buildMtContextFeatures(table),
       derived_main_features: buildDerivedMainFeatures(round, table, facts, probabilities, tablePerformance),
-      all_mt_equal_scores: allMtPrediction.scores,
+      unified_main_scores: allMtPrediction.scores,
       road_features: buildRoadFeatures(table),
       card_shoe_features: scoreCardShoeInfluence({ lastRound: round, shoeState: round.cardShoe ?? null }).features,
       point_features: {
@@ -299,6 +298,11 @@ function calculateAllMtEqualMainPrediction({ round = {}, table = {}, facts = {},
 function scoreAllMtFeature(key, ctx) {
   const { table, probabilities, tablePerformance, derived, roadFeatures } = ctx
   switch (key) {
+    case 'shoe_road': return roadStringScore(roadFeatures.bigRoadRaw || roadFeatures.beadPlateRaw)
+    case 'ask_road': return averageScores(askRoadScore(table.nextBankerRaw, 'banker'), askRoadScore(table.nextPlayerRaw, 'player'))
+    case 'recent_trend': return winnerScore(derived.roadTrend)
+    case 'banker_player_stats': return ratioScore(table.bankerCount, table.playerCount)
+    case 'auxiliary_roads': return averageScores(roadColorScore(roadFeatures.bigEyeRaw), roadColorScore(roadFeatures.smallRoadRaw), roadColorScore(roadFeatures.cockroachRaw))
     case 'banker_count': return ratioScore(table.bankerCount, table.playerCount)
     case 'player_count': return ratioScore(table.bankerCount, table.playerCount)
     case 'tie_count': return neutralScore()
@@ -347,6 +351,11 @@ function scoreAllMtFeature(key, ctx) {
 }
 
 function neutralScore() { return { banker: 0.5, player: 0.5 } }
+function averageScores(...scores) {
+  if (!scores.length) return neutralScore()
+  const total = scores.reduce((acc, score) => ({ banker: acc.banker + Number(score?.banker ?? 0.5), player: acc.player + Number(score?.player ?? 0.5) }), { banker: 0, player: 0 })
+  return { banker: total.banker / scores.length, player: total.player / scores.length }
+}
 function winnerScore(winner) { return winner === 'player' ? { banker: 0.45, player: 0.55 } : winner === 'banker' ? { banker: 0.55, player: 0.45 } : neutralScore() }
 function invertWinnerScore(winner) { return winner === 'player' ? { banker: 0.55, player: 0.45 } : winner === 'banker' ? { banker: 0.45, player: 0.55 } : neutralScore() }
 function ratioScore(bankerRaw, playerRaw) {

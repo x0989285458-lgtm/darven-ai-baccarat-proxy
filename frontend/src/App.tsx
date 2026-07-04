@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { mockTables } from './data/mockTables'
 import { LiveRoadClient, type LiveTable } from './lib/liveClient'
-import { applyAskRoadWeighting, calculatePrediction, calculateBonusPredictions, parseBeadPlate, parseBigRoad, SIDE_PREDICTION_THRESHOLDS } from './lib/roadParser'
+import { calculatePrediction, calculateMainOutcomeProbabilities, calculateBonusPredictions, parseBeadPlate, parseBigRoad, SIDE_PREDICTION_THRESHOLDS } from './lib/roadParser'
 import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from './lib/supabaseClient'
 import { checkOnlineCoreStatus, getOnlineMemoryCenter, getOnlineStrategyAnalysis, updateOnlineAppSetting, type OnlineCoreStatus, type OnlineMemoryCenter, type OnlineStrategyAnalysis } from './lib/onlineCoreClient'
 import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents, deleteOnlineLicense, extendOnlineLicense, getCloudDataStatus, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
@@ -12,10 +12,6 @@ const sideThresholds = SIDE_PREDICTION_THRESHOLDS
 const label = { Banker: '莊', Player: '閒', Tie: '和' }
 const tableDisplayOrder = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
 
-function pct(count: number, total: number) {
-  if (!total) return 0
-  return Math.round((count / total) * 100)
-}
 function tableNumber(table: LiveTable, index: number) {
   if (tableDisplayOrder[index]) return tableDisplayOrder[index]
   const match = String(table.table_name ?? table.name ?? table.id).match(/\d+/)
@@ -55,13 +51,7 @@ export default function App() {
     },
   }), [fullRoad, bigRoad, displaySelected])
   const bonusPredictions = useMemo(() => calculateBonusPredictions(fullRoad, displaySelected?.trend), [fullRoad, displaySelected])
-  const outcomePredictions = useMemo(() => {
-    const banker = Number(displaySelected?.trend.total_round_banker ?? 0)
-    const player = Number(displaySelected?.trend.total_round_player ?? 0)
-    const tie = Number(displaySelected?.trend.total_round_tie ?? 0)
-    const total = banker + player + tie
-    return applyAskRoadWeighting({ banker: pct(banker, total), player: pct(player, total), tie: pct(tie, total) }, displaySelected?.trend)
-  }, [displaySelected])
+  const outcomePredictions = useMemo(() => calculateMainOutcomeProbabilities(prediction, bonusPredictions.tie), [prediction, bonusPredictions])
 
   useEffect(() => () => client.current?.disconnect(false), [])
   useEffect(() => {
