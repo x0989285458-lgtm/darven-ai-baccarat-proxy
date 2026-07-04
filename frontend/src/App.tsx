@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { mockTables } from './data/mockTables'
 import { LiveRoadClient, type LiveTable } from './lib/liveClient'
-import { calculatePrediction, calculateMainOutcomeProbabilities, calculateBonusPredictions, parseBeadPlate, parseBigRoad, SIDE_PREDICTION_THRESHOLDS } from './lib/roadParser'
+import { calculatePrediction, calculateMainOutcomeProbabilities, calculateBonusPredictions, getSidePredictionActions, parseBeadPlate, parseBigRoad, SIDE_PREDICTION_THRESHOLDS } from './lib/roadParser'
 import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from './lib/supabaseClient'
 import { checkOnlineCoreStatus, getOnlineMemoryCenter, getOnlineStrategyAnalysis, updateOnlineAppSetting, type OnlineCoreStatus, type OnlineMemoryCenter, type OnlineStrategyAnalysis } from './lib/onlineCoreClient'
 import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents, deleteOnlineLicense, extendOnlineLicense, getCloudDataStatus, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
@@ -51,6 +51,7 @@ export default function App() {
     },
   }), [fullRoad, bigRoad, displaySelected])
   const bonusPredictions = useMemo(() => calculateBonusPredictions(fullRoad, displaySelected?.trend), [fullRoad, displaySelected])
+  const sideActions = useMemo(() => getSidePredictionActions(bonusPredictions), [bonusPredictions])
   const outcomePredictions = useMemo(() => calculateMainOutcomeProbabilities(prediction, bonusPredictions.tie), [prediction, bonusPredictions])
 
   useEffect(() => () => client.current?.disconnect(false), [])
@@ -141,11 +142,11 @@ export default function App() {
         </div>
         <section className="prediction-card" aria-label="AI預測結果">
           <div className="prediction-row side-prediction-row" aria-label="副項目預測機率">
-            <PredictionMetric title="閒龍寶" value={bonusPredictions.playerDragon} tone="Player" active={bonusPredictions.playerDragon >= sideThresholds.playerDragon} />
+            <PredictionMetric title="閒龍寶" value={bonusPredictions.playerDragon} tone="Player" active={sideActions.playerDragon} />
             <PredictionMetric title="閒對" value={bonusPredictions.playerPair} tone="Player" active={bonusPredictions.playerPair >= sideThresholds.playerPair} />
             <PredictionMetric title="超六" value={bonusPredictions.superSix} tone="Tie" active={bonusPredictions.superSix >= sideThresholds.superSix} />
             <PredictionMetric title="莊對" value={bonusPredictions.bankerPair} tone="Banker" active={bonusPredictions.bankerPair >= sideThresholds.bankerPair} />
-            <PredictionMetric title="莊龍寶" value={bonusPredictions.bankerDragon} tone="Banker" active={bonusPredictions.bankerDragon >= sideThresholds.bankerDragon} />
+            <PredictionMetric title="莊龍寶" value={bonusPredictions.bankerDragon} tone="Banker" active={sideActions.bankerDragon} />
           </div>
           <div className="prediction-row main-probability-row" aria-label="莊閒預測機率">
             <PredictionMetric title="閒" value={outcomePredictions.player} tone="Player" active={prediction.recommendation === 'Player'} />

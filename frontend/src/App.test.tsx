@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import App from './App'
 import { mockTables } from './data/mockTables'
-import { applyAskRoadWeighting, calculateAskRoadInfluence, calculateBonusPredictions, calculatePrediction, createSidePredictionLearningRecord, detectRoadTrends, evaluateFiveRoadPrediction, isSidePredictionActionable, scoreMainPrediction, normalizeOutcomeFromBead, parseBigRoad, SIDE_PREDICTION_THRESHOLDS } from './lib/roadParser'
+import { applyAskRoadWeighting, calculateAskRoadInfluence, calculateBonusPredictions, calculatePrediction, createSidePredictionLearningRecord, detectRoadTrends, evaluateFiveRoadPrediction, getSidePredictionActions, isSidePredictionActionable, scoreMainPrediction, normalizeOutcomeFromBead, parseBigRoad, SIDE_PREDICTION_THRESHOLDS } from './lib/roadParser'
 
 async function renderApp(path = '/', waitForConnected = true) {
   window.history.pushState({}, '', path)
@@ -398,12 +398,12 @@ describe('AI百家預測軟體', () => {
         superSix: false,
         bankerPair: false,
         playerPair: true,
-        bankerDragon: true,
+        bankerDragon: false,
         playerDragon: false,
       }),
       hits: expect.objectContaining({
         playerPair: true,
-        bankerDragon: true,
+        bankerDragon: false,
       }),
     }))
 
@@ -417,6 +417,26 @@ describe('AI百家預測軟體', () => {
     expect(isSidePredictionActionable('bankerDragon', 30)).toBe(true)
     expect(isSidePredictionActionable('playerDragon', 29)).toBe(false)
     expect(isSidePredictionActionable('playerDragon', 30)).toBe(true)
+  })
+
+
+  it('v063 dragon bonus can only action one side and requires at least 6-point separation', () => {
+    expect(getSidePredictionActions({
+      tie: 0,
+      superSix: 0,
+      bankerPair: 0,
+      playerPair: 0,
+      bankerDragon: 36,
+      playerDragon: 30,
+    })).toEqual(expect.objectContaining({ bankerDragon: true, playerDragon: false }))
+    expect(getSidePredictionActions({
+      tie: 0,
+      superSix: 0,
+      bankerPair: 0,
+      playerPair: 0,
+      bankerDragon: 35,
+      playerDragon: 35,
+    })).toEqual(expect.objectContaining({ bankerDragon: false, playerDragon: false }))
   })
 
   it('v017 detects road trends including single jump, double jump, long dragon, double dragon, and slopes', () => {

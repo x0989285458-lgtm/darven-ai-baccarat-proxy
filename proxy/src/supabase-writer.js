@@ -572,7 +572,18 @@ function buildSideActualResults(round = {}, facts = {}) {
 }
 
 function buildSideHits(predictions = {}, actual = {}) {
-  return Object.fromEntries(Object.entries(predictions).map(([key, value]) => [key, Number(value) >= (SIDE_PREDICTION_THRESHOLDS[key] ?? 101) && Boolean(actual[key])]))
+  const actions = buildSideActions(predictions)
+  return Object.fromEntries(Object.keys(SIDE_PREDICTION_THRESHOLDS).map((key) => [key, Boolean(actions[key]) && Boolean(actual[key])]))
+}
+
+function buildSideActions(predictions = {}) {
+  const actions = Object.fromEntries(Object.entries(SIDE_PREDICTION_THRESHOLDS).map(([key, threshold]) => [key, Number(predictions[key] ?? 0) >= threshold]))
+  const bankerDragon = Math.round(Number(predictions.bankerDragon ?? 0))
+  const playerDragon = Math.round(Number(predictions.playerDragon ?? 0))
+  const dragonDiff = Math.abs(bankerDragon - playerDragon)
+  actions.bankerDragon = bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon && bankerDragon > playerDragon && dragonDiff >= 6
+  actions.playerDragon = playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon && playerDragon > bankerDragon && dragonDiff >= 6
+  return actions
 }
 
 function percentValue(count, total) {

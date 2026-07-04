@@ -82,9 +82,20 @@ export function isSidePredictionActionable(key: SidePredictionKey, probability: 
   return Math.round(probability) >= SIDE_PREDICTION_THRESHOLDS[key]
 }
 
-export function createSidePredictionLearningRecord(predictions: BonusPredictions, actuals: SideActuals) {
+export function getSidePredictionActions(predictions: BonusPredictions): SideActions {
   const keys = Object.keys(SIDE_PREDICTION_THRESHOLDS) as SidePredictionKey[]
   const actions = Object.fromEntries(keys.map((key) => [key, isSidePredictionActionable(key, predictions[key])])) as SideActions
+  const bankerDragon = Math.round(predictions.bankerDragon ?? 0)
+  const playerDragon = Math.round(predictions.playerDragon ?? 0)
+  const dragonDiff = Math.abs(bankerDragon - playerDragon)
+  actions.bankerDragon = bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon && bankerDragon > playerDragon && dragonDiff >= 6
+  actions.playerDragon = playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon && playerDragon > bankerDragon && dragonDiff >= 6
+  return actions
+}
+
+export function createSidePredictionLearningRecord(predictions: BonusPredictions, actuals: SideActuals) {
+  const keys = Object.keys(SIDE_PREDICTION_THRESHOLDS) as SidePredictionKey[]
+  const actions = getSidePredictionActions(predictions)
   const hits = Object.fromEntries(keys.map((key) => [key, actions[key] && actuals[key]])) as SideActions
   return {
     predictions,

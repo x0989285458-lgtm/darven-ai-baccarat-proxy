@@ -253,16 +253,14 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
             case when coalesce((prediction_features->'side_predictions'->>'superSix')::numeric,0) >= 30 then 1 else 0 end +
             case when coalesce((prediction_features->'side_predictions'->>'bankerPair')::numeric,0) >= 20 then 1 else 0 end +
             case when coalesce((prediction_features->'side_predictions'->>'playerPair')::numeric,0) >= 20 then 1 else 0 end +
-            case when coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) >= 30 then 1 else 0 end +
-            case when coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) >= 30 then 1 else 0 end
+            case when coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) >= 30 and coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) > coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) and abs(coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) - coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0)) >= 6 then 1 when coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) >= 30 and coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) > coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) and abs(coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) - coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0)) >= 6 then 1 else 0 end
           )::int as side_actions,
           sum(
             case when coalesce((prediction_features->'side_predictions'->>'tie')::numeric,0) >= 40 and (prediction_features->'side_hits'->>'tie')::boolean is true then 1 else 0 end +
             case when coalesce((prediction_features->'side_predictions'->>'superSix')::numeric,0) >= 30 and (prediction_features->'side_hits'->>'superSix')::boolean is true then 1 else 0 end +
             case when coalesce((prediction_features->'side_predictions'->>'bankerPair')::numeric,0) >= 20 and (prediction_features->'side_hits'->>'bankerPair')::boolean is true then 1 else 0 end +
             case when coalesce((prediction_features->'side_predictions'->>'playerPair')::numeric,0) >= 20 and (prediction_features->'side_hits'->>'playerPair')::boolean is true then 1 else 0 end +
-            case when coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) >= 30 and (prediction_features->'side_hits'->>'bankerDragon')::boolean is true then 1 else 0 end +
-            case when coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) >= 30 and (prediction_features->'side_hits'->>'playerDragon')::boolean is true then 1 else 0 end
+            case when coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) >= 30 and coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) > coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) and abs(coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) - coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0)) >= 6 and (prediction_features->'side_hits'->>'bankerDragon')::boolean is true then 1 when coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) >= 30 and coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) > coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) and abs(coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) - coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0)) >= 6 and (prediction_features->'side_hits'->>'playerDragon')::boolean is true then 1 else 0 end
           )::int as side_hits
         from scoped group by table_id
       ) select s.table_id,
@@ -285,8 +283,8 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
           count(*) filter (where predicted_result='player' and actual_result='player')::int as player_hits,
           count(*) filter (where predicted_result='tie')::int as tie_total,
           count(*) filter (where predicted_result='tie' and actual_result='tie')::int as tie_hits,
-          sum(case when coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) >= 30 then 1 else 0 end + case when coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) >= 30 then 1 else 0 end)::int as dragon_total,
-          sum(case when coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) >= 30 and (prediction_features->'side_hits'->>'bankerDragon')::boolean is true then 1 else 0 end + case when coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) >= 30 and (prediction_features->'side_hits'->>'playerDragon')::boolean is true then 1 else 0 end)::int as dragon_hits,
+          sum(case when coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) >= 30 and coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) > coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) and abs(coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) - coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0)) >= 6 then 1 when coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) >= 30 and coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) > coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) and abs(coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) - coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0)) >= 6 then 1 else 0 end)::int as dragon_total,
+          sum(case when coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) >= 30 and coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) > coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) and abs(coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) - coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0)) >= 6 and (prediction_features->'side_hits'->>'bankerDragon')::boolean is true then 1 when coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) >= 30 and coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0) > coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) and abs(coalesce((prediction_features->'side_predictions'->>'bankerDragon')::numeric,0) - coalesce((prediction_features->'side_predictions'->>'playerDragon')::numeric,0)) >= 6 and (prediction_features->'side_hits'->>'playerDragon')::boolean is true then 1 else 0 end)::int as dragon_hits,
           sum(case when coalesce((prediction_features->'side_predictions'->>'bankerPair')::numeric,0) >= 20 then 1 else 0 end + case when coalesce((prediction_features->'side_predictions'->>'playerPair')::numeric,0) >= 20 then 1 else 0 end)::int as pair_total,
           sum(case when coalesce((prediction_features->'side_predictions'->>'bankerPair')::numeric,0) >= 20 and (prediction_features->'side_hits'->>'bankerPair')::boolean is true then 1 else 0 end + case when coalesce((prediction_features->'side_predictions'->>'playerPair')::numeric,0) >= 20 and (prediction_features->'side_hits'->>'playerPair')::boolean is true then 1 else 0 end)::int as pair_hits,
           sum(case when coalesce((prediction_features->'side_predictions'->>'superSix')::numeric,0) >= 30 then 1 else 0 end)::int as six_total,
@@ -401,9 +399,19 @@ function sideHit(features, key) { return features?.side_hits?.[key] === true }
 const SIDE_THRESHOLDS = { tie:40, superSix:30, bankerPair:20, playerPair:20, bankerDragon:30, playerDragon:30 }
 function sideActionStats(rows, keys) {
   let actions = 0, hits = 0
-  for (const r of rows) for (const key of keys) {
+  for (const r of rows) {
     const f = r.prediction_features ?? {}
-    if (sideScore(f, key) >= SIDE_THRESHOLDS[key]) { actions += 1; if (sideHit(f, key)) hits += 1 }
+    for (const key of keys) {
+      if (key === 'bankerDragon' || key === 'playerDragon') continue
+      if (sideScore(f, key) >= SIDE_THRESHOLDS[key]) { actions += 1; if (sideHit(f, key)) hits += 1 }
+    }
+    if (keys.includes('bankerDragon') || keys.includes('playerDragon')) {
+      const bankerDragon = Math.round(sideScore(f, 'bankerDragon'))
+      const playerDragon = Math.round(sideScore(f, 'playerDragon'))
+      const diff = Math.abs(bankerDragon - playerDragon)
+      if (bankerDragon >= SIDE_THRESHOLDS.bankerDragon && bankerDragon > playerDragon && diff >= 6) { actions += 1; if (sideHit(f, 'bankerDragon')) hits += 1 }
+      else if (playerDragon >= SIDE_THRESHOLDS.playerDragon && playerDragon > bankerDragon && diff >= 6) { actions += 1; if (sideHit(f, 'playerDragon')) hits += 1 }
+    }
   }
   return { actions, hits, rate: pctText(hits, actions) }
 }

@@ -167,3 +167,21 @@ test('v050 high-performing table still keeps confidence in 30-80 range', () => {
   assert.equal(neutralPrediction.confidence <= 80, true)
   assert.equal(boostedPrediction.confidence <= 80, true)
 })
+
+test('v063 dragon bonus prediction is single-side only and skips close two-sided dragon scores', () => {
+  const prediction = buildPredictionResultRow({
+    ...baseRound,
+    winner: 'banker',
+    rawResult: [1, 2, 14, 15, 0, 0, -1, -1, 9, 3],
+  }, {
+    tableId: 'BAG10',
+    bankerCount: 10,
+    playerCount: 10,
+    tieCount: 0,
+  })
+
+  assert.equal(prediction.prediction_features.side_predictions.bankerDragon >= 30, true)
+  assert.equal(prediction.prediction_features.side_predictions.playerDragon >= 30, true)
+  assert.equal(prediction.prediction_features.side_hits.bankerDragon, false)
+  assert.equal(prediction.prediction_features.side_hits.playerDragon, false)
+})

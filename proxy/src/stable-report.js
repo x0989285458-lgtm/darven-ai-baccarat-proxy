@@ -491,9 +491,10 @@ function scoreMainPrediction(prediction, winner, confidence = 100) {
 }
 
 function recordSideLearning(item, predictions, actuals) {
+  const actions = buildSideActions(predictions)
   for (const key of Object.keys(SIDE_PREDICTION_THRESHOLDS)) {
     const probability = predictions[key] ?? 0
-    const actionable = probability >= SIDE_PREDICTION_THRESHOLDS[key]
+    const actionable = actions[key]
     const hit = actionable && actuals[key] === true
     item.sideLearningSamples += 1
     if (actionable) item.sideActions += 1
@@ -506,6 +507,16 @@ function recordSideLearning(item, predictions, actuals) {
     summary.actionable = actionable
     summary.hitRate = percent(summary.hits, summary.actions)
   }
+}
+
+function buildSideActions(predictions = {}) {
+  const actions = Object.fromEntries(Object.entries(SIDE_PREDICTION_THRESHOLDS).map(([key, threshold]) => [key, Number(predictions[key] ?? 0) >= threshold]))
+  const bankerDragon = Math.round(Number(predictions.bankerDragon ?? 0))
+  const playerDragon = Math.round(Number(predictions.playerDragon ?? 0))
+  const dragonDiff = Math.abs(bankerDragon - playerDragon)
+  actions.bankerDragon = bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon && bankerDragon > playerDragon && dragonDiff >= 6
+  actions.playerDragon = playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon && playerDragon > bankerDragon && dragonDiff >= 6
+  return actions
 }
 
 function actualSideOutcomes(winner, round = {}) {
