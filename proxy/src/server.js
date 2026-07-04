@@ -195,11 +195,20 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     return `${base}｜今日已抓${Number(count) || 0}局`
   }
 
-  async function readLatestCloudSnapshot() {
+  const CLOUD_SNAPSHOT_MAX_AGE_MS = Number(process.env.CLOUD_SNAPSHOT_MAX_AGE_MS ?? 120000)
+
+  function isFreshCloudTimestamp(value, maxAgeMs = CLOUD_SNAPSHOT_MAX_AGE_MS) {
+    const timestamp = Date.parse(value ?? '')
+    if (!Number.isFinite(timestamp)) return false
+    return Date.now() - timestamp <= Math.max(1000, Number(maxAgeMs) || 120000)
+  }
+
+  async function readLatestCloudSnapshot({ requireFresh = false } = {}) {
     if (!supabaseClient?.configured || typeof supabaseClient.getLatestCloudTableSnapshot !== 'function') return null
     try {
       const snapshot = await supabaseClient.getLatestCloudTableSnapshot()
       if (!snapshot || !Array.isArray(snapshot.tables)) return null
+      if (requireFresh && !isFreshCloudTimestamp(snapshot.snapshot_at ?? snapshot.created_at ?? snapshot.updated_at)) return null
       return snapshot
     } catch (error) {
       state.setStatus({ cloudReadStatus: 'error', cloudReadError: error?.message ?? String(error) })
@@ -210,7 +219,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   async function readBestTables() {
     const localTables = state.snapshot().tables
     if (localTables.length > 0) return localTables
-    const cloudSnapshot = await readLatestCloudSnapshot()
+    const cloudSnapshot = await readLatestCloudSnapshot({ requireFresh: true })
     return cloudSnapshot?.tables ?? []
   }
 
@@ -220,21 +229,22 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     if (!supabaseClient?.configured || typeof supabaseClient.getLatestCloudCaptureStatus !== 'function') return null
     try {
       const status = await supabaseClient.getLatestCloudCaptureStatus()
-      const snapshot = await readLatestCloudSnapshot()
-      if (!status && !snapshot) return null
+      const snapshot = await readLatestCloudSnapshot({ requireFresh: true })
+      const statusIsFresh = isFreshCloudTimestamp(status?.last_message_at ?? status?.snapshot_at ?? status?.updated_at ?? status?.created_at)
+      if (!statusIsFresh && !snapshot) return null
       const snapshotTableCount = Array.isArray(snapshot?.tables) ? snapshot.tables.length : Number(snapshot?.table_count ?? 0)
-      const preferSnapshot = snapshotTableCount > Number(status?.table_count ?? 0)
+      const preferSnapshot = snapshotTableCount > Number(statusIsFresh ? status?.table_count ?? 0 : 0)
       const source = preferSnapshot ? snapshot?.capture_source : (status?.capture_source ?? snapshot?.capture_source)
       return {
         captureSource: source ?? captureSource,
         captureMode: source ?? captureSource,
-        connected: Boolean(preferSnapshot ? snapshotTableCount : (status?.connected ?? snapshotTableCount)),
-        authenticated: Boolean(preferSnapshot ? snapshotTableCount : (status?.authenticated ?? snapshotTableCount)),
-        tableCount: Number(preferSnapshot ? snapshotTableCount : (status?.table_count ?? snapshot?.table_count ?? snapshotTableCount ?? 0)),
-        lastMessageAt: preferSnapshot ? snapshot?.snapshot_at ?? status?.last_message_at ?? null : status?.last_message_at ?? snapshot?.snapshot_at ?? null,
+        connected: Boolean(preferSnapshot ? snapshotTableCount : (statusIsFresh ? status?.connected ?? snapshotTableCount : false)),
+        authenticated: Boolean(preferSnapshot ? snapshotTableCount : (statusIsFresh ? status?.authenticated ?? snapshotTableCount : false)),
+        tableCount: Number(preferSnapshot ? snapshotTableCount : (statusIsFresh ? status?.table_count ?? snapshot?.table_count ?? snapshotTableCount ?? 0 : 0)),
+        lastMessageAt: preferSnapshot ? snapshot?.snapshot_at ?? status?.last_message_at ?? null : statusIsFresh ? status?.last_message_at ?? snapshot?.snapshot_at ?? null : null,
         lastTablesAt: snapshot?.snapshot_at ?? null,
-        statusText: snapshotTableCount ? `本機VPN抓牌已同步${snapshotTableCount}桌` : status?.status_text ?? null,
-        errorMessage: preferSnapshot ? null : status?.error_message ?? null,
+        statusText: snapshotTableCount ? `本機VPN抓牌已同步${snapshotTableCount}桌` : statusIsFresh ? status?.status_text ?? null : '雲端資料過期，等待Worker重新抓牌',
+        errorMessage: preferSnapshot ? null : statusIsFresh ? status?.error_message ?? null : 'Cloud snapshot is stale',
       }
     } catch (error) {
       state.setStatus({ cloudReadStatus: 'error', cloudReadError: error?.message ?? String(error) })
