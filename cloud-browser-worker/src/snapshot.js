@@ -14,9 +14,9 @@ export function normalizeWinner(value) {
 
 export function normalizeTable(table = {}, index = 0) {
   const trend = table?.trend && typeof table.trend === 'object' ? table.trend : {}
-  const tableId = firstValue(table, ['tableId', 'table_id', 'tableID', 'id', 'code', 'gameTableId']) ?? String(index + 1)
+  const tableId = normalizeTableId(firstValue(table, ['tableId', 'table_id', 'tableID', 'id', 'code', 'gameTableId']) ?? String(index + 1))
   return {
-    tableId: String(tableId),
+    tableId,
     displayName: String(firstValue(table, ['displayName', 'name', 'table_name', 'tableName', 'title']) ?? `MT百家樂第${index + 1}桌`),
     tableType: String(firstValue(table, ['tableType', 'table_type', 'gameType']) ?? 'BAC'),
     shoe: toNullableNumber(firstValueIn([table, trend], ['shoe', 'current_shoe', 'currentShoe', 'shoeNo', 'shoe_no', 'boot'])),
@@ -35,9 +35,10 @@ export function extractSnapshotFromPayloads(payloads = [], { sessionId = 'darven
   const roundCandidates = []
   for (const payload of parsedPayloads) collectCandidates(payload, { tableCandidates, roundCandidates })
 
-  const tables = dedupeBy(
-    tableCandidates.map((table, index) => normalizeTable(table, index)).filter((table) => table.tableId),
-    (table) => table.tableId,
+  const tables = mergeTables(
+    tableCandidates
+      .map((table, index) => normalizeTable(table, index))
+      .filter((table) => isWantedBaccaratTable(table)),
   )
   const rounds = dedupeRounds(
     roundCandidates
@@ -149,10 +150,45 @@ function isTableLike(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const trend = value.trend && typeof value.trend === 'object' ? value.trend : {}
   const hasId = firstValue(value, ['tableId', 'table_id', 'tableID', 'id', 'code', 'gameTableId']) != null
+  const tableType = String(firstValue(value, ['tableType', 'table_type', 'gameType']) ?? 'BAC').toUpperCase()
   const hasBaccaratRoad = firstValueIn([value, trend], ['beadPlateRaw', 'bead_plate2', 'bigRoadRaw', 'big2', 'bigRoad', 'road']) != null
   const hasRound = firstValueIn([value, trend], ['round', 'current_round', 'currentRound', 'roundNo', 'round_no', 'gameNo']) != null
   const hasTableName = firstValue(value, ['displayName', 'name', 'table_name', 'tableName', 'title']) != null
-  return hasId && (hasBaccaratRoad || hasRound || hasTableName)
+  return hasId && tableType.startsWith('BA') && (hasBaccaratRoad || hasRound || hasTableName)
+}
+
+function normalizeTableId(value) {
+  const id = String(value ?? '').trim().toUpperCase()
+  return id === 'BAG03A' ? 'BAG3A' : id
+}
+
+function isWantedBaccaratTable(table) {
+  return /^BAG(?:\d{2}|\d{1,2}A)$/.test(table.tableId)
+    && String(table.tableType ?? '').toUpperCase().startsWith('BA')
+}
+
+function mergeTables(tables) {
+  const map = new Map()
+  for (const table of tables) {
+    const current = map.get(table.tableId)
+    if (!current || tableScore(table) >= tableScore(current)) {
+      map.set(table.tableId, { ...current, ...table })
+    }
+  }
+  return [...map.values()].sort((a, b) => tableSortKey(a.tableId) - tableSortKey(b.tableId))
+}
+
+function tableScore(table) {
+  return (table.beadPlateRaw ? table.beadPlateRaw.length : 0)
+    + (table.bigRoadRaw ? table.bigRoadRaw.length : 0)
+    + (table.displayName && !/^MT百家樂第\d+桌$/.test(table.displayName) ? 10 : 0)
+    + (table.round ?? 0) / 1000
+}
+
+function tableSortKey(tableId) {
+  const match = String(tableId).match(/^BAG(\d+)(A)?$/)
+  if (!match) return 9999
+  return Number(match[1]) * 10 + (match[2] ? 1 : 0)
 }
 
 function isRoundLike(value) {

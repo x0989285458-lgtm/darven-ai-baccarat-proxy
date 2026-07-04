@@ -49,25 +49,25 @@ test('extracts tables and rounds recursively from websocket/localStorage payload
     JSON.stringify({
       data: {
         tables: [
-          { tableId: 'A01', name: 'A桌', shoe: 7, round: 18, bankerCount: 9, playerCount: 8, tieCount: 1, bigRoadRaw: 'BP' },
+          { tableId: 'BAG01', name: 'A桌', shoe: 7, round: 18, bankerCount: 9, playerCount: 8, tieCount: 1, bigRoadRaw: 'BP' },
         ],
       },
     }),
-    { event: 'roundResult', round: { table_id: 'A01', shoe: 7, round_no: 19, result: 'B' } },
+    { event: 'roundResult', round: { table_id: 'BAG01', shoe: 7, round_no: 19, result: 'B' } },
   ], { sessionId: 'test-session', now: '2026-06-30T00:00:00.000Z' })
 
   assert.equal(snapshot.connected, true)
   assert.equal(snapshot.authenticated, true)
   assert.equal(snapshot.sessionId, 'test-session')
   assert.equal(snapshot.tables.length, 1)
-  assert.equal(snapshot.tables[0].tableId, 'A01')
+  assert.equal(snapshot.tables[0].tableId, 'BAG01')
   assert.equal(snapshot.rounds.length, 1)
   assert.deepEqual(snapshot.rounds[0], {
-    tableId: 'A01',
+    tableId: 'BAG01',
     shoe: 7,
     round: 19,
     winner: 'banker',
-    rawResult: { event: 'roundResult', round: { table_id: 'A01', shoe: 7, round_no: 19, result: 'B' } },
+    rawResult: { event: 'roundResult', round: { table_id: 'BAG01', shoe: 7, round_no: 19, result: 'B' } },
   })
 })
 
@@ -110,4 +110,37 @@ test('extracts MT tables from msg.tables with nested trend roads', () => {
   assert.equal(snapshot.tables[0].bankerCount, 11)
   assert.equal(snapshot.tables[0].beadPlateRaw, '0102#0201')
   assert.equal(snapshot.tables[0].bigRoadRaw, '0102,0201')
+})
+
+
+test('prefers nested trend roads over body text duplicates and filters non-BAG games', () => {
+  const snapshot = extractSnapshotFromPayloads([
+    { bodyProbe: '百家樂\n7\n367\n局數 23\n莊 10\n閒 11\n和 2' },
+    JSON.stringify({
+      msg: {
+        tables: [
+          {
+            table_id: 'BAG07',
+            table_name: '7',
+            table_type: 'BAC',
+            trend: {
+              current_shoe: '367',
+              current_round: '23',
+              total_round_banker: '10',
+              total_round_player: '11',
+              total_round_tie: '2',
+              big2: '0901,0801,#0702',
+            },
+          },
+          { table_id: 'DTG01', table_name: '1', table_type: 'DT', trend: { current_round: '12', big2: '0101' } },
+          { table_id: 'BAG03A', table_name: '3A', table_type: 'BAC', trend: { current_round: '5', big2: '0202' } },
+        ],
+      },
+    }),
+    { tables: [{ tableId: 'BAG3A', tableType: 'BAC', round: 5, bigRoadRaw: '' }] },
+  ])
+
+  assert.equal(snapshot.tables.some((table) => table.tableId === 'DTG01'), false)
+  assert.equal(snapshot.tables.find((table) => table.tableId === 'BAG07').bigRoadRaw, '0901,0801,#0702')
+  assert.equal(snapshot.tables.find((table) => table.tableId === 'BAG3A').bigRoadRaw, '0202')
 })
