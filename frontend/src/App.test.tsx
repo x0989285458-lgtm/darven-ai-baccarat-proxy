@@ -310,11 +310,11 @@ describe('AI百家預測軟體', () => {
       total_round_banker_pair: 2,
       total_round_player_pair: 2,
     })).toEqual({
-      bankerDragon: 18,
-      playerDragon: 9,
+      bankerDragon: 35,
+      playerDragon: 18,
       bankerPair: 50,
       playerPair: 50,
-      superSix: 6,
+      superSix: 25,
       tie: 25,
     })
   })

@@ -512,18 +512,38 @@ function inferAskRoadTrend(table = {}) {
 
 
 function buildSidePredictions(table = {}) {
-  const banker = Number(table.bankerCount ?? 0)
-  const player = Number(table.playerCount ?? 0)
-  const tie = Number(table.tieCount ?? 0)
-  const total = Math.max(1, banker + player + tie)
+  const beadCells = parseBeadCells(table.beadPlateRaw)
+  const recent = beadCells.slice(-24)
+  const recentBanker = recent.filter((cell) => cell.outcome === 'banker').length
+  const recentPlayer = recent.filter((cell) => cell.outcome === 'player').length
+  const recentTie = recent.filter((cell) => cell.outcome === 'tie').length
+  const recentBankerPair = recent.filter((cell) => cell.code[0] === '1' || cell.code[0] === '3').length
+  const recentPlayerPair = recent.filter((cell) => cell.code[0] === '2' || cell.code[0] === '3').length
+  const banker = Number(table.bankerCount ?? 0) || recentBanker
+  const player = Number(table.playerCount ?? 0) || recentPlayer
+  const tie = Number(table.tieCount ?? 0) || recentTie
+  const total = Math.max(1, banker + player + tie || recent.length)
+  const bankerPair = Number(table.bankerPairCount ?? 0) || recentBankerPair
+  const playerPair = Number(table.playerPairCount ?? 0) || recentPlayerPair
+  const bankerRate = percentValue(banker, total)
+  const playerRate = percentValue(player, total)
   return {
-    tie: clampPercent(percentValue(tie, total) * 0.65, 0, 80),
-    superSix: clampPercent(percentValue(banker, total) * 0.12, 0, 80),
-    bankerPair: clampPercent(percentValue(Number(table.bankerPairCount ?? 0), total) * 0.55, 0, 80),
-    playerPair: clampPercent(percentValue(Number(table.playerPairCount ?? 0), total) * 0.55, 0, 80),
-    bankerDragon: clampPercent(percentValue(banker, total) * 0.36, 0, 80),
-    playerDragon: clampPercent(percentValue(player, total) * 0.36, 0, 80),
+    tie: clampPercent(percentValue(tie, total), 0, 80),
+    superSix: clampPercent(bankerRate * 0.5, 0, 80),
+    bankerPair: clampPercent(percentValue(bankerPair, total), 0, 80),
+    playerPair: clampPercent(percentValue(playerPair, total), 0, 80),
+    bankerDragon: clampPercent(bankerRate * 0.7, 0, 80),
+    playerDragon: clampPercent(playerRate * 0.7, 0, 80),
   }
+}
+
+function parseBeadCells(raw = '') {
+  return String(raw || '').split('#').flatMap((column) =>
+    (column.match(/\d{2}/g) ?? []).flatMap((code) => {
+      const outcome = code[1] === '1' ? 'player' : code[1] === '2' ? 'banker' : code[1] === '3' ? 'tie' : null
+      return outcome ? [{ code, outcome }] : []
+    }),
+  )
 }
 
 function buildSideActualResults(round = {}, facts = {}) {

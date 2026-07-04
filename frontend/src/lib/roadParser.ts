@@ -178,11 +178,11 @@ export function calculateBonusPredictions(cells: RoadCell[], stats?: BonusPredic
   const playerRate = percentage(player, total)
 
   return {
-    bankerDragon: clamp(bankerRate * 0.36),
-    playerDragon: clamp(playerRate * 0.36),
+    bankerDragon: clamp(bankerRate * 0.7),
+    playerDragon: clamp(playerRate * 0.7),
     bankerPair: percentage(bankerPair, total),
     playerPair: percentage(playerPair, total),
-    superSix: clamp(bankerRate * 0.12),
+    superSix: clamp(bankerRate * 0.5),
     tie: percentage(tie, total),
   }
 }

@@ -347,12 +347,12 @@ function predictSideOutcomes(table = {}) {
   const playerRate = percent(player, total)
   const cardShoe = scoreCardShoeInfluence({ lastRound: table.lastRound ?? {}, shoeState: table.shoeState ?? null })
   return {
-    tie: clamp(percent(tie, total) * 0.65 + cardShoe.side.tie * 0.35, 0, 80),
-    superSix: clamp((bankerRate * 0.12) * 0.55 + cardShoe.side.superSix * 0.45, 0, 80),
-    bankerPair: clamp(percent(Number(table.bankerPairCount ?? 0), total) * 0.55 + cardShoe.side.bankerPair * 0.45, 0, 80),
-    playerPair: clamp(percent(Number(table.playerPairCount ?? 0), total) * 0.55 + cardShoe.side.playerPair * 0.45, 0, 80),
-    bankerDragon: clamp((bankerRate * 0.36) * 0.55 + cardShoe.side.bankerDragon * 0.45, 0, 80),
-    playerDragon: clamp((playerRate * 0.36) * 0.55 + cardShoe.side.playerDragon * 0.45, 0, 80),
+    tie: clamp(percent(tie, total) * 0.8 + cardShoe.side.tie * 0.2, 0, 80),
+    superSix: clamp((bankerRate * 0.5) * 0.7 + cardShoe.side.superSix * 0.3, 0, 80),
+    bankerPair: clamp(percent(Number(table.bankerPairCount ?? 0), total) * 0.8 + cardShoe.side.bankerPair * 0.2, 0, 80),
+    playerPair: clamp(percent(Number(table.playerPairCount ?? 0), total) * 0.8 + cardShoe.side.playerPair * 0.2, 0, 80),
+    bankerDragon: clamp((bankerRate * 0.7) * 0.75 + cardShoe.side.bankerDragon * 0.25, 0, 80),
+    playerDragon: clamp((playerRate * 0.7) * 0.75 + cardShoe.side.playerDragon * 0.25, 0, 80),
   }
 }
 
