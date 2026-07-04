@@ -65,17 +65,27 @@ test('v050 low-performing table keeps banker/player prediction and records all-M
   assert.equal(prediction.short_run_adjustment.rule, 'unified_high_hit_main_weights')
 })
 
-test('v049 equal banker/player probabilities choose banker instead of observe', () => {
-  const prediction = buildPredictionResultRow(baseRound, {
-    ...bankerLeaningTable,
+test('v062 equal banker/player main scores use tie-breakers instead of defaulting to banker', () => {
+  const neutralTable = {
+    tableId: 'BAG13',
     bankerCount: 10,
     playerCount: 10,
     tieCount: 0,
-  })
+    beadPlateRaw: '',
+    bigRoadRaw: '',
+    bigEyeRaw: '',
+    smallRoadRaw: '',
+    cockroachRaw: '',
+    nextBankerRaw: '',
+    nextPlayerRaw: '',
+  }
+  const afterBanker = buildPredictionResultRow({ ...baseRound, winner: 'banker' }, neutralTable)
+  const afterPlayer = buildPredictionResultRow({ ...baseRound, winner: 'player' }, neutralTable)
 
-  assert.equal(prediction.predicted_result, 'banker')
-  assert.equal(prediction.confidence >= 30, true)
-  assert.equal(prediction.confidence <= 80, true)
+  assert.equal(afterBanker.predicted_result, 'player')
+  assert.equal(afterPlayer.predicted_result, 'banker')
+  assert.equal(afterBanker.confidence, 30)
+  assert.equal(afterPlayer.confidence, 30)
 })
 
 test('v061 main strategy uses unified high-hit weights while side strategy keeps broad equal features', () => {

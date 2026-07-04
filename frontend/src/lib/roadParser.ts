@@ -311,8 +311,10 @@ export function evaluateFiveRoadPrediction(input: FiveRoadPredictionInput): Pred
     acc.player += score.player * weight
     return acc
   }, { banker: 0, player: 0 })
-  const recommendation: MainOutcome = totals.banker >= totals.player ? 'Banker' : 'Player'
   const difference = Math.abs(totals.banker - totals.player)
+  const recommendation: MainOutcome = difference < 1e-9
+    ? breakMainPredictionTie({ outcomes: shoeOutcomes, stats: input.tableStats })
+    : totals.banker > totals.player ? 'Banker' : 'Player'
   const confidence = clamp(30 + (1 - Math.exp(-difference / 8)) * 50, 30, 80)
   const risk: Prediction['risk'] = difference <= 0.7 ? 'High' : difference <= 2 ? 'Medium' : 'Low'
   const patterns = detectRoadTrends(bigRoadOutcomes.length ? bigRoadOutcomes : beadOutcomes)
@@ -325,6 +327,17 @@ export function evaluateFiveRoadPrediction(input: FiveRoadPredictionInput): Pred
     sourceScores,
     patterns,
   }
+}
+
+function breakMainPredictionTie({ outcomes = [], stats }: { outcomes?: Outcome[]; stats?: PredictionStats }): MainOutcome {
+  const decisive = outcomes.map(normalizeMainOutcome).filter(Boolean) as MainOutcome[]
+  const last = decisive.at(-1)
+  if (last === 'Banker') return 'Player'
+  if (last === 'Player') return 'Banker'
+  const banker = toNumber(stats?.banker ?? stats?.total_round_banker)
+  const player = toNumber(stats?.player ?? stats?.total_round_player)
+  if (banker !== player) return banker > player ? 'Player' : 'Banker'
+  return decisive.length % 2 === 0 ? 'Player' : 'Banker'
 }
 
 export function calculatePrediction(input: RoadCell[] | FiveRoadPredictionInput): Prediction {

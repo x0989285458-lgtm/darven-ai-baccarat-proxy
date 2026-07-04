@@ -290,9 +290,23 @@ function calculateAllMtEqualMainPrediction({ round = {}, table = {}, facts = {},
     acc.player += score.player * weight
     return acc
   }, { banker: 0, player: 0 })
-  const predictedResult = total.banker >= total.player ? 'banker' : 'player'
-  const confidence = clampPercent(50 + Math.abs(total.banker - total.player) * 100, 30, 80)
+  const difference = Math.abs(total.banker - total.player)
+  const predictedResult = difference < 1e-9 ? breakAllMtMainTie({ round, table, facts, probabilities }) : (total.banker > total.player ? 'banker' : 'player')
+  const confidence = difference < 1e-9 ? 30 : clampPercent(50 + difference * 100, 30, 80)
   return { predictedResult, confidence, scores, total }
+}
+
+function breakAllMtMainTie({ round = {}, table = {}, facts = {}, probabilities = {} } = {}) {
+  const winner = String(facts.winner ?? round.winner ?? '').toLowerCase()
+  if (winner === 'banker' || winner === '莊' || winner === '2') return 'player'
+  if (winner === 'player' || winner === '閒' || winner === '1') return 'banker'
+  const banker = Number(table.bankerCount ?? probabilities.banker ?? 0)
+  const player = Number(table.playerCount ?? probabilities.player ?? 0)
+  if (banker !== player) return banker > player ? 'player' : 'banker'
+  const seed = `${table.tableId ?? round.tableId ?? ''}:${round.shoe ?? table.shoe ?? ''}:${round.round ?? table.round ?? ''}`
+  let sum = 0
+  for (const char of seed) sum += char.charCodeAt(0)
+  return sum % 2 === 0 ? 'player' : 'banker'
 }
 
 function scoreAllMtFeature(key, ctx) {

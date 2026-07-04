@@ -336,7 +336,7 @@ describe('AI百家預測軟體', () => {
   })
 
   it('v016 predicts only Banker or Player with confidence varied within 30-80 and no observe recommendation', () => {
-    expect(calculatePrediction([])).toMatchObject({ recommendation: 'Banker', confidence: 30 })
+    expect(calculatePrediction([])).toMatchObject({ recommendation: 'Player', confidence: 30 })
     expect(calculatePrediction([
       { code: '01', outcome: 'Player' },
       { code: '03', outcome: 'Tie' },
@@ -349,6 +349,17 @@ describe('AI百家預測軟體', () => {
     expect(strongBanker.recommendation).toBe('Banker')
     expect(strongBanker.confidence).toBeGreaterThan(30)
     expect(strongBanker.confidence).toBeLessThan(80)
+  })
+
+  it('v062 breaks exact main-score ties without defaulting to banker', () => {
+    expect(calculatePrediction([
+      { code: '02', outcome: 'Banker' },
+      { code: '01', outcome: 'Player' },
+    ])).toMatchObject({ recommendation: 'Banker', confidence: 30 })
+    expect(calculatePrediction([
+      { code: '01', outcome: 'Player' },
+      { code: '02', outcome: 'Banker' },
+    ])).toMatchObject({ recommendation: 'Player', confidence: 30 })
   })
 
   it('v016 excludes ties from main prediction hit-rate scoring', () => {
