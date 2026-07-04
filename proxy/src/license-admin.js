@@ -305,7 +305,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     return {
       todayRoundCount: Number(todayCount.rows[0]?.rounds ?? 0),
       tableStats: order.map((tableId) => {
-        const row = rowsByTable.get(tableId) ?? (tableId === 'BAG04' ? rowsByTable.get('BAG03A') : null) ?? {}
+        const row = rowsByTable.get(tableId) ?? (tableId === 'BAG04' ? rowsByTable.get('BAG3A') ?? rowsByTable.get('BAG03A') : null) ?? {}
         return { tableId, tableName: tableLabel(tableId), rounds: 0, mainHitRate: pctText(Number(row.main_hits ?? 0), Number(row.main_total ?? 0)), sideHitRate: pctText(Number(row.side_hits ?? 0), Number(row.side_actions ?? 0)) }
       }),
       dailyReports: reportRows.rows,
