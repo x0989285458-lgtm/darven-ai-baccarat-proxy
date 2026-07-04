@@ -21,7 +21,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     CLOUD_BROWSER_URL: cloudBrowserUrl,
     CHROME_CAPTURE_URL: captureUrl,
     MT_TOKEN: token,
-    AUTO_CONNECT: autoConnect === undefined ? undefined : String(autoConnect),
+    AUTO_CONNECT: autoConnect === undefined ? process.env.AUTO_CONNECT : String(autoConnect),
     CLOUD_CAPTURE_POLL_MS: process.env.CLOUD_CAPTURE_POLL_MS,
   })
   const shouldAutoConnect = autoConnect ?? deployConfig.autoConnect

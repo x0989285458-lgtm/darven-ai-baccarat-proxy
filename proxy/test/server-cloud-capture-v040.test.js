@@ -26,3 +26,33 @@ test('v040 server starts cloud capture worker when cloud_browser source has URL'
   assert.equal(body.captureSessionId, 'server-cloud-1')
   assert.equal(body.tableCount, 1)
 })
+
+test('v052 server honors AUTO_CONNECT=true env for cloud capture on Render', async () => {
+  const previous = process.env.AUTO_CONNECT
+  process.env.AUTO_CONNECT = 'true'
+  const app = createApp({
+    port: 0,
+    deployMode: 'cloud',
+    captureSource: 'cloud_browser',
+    cloudBrowserUrl: 'https://cloud-worker.example/snapshot',
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ connected: true, authenticated: true, sessionId: 'server-cloud-env', tables: [{ tableId: 'BAG10' }] }),
+    }),
+  })
+
+  try {
+    await app.start()
+    assert.equal(app.cloudCaptureClient.isRunning(), true)
+    await app.cloudCaptureClient.tick()
+    const status = await app.inject({ method: 'GET', url: '/api/status' })
+    const body = JSON.parse(status.body)
+    assert.equal(body.captureSessionId, 'server-cloud-env')
+    assert.equal(body.tableCount, 1)
+  } finally {
+    await app.stop()
+    if (previous === undefined) delete process.env.AUTO_CONNECT
+    else process.env.AUTO_CONNECT = previous
+  }
+})
