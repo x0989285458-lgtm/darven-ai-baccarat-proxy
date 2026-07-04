@@ -36,8 +36,8 @@ test('v016 side predictions are recorded every round but actions require per-ite
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 50,
     superSix: 40,
-    bankerPair: 101,
-    playerPair: 101,
+    bankerPair: 25,
+    playerPair: 25,
     bankerDragon: 50,
     playerDragon: 50,
   })
