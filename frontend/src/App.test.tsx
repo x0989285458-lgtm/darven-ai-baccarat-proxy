@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import App from './App'
 import { mockTables } from './data/mockTables'
-import { applyAskRoadWeighting, calculateAskRoadInfluence, calculateBonusPredictions, calculatePrediction, createSidePredictionLearningRecord, detectRoadTrends, evaluateFiveRoadPrediction, isSidePredictionActionable, scoreMainPrediction, normalizeOutcomeFromBead, parseBigRoad } from './lib/roadParser'
+import { applyAskRoadWeighting, calculateAskRoadInfluence, calculateBonusPredictions, calculatePrediction, createSidePredictionLearningRecord, detectRoadTrends, evaluateFiveRoadPrediction, isSidePredictionActionable, scoreMainPrediction, normalizeOutcomeFromBead, parseBigRoad, SIDE_PREDICTION_THRESHOLDS } from './lib/roadParser'
 
 async function renderApp(path = '/', waitForConnected = true) {
   window.history.pushState({}, '', path)
@@ -357,14 +357,22 @@ describe('AI百家預測軟體', () => {
     expect(scoreMainPrediction('Banker', 'Tie')).toEqual({ evaluated: false, hit: false, push: true })
   })
 
-  it('v016 records every side prediction for learning but only counts action when each threshold is reached', () => {
+  it('v051 records every side prediction for learning but only counts action when each threshold is reached', () => {
+    expect(SIDE_PREDICTION_THRESHOLDS).toEqual({
+      tie: 50,
+      superSix: 40,
+      bankerPair: 101,
+      playerPair: 101,
+      bankerDragon: 50,
+      playerDragon: 50,
+    })
     expect(createSidePredictionLearningRecord({
-      tie: 13,
-      superSix: 7,
-      bankerPair: 8,
-      playerPair: 9,
-      bankerDragon: 10,
-      playerDragon: 9,
+      tie: 49,
+      superSix: 39,
+      bankerPair: 100,
+      playerPair: 101,
+      bankerDragon: 50,
+      playerDragon: 49,
     }, {
       tie: true,
       superSix: false,
@@ -388,12 +396,16 @@ describe('AI百家預測軟體', () => {
       }),
     }))
 
-    expect(isSidePredictionActionable('tie', 14)).toBe(true)
-    expect(isSidePredictionActionable('superSix', 8)).toBe(true)
-    expect(isSidePredictionActionable('bankerPair', 9)).toBe(true)
-    expect(isSidePredictionActionable('playerPair', 9)).toBe(true)
-    expect(isSidePredictionActionable('bankerDragon', 10)).toBe(true)
-    expect(isSidePredictionActionable('playerDragon', 10)).toBe(true)
+    expect(isSidePredictionActionable('tie', 49)).toBe(false)
+    expect(isSidePredictionActionable('tie', 50)).toBe(true)
+    expect(isSidePredictionActionable('superSix', 39)).toBe(false)
+    expect(isSidePredictionActionable('superSix', 40)).toBe(true)
+    expect(isSidePredictionActionable('bankerPair', 100)).toBe(false)
+    expect(isSidePredictionActionable('playerPair', 101)).toBe(true)
+    expect(isSidePredictionActionable('bankerDragon', 49)).toBe(false)
+    expect(isSidePredictionActionable('bankerDragon', 50)).toBe(true)
+    expect(isSidePredictionActionable('playerDragon', 49)).toBe(false)
+    expect(isSidePredictionActionable('playerDragon', 50)).toBe(true)
   })
 
   it('v017 detects road trends including single jump, double jump, long dragon, double dragon, and slopes', () => {

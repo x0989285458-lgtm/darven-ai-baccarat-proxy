@@ -33,6 +33,15 @@ export const ALL_MT_EQUAL_SIDE_WEIGHTS = buildEqualWeights([
   'road_break', 'derived_road_sync', 'tie_risk', 'pair_risk', 'ask_road_conflict', 'ask_road_trend', 'road_chaos', 'table_side_history',
 ])
 
+export const SIDE_PREDICTION_THRESHOLDS = {
+  tie: 50,
+  superSix: 40,
+  bankerPair: 101,
+  playerPair: 101,
+  bankerDragon: 50,
+  playerDragon: 50,
+}
+
 const DEFAULT_EQUAL_WEIGHTS = Object.freeze({
   bead_road: 0.125,
   big_road: 0.125,
@@ -520,7 +529,7 @@ function buildSideActualResults(round = {}, facts = {}) {
 }
 
 function buildSideHits(predictions = {}, actual = {}) {
-  return Object.fromEntries(Object.entries(predictions).map(([key, value]) => [key, Number(value) >= 10 && Boolean(actual[key])]))
+  return Object.fromEntries(Object.entries(predictions).map(([key, value]) => [key, Number(value) >= (SIDE_PREDICTION_THRESHOLDS[key] ?? 101) && Boolean(actual[key])]))
 }
 
 function percentValue(count, total) {

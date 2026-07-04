@@ -7,13 +7,15 @@ const WINNER_LABELS = new Map([
 ])
 
 export const SIDE_PREDICTION_THRESHOLDS = {
-  tie: 14,
-  superSix: 8,
-  bankerPair: 9,
-  playerPair: 9,
-  bankerDragon: 10,
-  playerDragon: 10,
+  tie: 50,
+  superSix: 40,
+  bankerPair: 101,
+  playerPair: 101,
+  bankerDragon: 50,
+  playerDragon: 50,
 }
+
+export const MAIN_ACTION_CONFIDENCE_THRESHOLD = 50
 
 export const MAIN_PREDICTION_WEIGHTS = {
   beadRoad: 0.14,
@@ -131,7 +133,7 @@ export function createStableReportSession({ targetTableCount = 9, startedAt = ne
           cardShoeFeatures: prediction.cardShoeFeatures,
         }
 
-        const score = scoreMainPrediction(prediction.main, winner)
+        const score = scoreMainPrediction(prediction.main, winner, prediction.confidence)
         if (score.push) item.pushes += 1
         if (score.evaluated) {
           item.mainEvaluated += 1
@@ -479,7 +481,8 @@ function detectReverseSignal(history) {
   return winner === '莊' || winner === '閒' ? winner : null
 }
 
-function scoreMainPrediction(prediction, winner) {
+function scoreMainPrediction(prediction, winner, confidence = 100) {
+  if (Number(confidence ?? 0) < MAIN_ACTION_CONFIDENCE_THRESHOLD) return { evaluated: false, hit: false, push: false }
   if (winner === '和') return { evaluated: false, hit: false, push: true }
   if (winner !== '莊' && winner !== '閒') return { evaluated: false, hit: false, push: false }
   return { evaluated: true, hit: prediction === winner, push: false }
