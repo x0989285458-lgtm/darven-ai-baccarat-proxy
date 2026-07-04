@@ -126,12 +126,12 @@ export default function App() {
   return <main className="app-shell">
     <header className="topbar">
       <div className="promo-block" aria-label="官方資訊">
-        <strong>免費智慧百家預測軟體</strong>
+        <strong>免費AI百家預測軟體</strong>
         <span>私訊官方賴@Dv1788</span>
       </div>
       <div className="brand" aria-label="主標題">
-        <h1>智慧百家預測軟體</h1>
-        <p className="eyebrow">瑞文智慧版 010</p>
+        <h1>AI百家預測軟體</h1>
+        <p className="eyebrow">瑞文AI版 010</p>
       </div>
       <div className="header-meta"><span className={`status ${supabaseStatus.state}`} title={supabaseConfig.projectRef}>{supabaseStatus.message}</span></div>
     </header>
@@ -162,8 +162,8 @@ export default function App() {
             <PredictionMetric title="和" value={outcomePredictions.tie} tone="Tie" active={label[prediction.recommendation] === '和'} />
             <PredictionMetric title="莊" value={outcomePredictions.banker} tone="Banker" active={prediction.recommendation === 'Banker'} />
           </div>
-          <h2 className="ai-prediction-line">智慧預測:<span className={prediction.recommendation}>{label[prediction.recommendation]}</span></h2>
-          <strong className="ai-confidence-line">智慧信心值:{prediction.confidence}%</strong>
+          <h2 className="ai-prediction-line">AI預測:<span className={prediction.recommendation}>{label[prediction.recommendation]}</span></h2>
+          <strong className="ai-confidence-line">AI信心值:{prediction.confidence}%</strong>
         </section>
         <div className="roads-grid single-road">
           <RoadCard title="大路" subtitle="紅圈＝莊　藍圈＝閒">
@@ -201,8 +201,8 @@ function enforceMaintenanceLogout(status: OnlineCoreStatus, path: string, liveCl
 function WaitingForCloudData({ status, supabaseStatus }: { status: { state: string; message: string }; supabaseStatus: { state: string; message: string } }) {
   return <main className="app-shell waiting-shell">
     <header className="topbar">
-      <div className="promo-block" aria-label="官方資訊"><strong>免費智慧百家預測軟體</strong><span>私訊官方賴@Dv1788</span></div>
-      <div className="brand" aria-label="主標題"><h1>智慧百家預測軟體</h1><p className="eyebrow">瑞文智慧版 010</p></div>
+      <div className="promo-block" aria-label="官方資訊"><strong>免費AI百家預測軟體</strong><span>私訊官方賴@Dv1788</span></div>
+      <div className="brand" aria-label="主標題"><h1>AI百家預測軟體</h1><p className="eyebrow">瑞文AI版 010</p></div>
       <div className="header-meta"><span className={`status ${supabaseStatus.state}`} title={supabaseConfig.projectRef}>{supabaseStatus.message}</span></div>
     </header>
     <section className="waiting-card" aria-label="等待雲端資料">
@@ -273,7 +273,7 @@ function AdminLoginApp() {
   return <main className="login-shell">
     <section className="login-card" aria-label="管理後台登入">
       <h1 className="admin-login-title">瑞文AI百家管理後台</h1>
-      <strong>瑞文智慧後台管理</strong>
+      <strong>瑞文AI後台管理</strong>
       <input aria-label="帳號" placeholder="請輸入帳號" value={agentAccount} onChange={(event) => setAgentAccount(event.target.value)} />
       <button onClick={submitLogin}>登入</button>
       {loginMessage ? <em>{loginMessage}</em> : null}
@@ -551,7 +551,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     {toast ? <div className="toast">{toast}</div> : null}
     <header className="admin-hero clean-hero v015-hero" style={{ width: '100%', maxWidth: 'none' }}>
       <div className="admin-title-block">
-        <h1>智慧百家預測後台</h1>
+        <h1>AI百家預測後台</h1>
         <span>授權序號 / 會員帳號 / 代理管理 / 驗證碼管理</span>
       </div>
       <button className="admin-logout" onClick={logoutAdmin}>登出</button>

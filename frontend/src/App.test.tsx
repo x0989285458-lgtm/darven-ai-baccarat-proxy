@@ -335,7 +335,7 @@ describe('AI百家預測軟體', () => {
     })).toEqual({ banker: 42, player: 48, tie: 10 })
   })
 
-  it('v016 predicts only Banker or Player with confidence clamped to 30-80 and no observe recommendation', () => {
+  it('v016 predicts only Banker or Player with confidence varied within 30-80 and no observe recommendation', () => {
     expect(calculatePrediction([])).toMatchObject({ recommendation: 'Banker', confidence: 30 })
     expect(calculatePrediction([
       { code: '01', outcome: 'Player' },
@@ -345,7 +345,10 @@ describe('AI百家預測軟體', () => {
       { code: '01', outcome: 'Player' },
       { code: '03', outcome: 'Tie' },
     ]).confidence).toBeGreaterThanOrEqual(30)
-    expect(calculatePrediction(Array.from({ length: 20 }, () => ({ code: '02', outcome: 'Banker' })))).toMatchObject({ recommendation: 'Banker', confidence: 80 })
+    const strongBanker = calculatePrediction(Array.from({ length: 20 }, () => ({ code: '02', outcome: 'Banker' })))
+    expect(strongBanker.recommendation).toBe('Banker')
+    expect(strongBanker.confidence).toBeGreaterThan(30)
+    expect(strongBanker.confidence).toBeLessThan(80)
   })
 
   it('v016 excludes ties from main prediction hit-rate scoring', () => {

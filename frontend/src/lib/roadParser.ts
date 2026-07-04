@@ -304,7 +304,7 @@ export function evaluateFiveRoadPrediction(input: FiveRoadPredictionInput): Pred
   }, { banker: 0, player: 0 })
   const recommendation: MainOutcome = totals.banker >= totals.player ? 'Banker' : 'Player'
   const difference = Math.abs(totals.banker - totals.player)
-  const confidence = clamp(30 + difference * 18, 30, 80)
+  const confidence = clamp(30 + (1 - Math.exp(-difference / 8)) * 50, 30, 80)
   const risk: Prediction['risk'] = difference <= 0.7 ? 'High' : difference <= 2 ? 'Medium' : 'Low'
   const patterns = detectRoadTrends(bigRoadOutcomes.length ? bigRoadOutcomes : beadOutcomes)
   return {
