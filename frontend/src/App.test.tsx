@@ -359,20 +359,20 @@ describe('AI百家預測軟體', () => {
 
   it('v051 records every side prediction for learning but only counts action when each threshold is reached', () => {
     expect(SIDE_PREDICTION_THRESHOLDS).toEqual({
-      tie: 50,
-      superSix: 40,
-      bankerPair: 25,
-      playerPair: 25,
-      bankerDragon: 50,
-      playerDragon: 50,
+      tie: 40,
+      superSix: 30,
+      bankerPair: 20,
+      playerPair: 20,
+      bankerDragon: 30,
+      playerDragon: 30,
     })
     expect(createSidePredictionLearningRecord({
-      tie: 49,
-      superSix: 39,
-      bankerPair: 24,
-      playerPair: 25,
-      bankerDragon: 50,
-      playerDragon: 49,
+      tie: 39,
+      superSix: 29,
+      bankerPair: 19,
+      playerPair: 20,
+      bankerDragon: 30,
+      playerDragon: 29,
     }, {
       tie: true,
       superSix: false,
@@ -396,16 +396,16 @@ describe('AI百家預測軟體', () => {
       }),
     }))
 
-    expect(isSidePredictionActionable('tie', 49)).toBe(false)
-    expect(isSidePredictionActionable('tie', 50)).toBe(true)
-    expect(isSidePredictionActionable('superSix', 39)).toBe(false)
-    expect(isSidePredictionActionable('superSix', 40)).toBe(true)
-    expect(isSidePredictionActionable('bankerPair', 24)).toBe(false)
-    expect(isSidePredictionActionable('playerPair', 25)).toBe(true)
-    expect(isSidePredictionActionable('bankerDragon', 49)).toBe(false)
-    expect(isSidePredictionActionable('bankerDragon', 50)).toBe(true)
-    expect(isSidePredictionActionable('playerDragon', 49)).toBe(false)
-    expect(isSidePredictionActionable('playerDragon', 50)).toBe(true)
+    expect(isSidePredictionActionable('tie', 39)).toBe(false)
+    expect(isSidePredictionActionable('tie', 40)).toBe(true)
+    expect(isSidePredictionActionable('superSix', 29)).toBe(false)
+    expect(isSidePredictionActionable('superSix', 30)).toBe(true)
+    expect(isSidePredictionActionable('bankerPair', 19)).toBe(false)
+    expect(isSidePredictionActionable('playerPair', 20)).toBe(true)
+    expect(isSidePredictionActionable('bankerDragon', 29)).toBe(false)
+    expect(isSidePredictionActionable('bankerDragon', 30)).toBe(true)
+    expect(isSidePredictionActionable('playerDragon', 29)).toBe(false)
+    expect(isSidePredictionActionable('playerDragon', 30)).toBe(true)
   })
 
   it('v017 detects road trends including single jump, double jump, long dragon, double dragon, and slopes', () => {

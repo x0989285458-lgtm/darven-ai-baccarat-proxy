@@ -33,12 +33,12 @@ export const ALL_MT_EQUAL_SIDE_WEIGHTS = buildEqualWeights([
 ])
 
 export const SIDE_PREDICTION_THRESHOLDS = {
-  tie: 50,
-  superSix: 40,
-  bankerPair: 25,
-  playerPair: 25,
-  bankerDragon: 50,
-  playerDragon: 50,
+  tie: 40,
+  superSix: 30,
+  bankerPair: 20,
+  playerPair: 20,
+  bankerDragon: 30,
+  playerDragon: 30,
 }
 
 const DEFAULT_EQUAL_WEIGHTS = Object.freeze({
