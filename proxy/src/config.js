@@ -41,6 +41,6 @@ export function resolveDeployConfig(env = process.env) {
     cloudCapturePollMs: Number(env.CLOUD_CAPTURE_POLL_MS ?? 1000),
     chromeCaptureUrl: env.CHROME_CAPTURE_URL ?? '',
     token: env.MT_TOKEN ?? '',
-    autoConnect: deployMode === 'cloud' ? false : env.AUTO_CONNECT !== 'false',
+    autoConnect: deployMode === 'cloud' ? env.AUTO_CONNECT === 'true' : env.AUTO_CONNECT !== 'false',
   }
 }

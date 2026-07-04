@@ -203,12 +203,22 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     return Date.now() - timestamp <= Math.max(1000, Number(maxAgeMs) || 120000)
   }
 
+  function isLiveCloudSnapshotUsable(snapshot, requireFresh = false) {
+    if (!requireFresh) return true
+    const source = String(snapshot?.capture_source ?? snapshot?.captureSource ?? '').toLowerCase()
+    // Local/VPN snapshots are an intentional fallback feed and are not tied to the
+    // cloud-browser worker heartbeat. Only cloud-browser/unknown snapshots must be
+    // recent enough to be treated as live table data.
+    if (source === 'local_chrome') return true
+    return isFreshCloudTimestamp(snapshot?.snapshot_at ?? snapshot?.created_at ?? snapshot?.updated_at)
+  }
+
   async function readLatestCloudSnapshot({ requireFresh = false } = {}) {
     if (!supabaseClient?.configured || typeof supabaseClient.getLatestCloudTableSnapshot !== 'function') return null
     try {
       const snapshot = await supabaseClient.getLatestCloudTableSnapshot()
       if (!snapshot || !Array.isArray(snapshot.tables)) return null
-      if (requireFresh && !isFreshCloudTimestamp(snapshot.snapshot_at ?? snapshot.created_at ?? snapshot.updated_at)) return null
+      if (!isLiveCloudSnapshotUsable(snapshot, requireFresh)) return null
       return snapshot
     } catch (error) {
       state.setStatus({ cloudReadStatus: 'error', cloudReadError: error?.message ?? String(error) })
@@ -230,7 +240,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     try {
       const status = await supabaseClient.getLatestCloudCaptureStatus()
       const snapshot = await readLatestCloudSnapshot({ requireFresh: true })
-      const statusIsFresh = isFreshCloudTimestamp(status?.last_message_at ?? status?.snapshot_at ?? status?.updated_at ?? status?.created_at)
+      const statusSource = String(status?.capture_source ?? status?.captureSource ?? '').toLowerCase()
+      const statusIsFresh = statusSource === 'local_chrome' || isFreshCloudTimestamp(status?.last_message_at ?? status?.snapshot_at ?? status?.updated_at ?? status?.created_at)
       if (!statusIsFresh && !snapshot) return null
       const snapshotTableCount = Array.isArray(snapshot?.tables) ? snapshot.tables.length : Number(snapshot?.table_count ?? 0)
       const preferSnapshot = snapshotTableCount > Number(statusIsFresh ? status?.table_count ?? 0 : 0)

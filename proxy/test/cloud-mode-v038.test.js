@@ -17,6 +17,19 @@ test('v038 resolveDeployConfig enables cloud mode without local chrome dependenc
   assert.equal(config.frontendOrigin, 'https://app.darvenai.example')
 })
 
+test('v052 cloud mode auto-connects when AUTO_CONNECT is explicitly true', () => {
+  const config = resolveDeployConfig({
+    DEPLOY_MODE: 'cloud',
+    CAPTURE_SOURCE: 'cloud_browser',
+    CLOUD_BROWSER_URL: 'http://35.234.3.167:8787/snapshot',
+    AUTO_CONNECT: 'true',
+  })
+
+  assert.equal(config.deployMode, 'cloud')
+  assert.equal(config.captureSource, 'cloud_browser')
+  assert.equal(config.autoConnect, true)
+})
+
 test('v038 cloud API status and empty tables are cloud-ready before worker is attached', async () => {
   const app = createApp({
     autoConnect: true,
