@@ -3,7 +3,7 @@ import { chromium } from 'playwright'
 import { extractSnapshotFromPayloads, redactUrlSecrets } from './snapshot.js'
 
 const SERVICE = 'darven-cloud-browser-worker'
-const VERSION = '0.47.0'
+const VERSION = '0.48.0'
 const PORT = Number(process.env.PORT ?? 8787)
 const MT_LOGIN_URL = process.env.MT_LOGIN_URL ?? ''
 const SNAPSHOT_PATH = process.env.SNAPSHOT_PATH ?? '/snapshot'
@@ -36,6 +36,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname === '/reload') {
+      resetCapturedPayloads()
       await closePage()
       const snapshot = await getSnapshot()
       return sendJson(res, 200, { ok: true, snapshot })
@@ -157,6 +158,10 @@ function rememberPayload(payload) {
   if (!text.trim()) return
   capturedPayloads.push(text)
   while (capturedPayloads.length > MAX_CAPTURED_PAYLOADS) capturedPayloads.shift()
+}
+
+function resetCapturedPayloads() {
+  capturedPayloads.length = 0
 }
 
 async function closePage() {

@@ -1,6 +1,7 @@
 import { normalizeMtTables } from './normalize-table.js'
 
 const DEFAULT_POLL_MS = 2000
+const DEFAULT_REQUEST_TIMEOUT_MS = 15000
 
 export function parseCloudCapturePayload(payload = {}) {
   const tables = normalizeCloudTables(payload.tables ?? payload.snapshot?.tables ?? [])
@@ -25,7 +26,7 @@ export function parseCloudCapturePayload(payload = {}) {
   }
 }
 
-export function createCloudCaptureClient({ url, state, writer = null, fetchImpl = globalThis.fetch, pollMs = DEFAULT_POLL_MS } = {}) {
+export function createCloudCaptureClient({ url, state, writer = null, fetchImpl = globalThis.fetch, pollMs = DEFAULT_POLL_MS, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS } = {}) {
   let timer = null
   let stopped = true
 
@@ -36,7 +37,11 @@ export function createCloudCaptureClient({ url, state, writer = null, fetchImpl 
       return null
     }
     try {
-      const response = await fetchImpl(url, { cache: 'no-store' })
+      const controller = typeof AbortController === 'function' ? new AbortController() : null
+      const timeout = controller ? setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs) || DEFAULT_REQUEST_TIMEOUT_MS)) : null
+      const response = await fetchImpl(url, { cache: 'no-store', signal: controller?.signal }).finally(() => {
+        if (timeout) clearTimeout(timeout)
+      })
       if (!response?.ok) {
         const text = typeof response?.text === 'function' ? await response.text().catch(() => '') : ''
         throw new Error(`Cloud capture worker failed: ${response?.status ?? 'unknown'} ${text}`)

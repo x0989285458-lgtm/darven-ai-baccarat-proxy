@@ -33,11 +33,11 @@ export function extractSnapshotFromPayloads(payloads = [], { sessionId = 'darven
   const parsedPayloads = payloads.map(parseMaybeJson).filter((value) => value != null)
   const tableCandidates = []
   const roundCandidates = []
-  for (const payload of parsedPayloads) collectCandidates(payload, { tableCandidates, roundCandidates })
+  parsedPayloads.forEach((payload, sourceIndex) => collectCandidates(payload, { tableCandidates, roundCandidates }, new WeakSet(), sourceIndex))
 
   const tables = mergeTables(
     tableCandidates
-      .map((table, index) => normalizeTable(table, index))
+      .map((table, index) => ({ ...normalizeTable(table, index), __sourceIndex: table.__sourceIndex ?? 0, __sourceKind: table.__sourceKind ?? null }))
       .filter((table) => isWantedBaccaratTable(table)),
   )
   const rounds = dedupeRounds(
@@ -81,14 +81,14 @@ function normalizeRound(payload = {}) {
   }
 }
 
-function collectCandidates(value, output, seen = new WeakSet()) {
+function collectCandidates(value, output, seen = new WeakSet(), sourceIndex = 0) {
   if (value == null) return
   if (typeof value === 'string') {
     const parsed = parseMaybeJson(value)
     if (parsed && typeof parsed === 'object' && !parsed.rawText) {
-      collectCandidates(parsed, output, seen)
+      collectCandidates(parsed, output, seen, sourceIndex)
     } else {
-      output.tableCandidates.push(...parseBaccaratTablesFromText(value))
+      output.tableCandidates.push(...parseBaccaratTablesFromText(value).map((table) => ({ ...table, __sourceIndex: sourceIndex, __sourceKind: 'text' })))
     }
     return
   }
@@ -97,20 +97,22 @@ function collectCandidates(value, output, seen = new WeakSet()) {
   seen.add(value)
 
   for (const textKey of ['rawText', 'bodyProbe', 'body', 'text']) {
-    if (typeof value[textKey] === 'string') output.tableCandidates.push(...parseBaccaratTablesFromText(value[textKey]))
+    if (typeof value[textKey] === 'string') {
+      output.tableCandidates.push(...parseBaccaratTablesFromText(value[textKey]).map((table) => ({ ...table, __sourceIndex: sourceIndex, __sourceKind: textKey })))
+    }
   }
 
   if (Array.isArray(value)) {
-    if (value.some(isTableLike)) output.tableCandidates.push(...value.filter(isTableLike))
-    for (const item of value) collectCandidates(item, output, seen)
+    if (value.some(isTableLike)) output.tableCandidates.push(...value.filter(isTableLike).map((table) => ({ ...table, __sourceIndex: sourceIndex })))
+    for (const item of value) collectCandidates(item, output, seen, sourceIndex)
     return
   }
 
-  if (isTableLike(value)) output.tableCandidates.push(value)
+  if (isTableLike(value)) output.tableCandidates.push({ ...value, __sourceIndex: sourceIndex })
   if (isRoundLike(value)) output.roundCandidates.push(value)
 
   for (const key of ['tables', 'tableList', 'rooms', 'games', 'list', 'data', 'result', 'msg', 'body', 'payload', 'payloads', 'arr', 'snapshot', 'round', 'roundResult']) {
-    if (value[key] != null) collectCandidates(value[key], output, seen)
+    if (value[key] != null) collectCandidates(value[key], output, seen, sourceIndex)
   }
 }
 
@@ -171,11 +173,38 @@ function mergeTables(tables) {
   const map = new Map()
   for (const table of tables) {
     const current = map.get(table.tableId)
-    if (!current || tableScore(table) >= tableScore(current)) {
+    if (!current || shouldReplaceTable(current, table)) {
       map.set(table.tableId, { ...current, ...table })
     }
   }
-  return [...map.values()].sort((a, b) => tableSortKey(a.tableId) - tableSortKey(b.tableId))
+  return [...map.values()].map(stripInternalTableFields).sort((a, b) => tableSortKey(a.tableId) - tableSortKey(b.tableId))
+}
+
+function shouldReplaceTable(current, next) {
+  const currentSource = Number(current.__sourceIndex ?? -1)
+  const nextSource = Number(next.__sourceIndex ?? -1)
+  const currentRound = Number(current.round ?? -1)
+  const nextRound = Number(next.round ?? -1)
+  const currentShoe = current.shoe == null ? null : String(current.shoe)
+  const nextShoe = next.shoe == null ? null : String(next.shoe)
+
+  // The live page body is collected at request time, after the retained JSON/WebSocket
+  // payload buffer. If it shows a later shoe, prefer it even if older road payloads
+  // contain longer bead/big-road strings.
+  if (currentShoe && nextShoe && currentShoe !== nextShoe && nextSource > currentSource) return true
+
+  // Within the same shoe, a higher round is always fresher than a richer old road.
+  if ((!currentShoe || !nextShoe || currentShoe === nextShoe) && nextRound > currentRound) return true
+
+  // If both describe the same current round, keep the richer road payload.
+  if (nextRound === currentRound) return tableScore(next) >= tableScore(current)
+
+  return false
+}
+
+function stripInternalTableFields(table) {
+  const { __sourceIndex, __sourceKind, ...publicTable } = table
+  return publicTable
 }
 
 function tableScore(table) {
