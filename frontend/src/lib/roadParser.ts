@@ -426,12 +426,12 @@ function scoreAllMtFeature(key: keyof MainPredictionWeights, ctx: {
     case 'next_player_road': return askRoadScoreBySide(input.askRoad?.next_player2, 'Player')
     case 'previous_winner': return winnerScore(previousWinner)
     case 'streak_length': return streakLength >= 5 ? invertWinnerScore(previousWinner) : winnerScore(previousWinner)
-    case 'near5_banker_player_bias': return near5Bias >= 0 ? { banker: 0.55, player: 0.45 } : { banker: 0.45, player: 0.55 }
+    case 'near5_banker_player_bias': return near5Bias > 0 ? { banker: 0.55, player: 0.45 } : near5Bias < 0 ? { banker: 0.45, player: 0.55 } : neutralScore()
     case 'table_recent_hit_rate': return tableContext.table_recent_hit_rate == null ? neutralScore() : (Number(tableContext.table_recent_hit_rate) >= 0.5 ? winnerScore(baseProbabilities.banker >= baseProbabilities.player ? 'Banker' : 'Player') : invertWinnerScore(baseProbabilities.banker >= baseProbabilities.player ? 'Banker' : 'Player'))
-    case 'direction_calibration': return { banker: 0.525, player: 0.475 }
+    case 'direction_calibration': return neutralScore()
     case 'confidence': return baseProbabilities
     case 'probability_gap': return baseProbabilities
-    case 'round': return toNumber(tableContext.round as number | string | undefined) % 2 === 0 ? { banker: 0.51, player: 0.49 } : { banker: 0.49, player: 0.51 }
+    case 'round': return tableContext.round == null ? neutralScore() : toNumber(tableContext.round as number | string | undefined) % 2 === 0 ? { banker: 0.51, player: 0.49 } : { banker: 0.49, player: 0.51 }
     case 'shoe_stage': return shoeStage(tableContext.round) === 'late' ? { banker: 0.52, player: 0.48 } : neutralScore()
     default: return neutralScore()
   }
@@ -510,7 +510,22 @@ function breakMainPredictionTie({ outcomes = [], stats }: { outcomes?: Outcome[]
 
 export function calculatePrediction(input: RoadCell[] | FiveRoadPredictionInput): Prediction {
   if (Array.isArray(input)) {
-    return evaluateFiveRoadPrediction({ beadCells: input })
+    const outcomes = input.map((cell) => cell.outcome)
+    const totals = directionalScoreFromOutcomes(outcomes)
+    const difference = Math.abs(totals.banker - totals.player)
+    const recommendation: MainOutcome = difference < 1e-9
+      ? breakMainPredictionTie({ outcomes, stats: undefined })
+      : totals.banker > totals.player ? 'Banker' : 'Player'
+    return {
+      recommendation,
+      confidence: clamp(30 + (1 - Math.exp(-difference / 8)) * 50, 30, 80),
+      risk: difference <= 0.7 ? 'High' : difference <= 2 ? 'Medium' : 'Low',
+      reason: `路單走勢輸出 ${recommendation === 'Banker' ? '莊' : '閒'}。`,
+      weights: MAIN_PREDICTION_WEIGHTS,
+      sourceScores: { beadRoad: totals },
+      scoreTotals: totals,
+      patterns: detectRoadTrends(outcomes),
+    }
   }
   return evaluateFiveRoadPrediction(input)
 }

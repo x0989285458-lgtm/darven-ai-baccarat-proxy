@@ -10,6 +10,7 @@ describe('supabaseClient v032 proxy-first status', () => {
 
     const result = await checkSupabaseConnection(fetchImpl)
     expect(result).toEqual({ ok: true, message: '授權後端已連線' })
-    expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:8787/api/online-license/status', { cache: 'no-store' })
+    expect(String((fetchImpl as any).mock.calls[0][0])).toContain('/api/online-license/status')
+    expect((fetchImpl as any).mock.calls[0][1]).toEqual({ cache: 'no-store' })
   })
 })

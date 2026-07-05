@@ -8,7 +8,7 @@ test('v031 total manager can suspend extend and delete a license, non-total mana
   const pool = { async query(sql, params = []) { queries.push({ sql, params }); return fakeResult(sql, params) } }
   const client = createLicenseAdminClient({ pool })
 
-  await assert.rejects(() => client.setLicenseStatus({ code: 'DVAI1788_001', status: 'suspended', adminAccount: 'Agent001' }), /total manager permission/)
+  await assert.rejects(() => client.setLicenseStatus({ code: 'DVAI1788_001', status: 'suspended', adminAccount: 'Agent001' }), /觀察者不能管理驗證碼/)
 
   const suspended = await client.setLicenseStatus({ code: 'DVAI1788_001', status: 'suspended', adminAccount: 'DV1788' })
   const extended = await client.extendLicense({ code: 'DVAI1788_001', days: 15, adminAccount: 'DV1788' })
@@ -52,9 +52,9 @@ test('v031 server exposes backend-only license operation endpoints', async () =>
 })
 
 function fakeResult(sql, params) {
-  if (sql.includes('manager_accounts where username = $1')) {
-    if (params[0] === 'DV1788') return { rows: [{ id: 'manager-1', username: 'DV1788', role: 'total', is_active: true }] }
-    return { rows: [{ id: 'manager-2', username: params[0], role: 'limited', is_active: true }] }
+  if (sql.includes('select role from public.agents where code = $1')) {
+    if (params[0] === 'DV1788') return { rows: [{ role: 'manager' }] }
+    return { rows: [{ role: 'viewer' }] }
   }
   if (sql.includes('from public.manager_accounts order')) return { rows: [{ id: 'manager-1', username: 'DV1788', role: 'total', is_active: true }] }
   if (sql.includes('from public.agents order')) return { rows: [{ id: 'agent-1', code: 'DVAI', name: 'DV1788超級代理' }] }

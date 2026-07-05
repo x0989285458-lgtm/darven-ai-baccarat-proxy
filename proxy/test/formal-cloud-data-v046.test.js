@@ -45,7 +45,7 @@ test('v046 manages agent hierarchy through backend-only endpoints and logs delet
 
 function fakeV046(sql, params = []) {
   sql = String(sql)
-  if (sql.includes('manager_accounts where username = $1')) return { rows: [{ id: 'manager-1', username: params[0], role: 'total', is_active: true }] }
+  if (sql.includes('select role from public.agents where code = $1')) return { rows: [{ role: 'agent' }] }
   if (sql.includes('select id, name, duration_days from public.plans')) return { rows: [{ id: 'plan-1', name: params[0], duration_days: params[1] ?? 30 }] }
   if (sql.includes('select id from public.plans')) return { rows: [] }
   if (sql.includes('insert into public.plans')) return { rows: [{ id: 'plan-1', name: params[0], duration_days: params[1] }] }

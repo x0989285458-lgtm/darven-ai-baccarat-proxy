@@ -659,7 +659,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
 function useInactivityLogout(mode: 'admin' | 'member' | null) {
   useEffect(() => {
     if (!mode) return
-    const timeoutMs = (mode === 'admin' ? 15 : 30) * 60 * 1000
+    const timeoutMs = 10 * 60 * 1000
     let timer: ReturnType<typeof setTimeout>
     const clearLogin = () => {
       if (mode === 'admin') {

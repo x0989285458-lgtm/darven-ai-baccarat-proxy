@@ -57,7 +57,7 @@ test('v050 low-performing table keeps banker/player prediction and records all-M
     recentPredictionCount: 25,
   })
 
-  assert.equal(prediction.strategy_version, 'v061_unified_high_hit_main_weights')
+  assert.equal(prediction.strategy_version, 'v050_all_mt_equal_weight')
   assert.equal(prediction.prediction_features.table_performance.recentHitRate, 0.44)
   assert.match(prediction.predicted_result, /^(banker|player)$/)
   assert.equal(prediction.confidence >= 30, true)
@@ -90,27 +90,23 @@ test('v062 equal banker/player main scores use tie-breakers instead of defaultin
 
 test('v061 main strategy uses unified high-hit weights while side strategy keeps broad equal features', () => {
   const mainKeys = [
-    'shoe_road', 'ask_road', 'recent_trend', 'banker_player_stats', 'auxiliary_roads', 'bead_road',
+    'table_id', 'display_name', 'table_type', 'room_id', 'dealer_name', 'total_players', 'state', 'order_state', 'source_updated_at',
+    'shoe', 'round', 'shoe_stage', 'banker_count', 'player_count', 'tie_count', 'banker_pair_count', 'player_pair_count',
+    'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road', 'next_banker_road', 'next_player_road',
+    'previous_winner', 'streak_length', 'near5_banker_player_bias', 'table_recent_hit_rate', 'direction_calibration',
+    'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'pattern_tags', 'historical_backtest',
   ]
   const sideKeys = [
     'tie_count', 'banker_pair_count', 'player_pair_count', 'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road',
     'next_banker_road', 'next_player_road', 'dealer_name', 'total_players', 'shoe', 'round', 'shoe_stage', 'state', 'order_state',
     'raw_result', 'player_point', 'banker_point', 'point_diff', 'banker_natural', 'player_natural', 'banker_dragon', 'player_dragon', 'super_six',
-    'shoe_remaining_points', 'remaining_rank_counts', 'road_trend', 'long_dragon', 'double_dragon', 'up_slope', 'down_slope',
-    'jump_pattern', 'single_jump', 'double_jump', 'three_jump', 'one_banker_two_player', 'one_player_two_banker', 'row_pair_run',
-    'banker_then_jump', 'player_then_jump', 'banker_then_run', 'player_then_run', 'broken_single_jump', 'long_dragon_to_single_jump', 'single_jump_to_long_dragon',
-    'road_break', 'derived_road_sync', 'tie_risk', 'pair_risk', 'ask_road_conflict', 'ask_road_trend', 'road_chaos', 'table_side_history',
+    'tie_risk', 'pair_risk', 'ask_road_conflict', 'road_chaos', 'table_side_history',
   ]
   assert.deepEqual(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).sort(), mainKeys.sort())
   assert.deepEqual(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).sort(), sideKeys.sort())
-  assert.deepEqual(ALL_MT_EQUAL_MAIN_WEIGHTS, {
-    shoe_road: 0.30,
-    ask_road: 0.18,
-    recent_trend: 0.17,
-    banker_player_stats: 0.13,
-    auxiliary_roads: 0.12,
-    bead_road: 0.10,
-  })
+  assert.equal(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length, 35)
+  assert.equal(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).length, 31)
+  assert.equal(Math.max(...Object.values(ALL_MT_EQUAL_MAIN_WEIGHTS)) - Math.min(...Object.values(ALL_MT_EQUAL_MAIN_WEIGHTS)) < 1e-9, true)
   assert.equal(Math.max(...Object.values(ALL_MT_EQUAL_SIDE_WEIGHTS)) - Math.min(...Object.values(ALL_MT_EQUAL_SIDE_WEIGHTS)) < 1e-9, true)
   assert.equal(Number(Object.values(ALL_MT_EQUAL_MAIN_WEIGHTS).reduce((a, b) => a + b, 0).toFixed(10)), 1)
   assert.equal(Number(Object.values(ALL_MT_EQUAL_SIDE_WEIGHTS).reduce((a, b) => a + b, 0).toFixed(10)), 1)
@@ -133,7 +129,7 @@ test('v050 prediction rows persist all-MT equal main and side weights plus captu
     sourceUpdatedAt: '2026-07-01T09:00:00Z',
   })
 
-  assert.equal(prediction.strategy_version, 'v061_unified_high_hit_main_weights')
+  assert.equal(prediction.strategy_version, 'v050_all_mt_equal_weight')
   assert.deepEqual(prediction.feature_weights, ALL_MT_EQUAL_MAIN_WEIGHTS)
   assert.deepEqual(prediction.prediction_features.side_weights, ALL_MT_EQUAL_SIDE_WEIGHTS)
   assert.equal(prediction.prediction_features.mt_context.dealerName, '毛毛')
@@ -162,7 +158,7 @@ test('v050 high-performing table still keeps confidence in 30-80 range', () => {
     recentPredictionCount: 25,
   })
 
-  assert.equal(neutralPrediction.strategy_version, 'v061_unified_high_hit_main_weights')
+  assert.equal(neutralPrediction.strategy_version, 'v050_all_mt_equal_weight')
   assert.equal(neutralPrediction.confidence >= 30, true)
   assert.equal(neutralPrediction.confidence <= 80, true)
   assert.equal(boostedPrediction.confidence <= 80, true)

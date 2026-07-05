@@ -327,12 +327,12 @@ function scoreAllMtFeature(key, ctx) {
     case 'next_player_road': return askRoadScore(table.nextPlayerRaw, 'player')
     case 'previous_winner': return winnerScore(derived.previousWinner)
     case 'streak_length': return derived.streakLength >= 5 ? invertWinnerScore(derived.previousWinner) : winnerScore(derived.previousWinner)
-    case 'near5_banker_player_bias': return derived.near5BankerPlayerBias >= 0 ? { banker: 0.55, player: 0.45 } : { banker: 0.45, player: 0.55 }
+    case 'near5_banker_player_bias': return derived.near5BankerPlayerBias > 0 ? { banker: 0.55, player: 0.45 } : derived.near5BankerPlayerBias < 0 ? { banker: 0.45, player: 0.55 } : neutralScore()
     case 'table_recent_hit_rate': return tablePerformance.recentHitRate == null ? neutralScore() : (tablePerformance.recentHitRate >= 0.5 ? winnerScore(pickPrediction(probabilities)) : invertWinnerScore(pickPrediction(probabilities)))
-    case 'direction_calibration': return { banker: 0.525, player: 0.475 }
+    case 'direction_calibration': return neutralScore()
     case 'confidence': return ratioScore(probabilities.banker, probabilities.player)
     case 'probability_gap': return ratioScore(probabilities.banker, probabilities.player)
-    case 'round': return Number(table.round ?? 0) % 2 === 0 ? { banker: 0.51, player: 0.49 } : { banker: 0.49, player: 0.51 }
+    case 'round': return table.round == null ? neutralScore() : Number(table.round) % 2 === 0 ? { banker: 0.51, player: 0.49 } : { banker: 0.49, player: 0.51 }
     case 'shoe_stage': return derived.shoeStage === 'late' ? { banker: 0.52, player: 0.48 } : neutralScore()
     case 'road_trend': return winnerScore(derived.roadTrend)
     case 'long_dragon': return derived.longDragon ? winnerScore(derived.previousWinner) : neutralScore()

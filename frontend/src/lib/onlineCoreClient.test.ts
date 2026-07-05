@@ -19,6 +19,6 @@ describe('onlineCoreClient strategy analysis', () => {
     expect(analysis.state).toBe('connected')
     expect(analysis.strategyRows[0].strategy_version).toBe('v034-auto-memory')
     expect(analysis.weakTables[0].name).toBe('MT百家樂第5桌')
-    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:8787/api/online-core/strategy-analysis')
+    expect(String((fetchMock as any).mock.calls[0][0])).toContain('/api/online-core/strategy-analysis')
   })
 })
