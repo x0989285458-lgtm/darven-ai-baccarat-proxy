@@ -3,7 +3,7 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v049_no_observe_confidence_30_80'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v069_dragon_predictions_disabled'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v070_side_thresholds_snapshot_guard'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -87,10 +87,10 @@ export const SIDE_PREDICTION_WEIGHT_PROFILES = Object.freeze({
 export const ALL_MT_EQUAL_SIDE_WEIGHTS = SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair
 
 export const SIDE_PREDICTION_THRESHOLDS = {
-  tie: 85,
-  superSix: 90,
-  bankerPair: 80,
-  playerPair: 80,
+  tie: 40,
+  superSix: 50,
+  bankerPair: 35,
+  playerPair: 35,
   bankerDragon: 101,
   playerDragon: 101,
 }
@@ -236,7 +236,7 @@ export function buildPredictionResultRow(round = {}, table = {}) {
     table_recent_hit_rate: tablePerformance.recentHitRate,
     table_recent_prediction_count: tablePerformance.recentPredictionCount,
     short_run_adjustment: {
-      rule: 'v069_dragon_predictions_disabled',
+      rule: 'v070_side_thresholds_snapshot_guard',
       includedMainWeightCount: Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length,
       includedSideWeightCount: Object.keys(SIDE_WEIGHT_KEYS).length,
       sideActionRateTargets: SIDE_PREDICTION_ACTION_RATE_TARGETS,

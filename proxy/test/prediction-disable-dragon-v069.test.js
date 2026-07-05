@@ -14,7 +14,7 @@ test('v069 prediction row still records dragon scores for learning but never act
     { tableId: 'BAG69', shoe: 1, round: 1, rawResult: [1, 10, 2, 11, -1, -1, -1, -1, 3, 0], winner: 'banker' },
     { tableId: 'BAG69', bankerCount: 80, playerCount: 1, tieCount: 0, bankerPairCount: 0, playerPairCount: 0, beadPlateRaw: '02#02#02#02#02', bigRoadRaw: 'B#B#B#B#B' },
   )
-  assert.equal(row.strategy_version, 'v069_dragon_predictions_disabled')
+  assert.equal(row.strategy_version, 'v070_side_thresholds_snapshot_guard')
   assert.equal(typeof row.prediction_features.side_predictions.bankerDragon, 'number')
   assert.equal(row.prediction_features.side_actions.bankerDragon, false)
   assert.equal(row.prediction_features.side_actions.playerDragon, false)

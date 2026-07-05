@@ -33,6 +33,27 @@ test('v048 infers new rounds from round number and bead road even when aggregate
   assert.equal(events[0].round.rawResult.inferredFromRoundDelta, true)
 })
 
+test('v070 does not infer a burst of fake banker rounds from synthetic zero-count table state', async () => {
+  const events = []
+  const state = createProxyState({ onRoundEvent: async (round, table) => events.push({ round, table }) })
+  state.setTables([{ tableId: 'BAG01', displayName: 'MT百家樂BAG01', shoe: 10, round: 20, bankerCount: 0, playerCount: 0, tieCount: 0 }])
+  state.setTables([{ tableId: 'BAG01', displayName: '1', shoe: 10, round: 25, bankerCount: 12, playerCount: 9, tieCount: 3, beadPlateRaw: '010102120202', bigRoadRaw: '0701,0702' }])
+  await new Promise((resolve) => setTimeout(resolve, 0))
+
+  assert.equal(events.length, 0)
+})
+
+test('v070 live snapshot shoe and round are not overwritten by older lastRound state', async () => {
+  const state = createProxyState({ onRoundEvent: async () => {} })
+  state.setTables([{ tableId: 'BAG02', displayName: '2', shoe: 20, round: 30, bankerCount: 10, playerCount: 10, tieCount: 1, beadPlateRaw: '0102' }])
+  state.upsertRoundEvent({ tableId: 'BAG02', shoe: 20, round: 31, winner: 'banker' })
+  state.setTables([{ tableId: 'BAG02', displayName: '2', shoe: 20, round: 40, bankerCount: 14, playerCount: 20, tieCount: 5, beadPlateRaw: '010201020103' }])
+
+  const table = state.snapshot().tables.find((item) => item.tableId === 'BAG02')
+  assert.equal(table.round, 40)
+  assert.equal(table.shoe, 20)
+})
+
 test('v048 prediction result row stores main and side prediction/actual learning payload', () => {
   const row = buildPredictionResultRow(
     { tableId: 'BAG01', shoe: 10, round: 21, winner: 'banker', sideActualResults: { bankerPair: true, playerPair: false, tie: false } },

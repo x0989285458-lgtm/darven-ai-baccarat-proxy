@@ -109,6 +109,7 @@ function inferRoundEventsFromSnapshots(previousTables = [], nextTables = []) {
     if (!previous) continue
     const shoeChanged = previous.shoe != null && next.shoe != null && String(previous.shoe) !== String(next.shoe)
     if (shoeChanged) continue
+    if (!hasReliableSnapshotCounts(previous)) continue
     const deltas = {
       banker: countDelta(previous.bankerCount, next.bankerCount),
       player: countDelta(previous.playerCount, next.playerCount),
@@ -142,6 +143,12 @@ function inferRoundEventsFromSnapshots(previousTables = [], nextTables = []) {
     })
   }
   return events
+}
+
+function hasReliableSnapshotCounts(table = {}) {
+  const total = Number(table.bankerCount ?? 0) + Number(table.playerCount ?? 0) + Number(table.tieCount ?? 0)
+  const hasRoad = Boolean(table.beadPlateRaw || table.bigRoadRaw)
+  return Number.isFinite(total) && total > 0 && hasRoad
 }
 
 function countDelta(before, after) {
@@ -187,8 +194,8 @@ function mergeExistingRoundData(nextTables, currentTables) {
     if (!existing?.lastRound) return table
     return {
       ...table,
-      shoe: existing.lastRound.shoe ?? table.shoe,
-      round: existing.lastRound.round ?? table.round,
+      shoe: table.shoe ?? existing.lastRound.shoe ?? null,
+      round: table.round ?? existing.lastRound.round ?? null,
       lastRound: existing.lastRound,
     }
   })
