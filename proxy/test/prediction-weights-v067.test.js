@@ -19,15 +19,15 @@ test('v067 main recommendation weights strongly favor empirically higher-hit sig
 test('v067 side recommendation weights and thresholds suppress low-hit bonus noise', () => {
   assert.equal(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).length, 31)
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_SIDE_WEIGHTS) - 1) < 1e-9)
-  assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.pair_risk, 0.2)
-  assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.banker_pair_count, 0.18)
-  assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.player_pair_count, 0.14)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerPair, 40)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerPair, 70)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.tie, 90)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.superSix, 60)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerDragon, 95)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerDragon, 95)
+  assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.pair_risk, 0.22)
+  assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.banker_pair_count, 0.26)
+  assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.player_pair_count, 0)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerPair, 80)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerPair, 80)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.tie, 85)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.superSix, 90)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerDragon, 60)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerDragon, 60)
 })
 
 test('v067 prediction row records high-hit weight strategy version and keeps banker/player output', () => {
@@ -41,7 +41,7 @@ test('v067 prediction row records high-hit weight strategy version and keeps ban
       nextBankerRaw: 'weak', nextPlayerRaw: '2222222222',
     },
   )
-  assert.match(row.strategy_version, /v067/)
+  assert.match(row.strategy_version, /v068/)
   assert.ok(['banker', 'player'].includes(row.predicted_result))
-  assert.equal(row.short_run_adjustment.rule, 'v067_high_hit_weighted_main_side')
+  assert.equal(row.short_run_adjustment.rule, 'v068_independent_side_weight_profiles')
 })

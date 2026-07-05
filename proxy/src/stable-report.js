@@ -7,12 +7,12 @@ const WINNER_LABELS = new Map([
 ])
 
 export const SIDE_PREDICTION_THRESHOLDS = {
-  tie: 90,
-  superSix: 60,
-  bankerPair: 40,
-  playerPair: 70,
-  bankerDragon: 95,
-  playerDragon: 95,
+  tie: 85,
+  superSix: 90,
+  bankerPair: 80,
+  playerPair: 80,
+  bankerDragon: 60,
+  playerDragon: 60,
 }
 
 export const MAIN_ACTION_CONFIDENCE_THRESHOLD = 50

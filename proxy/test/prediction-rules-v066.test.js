@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { buildPredictionResultRow, deriveBaccaratRoundFacts, buildSideActions } from '../src/supabase-writer.js'
 
 test('v066 super six is actionable only when the main prediction is banker', () => {
-  const playerMainActions = buildSideActions({ tie: 0, superSix: 65, bankerPair: 0, playerPair: 0, bankerDragon: 0, playerDragon: 0 }, 'player')
-  const bankerMainActions = buildSideActions({ tie: 0, superSix: 65, bankerPair: 0, playerPair: 0, bankerDragon: 0, playerDragon: 0 }, 'banker')
+  const playerMainActions = buildSideActions({ tie: 0, superSix: 95, bankerPair: 0, playerPair: 0, bankerDragon: 0, playerDragon: 0 }, 'player')
+  const bankerMainActions = buildSideActions({ tie: 0, superSix: 95, bankerPair: 0, playerPair: 0, bankerDragon: 0, playerDragon: 0 }, 'banker')
 
   assert.equal(playerMainActions.superSix, false)
   assert.equal(bankerMainActions.superSix, true)

@@ -3,7 +3,7 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v049_no_observe_confidence_30_80'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v067_high_hit_weighted_main_side'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v068_independent_side_weight_profiles'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -29,7 +29,7 @@ const MAIN_WEIGHT_KEYS = [
   'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'pattern_tags', 'historical_backtest', 'super_six',
 ]
 
-const SIDE_WEIGHT_KEYS = [
+export const SIDE_WEIGHT_KEYS = [
   'tie_count', 'banker_pair_count', 'player_pair_count', 'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road',
   'next_banker_road', 'next_player_road', 'dealer_name', 'total_players', 'shoe', 'round', 'shoe_stage', 'state', 'order_state',
   'raw_result', 'player_point', 'banker_point', 'point_diff', 'banker_natural', 'player_natural', 'banker_dragon', 'player_dragon', 'super_six',
@@ -43,19 +43,56 @@ export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildWeightedProfile(MAIN_WEIGHT_KEYS, 
   streak_length: 0.01, previous_winner: 0.01, small_road: 0.01, next_banker_road: 0.005, super_six: 0.005,
 })
 
-export const ALL_MT_EQUAL_SIDE_WEIGHTS = buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-  pair_risk: 0.20, banker_pair_count: 0.18, player_pair_count: 0.14, point_diff: 0.10, banker_point: 0.08, player_point: 0.08,
-  bead_road: 0.05, big_road: 0.04, big_eye_road: 0.03, small_road: 0.025, cockroach_road: 0.025, table_side_history: 0.02,
-  tie_risk: 0.01, raw_result: 0.01, super_six: 0.005, banker_dragon: 0.0025, player_dragon: 0.0025,
+export const SIDE_PREDICTION_ACTION_RATE_TARGETS = Object.freeze({
+  tie: 0.15,
+  superSix: 0.10,
+  bankerPair: 0.20,
+  playerPair: 0.20,
+  bankerDragon: 0.40,
+  playerDragon: 0.40,
 })
 
+export const SIDE_PREDICTION_TARGET_HIT_RATE = 0.5
+
+export const SIDE_PREDICTION_WEIGHT_PROFILES = Object.freeze({
+  tie: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
+    tie_risk: 0.28, tie_count: 0.24, road_chaos: 0.12, bead_road: 0.08, big_road: 0.06, shoe_stage: 0.05,
+    table_side_history: 0.05, round: 0.04, point_diff: 0.03, raw_result: 0.02, ask_road_conflict: 0.02, total_players: 0.01,
+  }),
+  superSix: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
+    super_six: 0.30, banker_point: 0.16, point_diff: 0.13, banker_dragon: 0.10, banker_natural: 0.07, banker_pair_count: 0.05,
+    banker_pair_count: 0.05, banker_pair_count: 0.05, banker_pair_count: 0.05, banker_pair_count: 0.05,
+    bead_road: 0.05, big_road: 0.04, big_eye_road: 0.03, shoe_stage: 0.03, round: 0.02, table_side_history: 0.02,
+  }),
+  bankerPair: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
+    banker_pair_count: 0.26, pair_risk: 0.22, banker_point: 0.09, bead_road: 0.08, big_road: 0.06, big_eye_road: 0.05,
+    table_side_history: 0.05, raw_result: 0.04, round: 0.04, shoe_stage: 0.03, dealer_name: 0.02, total_players: 0.02,
+    banker_natural: 0.02, point_diff: 0.02,
+  }),
+  playerPair: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
+    player_pair_count: 0.26, pair_risk: 0.22, player_point: 0.09, bead_road: 0.08, big_road: 0.06, big_eye_road: 0.05,
+    table_side_history: 0.05, raw_result: 0.04, round: 0.04, shoe_stage: 0.03, dealer_name: 0.02, total_players: 0.02,
+    player_natural: 0.02, point_diff: 0.02,
+  }),
+  bankerDragon: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
+    banker_dragon: 0.30, point_diff: 0.18, banker_point: 0.13, banker_natural: 0.08, big_road: 0.06, big_eye_road: 0.05,
+    bead_road: 0.05, next_banker_road: 0.04, shoe_stage: 0.03, round: 0.03, table_side_history: 0.03, road_chaos: 0.02,
+  }),
+  playerDragon: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
+    player_dragon: 0.30, point_diff: 0.18, player_point: 0.13, player_natural: 0.08, big_road: 0.06, big_eye_road: 0.05,
+    bead_road: 0.05, next_player_road: 0.04, shoe_stage: 0.03, round: 0.03, table_side_history: 0.03, road_chaos: 0.02,
+  }),
+})
+
+export const ALL_MT_EQUAL_SIDE_WEIGHTS = SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair
+
 export const SIDE_PREDICTION_THRESHOLDS = {
-  tie: 90,
-  superSix: 60,
-  bankerPair: 40,
-  playerPair: 70,
-  bankerDragon: 95,
-  playerDragon: 95,
+  tie: 85,
+  superSix: 90,
+  bankerPair: 80,
+  playerPair: 80,
+  bankerDragon: 60,
+  playerDragon: 60,
 }
 
 const DEFAULT_EQUAL_WEIGHTS = Object.freeze({
@@ -199,9 +236,11 @@ export function buildPredictionResultRow(round = {}, table = {}) {
     table_recent_hit_rate: tablePerformance.recentHitRate,
     table_recent_prediction_count: tablePerformance.recentPredictionCount,
     short_run_adjustment: {
-      rule: 'v067_high_hit_weighted_main_side',
+      rule: 'v068_independent_side_weight_profiles',
       includedMainWeightCount: Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length,
-      includedSideWeightCount: Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).length,
+      includedSideWeightCount: Object.keys(SIDE_WEIGHT_KEYS).length,
+      sideActionRateTargets: SIDE_PREDICTION_ACTION_RATE_TARGETS,
+      sideTargetHitRate: SIDE_PREDICTION_TARGET_HIT_RATE,
       baseProbabilities: probabilities,
     },
     prediction_features: {
@@ -219,7 +258,8 @@ export function buildPredictionResultRow(round = {}, table = {}) {
         playerNatural: facts.playerNatural,
         bankerNatural: facts.bankerNatural,
       },
-      side_weights: { ...ALL_MT_EQUAL_SIDE_WEIGHTS },
+      side_weights: Object.fromEntries(Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES).map(([key, profile]) => [key, { ...profile }])),
+        side_tuning: Object.fromEntries(Object.entries(SIDE_PREDICTION_ACTION_RATE_TARGETS).map(([key, targetActionRate]) => [key, { targetActionRate, targetHitRate: SIDE_PREDICTION_TARGET_HIT_RATE }])),
       side_predictions: sidePredictions,
       side_actions: buildSideActions(sidePredictions, predicted_result),
       side_actual_results: sideActualResults,
@@ -551,6 +591,14 @@ function inferAskRoadTrend(table = {}) {
 
 
 function buildSidePredictions(table = {}) {
+  const featureScores = buildSideFeatureScores(table)
+  return Object.fromEntries(Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES).map(([key, profile]) => [
+    key,
+    clampPercent(Object.entries(profile).reduce((sum, [featureKey, weight]) => sum + (Number(featureScores[featureKey] ?? 0) * Number(weight ?? 0)), 0), 0, 100),
+  ]))
+}
+
+function buildSideFeatureScores(table = {}) {
   const beadCells = parseBeadCells(table.beadPlateRaw)
   const recent = beadCells.slice(-24)
   const recentBanker = recent.filter((cell) => cell.outcome === 'banker').length
@@ -566,13 +614,48 @@ function buildSidePredictions(table = {}) {
   const playerPair = Number(table.playerPairCount ?? 0) || recentPlayerPair
   const bankerRate = percentValue(banker, total)
   const playerRate = percentValue(player, total)
+  const tieRate = percentValue(tie, total)
+  const bankerPairRate = percentValue(bankerPair, total)
+  const playerPairRate = percentValue(playerPair, total)
+  const bankerPoint = clampPercent(bankerRate, 0, 100)
+  const playerPoint = clampPercent(playerRate, 0, 100)
+  const pointDiff = clampPercent(Math.abs(bankerRate - playerRate) * 2, 0, 100)
+  const roadChaos = clampPercent(100 - Math.abs(bankerRate - playerRate) - Math.abs(tieRate * 0.5), 0, 100)
+  const askConflict = inferAskRoadTrend(table) === 'neutral' ? 70 : 20
+  const bankerDragon = clampPercent((bankerRate * 0.7) + (pointDiff * 0.3), 0, 100)
+  const playerDragon = clampPercent((playerRate * 0.7) + (pointDiff * 0.3), 0, 100)
   return {
-    tie: clampPercent(percentValue(tie, total), 0, 80),
-    superSix: clampPercent(bankerRate * 0.5, 0, 80),
-    bankerPair: clampPercent(percentValue(bankerPair, total), 0, 80),
-    playerPair: clampPercent(percentValue(playerPair, total), 0, 80),
-    bankerDragon: clampPercent(bankerRate * 0.7, 0, 80),
-    playerDragon: clampPercent(playerRate * 0.7, 0, 80),
+    tie_count: tieRate,
+    banker_pair_count: bankerPairRate,
+    player_pair_count: playerPairRate,
+    bead_road: clampPercent(Math.max(bankerRate, playerRate), 0, 100),
+    big_road: clampPercent(Math.max(roadStringScore(table.bigRoadRaw).banker, roadStringScore(table.bigRoadRaw).player) * 100, 0, 100),
+    big_eye_road: clampPercent(Math.max(roadColorScore(table.bigEyeRaw).banker, roadColorScore(table.bigEyeRaw).player) * 100, 0, 100),
+    small_road: clampPercent(Math.max(roadColorScore(table.smallRoadRaw).banker, roadColorScore(table.smallRoadRaw).player) * 100, 0, 100),
+    cockroach_road: clampPercent(Math.max(roadColorScore(table.cockroachRaw).banker, roadColorScore(table.cockroachRaw).player) * 100, 0, 100),
+    next_banker_road: clampPercent(askRoadScore(table.nextBankerRaw, 'banker').banker * 100, 0, 100),
+    next_player_road: clampPercent(askRoadScore(table.nextPlayerRaw, 'player').player * 100, 0, 100),
+    dealer_name: table.dealerName ? 50 : 0,
+    total_players: clampPercent(Number(table.totalPlayers ?? 0) / 10, 0, 100),
+    shoe: clampPercent(Number(table.shoe ?? 0) % 100, 0, 100),
+    round: clampPercent(Number(table.round ?? 0), 0, 100),
+    shoe_stage: Number(table.round ?? 0) > 40 ? 70 : Number(table.round ?? 0) > 10 ? 50 : 30,
+    state: table.state == null ? 50 : 60,
+    order_state: table.orderState == null ? 50 : 60,
+    raw_result: recent.length ? 60 : 0,
+    player_point: playerPoint,
+    banker_point: bankerPoint,
+    point_diff: pointDiff,
+    banker_natural: bankerRate > playerRate ? 55 : 35,
+    player_natural: playerRate > bankerRate ? 55 : 35,
+    banker_dragon: bankerDragon,
+    player_dragon: playerDragon,
+    super_six: clampPercent(bankerRate * 0.5, 0, 100),
+    tie_risk: clampPercent((tieRate * 1.6) + (roadChaos * 0.25), 0, 100),
+    pair_risk: clampPercent(Math.max(bankerPairRate, playerPairRate) * 2.4, 0, 100),
+    ask_road_conflict: askConflict,
+    road_chaos: roadChaos,
+    table_side_history: clampPercent(Math.max(tieRate, bankerPairRate, playerPairRate, bankerDragon, playerDragon), 0, 100),
   }
 }
 
