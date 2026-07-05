@@ -3,7 +3,7 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v049_no_observe_confidence_30_80'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v061_unified_high_hit_main_weights'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v050_all_mt_equal_weight'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -13,23 +13,19 @@ function buildEqualWeights(keys) {
   return Object.freeze(weights)
 }
 
-export const ALL_MT_EQUAL_MAIN_WEIGHTS = Object.freeze({
-  shoe_road: 0.30,
-  ask_road: 0.18,
-  recent_trend: 0.17,
-  banker_player_stats: 0.13,
-  auxiliary_roads: 0.12,
-  bead_road: 0.10,
-})
+export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildEqualWeights([
+  'table_id', 'display_name', 'table_type', 'room_id', 'dealer_name', 'total_players', 'state', 'order_state', 'source_updated_at',
+  'shoe', 'round', 'shoe_stage', 'banker_count', 'player_count', 'tie_count', 'banker_pair_count', 'player_pair_count',
+  'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road', 'next_banker_road', 'next_player_road',
+  'previous_winner', 'streak_length', 'near5_banker_player_bias', 'table_recent_hit_rate', 'direction_calibration',
+  'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'pattern_tags', 'historical_backtest',
+])
 
 export const ALL_MT_EQUAL_SIDE_WEIGHTS = buildEqualWeights([
   'tie_count', 'banker_pair_count', 'player_pair_count', 'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road',
   'next_banker_road', 'next_player_road', 'dealer_name', 'total_players', 'shoe', 'round', 'shoe_stage', 'state', 'order_state',
   'raw_result', 'player_point', 'banker_point', 'point_diff', 'banker_natural', 'player_natural', 'banker_dragon', 'player_dragon', 'super_six',
-  'shoe_remaining_points', 'remaining_rank_counts', 'road_trend', 'long_dragon', 'double_dragon', 'up_slope', 'down_slope',
-  'jump_pattern', 'single_jump', 'double_jump', 'three_jump', 'one_banker_two_player', 'one_player_two_banker', 'row_pair_run',
-  'banker_then_jump', 'player_then_jump', 'banker_then_run', 'player_then_run', 'broken_single_jump', 'long_dragon_to_single_jump', 'single_jump_to_long_dragon',
-  'road_break', 'derived_road_sync', 'tie_risk', 'pair_risk', 'ask_road_conflict', 'ask_road_trend', 'road_chaos', 'table_side_history',
+  'tie_risk', 'pair_risk', 'ask_road_conflict', 'road_chaos', 'table_side_history',
 ])
 
 export const SIDE_PREDICTION_THRESHOLDS = {

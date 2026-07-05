@@ -48,6 +48,28 @@ export default function App() {
       total_round_banker: displaySelected?.trend.total_round_banker,
       total_round_player: displaySelected?.trend.total_round_player,
       total_round_tie: displaySelected?.trend.total_round_tie,
+      total_round_banker_pair: displaySelected?.trend.total_round_banker_pair,
+      total_round_player_pair: displaySelected?.trend.total_round_player_pair,
+    },
+    tableContext: {
+      table_id: displaySelected?.table_id,
+      display_name: displaySelected?.name,
+      table_type: displaySelected?.table_type,
+      room_id: displaySelected?.roomId,
+      dealer_name: displaySelected?.dealerName,
+      total_players: displaySelected?.totalPlayers,
+      state: displaySelected?.state,
+      order_state: displaySelected?.orderState,
+      source_updated_at: displaySelected?.sourceUpdatedAt,
+      shoe: displaySelected?.trend.current_shoe,
+      round: displaySelected?.trend.current_round,
+    },
+    roadRaw: {
+      bead_road: displaySelected?.trend.bead_plate2 ?? '',
+      big_road: displaySelected?.trend.big2 ?? '',
+      big_eye_road: displaySelected?.trend.big_eye2 ?? '',
+      small_road: displaySelected?.trend.small2 ?? '',
+      cockroach_road: displaySelected?.trend.cockroach2 ?? '',
     },
   }), [fullRoad, bigRoad, displaySelected])
   const bonusPredictions = useMemo(() => calculateBonusPredictions(fullRoad, displaySelected?.trend), [fullRoad, displaySelected])

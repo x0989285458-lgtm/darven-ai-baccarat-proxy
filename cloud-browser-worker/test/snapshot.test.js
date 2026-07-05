@@ -26,8 +26,21 @@ test('normalizes MT-like table fields into cloud browser table contract', () => 
     total_round_banker: 11,
     total_round_player: 10,
     total_round_tie: 2,
+    total_round_banker_pair: 3,
+    total_round_player_pair: 4,
     bead_plate2: 'BPPT',
     big2: 'BBPP',
+    big_eye2: '1,2',
+    small2: '2,1',
+    cockroach2: '1,1',
+    next_banker2: { big: 'ask banker' },
+    next_player2: { big: 'ask player' },
+    dealer: { username: '小旻' },
+    totalplayers: '123',
+    room_id: '29',
+    state: 0,
+    orderState: 1,
+    updated_at: '2026-07-05T00:00:00.000Z',
   }, 0)
 
   assert.deepEqual(table, {
@@ -39,11 +52,23 @@ test('normalizes MT-like table fields into cloud browser table contract', () => 
     bankerCount: 11,
     playerCount: 10,
     tieCount: 2,
+    bankerPairCount: 3,
+    playerPairCount: 4,
     beadPlateRaw: 'BPPT',
     bigRoadRaw: 'BBPP',
+    bigEyeRaw: '1,2',
+    smallRoadRaw: '2,1',
+    cockroachRaw: '1,1',
+    nextBankerRaw: { big: 'ask banker' },
+    nextPlayerRaw: { big: 'ask player' },
+    dealerName: '小旻',
+    totalPlayers: 123,
+    roomId: '29',
+    state: 0,
+    orderState: 1,
+    sourceUpdatedAt: '2026-07-05T00:00:00.000Z',
   })
 })
-
 test('extracts tables and rounds recursively from websocket/localStorage payloads', () => {
   const snapshot = extractSnapshotFromPayloads([
     JSON.stringify({

@@ -106,8 +106,21 @@ function normalizeCloudTables(tables) {
     bankerCount: table.bankerCount ?? table.total_round_banker ?? 0,
     playerCount: table.playerCount ?? table.total_round_player ?? 0,
     tieCount: table.tieCount ?? table.total_round_tie ?? 0,
+    bankerPairCount: table.bankerPairCount ?? table.total_round_banker_pair ?? 0,
+    playerPairCount: table.playerPairCount ?? table.total_round_player_pair ?? 0,
     beadPlateRaw: table.beadPlateRaw ?? table.bead_plate2 ?? '',
     bigRoadRaw: table.bigRoadRaw ?? table.big2 ?? '',
+    bigEyeRaw: table.bigEyeRaw ?? table.big_eye2 ?? '',
+    smallRoadRaw: table.smallRoadRaw ?? table.small2 ?? '',
+    cockroachRaw: table.cockroachRaw ?? table.cockroach2 ?? '',
+    nextBankerRaw: table.nextBankerRaw ?? table.next_banker2 ?? null,
+    nextPlayerRaw: table.nextPlayerRaw ?? table.next_player2 ?? null,
+    dealerName: table.dealerName ?? table.dealer?.username ?? null,
+    totalPlayers: table.totalPlayers ?? table.totalplayers ?? 0,
+    roomId: table.roomId ?? table.room_id ?? null,
+    state: table.state ?? null,
+    orderState: table.orderState ?? table.order_state ?? null,
+    sourceUpdatedAt: table.sourceUpdatedAt ?? table.updated_at ?? table.updatedAt ?? null,
   }))
 }
 

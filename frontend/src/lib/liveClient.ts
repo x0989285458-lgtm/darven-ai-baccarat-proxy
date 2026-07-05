@@ -9,6 +9,9 @@ export type LiveTable = {
   trend: {
     bead_plate2: string
     big2: string
+    big_eye2?: string
+    small2?: string
+    cockroach2?: string
     current_round?: number
     current_shoe?: string | number
     total_round_banker?: number
@@ -19,6 +22,12 @@ export type LiveTable = {
     next_banker2?: unknown
     next_player2?: unknown
   }
+  dealerName?: string | null
+  totalPlayers?: number
+  roomId?: string | number | null
+  state?: string | number | null
+  orderState?: string | number | null
+  sourceUpdatedAt?: string | null
 }
 
 type Status = { state: 'connecting' | 'connected' | 'error' | 'disconnected'; message: string }
@@ -39,6 +48,15 @@ type ProxyTable = {
   nextPlayerRaw?: unknown
   beadPlateRaw?: string
   bigRoadRaw?: string
+  bigEyeRaw?: string
+  smallRoadRaw?: string
+  cockroachRaw?: string
+  dealerName?: string | null
+  totalPlayers?: number
+  roomId?: string | number | null
+  state?: string | number | null
+  orderState?: string | number | null
+  sourceUpdatedAt?: string | null
 }
 
 const proxyApiUrl = dravenApiBaseUrl
@@ -128,7 +146,7 @@ export class LiveRoadClient {
         this.options.onStatus({ state: 'connected', message: `保留上一筆雲端資料（${this.lastGoodTables.length}桌）` })
         return
       }
-      if (this.consecutiveFailures >= 3) this.options.onStatus(await readProxyStatus())
+      this.options.onStatus(await readProxyStatus())
     } catch {
       this.consecutiveFailures += 1
       if (this.lastGoodTables.length && this.consecutiveFailures < 5) {
@@ -172,6 +190,9 @@ function normalizeProxyTables(tables: ProxyTable[]): LiveTable[] {
       trend: {
         bead_plate2: table.beadPlateRaw ?? '',
         big2: table.bigRoadRaw ?? '',
+        big_eye2: table.bigEyeRaw ?? '',
+        small2: table.smallRoadRaw ?? '',
+        cockroach2: table.cockroachRaw ?? '',
         current_round: table.round ?? 0,
         current_shoe: table.shoe ?? 0,
         total_round_banker: table.bankerCount ?? 0,
@@ -182,6 +203,12 @@ function normalizeProxyTables(tables: ProxyTable[]): LiveTable[] {
         next_banker2: table.nextBankerRaw ?? null,
         next_player2: table.nextPlayerRaw ?? null,
       },
+      dealerName: table.dealerName ?? null,
+      totalPlayers: table.totalPlayers ?? 0,
+      roomId: table.roomId ?? null,
+      state: table.state ?? null,
+      orderState: table.orderState ?? null,
+      sourceUpdatedAt: table.sourceUpdatedAt ?? null,
     }
   })
 }

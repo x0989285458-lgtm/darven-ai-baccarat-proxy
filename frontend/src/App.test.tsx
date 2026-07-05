@@ -2,10 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import App from './App'
 import { mockTables } from './data/mockTables'
-import { applyAskRoadWeighting, calculateAskRoadInfluence, calculateBonusPredictions, calculatePrediction, createSidePredictionLearningRecord, detectRoadTrends, evaluateFiveRoadPrediction, getSidePredictionActions, isSidePredictionActionable, scoreMainPrediction, normalizeOutcomeFromBead, parseBigRoad, SIDE_PREDICTION_THRESHOLDS } from './lib/roadParser'
+import { applyAskRoadWeighting, calculateAskRoadInfluence, ALL_MT_EQUAL_MAIN_WEIGHTS, ALL_MT_EQUAL_SIDE_WEIGHTS, calculateBonusPredictions, calculateMainOutcomeProbabilities, calculatePrediction, createSidePredictionLearningRecord, detectRoadTrends, evaluateFiveRoadPrediction, getSidePredictionActions, isSidePredictionActionable, scoreMainPrediction, normalizeOutcomeFromBead, parseBigRoad, SIDE_PREDICTION_THRESHOLDS } from './lib/roadParser'
 
 async function renderApp(path = '/', waitForConnected = true) {
   window.history.pushState({}, '', path)
+  if (path === '/' || path === '') window.sessionStorage.setItem('darven-member-login', 'yes')
   const result = render(<App />)
   if (waitForConnected) {
     await waitFor(() => expect(screen.getByText(/已連線/)).toBeInTheDocument())
@@ -448,7 +449,33 @@ describe('AI百家預測軟體', () => {
     expect(detectRoadTrends(['Banker', 'Banker', 'Banker', 'Player', 'Player', 'Banker', 'Player']).downSlope).toBe(true)
   })
 
-  it('v061 main prediction uses the unified high-hit weights across frontend and backend', () => {
+  it('v050 restores all-MT equal main and side prediction weights in the current frontend scorer', () => {
+    const prediction = evaluateFiveRoadPrediction({
+      beadCells: [
+        { code: '02', outcome: 'Banker' },
+        { code: '01', outcome: 'Player' },
+        { code: '02', outcome: 'Banker' },
+        { code: '02', outcome: 'Banker' },
+      ],
+      bigRoadCells: parseBigRoad('0102,0202,0302,#0101,#0102,0202'),
+      askRoad: { next_banker2: { big: '111' }, next_player2: { big: '222' } },
+      tableStats: { banker: 31, player: 22, tie: 4, total_round_banker_pair: 3, total_round_player_pair: 2 },
+      globalStats: { banker: 188, player: 164, tie: 30 },
+      tableContext: { table_id: 'BAG01', display_name: 'MT百家樂第1桌', dealer_name: '小旻', total_players: 123, room_id: '29', shoe: 12, round: 34 },
+      roadRaw: { bead_road: '0102#0201', big_road: '0102,0201', big_eye_road: '1,2', small_road: '2,1', cockroach_road: '1,1' },
+    })
+
+    expect(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS)).toHaveLength(35)
+    expect(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS)).toHaveLength(31)
+    expect(prediction.weights.table_id).toBeCloseTo(1 / 35)
+    expect(prediction.weights.historical_backtest).toBeCloseTo(1 / 35)
+    expect(prediction.sourceScores.big_eye_road).toBeDefined()
+    expect(prediction.sourceScores.next_banker_road).toBeDefined()
+    expect(prediction.confidence).toBeGreaterThanOrEqual(30)
+    expect(prediction.confidence).toBeLessThanOrEqual(80)
+  })
+
+  it('v064 main probability row uses five-road weighted score totals instead of mirroring confidence', () => {
     const prediction = evaluateFiveRoadPrediction({
       beadCells: [
         { code: '02', outcome: 'Banker' },
@@ -461,29 +488,14 @@ describe('AI百家預測軟體', () => {
       tableStats: { banker: 31, player: 22, tie: 4 },
       globalStats: { banker: 188, player: 164, tie: 30 },
     })
+    const row = calculateMainOutcomeProbabilities(prediction, 7)
+
     expect(prediction.recommendation).toBe('Banker')
-    expect(prediction.confidence).toBeGreaterThanOrEqual(30)
-    expect(prediction.confidence).toBeLessThanOrEqual(80)
-    expect(prediction.weights.shoeRoad).toBeCloseTo(0.30)
-    expect(prediction.weights.askRoad).toBeCloseTo(0.18)
-    expect(prediction.weights.recentTrend).toBeCloseTo(0.17)
-    expect(prediction.weights.bankerPlayerStats).toBeCloseTo(0.13)
-    expect(prediction.weights.auxiliaryRoads).toBeCloseTo(0.12)
-    expect(prediction.weights.beadRoad).toBeCloseTo(0.10)
-    expect(prediction.patterns.longDragon.side).toBe('Banker')
-    expect(prediction.sourceScores.shoeRoad.banker).toBeGreaterThan(prediction.sourceScores.shoeRoad.player)
-  })
-
-  it('v061 main probability row follows the AI prediction confidence instead of raw banker-player counts', async () => {
-    window.sessionStorage.setItem('darven-member-login', 'yes')
-    await renderApp()
-    const prediction = screen.getByLabelText('AI預測結果')
-    const line = within(prediction).getByText(/AI預測:/)
-    const confidenceText = within(prediction).getByText(/AI信心值:\d+%/).textContent ?? ''
-    const confidence = Number(confidenceText.match(/(\d+)%/)?.[1] ?? 0)
-    const activeSide = line.textContent?.includes('莊') ? '莊' : '閒'
-
-    expect(within(prediction).getByLabelText(`${activeSide}預測`)).toHaveTextContent(`${confidence}%`)
+    expect(row.banker).toBe(49)
+    expect(row.player).toBe(44)
+    expect(row.tie).toBe(7)
+    expect(row.banker).not.toBe(prediction.confidence)
+    expect(row.banker + row.player + row.tie).toBe(100)
   })
 
   it('v017 report-facing prediction still hides internal source-weight hit rates from UI text', async () => {
@@ -515,8 +527,8 @@ describe('AI百家預測軟體', () => {
 
     await renderApp()
 
-    await waitFor(() => expect(screen.getByLabelText('莊預測')).toHaveTextContent('54%'))
-    expect(screen.getByLabelText('閒預測')).toHaveTextContent('36%')
+    await waitFor(() => expect(screen.getByLabelText('莊預測')).toHaveTextContent('46%'))
+    expect(screen.getByLabelText('閒預測')).toHaveTextContent('44%')
   })
 
   it('v030 member login calls online license API and enters frontend only after success', async () => {

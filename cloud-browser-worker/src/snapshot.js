@@ -24,8 +24,21 @@ export function normalizeTable(table = {}, index = 0) {
     bankerCount: toNumber(firstValueIn([table, trend], ['bankerCount', 'total_round_banker', 'banker_count', 'bankerTotal']), 0),
     playerCount: toNumber(firstValueIn([table, trend], ['playerCount', 'total_round_player', 'player_count', 'playerTotal']), 0),
     tieCount: toNumber(firstValueIn([table, trend], ['tieCount', 'total_round_tie', 'tie_count', 'tieTotal']), 0),
+    bankerPairCount: toNumber(firstValueIn([table, trend], ['bankerPairCount', 'total_round_banker_pair', 'banker_pair_count', 'bankerPairTotal']), 0),
+    playerPairCount: toNumber(firstValueIn([table, trend], ['playerPairCount', 'total_round_player_pair', 'player_pair_count', 'playerPairTotal']), 0),
     beadPlateRaw: String(firstValueIn([table, trend], ['beadPlateRaw', 'bead_plate2', 'beadPlate', 'beadRoad', 'road']) ?? ''),
     bigRoadRaw: String(firstValueIn([table, trend], ['bigRoadRaw', 'big2', 'bigRoad', 'bigRoadMap']) ?? ''),
+    bigEyeRaw: String(firstValueIn([table, trend], ['bigEyeRaw', 'big_eye2', 'bigEye', 'bigEyeRoad']) ?? ''),
+    smallRoadRaw: String(firstValueIn([table, trend], ['smallRoadRaw', 'small2', 'smallRoad']) ?? ''),
+    cockroachRaw: String(firstValueIn([table, trend], ['cockroachRaw', 'cockroach2', 'cockroachRoad']) ?? ''),
+    nextBankerRaw: firstValueIn([table, trend], ['nextBankerRaw', 'next_banker2', 'nextBanker']) ?? null,
+    nextPlayerRaw: firstValueIn([table, trend], ['nextPlayerRaw', 'next_player2', 'nextPlayer']) ?? null,
+    dealerName: firstValue(table?.dealer && typeof table.dealer === 'object' ? table.dealer : {}, ['username', 'name']) ?? firstValue(table, ['dealerName', 'dealer_name']) ?? null,
+    totalPlayers: toNumber(firstValueIn([table, trend], ['totalPlayers', 'totalplayers', 'total_players']), 0),
+    roomId: firstValueIn([table, trend], ['roomId', 'room_id']) ?? null,
+    state: firstValueIn([table, trend], ['state']) ?? null,
+    orderState: firstValueIn([table, trend], ['orderState', 'order_state']) ?? null,
+    sourceUpdatedAt: firstValueIn([table, trend], ['sourceUpdatedAt', 'updated_at', 'updatedAt']) ?? null,
   }
 }
 
@@ -210,6 +223,11 @@ function stripInternalTableFields(table) {
 function tableScore(table) {
   return (table.beadPlateRaw ? table.beadPlateRaw.length : 0)
     + (table.bigRoadRaw ? table.bigRoadRaw.length : 0)
+    + (table.bigEyeRaw ? table.bigEyeRaw.length : 0)
+    + (table.smallRoadRaw ? table.smallRoadRaw.length : 0)
+    + (table.cockroachRaw ? table.cockroachRaw.length : 0)
+    + (table.nextBankerRaw ? JSON.stringify(table.nextBankerRaw).length : 0)
+    + (table.nextPlayerRaw ? JSON.stringify(table.nextPlayerRaw).length : 0)
     + (table.displayName && !/^MT百家樂第\d+桌$/.test(table.displayName) ? 10 : 0)
     + (table.round ?? 0) / 1000
 }
