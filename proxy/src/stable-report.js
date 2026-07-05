@@ -140,7 +140,7 @@ export function createStableReportSession({ targetTableCount = 9, startedAt = ne
           item.tablePerformance = item.performanceTracker.summary()
         }
 
-        recordSideLearning(item, sidePredictions, actualSide)
+        recordSideLearning(item, sidePredictions, actualSide, prediction.main)
       })
     },
 
@@ -490,8 +490,8 @@ function scoreMainPrediction(prediction, winner, confidence = 100) {
   return { evaluated: true, hit: prediction === winner, push: false }
 }
 
-function recordSideLearning(item, predictions, actuals) {
-  const actions = buildSideActions(predictions)
+function recordSideLearning(item, predictions, actuals, mainPrediction) {
+  const actions = buildSideActions(predictions, mainPrediction)
   for (const key of Object.keys(SIDE_PREDICTION_THRESHOLDS)) {
     const probability = predictions[key] ?? 0
     const actionable = actions[key]
@@ -509,13 +509,14 @@ function recordSideLearning(item, predictions, actuals) {
   }
 }
 
-function buildSideActions(predictions = {}) {
+function buildSideActions(predictions = {}, mainPrediction = null) {
   const actions = Object.fromEntries(Object.entries(SIDE_PREDICTION_THRESHOLDS).map(([key, threshold]) => [key, Number(predictions[key] ?? 0) >= threshold]))
   const bankerDragon = Math.round(Number(predictions.bankerDragon ?? 0))
   const playerDragon = Math.round(Number(predictions.playerDragon ?? 0))
   const dragonDiff = Math.abs(bankerDragon - playerDragon)
-  actions.bankerDragon = bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon && bankerDragon > playerDragon && dragonDiff >= 6
-  actions.playerDragon = playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon && playerDragon > bankerDragon && dragonDiff >= 6
+  actions.superSix = Boolean(actions.superSix) && mainPrediction === '莊'
+  actions.bankerDragon = mainPrediction === '莊' && bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon && dragonDiff >= 6
+  actions.playerDragon = mainPrediction === '閒' && playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon && dragonDiff >= 6
   return actions
 }
 

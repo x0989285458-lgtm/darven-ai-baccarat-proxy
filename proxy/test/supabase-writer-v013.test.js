@@ -94,7 +94,7 @@ test('v061 main strategy uses unified high-hit weights while side strategy keeps
     'shoe', 'round', 'shoe_stage', 'banker_count', 'player_count', 'tie_count', 'banker_pair_count', 'player_pair_count',
     'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road', 'next_banker_road', 'next_player_road',
     'previous_winner', 'streak_length', 'near5_banker_player_bias', 'table_recent_hit_rate', 'direction_calibration',
-    'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'pattern_tags', 'historical_backtest',
+    'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'pattern_tags', 'historical_backtest', 'super_six',
   ]
   const sideKeys = [
     'tie_count', 'banker_pair_count', 'player_pair_count', 'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road',
@@ -104,7 +104,7 @@ test('v061 main strategy uses unified high-hit weights while side strategy keeps
   ]
   assert.deepEqual(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).sort(), mainKeys.sort())
   assert.deepEqual(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).sort(), sideKeys.sort())
-  assert.equal(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length, 35)
+  assert.equal(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length, 36)
   assert.equal(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).length, 31)
   assert.equal(Math.max(...Object.values(ALL_MT_EQUAL_MAIN_WEIGHTS)) - Math.min(...Object.values(ALL_MT_EQUAL_MAIN_WEIGHTS)) < 1e-9, true)
   assert.equal(Math.max(...Object.values(ALL_MT_EQUAL_SIDE_WEIGHTS)) - Math.min(...Object.values(ALL_MT_EQUAL_SIDE_WEIGHTS)) < 1e-9, true)

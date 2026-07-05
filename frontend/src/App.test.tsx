@@ -434,7 +434,7 @@ describe('AI百家預測軟體', () => {
       playerPair: 0,
       bankerDragon: 36,
       playerDragon: 30,
-    })).toEqual(expect.objectContaining({ bankerDragon: true, playerDragon: false }))
+    }, 'Banker')).toEqual(expect.objectContaining({ bankerDragon: true, playerDragon: false }))
     expect(getSidePredictionActions({
       tie: 0,
       superSix: 0,
@@ -442,7 +442,28 @@ describe('AI百家預測軟體', () => {
       playerPair: 0,
       bankerDragon: 35,
       playerDragon: 35,
-    })).toEqual(expect.objectContaining({ bankerDragon: false, playerDragon: false }))
+    }, 'Banker')).toEqual(expect.objectContaining({ bankerDragon: false, playerDragon: false }))
+  })
+
+  it('v066 gates super six and dragon bonus by main prediction direction', () => {
+    const highBonus = {
+      tie: 0,
+      superSix: 45,
+      bankerPair: 0,
+      playerPair: 0,
+      bankerDragon: 50,
+      playerDragon: 44,
+    }
+    expect(getSidePredictionActions(highBonus, 'Player')).toEqual(expect.objectContaining({
+      superSix: false,
+      bankerDragon: false,
+      playerDragon: true,
+    }))
+    expect(getSidePredictionActions(highBonus, 'Banker')).toEqual(expect.objectContaining({
+      superSix: true,
+      bankerDragon: true,
+      playerDragon: false,
+    }))
   })
 
   it('v017 detects road trends including single jump, double jump, long dragon, double dragon, and slopes', () => {
@@ -470,10 +491,10 @@ describe('AI百家預測軟體', () => {
       roadRaw: { bead_road: '0102#0201', big_road: '0102,0201', big_eye_road: '1,2', small_road: '2,1', cockroach_road: '1,1' },
     })
 
-    expect(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS)).toHaveLength(35)
+    expect(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS)).toHaveLength(36)
     expect(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS)).toHaveLength(31)
-    expect(prediction.weights.table_id).toBeCloseTo(1 / 35)
-    expect(prediction.weights.historical_backtest).toBeCloseTo(1 / 35)
+    expect(prediction.weights.table_id).toBeCloseTo(1 / 36)
+    expect(prediction.weights.super_six).toBeCloseTo(1 / 36)
     expect(prediction.sourceScores.big_eye_road).toBeDefined()
     expect(prediction.sourceScores.next_banker_road).toBeDefined()
     expect(prediction.confidence).toBeGreaterThanOrEqual(30)

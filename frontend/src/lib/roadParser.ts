@@ -78,7 +78,7 @@ export const ALL_MT_EQUAL_MAIN_WEIGHT_KEYS = [
   'shoe', 'round', 'shoe_stage', 'banker_count', 'player_count', 'tie_count', 'banker_pair_count', 'player_pair_count',
   'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road', 'next_banker_road', 'next_player_road',
   'previous_winner', 'streak_length', 'near5_banker_player_bias', 'table_recent_hit_rate', 'direction_calibration',
-  'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'pattern_tags', 'historical_backtest',
+  'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'pattern_tags', 'historical_backtest', 'super_six',
 ] as const
 
 export const ALL_MT_EQUAL_SIDE_WEIGHT_KEYS = [
@@ -95,27 +95,28 @@ export const SIDE_PREDICTION_WEIGHTS = ALL_MT_EQUAL_SIDE_WEIGHTS
 
 export type MainPredictionWeights = typeof ALL_MT_EQUAL_MAIN_WEIGHTS
 export type SidePredictionKey = keyof typeof SIDE_PREDICTION_THRESHOLDS
-export type SideActuals = Record<SidePredictionKey, boolean>
+export type SideActuals = Record<SidePredictionKey, boolean> & { mainPrediction?: MainOutcome }
 export type SideActions = Record<SidePredictionKey, boolean>
 
 export function isSidePredictionActionable(key: SidePredictionKey, probability: number) {
   return Math.round(probability) >= SIDE_PREDICTION_THRESHOLDS[key]
 }
 
-export function getSidePredictionActions(predictions: BonusPredictions): SideActions {
+export function getSidePredictionActions(predictions: BonusPredictions, mainPrediction?: MainOutcome): SideActions {
   const keys = Object.keys(SIDE_PREDICTION_THRESHOLDS) as SidePredictionKey[]
   const actions = Object.fromEntries(keys.map((key) => [key, isSidePredictionActionable(key, predictions[key])])) as SideActions
   const bankerDragon = Math.round(predictions.bankerDragon ?? 0)
   const playerDragon = Math.round(predictions.playerDragon ?? 0)
   const dragonDiff = Math.abs(bankerDragon - playerDragon)
-  actions.bankerDragon = bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon && bankerDragon > playerDragon && dragonDiff >= 6
-  actions.playerDragon = playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon && playerDragon > bankerDragon && dragonDiff >= 6
+  actions.superSix = actions.superSix && mainPrediction === 'Banker'
+  actions.bankerDragon = mainPrediction === 'Banker' && bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon && dragonDiff >= 6
+  actions.playerDragon = mainPrediction === 'Player' && playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon && dragonDiff >= 6
   return actions
 }
 
 export function createSidePredictionLearningRecord(predictions: BonusPredictions, actuals: SideActuals) {
   const keys = Object.keys(SIDE_PREDICTION_THRESHOLDS) as SidePredictionKey[]
-  const actions = getSidePredictionActions(predictions)
+  const actions = getSidePredictionActions(predictions, actuals.mainPrediction)
   const hits = Object.fromEntries(keys.map((key) => [key, actions[key] && actuals[key]])) as SideActions
   return {
     predictions,
@@ -431,6 +432,13 @@ function scoreAllMtFeature(key: keyof MainPredictionWeights, ctx: {
     case 'direction_calibration': return neutralScore()
     case 'confidence': return baseProbabilities
     case 'probability_gap': return baseProbabilities
+    case 'super_six': {
+      const banker = toNumber(tableStats.banker ?? tableStats.total_round_banker)
+      const player = toNumber(tableStats.player ?? tableStats.total_round_player)
+      const tie = toNumber(tableStats.tie ?? tableStats.total_round_tie)
+      const total = banker + player + tie
+      return total && percentage(banker, total) * 0.5 >= SIDE_PREDICTION_THRESHOLDS.superSix ? { banker: 0.56, player: 0.44 } : neutralScore()
+    }
     case 'round': return tableContext.round == null ? neutralScore() : toNumber(tableContext.round as number | string | undefined) % 2 === 0 ? { banker: 0.51, player: 0.49 } : { banker: 0.49, player: 0.51 }
     case 'shoe_stage': return shoeStage(tableContext.round) === 'late' ? { banker: 0.52, player: 0.48 } : neutralScore()
     default: return neutralScore()

@@ -18,7 +18,7 @@ export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildEqualWeights([
   'shoe', 'round', 'shoe_stage', 'banker_count', 'player_count', 'tie_count', 'banker_pair_count', 'player_pair_count',
   'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road', 'next_banker_road', 'next_player_road',
   'previous_winner', 'streak_length', 'near5_banker_player_bias', 'table_recent_hit_rate', 'direction_calibration',
-  'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'pattern_tags', 'historical_backtest',
+  'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'pattern_tags', 'historical_backtest', 'super_six',
 ])
 
 export const ALL_MT_EQUAL_SIDE_WEIGHTS = buildEqualWeights([
@@ -200,8 +200,9 @@ export function buildPredictionResultRow(round = {}, table = {}) {
       },
       side_weights: { ...ALL_MT_EQUAL_SIDE_WEIGHTS },
       side_predictions: sidePredictions,
+      side_actions: buildSideActions(sidePredictions, predicted_result),
       side_actual_results: sideActualResults,
-      side_hits: buildSideHits(sidePredictions, sideActualResults),
+      side_hits: buildSideHits(sidePredictions, sideActualResults, predicted_result),
       side_results: {
         superSix: facts.superSix,
         bankerDragon: facts.bankerDragon,
@@ -332,6 +333,13 @@ function scoreAllMtFeature(key, ctx) {
     case 'direction_calibration': return neutralScore()
     case 'confidence': return ratioScore(probabilities.banker, probabilities.player)
     case 'probability_gap': return ratioScore(probabilities.banker, probabilities.player)
+    case 'super_six': {
+      const banker = Number(table.bankerCount ?? 0)
+      const player = Number(table.playerCount ?? 0)
+      const tie = Number(table.tieCount ?? 0)
+      const total = banker + player + tie
+      return total && percentValue(banker, total) * 0.5 >= SIDE_PREDICTION_THRESHOLDS.superSix ? { banker: 0.56, player: 0.44 } : neutralScore()
+    }
     case 'round': return table.round == null ? neutralScore() : Number(table.round) % 2 === 0 ? { banker: 0.51, player: 0.49 } : { banker: 0.49, player: 0.51 }
     case 'shoe_stage': return derived.shoeStage === 'late' ? { banker: 0.52, player: 0.48 } : neutralScore()
     case 'road_trend': return winnerScore(derived.roadTrend)
@@ -567,18 +575,19 @@ function buildSideActualResults(round = {}, facts = {}) {
   }
 }
 
-function buildSideHits(predictions = {}, actual = {}) {
-  const actions = buildSideActions(predictions)
+function buildSideHits(predictions = {}, actual = {}, mainPrediction = null) {
+  const actions = buildSideActions(predictions, mainPrediction)
   return Object.fromEntries(Object.keys(SIDE_PREDICTION_THRESHOLDS).map((key) => [key, Boolean(actions[key]) && Boolean(actual[key])]))
 }
 
-function buildSideActions(predictions = {}) {
+export function buildSideActions(predictions = {}, mainPrediction = null) {
   const actions = Object.fromEntries(Object.entries(SIDE_PREDICTION_THRESHOLDS).map(([key, threshold]) => [key, Number(predictions[key] ?? 0) >= threshold]))
   const bankerDragon = Math.round(Number(predictions.bankerDragon ?? 0))
   const playerDragon = Math.round(Number(predictions.playerDragon ?? 0))
   const dragonDiff = Math.abs(bankerDragon - playerDragon)
-  actions.bankerDragon = bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon && bankerDragon > playerDragon && dragonDiff >= 6
-  actions.playerDragon = playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon && playerDragon > bankerDragon && dragonDiff >= 6
+  actions.superSix = Boolean(actions.superSix) && mainPrediction === 'banker'
+  actions.bankerDragon = mainPrediction === 'banker' && bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon && dragonDiff >= 6
+  actions.playerDragon = mainPrediction === 'player' && playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon && dragonDiff >= 6
   return actions
 }
 
