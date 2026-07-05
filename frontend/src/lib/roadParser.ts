@@ -56,12 +56,12 @@ export type BonusPredictions = {
 }
 
 export const SIDE_PREDICTION_THRESHOLDS = {
-  tie: 40,
-  superSix: 30,
-  bankerPair: 20,
-  playerPair: 20,
-  bankerDragon: 30,
-  playerDragon: 30,
+  tie: 90,
+  superSix: 60,
+  bankerPair: 40,
+  playerPair: 70,
+  bankerDragon: 95,
+  playerDragon: 95,
 } as const
 
 function buildEqualWeights<const T extends readonly string[]>(keys: T) {
@@ -70,6 +70,15 @@ function buildEqualWeights<const T extends readonly string[]>(keys: T) {
   const drift = 1 - (Object.values(weights) as number[]).reduce((sum, value) => sum + value, 0)
   const lastKey = keys[keys.length - 1] as T[number]
   weights[lastKey] = Number((weights[lastKey] + drift).toFixed(12))
+  return Object.freeze(weights)
+}
+
+function buildWeightedProfile<const T extends readonly string[]>(keys: T, profile: Partial<Record<T[number], number>>) {
+  const typedKeys = keys as readonly T[number][]
+  const weights = Object.fromEntries(typedKeys.map((key) => [key, Number((profile[key] ?? 0).toFixed(12))])) as Record<T[number], number>
+  const drift = 1 - (Object.values(weights) as number[]).reduce((sum, value) => sum + value, 0)
+  const anchor = typedKeys.find((key) => weights[key] > 0) ?? typedKeys[typedKeys.length - 1]
+  weights[anchor] = Number((weights[anchor] + drift).toFixed(12))
   return Object.freeze(weights)
 }
 
@@ -88,8 +97,17 @@ export const ALL_MT_EQUAL_SIDE_WEIGHT_KEYS = [
   'tie_risk', 'pair_risk', 'ask_road_conflict', 'road_chaos', 'table_side_history',
 ] as const
 
-export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildEqualWeights(ALL_MT_EQUAL_MAIN_WEIGHT_KEYS)
-export const ALL_MT_EQUAL_SIDE_WEIGHTS = buildEqualWeights(ALL_MT_EQUAL_SIDE_WEIGHT_KEYS)
+export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildWeightedProfile(ALL_MT_EQUAL_MAIN_WEIGHT_KEYS, {
+  big_road: 0.15, big_eye_road: 0.13, next_player_road: 0.12, shoe_stage: 0.08,
+  confidence: 0.08, probability_gap: 0.08, banker_count: 0.06, player_count: 0.06, bead_road: 0.06,
+  cockroach_road: 0.04, banker_pair_count: 0.03, player_pair_count: 0.03, round: 0.02, near5_banker_player_bias: 0.02,
+  streak_length: 0.01, previous_winner: 0.01, small_road: 0.01, next_banker_road: 0.005, super_six: 0.005,
+})
+export const ALL_MT_EQUAL_SIDE_WEIGHTS = buildWeightedProfile(ALL_MT_EQUAL_SIDE_WEIGHT_KEYS, {
+  pair_risk: 0.20, banker_pair_count: 0.18, player_pair_count: 0.14, point_diff: 0.10, banker_point: 0.08, player_point: 0.08,
+  bead_road: 0.05, big_road: 0.04, big_eye_road: 0.03, small_road: 0.025, cockroach_road: 0.025, table_side_history: 0.02,
+  tie_risk: 0.01, raw_result: 0.01, super_six: 0.005, banker_dragon: 0.0025, player_dragon: 0.0025,
+})
 export const MAIN_PREDICTION_WEIGHTS = ALL_MT_EQUAL_MAIN_WEIGHTS
 export const SIDE_PREDICTION_WEIGHTS = ALL_MT_EQUAL_SIDE_WEIGHTS
 

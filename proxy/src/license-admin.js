@@ -398,7 +398,7 @@ function countDistinctRounds(rows) {
 function pctText(hits, total) { return total ? `${((hits / total) * 100).toFixed(1)}%` : '-' }
 function sideScore(features, key) { return Number(features?.side_predictions?.[key] ?? 0) || 0 }
 function sideHit(features, key) { return features?.side_hits?.[key] === true }
-const SIDE_THRESHOLDS = { tie:40, superSix:30, bankerPair:20, playerPair:20, bankerDragon:30, playerDragon:30 }
+const SIDE_THRESHOLDS = { tie:90, superSix:60, bankerPair:40, playerPair:70, bankerDragon:95, playerDragon:95 }
 function sideActionStats(rows, keys) {
   let actions = 0, hits = 0
   for (const r of rows) {

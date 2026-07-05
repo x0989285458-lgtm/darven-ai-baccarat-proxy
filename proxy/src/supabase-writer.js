@@ -3,7 +3,7 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v049_no_observe_confidence_30_80'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v050_all_mt_equal_weight'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v067_high_hit_weighted_main_side'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -13,28 +13,49 @@ function buildEqualWeights(keys) {
   return Object.freeze(weights)
 }
 
-export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildEqualWeights([
+function buildWeightedProfile(keys, profile) {
+  const weights = Object.fromEntries(keys.map((key) => [key, Number((profile[key] ?? 0).toFixed(12))]))
+  const drift = 1 - Object.values(weights).reduce((sum, value) => sum + value, 0)
+  const anchor = keys.find((key) => weights[key] > 0) ?? keys[keys.length - 1]
+  weights[anchor] = Number((weights[anchor] + drift).toFixed(12))
+  return Object.freeze(weights)
+}
+
+const MAIN_WEIGHT_KEYS = [
   'table_id', 'display_name', 'table_type', 'room_id', 'dealer_name', 'total_players', 'state', 'order_state', 'source_updated_at',
   'shoe', 'round', 'shoe_stage', 'banker_count', 'player_count', 'tie_count', 'banker_pair_count', 'player_pair_count',
   'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road', 'next_banker_road', 'next_player_road',
   'previous_winner', 'streak_length', 'near5_banker_player_bias', 'table_recent_hit_rate', 'direction_calibration',
   'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'pattern_tags', 'historical_backtest', 'super_six',
-])
+]
 
-export const ALL_MT_EQUAL_SIDE_WEIGHTS = buildEqualWeights([
+const SIDE_WEIGHT_KEYS = [
   'tie_count', 'banker_pair_count', 'player_pair_count', 'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road',
   'next_banker_road', 'next_player_road', 'dealer_name', 'total_players', 'shoe', 'round', 'shoe_stage', 'state', 'order_state',
   'raw_result', 'player_point', 'banker_point', 'point_diff', 'banker_natural', 'player_natural', 'banker_dragon', 'player_dragon', 'super_six',
   'tie_risk', 'pair_risk', 'ask_road_conflict', 'road_chaos', 'table_side_history',
-])
+]
+
+export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildWeightedProfile(MAIN_WEIGHT_KEYS, {
+  big_road: 0.15, big_eye_road: 0.13, next_player_road: 0.12, shoe_stage: 0.08,
+  confidence: 0.08, probability_gap: 0.08, banker_count: 0.06, player_count: 0.06, bead_road: 0.06,
+  cockroach_road: 0.04, banker_pair_count: 0.03, player_pair_count: 0.03, round: 0.02, near5_banker_player_bias: 0.02,
+  streak_length: 0.01, previous_winner: 0.01, small_road: 0.01, next_banker_road: 0.005, super_six: 0.005,
+})
+
+export const ALL_MT_EQUAL_SIDE_WEIGHTS = buildWeightedProfile(SIDE_WEIGHT_KEYS, {
+  pair_risk: 0.20, banker_pair_count: 0.18, player_pair_count: 0.14, point_diff: 0.10, banker_point: 0.08, player_point: 0.08,
+  bead_road: 0.05, big_road: 0.04, big_eye_road: 0.03, small_road: 0.025, cockroach_road: 0.025, table_side_history: 0.02,
+  tie_risk: 0.01, raw_result: 0.01, super_six: 0.005, banker_dragon: 0.0025, player_dragon: 0.0025,
+})
 
 export const SIDE_PREDICTION_THRESHOLDS = {
-  tie: 40,
-  superSix: 30,
-  bankerPair: 20,
-  playerPair: 20,
-  bankerDragon: 30,
-  playerDragon: 30,
+  tie: 90,
+  superSix: 60,
+  bankerPair: 40,
+  playerPair: 70,
+  bankerDragon: 95,
+  playerDragon: 95,
 }
 
 const DEFAULT_EQUAL_WEIGHTS = Object.freeze({
@@ -178,7 +199,7 @@ export function buildPredictionResultRow(round = {}, table = {}) {
     table_recent_hit_rate: tablePerformance.recentHitRate,
     table_recent_prediction_count: tablePerformance.recentPredictionCount,
     short_run_adjustment: {
-      rule: 'unified_high_hit_main_weights',
+      rule: 'v067_high_hit_weighted_main_side',
       includedMainWeightCount: Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length,
       includedSideWeightCount: Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).length,
       baseProbabilities: probabilities,

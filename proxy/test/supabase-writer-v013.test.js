@@ -57,12 +57,12 @@ test('v050 low-performing table keeps banker/player prediction and records all-M
     recentPredictionCount: 25,
   })
 
-  assert.equal(prediction.strategy_version, 'v050_all_mt_equal_weight')
+  assert.equal(prediction.strategy_version, 'v067_high_hit_weighted_main_side')
   assert.equal(prediction.prediction_features.table_performance.recentHitRate, 0.44)
   assert.match(prediction.predicted_result, /^(banker|player)$/)
   assert.equal(prediction.confidence >= 30, true)
   assert.equal(prediction.confidence <= 80, true)
-  assert.equal(prediction.short_run_adjustment.rule, 'unified_high_hit_main_weights')
+  assert.equal(prediction.short_run_adjustment.rule, 'v067_high_hit_weighted_main_side')
 })
 
 test('v062 equal banker/player main scores use tie-breakers instead of defaulting to banker', () => {
@@ -88,7 +88,7 @@ test('v062 equal banker/player main scores use tie-breakers instead of defaultin
   assert.equal(afterPlayer.confidence, 30)
 })
 
-test('v061 main strategy uses unified high-hit weights while side strategy keeps broad equal features', () => {
+test('v067 main and side strategy uses high-hit weighted features', () => {
   const mainKeys = [
     'table_id', 'display_name', 'table_type', 'room_id', 'dealer_name', 'total_players', 'state', 'order_state', 'source_updated_at',
     'shoe', 'round', 'shoe_stage', 'banker_count', 'player_count', 'tie_count', 'banker_pair_count', 'player_pair_count',
@@ -106,13 +106,15 @@ test('v061 main strategy uses unified high-hit weights while side strategy keeps
   assert.deepEqual(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).sort(), sideKeys.sort())
   assert.equal(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length, 36)
   assert.equal(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).length, 31)
-  assert.equal(Math.max(...Object.values(ALL_MT_EQUAL_MAIN_WEIGHTS)) - Math.min(...Object.values(ALL_MT_EQUAL_MAIN_WEIGHTS)) < 1e-9, true)
-  assert.equal(Math.max(...Object.values(ALL_MT_EQUAL_SIDE_WEIGHTS)) - Math.min(...Object.values(ALL_MT_EQUAL_SIDE_WEIGHTS)) < 1e-9, true)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.big_road, 0.15)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.table_id, 0)
+  assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.pair_risk, 0.2)
+  assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.banker_dragon, 0.0025)
   assert.equal(Number(Object.values(ALL_MT_EQUAL_MAIN_WEIGHTS).reduce((a, b) => a + b, 0).toFixed(10)), 1)
   assert.equal(Number(Object.values(ALL_MT_EQUAL_SIDE_WEIGHTS).reduce((a, b) => a + b, 0).toFixed(10)), 1)
 })
 
-test('v050 prediction rows persist all-MT equal main and side weights plus captured MT context', () => {
+test('v067 prediction rows persist high-hit main and side weights plus captured MT context', () => {
   const prediction = buildPredictionResultRow(baseRound, {
     ...bankerLeaningTable,
     displayName: 'MT百家樂第13桌',
@@ -129,7 +131,7 @@ test('v050 prediction rows persist all-MT equal main and side weights plus captu
     sourceUpdatedAt: '2026-07-01T09:00:00Z',
   })
 
-  assert.equal(prediction.strategy_version, 'v050_all_mt_equal_weight')
+  assert.equal(prediction.strategy_version, 'v067_high_hit_weighted_main_side')
   assert.deepEqual(prediction.feature_weights, ALL_MT_EQUAL_MAIN_WEIGHTS)
   assert.deepEqual(prediction.prediction_features.side_weights, ALL_MT_EQUAL_SIDE_WEIGHTS)
   assert.equal(prediction.prediction_features.mt_context.dealerName, '毛毛')
@@ -158,7 +160,7 @@ test('v050 high-performing table still keeps confidence in 30-80 range', () => {
     recentPredictionCount: 25,
   })
 
-  assert.equal(neutralPrediction.strategy_version, 'v050_all_mt_equal_weight')
+  assert.equal(neutralPrediction.strategy_version, 'v067_high_hit_weighted_main_side')
   assert.equal(neutralPrediction.confidence >= 30, true)
   assert.equal(neutralPrediction.confidence <= 80, true)
   assert.equal(boostedPrediction.confidence <= 80, true)

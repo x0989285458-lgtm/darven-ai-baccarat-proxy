@@ -376,20 +376,20 @@ describe('AI百家預測軟體', () => {
 
   it('v051 records every side prediction for learning but only counts action when each threshold is reached', () => {
     expect(SIDE_PREDICTION_THRESHOLDS).toEqual({
-      tie: 40,
-      superSix: 30,
-      bankerPair: 20,
-      playerPair: 20,
-      bankerDragon: 30,
-      playerDragon: 30,
+      tie: 90,
+      superSix: 60,
+      bankerPair: 40,
+      playerPair: 70,
+      bankerDragon: 95,
+      playerDragon: 95,
     })
     expect(createSidePredictionLearningRecord({
-      tie: 39,
-      superSix: 29,
-      bankerPair: 19,
-      playerPair: 20,
-      bankerDragon: 30,
-      playerDragon: 29,
+      tie: 89,
+      superSix: 59,
+      bankerPair: 39,
+      playerPair: 70,
+      bankerDragon: 95,
+      playerDragon: 94,
     }, {
       tie: true,
       superSix: false,
@@ -413,16 +413,16 @@ describe('AI百家預測軟體', () => {
       }),
     }))
 
-    expect(isSidePredictionActionable('tie', 39)).toBe(false)
-    expect(isSidePredictionActionable('tie', 40)).toBe(true)
-    expect(isSidePredictionActionable('superSix', 29)).toBe(false)
-    expect(isSidePredictionActionable('superSix', 30)).toBe(true)
-    expect(isSidePredictionActionable('bankerPair', 19)).toBe(false)
-    expect(isSidePredictionActionable('playerPair', 20)).toBe(true)
-    expect(isSidePredictionActionable('bankerDragon', 29)).toBe(false)
-    expect(isSidePredictionActionable('bankerDragon', 30)).toBe(true)
-    expect(isSidePredictionActionable('playerDragon', 29)).toBe(false)
-    expect(isSidePredictionActionable('playerDragon', 30)).toBe(true)
+    expect(isSidePredictionActionable('tie', 89)).toBe(false)
+    expect(isSidePredictionActionable('tie', 90)).toBe(true)
+    expect(isSidePredictionActionable('superSix', 59)).toBe(false)
+    expect(isSidePredictionActionable('superSix', 60)).toBe(true)
+    expect(isSidePredictionActionable('bankerPair', 39)).toBe(false)
+    expect(isSidePredictionActionable('playerPair', 70)).toBe(true)
+    expect(isSidePredictionActionable('bankerDragon', 94)).toBe(false)
+    expect(isSidePredictionActionable('bankerDragon', 95)).toBe(true)
+    expect(isSidePredictionActionable('playerDragon', 94)).toBe(false)
+    expect(isSidePredictionActionable('playerDragon', 95)).toBe(true)
   })
 
 
@@ -432,34 +432,42 @@ describe('AI百家預測軟體', () => {
       superSix: 0,
       bankerPair: 0,
       playerPair: 0,
-      bankerDragon: 36,
-      playerDragon: 30,
+      bankerDragon: 96,
+      playerDragon: 90,
     }, 'Banker')).toEqual(expect.objectContaining({ bankerDragon: true, playerDragon: false }))
     expect(getSidePredictionActions({
       tie: 0,
       superSix: 0,
       bankerPair: 0,
       playerPair: 0,
-      bankerDragon: 35,
-      playerDragon: 35,
+      bankerDragon: 95,
+      playerDragon: 95,
     }, 'Banker')).toEqual(expect.objectContaining({ bankerDragon: false, playerDragon: false }))
   })
 
   it('v066 gates super six and dragon bonus by main prediction direction', () => {
-    const highBonus = {
+    const bankerBonus = {
       tie: 0,
-      superSix: 45,
+      superSix: 65,
       bankerPair: 0,
       playerPair: 0,
-      bankerDragon: 50,
-      playerDragon: 44,
+      bankerDragon: 96,
+      playerDragon: 90,
     }
-    expect(getSidePredictionActions(highBonus, 'Player')).toEqual(expect.objectContaining({
+    const playerBonus = {
+      tie: 0,
+      superSix: 65,
+      bankerPair: 0,
+      playerPair: 0,
+      bankerDragon: 90,
+      playerDragon: 96,
+    }
+    expect(getSidePredictionActions(playerBonus, 'Player')).toEqual(expect.objectContaining({
       superSix: false,
       bankerDragon: false,
       playerDragon: true,
     }))
-    expect(getSidePredictionActions(highBonus, 'Banker')).toEqual(expect.objectContaining({
+    expect(getSidePredictionActions(bankerBonus, 'Banker')).toEqual(expect.objectContaining({
       superSix: true,
       bankerDragon: true,
       playerDragon: false,
@@ -475,7 +483,7 @@ describe('AI百家預測軟體', () => {
     expect(detectRoadTrends(['Banker', 'Banker', 'Banker', 'Player', 'Player', 'Banker', 'Player']).downSlope).toBe(true)
   })
 
-  it('v050 restores all-MT equal main and side prediction weights in the current frontend scorer', () => {
+  it('v067 uses high-hit weighted main and side prediction weights in the current frontend scorer', () => {
     const prediction = evaluateFiveRoadPrediction({
       beadCells: [
         { code: '02', outcome: 'Banker' },
@@ -493,8 +501,11 @@ describe('AI百家預測軟體', () => {
 
     expect(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS)).toHaveLength(36)
     expect(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS)).toHaveLength(31)
-    expect(prediction.weights.table_id).toBeCloseTo(1 / 36)
-    expect(prediction.weights.super_six).toBeCloseTo(1 / 36)
+    expect(prediction.weights.table_id).toBe(0)
+    expect(prediction.weights.big_road).toBeCloseTo(0.15)
+    expect(prediction.weights.big_eye_road).toBeCloseTo(0.13)
+    expect(prediction.weights.next_player_road).toBeCloseTo(0.12)
+    expect(prediction.weights.super_six).toBeCloseTo(0.005)
     expect(prediction.sourceScores.big_eye_road).toBeDefined()
     expect(prediction.sourceScores.next_banker_road).toBeDefined()
     expect(prediction.confidence).toBeGreaterThanOrEqual(30)
@@ -517,8 +528,8 @@ describe('AI百家預測軟體', () => {
     const row = calculateMainOutcomeProbabilities(prediction, 7)
 
     expect(prediction.recommendation).toBe('Banker')
-    expect(row.banker).toBe(49)
-    expect(row.player).toBe(44)
+    expect(row.banker).toBe(52)
+    expect(row.player).toBe(41)
     expect(row.tie).toBe(7)
     expect(row.banker).not.toBe(prediction.confidence)
     expect(row.banker + row.player + row.tie).toBe(100)
@@ -553,8 +564,8 @@ describe('AI百家預測軟體', () => {
 
     await renderApp()
 
-    await waitFor(() => expect(screen.getByLabelText('莊預測')).toHaveTextContent('46%'))
-    expect(screen.getByLabelText('閒預測')).toHaveTextContent('44%')
+    await waitFor(() => expect(screen.getByLabelText('莊預測')).toHaveTextContent('48%'))
+    expect(screen.getByLabelText('閒預測')).toHaveTextContent('42%')
   })
 
   it('v030 member login calls online license API and enters frontend only after success', async () => {
