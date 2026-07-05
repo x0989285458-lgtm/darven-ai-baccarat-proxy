@@ -10,14 +10,14 @@ test('v066 super six is actionable only when the main prediction is banker', () 
   assert.equal(bankerMainActions.superSix, true)
 })
 
-test('v066 dragon bonus follows the main prediction direction and cannot place both sides', () => {
+test('v069 dragon bonus predictions are disabled and cannot place either side', () => {
   const bankerMain = buildSideActions({ tie: 0, superSix: 0, bankerPair: 0, playerPair: 0, bankerDragon: 96, playerDragon: 90 }, 'banker')
   const playerMain = buildSideActions({ tie: 0, superSix: 0, bankerPair: 0, playerPair: 0, bankerDragon: 90, playerDragon: 96 }, 'player')
 
-  assert.equal(bankerMain.bankerDragon, true)
+  assert.equal(bankerMain.bankerDragon, false)
   assert.equal(bankerMain.playerDragon, false)
   assert.equal(playerMain.bankerDragon, false)
-  assert.equal(playerMain.playerDragon, true)
+  assert.equal(playerMain.playerDragon, false)
 
   const tiePush = buildPredictionResultRow(
     { tableId: 'BAG66', shoe: 1, round: 3, rawResult: [1, 9, 2, 10, 0, 0, -1, -1, 9, 9], winner: 'tie' },

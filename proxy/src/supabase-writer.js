@@ -3,7 +3,7 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v049_no_observe_confidence_30_80'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v068_independent_side_weight_profiles'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v069_dragon_predictions_disabled'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -48,8 +48,8 @@ export const SIDE_PREDICTION_ACTION_RATE_TARGETS = Object.freeze({
   superSix: 0.10,
   bankerPair: 0.20,
   playerPair: 0.20,
-  bankerDragon: 0.40,
-  playerDragon: 0.40,
+  bankerDragon: 0,
+  playerDragon: 0,
 })
 
 export const SIDE_PREDICTION_TARGET_HIT_RATE = 0.5
@@ -91,8 +91,8 @@ export const SIDE_PREDICTION_THRESHOLDS = {
   superSix: 90,
   bankerPair: 80,
   playerPair: 80,
-  bankerDragon: 60,
-  playerDragon: 60,
+  bankerDragon: 101,
+  playerDragon: 101,
 }
 
 const DEFAULT_EQUAL_WEIGHTS = Object.freeze({
@@ -236,7 +236,7 @@ export function buildPredictionResultRow(round = {}, table = {}) {
     table_recent_hit_rate: tablePerformance.recentHitRate,
     table_recent_prediction_count: tablePerformance.recentPredictionCount,
     short_run_adjustment: {
-      rule: 'v068_independent_side_weight_profiles',
+      rule: 'v069_dragon_predictions_disabled',
       includedMainWeightCount: Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length,
       includedSideWeightCount: Object.keys(SIDE_WEIGHT_KEYS).length,
       sideActionRateTargets: SIDE_PREDICTION_ACTION_RATE_TARGETS,
@@ -690,8 +690,8 @@ export function buildSideActions(predictions = {}, mainPrediction = null) {
   const playerDragon = Math.round(Number(predictions.playerDragon ?? 0))
   const dragonDiff = Math.abs(bankerDragon - playerDragon)
   actions.superSix = Boolean(actions.superSix) && mainPrediction === 'banker'
-  actions.bankerDragon = mainPrediction === 'banker' && bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon && dragonDiff >= 6
-  actions.playerDragon = mainPrediction === 'player' && playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon && dragonDiff >= 6
+  actions.bankerDragon = false && mainPrediction === 'banker' && bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon && dragonDiff >= 6
+  actions.playerDragon = false && mainPrediction === 'player' && playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon && dragonDiff >= 6
   return actions
 }
 

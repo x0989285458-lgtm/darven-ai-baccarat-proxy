@@ -26,8 +26,8 @@ test('v067 side recommendation weights and thresholds suppress low-hit bonus noi
   assert.equal(SIDE_PREDICTION_THRESHOLDS.playerPair, 80)
   assert.equal(SIDE_PREDICTION_THRESHOLDS.tie, 85)
   assert.equal(SIDE_PREDICTION_THRESHOLDS.superSix, 90)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerDragon, 60)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerDragon, 60)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerDragon, 101)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerDragon, 101)
 })
 
 test('v067 prediction row records high-hit weight strategy version and keeps banker/player output', () => {
@@ -41,7 +41,7 @@ test('v067 prediction row records high-hit weight strategy version and keeps ban
       nextBankerRaw: 'weak', nextPlayerRaw: '2222222222',
     },
   )
-  assert.match(row.strategy_version, /v068/)
+  assert.match(row.strategy_version, /v069/)
   assert.ok(['banker', 'player'].includes(row.predicted_result))
-  assert.equal(row.short_run_adjustment.rule, 'v068_independent_side_weight_profiles')
+  assert.equal(row.short_run_adjustment.rule, 'v069_dragon_predictions_disabled')
 })

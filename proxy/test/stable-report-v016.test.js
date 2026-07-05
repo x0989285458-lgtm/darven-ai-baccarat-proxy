@@ -38,8 +38,8 @@ test('v016 side predictions are recorded every round but actions require per-ite
     superSix: 90,
     bankerPair: 80,
     playerPair: 80,
-    bankerDragon: 60,
-    playerDragon: 60,
+    bankerDragon: 101,
+    playerDragon: 101,
   })
   const session = createStableReportSession({ startedAt: '2026-01-01T00:00:00.000Z' })
   session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [makeTable({ bankerCount: 5, playerCount: 5, tieCount: 90, bankerPairCount: 2, playerPairCount: 2, lastRound: { tableId: 'BAG01', shoe: 1, round: 1, winner: 1 } })] }, 't1')

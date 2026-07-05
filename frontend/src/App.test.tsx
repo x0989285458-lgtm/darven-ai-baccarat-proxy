@@ -380,22 +380,22 @@ describe('AI百家預測軟體', () => {
       superSix: 90,
       bankerPair: 80,
       playerPair: 80,
-      bankerDragon: 60,
-      playerDragon: 60,
+      bankerDragon: 101,
+      playerDragon: 101,
     })
     expect(createSidePredictionLearningRecord({
       tie: 84,
       superSix: 89,
       bankerPair: 79,
       playerPair: 80,
-      bankerDragon: 60,
-      playerDragon: 59,
+      bankerDragon: 101,
+      playerDragon: 100,
     }, {
       tie: true,
       superSix: false,
       bankerPair: false,
       playerPair: true,
-      bankerDragon: true,
+      bankerDragon: false,
       playerDragon: false,
     })).toEqual(expect.objectContaining({
       learnedEvents: 6,
@@ -419,10 +419,10 @@ describe('AI百家預測軟體', () => {
     expect(isSidePredictionActionable('superSix', 90)).toBe(true)
     expect(isSidePredictionActionable('bankerPair', 79)).toBe(false)
     expect(isSidePredictionActionable('playerPair', 80)).toBe(true)
-    expect(isSidePredictionActionable('bankerDragon', 59)).toBe(false)
-    expect(isSidePredictionActionable('bankerDragon', 60)).toBe(true)
-    expect(isSidePredictionActionable('playerDragon', 59)).toBe(false)
-    expect(isSidePredictionActionable('playerDragon', 60)).toBe(true)
+    expect(isSidePredictionActionable('bankerDragon', 100)).toBe(false)
+    expect(isSidePredictionActionable('bankerDragon', 101)).toBe(false)
+    expect(isSidePredictionActionable('playerDragon', 100)).toBe(false)
+    expect(isSidePredictionActionable('playerDragon', 101)).toBe(false)
   })
 
 
@@ -432,9 +432,9 @@ describe('AI百家預測軟體', () => {
       superSix: 0,
       bankerPair: 0,
       playerPair: 0,
-      bankerDragon: 66,
-      playerDragon: 54,
-    }, 'Banker')).toEqual(expect.objectContaining({ bankerDragon: true, playerDragon: false }))
+      bankerDragon: 100,
+      playerDragon: 0,
+    }, 'Banker')).toEqual(expect.objectContaining({ bankerDragon: false, playerDragon: false }))
     expect(getSidePredictionActions({
       tie: 0,
       superSix: 0,
@@ -445,7 +445,7 @@ describe('AI百家預測軟體', () => {
     }, 'Banker')).toEqual(expect.objectContaining({ bankerDragon: false, playerDragon: false }))
   })
 
-  it('v066 gates super six and dragon bonus by main prediction direction', () => {
+  it('v069 gates super six by main prediction and disables dragon bonus actions', () => {
     const bankerBonus = {
       tie: 0,
       superSix: 95,
@@ -465,11 +465,11 @@ describe('AI百家預測軟體', () => {
     expect(getSidePredictionActions(playerBonus, 'Player')).toEqual(expect.objectContaining({
       superSix: false,
       bankerDragon: false,
-      playerDragon: true,
+      playerDragon: false,
     }))
     expect(getSidePredictionActions(bankerBonus, 'Banker')).toEqual(expect.objectContaining({
       superSix: true,
-      bankerDragon: true,
+      bankerDragon: false,
       playerDragon: false,
     }))
   })
@@ -481,8 +481,8 @@ describe('AI百家預測軟體', () => {
       superSix: 0.10,
       bankerPair: 0.20,
       playerPair: 0.20,
-      bankerDragon: 0.40,
-      playerDragon: 0.40,
+      bankerDragon: 0,
+      playerDragon: 0,
     })
     expect(Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES.tie)).toHaveLength(31)
     expect(Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES.superSix)).toHaveLength(31)

@@ -11,8 +11,8 @@ export const SIDE_PREDICTION_THRESHOLDS = {
   superSix: 90,
   bankerPair: 80,
   playerPair: 80,
-  bankerDragon: 60,
-  playerDragon: 60,
+  bankerDragon: 101,
+  playerDragon: 101,
 }
 
 export const MAIN_ACTION_CONFIDENCE_THRESHOLD = 50
@@ -515,8 +515,8 @@ function buildSideActions(predictions = {}, mainPrediction = null) {
   const playerDragon = Math.round(Number(predictions.playerDragon ?? 0))
   const dragonDiff = Math.abs(bankerDragon - playerDragon)
   actions.superSix = Boolean(actions.superSix) && mainPrediction === '莊'
-  actions.bankerDragon = mainPrediction === '莊' && bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon && dragonDiff >= 6
-  actions.playerDragon = mainPrediction === '閒' && playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon && dragonDiff >= 6
+  actions.bankerDragon = false && mainPrediction === '莊' && bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon && dragonDiff >= 6
+  actions.playerDragon = false && mainPrediction === '閒' && playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon && dragonDiff >= 6
   return actions
 }
 
