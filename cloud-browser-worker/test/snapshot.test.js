@@ -92,8 +92,33 @@ test('extracts tables and rounds recursively from websocket/localStorage payload
     shoe: 7,
     round: 19,
     winner: 'banker',
+    playerPoint: null,
+    bankerPoint: null,
     rawResult: { event: 'roundResult', round: { table_id: 'BAG01', shoe: 7, round_no: 19, result: 'B' } },
+    sourceAction: 'roundResult',
   })
+})
+
+test('extracts MT show_poker round result with banker/player points for Super Six validation', () => {
+  const snapshot = extractSnapshotFromPayloads([
+    JSON.stringify({
+      action: 'show_poker',
+      body: {
+        table_id: 'BAG06',
+        shoe: 15669,
+        round: 12,
+        winner: 2,
+        result: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
+      },
+    }),
+  ], { sessionId: 'test-session', now: '2026-06-30T00:00:00.000Z' })
+
+  assert.equal(snapshot.rounds.length, 1)
+  assert.equal(snapshot.rounds[0].tableId, 'BAG06')
+  assert.equal(snapshot.rounds[0].winner, 'banker')
+  assert.equal(snapshot.rounds[0].playerPoint, 4)
+  assert.equal(snapshot.rounds[0].bankerPoint, 6)
+  assert.deepEqual(snapshot.rounds[0].rawResult, [11, 25, 7, 19, -1, -1, -1, -1, 4, 6])
 })
 
 test('redacts token and secret values from login URL before exposing diagnostics', () => {

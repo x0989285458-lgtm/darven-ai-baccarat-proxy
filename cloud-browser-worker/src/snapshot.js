@@ -1,6 +1,6 @@
-const BANKER_VALUES = new Set(['b', 'banker', 'bank', '庄', '莊', 'zhuang'])
-const PLAYER_VALUES = new Set(['p', 'player', 'play', '闲', '閒', 'xian'])
-const TIE_VALUES = new Set(['t', 'tie', 'draw', '和'])
+const BANKER_VALUES = new Set(['2', 'b', 'banker', 'bank', '庄', '莊', 'zhuang'])
+const PLAYER_VALUES = new Set(['1', 'p', 'player', 'play', '闲', '閒', 'xian'])
+const TIE_VALUES = new Set(['3', 't', 'tie', 'draw', '和'])
 
 export function normalizeWinner(value) {
   if (value == null) return null
@@ -82,16 +82,32 @@ export function redactUrlSecrets(input = '') {
 }
 
 function normalizeRound(payload = {}) {
-  const round = payload.round && typeof payload.round === 'object' ? payload.round : payload
+  const round = extractRoundBody(payload)
+  const rawResult = Array.isArray(round.result) ? round.result : Array.isArray(round.rawResult) ? round.rawResult : null
   const tableId = firstValue(round, ['tableId', 'table_id', 'tableID', 'id', 'gameTableId'])
-  const winner = normalizeWinner(firstValue(round, ['winner', 'result', 'win', 'main_result', 'mainResult']))
+  const winner = normalizeWinner(firstValue(round, ['winner', 'win', 'main_result', 'mainResult']) ?? (Array.isArray(round.result) ? null : round.result))
   return {
     tableId: tableId == null ? null : String(tableId),
     shoe: toNullableNumber(firstValue(round, ['shoe', 'current_shoe', 'shoeNo', 'shoe_no'])),
     round: toNullableNumber(firstValue(round, ['round', 'round_no', 'roundNo', 'current_round', 'gameNo'])),
     winner,
-    rawResult: payload,
+    playerPoint: rawResult && rawResult.length > 8 ? toNullableNumber(rawResult[8]) : toNullableNumber(firstValue(round, ['playerPoint', 'player_point'])),
+    bankerPoint: rawResult && rawResult.length > 9 ? toNullableNumber(rawResult[9]) : toNullableNumber(firstValue(round, ['bankerPoint', 'banker_point'])),
+    rawResult: rawResult ?? payload,
+    sourceAction: payload.action ?? payload.event ?? round.action ?? null,
   }
+}
+
+function extractRoundBody(value = {}) {
+  if (value.round && typeof value.round === 'object') return value.round
+  if (value.body && typeof value.body === 'object' && isMtRoundAction(value.action)) return value.body
+  if (value.msg && typeof value.msg === 'object' && isMtRoundAction(value.action)) return value.msg
+  if (value.data && typeof value.data === 'object' && isMtRoundAction(value.action)) return value.data
+  return value
+}
+
+function isMtRoundAction(action = '') {
+  return /(show_poker|summary|show_win|roundResult|round_result)/i.test(String(action ?? ''))
 }
 
 function collectCandidates(value, output, seen = new WeakSet(), sourceIndex = 0) {
@@ -240,10 +256,12 @@ function tableSortKey(tableId) {
 
 function isRoundLike(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  const round = value.round && typeof value.round === 'object' ? value.round : value
+  const round = extractRoundBody(value)
+  const rawResult = Array.isArray(round.result) || Array.isArray(round.rawResult)
+  const winnerValue = firstValue(round, ['winner', 'win', 'main_result', 'mainResult']) ?? (Array.isArray(round.result) ? null : round.result)
   return firstValue(round, ['tableId', 'table_id', 'tableID', 'id', 'gameTableId']) != null
     && firstValue(round, ['round', 'round_no', 'roundNo', 'current_round', 'gameNo']) != null
-    && normalizeWinner(firstValue(round, ['winner', 'result', 'win', 'main_result', 'mainResult'])) != null
+    && (normalizeWinner(winnerValue) != null || (isMtRoundAction(value.action) && rawResult))
 }
 
 function parseMaybeJson(value) {
