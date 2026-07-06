@@ -13,14 +13,14 @@ const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Num
 const rankKeys = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
 
 test('v075 uses Chinese version and requested side thresholds', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v075_主預測平衡副預測縮手版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v076_主預測再平衡副預測再縮手版')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 55,
-    superSix: 60,
-    bankerPair: 60,
-    playerPair: 60,
-    bankerDragon: 60,
-    playerDragon: 60,
+    superSix: 70,
+    bankerPair: 75,
+    playerPair: 75,
+    bankerDragon: 80,
+    playerDragon: 80,
   })
 })
 
@@ -78,7 +78,7 @@ test('v075 prediction row records new Chinese version and thresholds remain acti
     },
     { tableId: 'BAG75', shoe: 17001, round: 12, bankerCount: 12, playerCount: 8, tieCount: 1, beadPlateRaw: '01020202', bigRoadRaw: 'BBPBBP' },
   )
-  assert.equal(row.strategy_version, 'v075_主預測平衡副預測縮手版')
+  assert.equal(row.strategy_version, 'v076_主預測再平衡副預測再縮手版')
   assert.deepEqual(row.short_run_adjustment.sideActionRateTargets, {
     tie: 0.15,
     superSix: 0.1,

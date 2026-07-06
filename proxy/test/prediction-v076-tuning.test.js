@@ -1,0 +1,73 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {
+  ALL_MT_EQUAL_STRATEGY_VERSION,
+  ALL_MT_EQUAL_MAIN_WEIGHTS,
+  SIDE_PREDICTION_THRESHOLDS,
+  SIDE_PREDICTION_WEIGHT_PROFILES,
+  buildPredictionResultRow,
+} from '../src/supabase-writer.js'
+
+const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
+const rankKeys = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
+
+test('v076 uses Chinese version and requested tighter side thresholds', () => {
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v076_主預測再平衡副預測再縮手版')
+  assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
+    tie: 55,
+    superSix: 70,
+    bankerPair: 75,
+    playerPair: 75,
+    bankerDragon: 80,
+    playerDragon: 80,
+  })
+})
+
+test('v076 main weights further reduce player-biased noise and emphasize calibration', () => {
+  assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.direction_calibration >= 0.12)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.confidence >= 0.12)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.probability_gap >= 0.12)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.table_recent_hit_rate >= 0.09)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.big_road >= 0.12)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.card_points >= 0.07)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.shoe_remaining_points >= 0.055)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.next_player_road <= 0.005)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.near5_banker_player_bias <= 0.015)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.pattern_tags <= 0.025)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.cockroach_road <= 0.005)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.tie_count <= 0.001)
+})
+
+test('v076 side weights keep tie useful but shrink superSix pair and dragon noise', () => {
+  for (const [target, profile] of Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES)) {
+    assert.ok(Math.abs(sum(profile) - 1) < 1e-9, `${target} must sum to 1`)
+    assert.ok(rankKeys.some((key) => profile[key] > 0), `${target} keeps derived rank features`)
+  }
+  assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.tie.tie_risk >= 0.34)
+  assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.tie.point_diff >= 0.28)
+  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.tie.bead_road, 0)
+  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.table_side_history, 0)
+  assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.super_six >= 0.32)
+  assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.remaining_6 >= 0.25)
+  assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair.pair_risk >= 0.48)
+  assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.playerPair.pair_risk >= 0.48)
+  assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.bankerDragon.point_diff >= 0.42)
+  assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.playerDragon.point_diff >= 0.42)
+})
+
+test('v076 prediction row records new strategy without changing main action-rate target shape', () => {
+  const row = buildPredictionResultRow(
+    {
+      tableId: 'BAG76', shoe: 18001, round: 18, winner: 'banker',
+      rawResult: [1, 9, 13, 8, 0, 0, -1, -1, 0, 8],
+      cardShoe: {
+        remainingPointCounts: { '0': 80, '1': 31, '2': 30, '3': 29, '4': 28, '5': 27, '6': 40, '7': 32, '8': 33, '9': 34 },
+        remainingRankCounts: { A: 31, '2': 30, '3': 29, '4': 28, '5': 27, '6': 40, '7': 32, '8': 33, '9': 34, '10': 35, J: 36, Q: 37, K: 38 },
+      },
+    },
+    { tableId: 'BAG76', shoe: 18001, round: 18, bankerCount: 12, playerCount: 8, tieCount: 1, beadPlateRaw: '01020202', bigRoadRaw: 'BBPBBP' },
+  )
+  assert.equal(row.strategy_version, 'v076_主預測再平衡副預測再縮手版')
+  assert.equal(row.predicted_result === 'banker' || row.predicted_result === 'player', true)
+})

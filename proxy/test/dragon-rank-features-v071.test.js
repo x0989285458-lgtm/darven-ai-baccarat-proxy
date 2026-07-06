@@ -5,10 +5,10 @@ import { buildPredictionResultRow, buildSideActions, SIDE_PREDICTION_THRESHOLDS 
 test('v071 banker/player dragon side actions are enabled and gated by matching main prediction', () => {
   assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerDragon < 101, true)
   assert.equal(SIDE_PREDICTION_THRESHOLDS.playerDragon < 101, true)
-  const bankerActions = buildSideActions({ bankerDragon: 70, playerDragon: 20, superSix: 0 }, 'banker')
+  const bankerActions = buildSideActions({ bankerDragon: 85, playerDragon: 20, superSix: 0 }, 'banker')
   assert.equal(bankerActions.bankerDragon, true)
   assert.equal(bankerActions.playerDragon, false)
-  const playerActions = buildSideActions({ bankerDragon: 20, playerDragon: 70, superSix: 0 }, 'player')
+  const playerActions = buildSideActions({ bankerDragon: 20, playerDragon: 85, superSix: 0 }, 'player')
   assert.equal(playerActions.bankerDragon, false)
   assert.equal(playerActions.playerDragon, true)
 })

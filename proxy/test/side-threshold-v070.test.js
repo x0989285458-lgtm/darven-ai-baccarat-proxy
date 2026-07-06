@@ -4,13 +4,13 @@ import { SIDE_PREDICTION_THRESHOLDS, buildSideActions } from '../src/supabase-wr
 
 test('v075 side thresholds shrink side actions and dragon remains directional', () => {
   assert.equal(SIDE_PREDICTION_THRESHOLDS.tie, 55)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.superSix, 60)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerPair, 60)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerPair, 60)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerDragon, 60)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerDragon, 60)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.superSix, 70)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerPair, 75)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerPair, 75)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerDragon, 80)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerDragon, 80)
 
-  const actions = buildSideActions({ tie: 55, superSix: 60, bankerPair: 60, playerPair: 60, bankerDragon: 70, playerDragon: 20 }, 'banker')
+  const actions = buildSideActions({ tie: 55, superSix: 70, bankerPair: 75, playerPair: 75, bankerDragon: 85, playerDragon: 20 }, 'banker')
   assert.equal(actions.tie, true)
   assert.equal(actions.superSix, true)
   assert.equal(actions.bankerPair, true)
@@ -20,5 +20,5 @@ test('v075 side thresholds shrink side actions and dragon remains directional', 
 })
 
 test('v075 superSix remains gated by main banker prediction', () => {
-  assert.equal(buildSideActions({ superSix: 60 }, 'player').superSix, false)
+  assert.equal(buildSideActions({ superSix: 70 }, 'player').superSix, false)
 })
