@@ -10,10 +10,10 @@ import {
 const sideKeys = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
 
 test('v068 side predictions use independent 31-key weight profiles per target, not one merged side profile', () => {
-  assert.equal(SIDE_WEIGHT_KEYS.length, 41)
+  assert.equal(SIDE_WEIGHT_KEYS.length, 40)
   assert.deepEqual(Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES).sort(), sideKeys.sort())
   for (const key of sideKeys) {
-    assert.equal(Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES[key]).length, 41)
+    assert.equal(Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES[key]).length, 40)
     assert.deepEqual(Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES[key]).sort(), [...SIDE_WEIGHT_KEYS].sort())
     assert.equal(Number(Object.values(SIDE_PREDICTION_WEIGHT_PROFILES[key]).reduce((a, b) => a + b, 0).toFixed(10)), 1)
   }
@@ -37,9 +37,9 @@ test('v068 prediction row persists per-target side weights and tuning metadata',
     { tableId: 'BAG68', shoe: 1, round: 1, rawResult: [1, 9, 2, 10, 0, 0, -1, -1, 1, 9], winner: 'banker' },
     { tableId: 'BAG68', bankerCount: 40, playerCount: 35, tieCount: 5, bankerPairCount: 3, playerPairCount: 2, beadPlateRaw: '02#01#02#02#01', bigRoadRaw: 'B#P#B#B#P' },
   )
-  assert.equal(row.strategy_version, 'v073_main_side_rank_tuning')
+  assert.equal(row.strategy_version, 'v074_同出手率權重清理版')
   assert.deepEqual(Object.keys(row.prediction_features.side_weights).sort(), sideKeys.sort())
-  assert.equal(Object.keys(row.prediction_features.side_weights.tie).length, 41)
+  assert.equal(Object.keys(row.prediction_features.side_weights.tie).length, 40)
   assert.equal(row.prediction_features.side_tuning.tie.targetActionRate, 0.15)
   assert.equal(row.prediction_features.side_tuning.bankerDragon.targetHitRate, 0.5)
 })

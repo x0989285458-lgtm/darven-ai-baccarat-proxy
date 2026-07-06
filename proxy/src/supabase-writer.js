@@ -3,7 +3,7 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v049_no_observe_confidence_30_80'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v073_main_side_rank_tuning'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v074_同出手率權重清理版'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -23,10 +23,10 @@ function buildWeightedProfile(keys, profile) {
 
 const MAIN_WEIGHT_KEYS = [
   'table_type', 'total_players', 'state', 'source_updated_at',
-  'shoe', 'round', 'shoe_stage', 'banker_count', 'player_count', 'tie_count', 'banker_pair_count', 'player_pair_count',
+  'shoe', 'shoe_stage', 'banker_count', 'player_count', 'tie_count',
   'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road', 'next_banker_road', 'next_player_road',
   'previous_winner', 'streak_length', 'near5_banker_player_bias', 'table_recent_hit_rate', 'direction_calibration',
-  'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'pattern_tags', 'historical_backtest', 'super_six',
+  'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'pattern_tags', 'historical_backtest',
 ]
 
 const RANK_REMAINING_FEATURE_KEYS = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
@@ -34,17 +34,17 @@ const RANK_REMAINING_FEATURE_KEYS = ['remaining_A', 'remaining_2', 'remaining_3'
 export const SIDE_WEIGHT_KEYS = [
   'tie_count', 'banker_pair_count', 'player_pair_count', 'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road',
   'next_banker_road', 'next_player_road', 'shoe', 'round', 'shoe_stage',
-  'raw_result', 'player_point', 'banker_point', 'point_diff', 'banker_natural', 'player_natural', 'banker_dragon', 'player_dragon', 'super_six',
+  'player_point', 'banker_point', 'point_diff', 'banker_natural', 'player_natural', 'banker_dragon', 'player_dragon', 'super_six',
   'tie_risk', 'pair_risk', 'ask_road_conflict', 'road_chaos', 'table_side_history', 'remaining_rank_pressure', ...RANK_REMAINING_FEATURE_KEYS,
 ]
 
 export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildWeightedProfile(MAIN_WEIGHT_KEYS, {
-  big_road: 0.10, big_eye_road: 0.09, next_player_road: 0.08, shoe_stage: 0.06,
-  confidence: 0.07, probability_gap: 0.07, banker_count: 0.045, player_count: 0.045, bead_road: 0.05,
-  cockroach_road: 0.03, banker_pair_count: 0.02, player_pair_count: 0.02, round: 0.015, near5_banker_player_bias: 0.015,
-  streak_length: 0.008, previous_winner: 0.008, small_road: 0.008, next_banker_road: 0.004, super_six: 0.004,
-  table_recent_hit_rate: 0.05, direction_calibration: 0.05, card_points: 0.05, shoe_remaining_points: 0.05,
-  historical_backtest: 0.035, pattern_tags: 0.027,
+  big_road: 0.11, bead_road: 0.07, big_eye_road: 0.04, small_road: 0.01, cockroach_road: 0.025,
+  next_banker_road: 0.015, next_player_road: 0.025, previous_winner: 0.015, streak_length: 0.015,
+  near5_banker_player_bias: 0.04, table_recent_hit_rate: 0.065, direction_calibration: 0.075,
+  confidence: 0.095, probability_gap: 0.095, card_points: 0.055, shoe_remaining_points: 0.04,
+  pattern_tags: 0.055, historical_backtest: 0.035, shoe_stage: 0.035,
+  banker_count: 0.035, player_count: 0.035, tie_count: 0.015,
 })
 
 export const SIDE_PREDICTION_ACTION_RATE_TARGETS = Object.freeze({
@@ -60,42 +60,40 @@ export const SIDE_PREDICTION_TARGET_HIT_RATE = 0.5
 
 export const SIDE_PREDICTION_WEIGHT_PROFILES = Object.freeze({
   tie: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    tie_risk: 0.20, tie_count: 0.18, road_chaos: 0.10, point_diff: 0.08, remaining_rank_pressure: 0.07,
-    remaining_A: 0.01, remaining_2: 0.01, remaining_3: 0.01, remaining_4: 0.01, remaining_5: 0.01, remaining_6: 0.01,
-    remaining_7: 0.01, remaining_8: 0.01, remaining_9: 0.01, remaining_10: 0.01, remaining_J: 0.01, remaining_Q: 0.01, remaining_K: 0.01,
-    bead_road: 0.06, big_road: 0.04, shoe_stage: 0.04, table_side_history: 0.04, round: 0.02, ask_road_conflict: 0.02, raw_result: 0.02,
+    tie_risk: 0.25, tie_count: 0.17, point_diff: 0.12, remaining_rank_pressure: 0.122, road_chaos: 0.10,
+    table_side_history: 0.04, ask_road_conflict: 0.03, bead_road: 0.03, big_road: 0.02, shoe_stage: 0.03, round: 0.01,
+    remaining_A: 0.006, remaining_2: 0.006, remaining_3: 0.006, remaining_4: 0.006, remaining_5: 0.006, remaining_6: 0.006,
+    remaining_7: 0.006, remaining_8: 0.006, remaining_9: 0.006, remaining_10: 0.006, remaining_J: 0.006, remaining_Q: 0.006, remaining_K: 0.006,
   }),
   superSix: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    super_six: 0.22, banker_point: 0.13, point_diff: 0.10, banker_dragon: 0.08, banker_natural: 0.06, remaining_6: 0.08,
-    remaining_A: 0.02, remaining_2: 0.02, remaining_3: 0.02, remaining_4: 0.02, remaining_5: 0.02, remaining_7: 0.02,
-    remaining_8: 0.02, remaining_9: 0.02, remaining_10: 0.01, remaining_J: 0.01, remaining_Q: 0.01, remaining_K: 0.01,
-    bead_road: 0.04, big_road: 0.03, shoe_stage: 0.03, round: 0.02, table_side_history: 0.01,
+    super_six: 0.18, banker_point: 0.18, point_diff: 0.12, banker_dragon: 0.10, banker_natural: 0.04, remaining_6: 0.185,
+    remaining_A: 0.015, remaining_2: 0.015, remaining_3: 0.015, remaining_4: 0.015, remaining_5: 0.015,
+    remaining_7: 0.015, remaining_8: 0.015, remaining_9: 0.015, remaining_10: 0.005, remaining_J: 0.005, remaining_Q: 0.005, remaining_K: 0.005,
+    bead_road: 0.01, big_road: 0.01, shoe_stage: 0.01, round: 0.005, table_side_history: 0.02,
   }),
   bankerPair: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    banker_pair_count: 0.20, pair_risk: 0.20, remaining_rank_pressure: 0.10, banker_point: 0.06, raw_result: 0.05,
-    bead_road: 0.05, big_road: 0.04, table_side_history: 0.04, big_eye_road: 0.03, round: 0.03, shoe_stage: 0.03,
-    banker_natural: 0.02, point_diff: 0.02,
-    remaining_A: 0.01, remaining_2: 0.01, remaining_3: 0.01, remaining_4: 0.01, remaining_5: 0.01, remaining_6: 0.01,
-    remaining_7: 0.01, remaining_8: 0.01, remaining_9: 0.01, remaining_10: 0.01, remaining_J: 0.01, remaining_Q: 0.01, remaining_K: 0.01,
+    pair_risk: 0.25, remaining_rank_pressure: 0.25, banker_pair_count: 0.15, table_side_history: 0.05,
+    banker_point: 0.03, banker_natural: 0.01,
+    remaining_A: 0.02, remaining_2: 0.02, remaining_3: 0.02, remaining_4: 0.02, remaining_5: 0.02, remaining_6: 0.02,
+    remaining_7: 0.02, remaining_8: 0.02, remaining_9: 0.02, remaining_10: 0.02, remaining_J: 0.02, remaining_Q: 0.02, remaining_K: 0.02,
   }),
   playerPair: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    player_pair_count: 0.20, pair_risk: 0.20, remaining_rank_pressure: 0.10, player_point: 0.06, raw_result: 0.05,
-    bead_road: 0.05, big_road: 0.04, table_side_history: 0.04, big_eye_road: 0.03, round: 0.03, shoe_stage: 0.03,
-    player_natural: 0.02, point_diff: 0.02,
-    remaining_A: 0.01, remaining_2: 0.01, remaining_3: 0.01, remaining_4: 0.01, remaining_5: 0.01, remaining_6: 0.01,
-    remaining_7: 0.01, remaining_8: 0.01, remaining_9: 0.01, remaining_10: 0.01, remaining_J: 0.01, remaining_Q: 0.01, remaining_K: 0.01,
+    pair_risk: 0.25, remaining_rank_pressure: 0.25, player_pair_count: 0.15, table_side_history: 0.05,
+    player_point: 0.03, player_natural: 0.01,
+    remaining_A: 0.02, remaining_2: 0.02, remaining_3: 0.02, remaining_4: 0.02, remaining_5: 0.02, remaining_6: 0.02,
+    remaining_7: 0.02, remaining_8: 0.02, remaining_9: 0.02, remaining_10: 0.02, remaining_J: 0.02, remaining_Q: 0.02, remaining_K: 0.02,
   }),
   bankerDragon: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    banker_dragon: 0.22, point_diff: 0.16, banker_point: 0.11, banker_natural: 0.08, remaining_rank_pressure: 0.08,
-    remaining_A: 0.01, remaining_2: 0.01, remaining_3: 0.01, remaining_4: 0.01, remaining_5: 0.01, remaining_6: 0.015,
-    remaining_7: 0.015, remaining_8: 0.015, remaining_9: 0.015, remaining_10: 0.01, remaining_J: 0.01, remaining_Q: 0.01, remaining_K: 0.01,
-    big_road: 0.04, bead_road: 0.04, big_eye_road: 0.03, next_banker_road: 0.03, shoe_stage: 0.02, round: 0.02, table_side_history: 0.02, road_chaos: 0.02,
+    banker_dragon: 0.25, point_diff: 0.22, banker_point: 0.14, banker_natural: 0.10, remaining_rank_pressure: 0.131,
+    remaining_A: 0.008, remaining_2: 0.008, remaining_3: 0.008, remaining_4: 0.008, remaining_5: 0.008, remaining_6: 0.008,
+    remaining_7: 0.008, remaining_8: 0.008, remaining_9: 0.008, remaining_10: 0.008, remaining_J: 0.008, remaining_Q: 0.008, remaining_K: 0.008,
+    table_side_history: 0.02, big_road: 0.01, bead_road: 0.005, big_eye_road: 0.005, next_banker_road: 0.005, shoe_stage: 0.005, road_chaos: 0.005,
   }),
   playerDragon: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    player_dragon: 0.22, point_diff: 0.16, player_point: 0.11, player_natural: 0.08, remaining_rank_pressure: 0.08,
-    remaining_A: 0.01, remaining_2: 0.01, remaining_3: 0.01, remaining_4: 0.01, remaining_5: 0.01, remaining_6: 0.015,
-    remaining_7: 0.015, remaining_8: 0.015, remaining_9: 0.015, remaining_10: 0.01, remaining_J: 0.01, remaining_Q: 0.01, remaining_K: 0.01,
-    big_road: 0.04, bead_road: 0.04, big_eye_road: 0.03, next_player_road: 0.03, shoe_stage: 0.02, round: 0.02, table_side_history: 0.02, road_chaos: 0.02,
+    player_dragon: 0.25, point_diff: 0.22, player_point: 0.14, player_natural: 0.10, remaining_rank_pressure: 0.131,
+    remaining_A: 0.008, remaining_2: 0.008, remaining_3: 0.008, remaining_4: 0.008, remaining_5: 0.008, remaining_6: 0.008,
+    remaining_7: 0.008, remaining_8: 0.008, remaining_9: 0.008, remaining_10: 0.008, remaining_J: 0.008, remaining_Q: 0.008, remaining_K: 0.008,
+    table_side_history: 0.02, big_road: 0.01, bead_road: 0.005, big_eye_road: 0.005, next_player_road: 0.005, shoe_stage: 0.005, road_chaos: 0.005,
   }),
 })
 
@@ -251,7 +249,7 @@ export function buildPredictionResultRow(round = {}, table = {}) {
     table_recent_hit_rate: tablePerformance.recentHitRate,
     table_recent_prediction_count: tablePerformance.recentPredictionCount,
     short_run_adjustment: {
-      rule: 'v073_main_side_rank_tuning',
+      rule: ALL_MT_EQUAL_STRATEGY_VERSION,
       includedMainWeightCount: Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length,
       includedSideWeightCount: Object.keys(SIDE_WEIGHT_KEYS).length,
       sideActionRateTargets: SIDE_PREDICTION_ACTION_RATE_TARGETS,
