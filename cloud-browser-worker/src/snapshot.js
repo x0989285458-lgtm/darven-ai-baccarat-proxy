@@ -2,13 +2,23 @@ const BANKER_VALUES = new Set(['2', 'b', 'banker', 'bank', '庄', '莊', 'zhuang
 const PLAYER_VALUES = new Set(['1', 'p', 'player', 'play', '闲', '閒', 'xian'])
 const TIE_VALUES = new Set(['3', 't', 'tie', 'draw', '和'])
 
-export function normalizeWinner(value) {
-  if (value == null) return null
-  const raw = String(value).trim()
-  const key = raw.toLowerCase()
-  if (BANKER_VALUES.has(key) || BANKER_VALUES.has(raw)) return 'banker'
-  if (PLAYER_VALUES.has(key) || PLAYER_VALUES.has(raw)) return 'player'
-  if (TIE_VALUES.has(key) || TIE_VALUES.has(raw)) return 'tie'
+export function normalizeWinner(value, rawResult = null) {
+  if (value != null) {
+    const raw = String(value).trim()
+    const key = raw.toLowerCase()
+    if (BANKER_VALUES.has(key) || BANKER_VALUES.has(raw)) return 'banker'
+    if (PLAYER_VALUES.has(key) || PLAYER_VALUES.has(raw)) return 'player'
+    if (TIE_VALUES.has(key) || TIE_VALUES.has(raw)) return 'tie'
+  }
+  if (Array.isArray(rawResult) && rawResult.length > 9) {
+    const playerPoint = Number(rawResult[8])
+    const bankerPoint = Number(rawResult[9])
+    if (Number.isFinite(playerPoint) && Number.isFinite(bankerPoint)) {
+      if (bankerPoint > playerPoint) return 'banker'
+      if (playerPoint > bankerPoint) return 'player'
+      return 'tie'
+    }
+  }
   return null
 }
 
@@ -85,7 +95,7 @@ function normalizeRound(payload = {}) {
   const round = extractRoundBody(payload)
   const rawResult = Array.isArray(round.result) ? round.result : Array.isArray(round.rawResult) ? round.rawResult : null
   const tableId = firstValue(round, ['tableId', 'table_id', 'tableID', 'id', 'gameTableId'])
-  const winner = normalizeWinner(firstValue(round, ['winner', 'win', 'main_result', 'mainResult']) ?? (Array.isArray(round.result) ? null : round.result))
+  const winner = normalizeWinner(firstValue(round, ['winner', 'win', 'main_result', 'mainResult']) ?? (Array.isArray(round.result) ? null : round.result), rawResult)
   return {
     tableId: tableId == null ? null : String(tableId),
     shoe: toNullableNumber(firstValue(round, ['shoe', 'current_shoe', 'shoeNo', 'shoe_no'])),
@@ -94,16 +104,21 @@ function normalizeRound(payload = {}) {
     playerPoint: rawResult && rawResult.length > 8 ? toNullableNumber(rawResult[8]) : toNullableNumber(firstValue(round, ['playerPoint', 'player_point'])),
     bankerPoint: rawResult && rawResult.length > 9 ? toNullableNumber(rawResult[9]) : toNullableNumber(firstValue(round, ['bankerPoint', 'banker_point'])),
     rawResult: rawResult ?? payload,
-    sourceAction: payload.action ?? payload.event ?? round.action ?? null,
+    sourceAction: getActionName(payload.action) || payload.event || round.action || null,
   }
 }
 
 function extractRoundBody(value = {}) {
+  const action = getActionName(value.action)
   if (value.round && typeof value.round === 'object') return value.round
-  if (value.body && typeof value.body === 'object' && isMtRoundAction(value.action)) return value.body
-  if (value.msg && typeof value.msg === 'object' && isMtRoundAction(value.action)) return value.msg
-  if (value.data && typeof value.data === 'object' && isMtRoundAction(value.action)) return value.data
+  if (value.body && typeof value.body === 'object' && isMtRoundAction(action)) return value.body
+  if (value.msg && typeof value.msg === 'object' && isMtRoundAction(action)) return value.msg
+  if (value.data && typeof value.data === 'object' && isMtRoundAction(action)) return value.data
   return value
+}
+
+function getActionName(action = '') {
+  return typeof action === 'object' && action !== null ? (action.name ?? action.path ?? '') : action
 }
 
 function isMtRoundAction(action = '') {
@@ -258,10 +273,11 @@ function isRoundLike(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const round = extractRoundBody(value)
   const rawResult = Array.isArray(round.result) || Array.isArray(round.rawResult)
+  const rawResultValue = Array.isArray(round.result) ? round.result : Array.isArray(round.rawResult) ? round.rawResult : null
   const winnerValue = firstValue(round, ['winner', 'win', 'main_result', 'mainResult']) ?? (Array.isArray(round.result) ? null : round.result)
   return firstValue(round, ['tableId', 'table_id', 'tableID', 'id', 'gameTableId']) != null
     && firstValue(round, ['round', 'round_no', 'roundNo', 'current_round', 'gameNo']) != null
-    && (normalizeWinner(winnerValue) != null || (isMtRoundAction(value.action) && rawResult))
+    && (normalizeWinner(winnerValue, rawResultValue) != null || (isMtRoundAction(getActionName(value.action)) && rawResult))
 }
 
 function parseMaybeJson(value) {

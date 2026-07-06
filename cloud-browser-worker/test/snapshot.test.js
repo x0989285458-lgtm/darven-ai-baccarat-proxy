@@ -102,7 +102,7 @@ test('extracts tables and rounds recursively from websocket/localStorage payload
 test('extracts MT show_poker round result with banker/player points for Super Six validation', () => {
   const snapshot = extractSnapshotFromPayloads([
     JSON.stringify({
-      action: 'show_poker',
+      action: { name: '/api/v1/gametype/*/game/*/room/*/table/*/show_poker' },
       body: {
         table_id: 'BAG06',
         shoe: 15669,

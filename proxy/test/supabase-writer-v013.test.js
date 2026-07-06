@@ -57,12 +57,12 @@ test('v050 low-performing table keeps banker/player prediction and records all-M
     recentPredictionCount: 25,
   })
 
-  assert.equal(prediction.strategy_version, 'v070_side_thresholds_snapshot_guard')
+  assert.equal(prediction.strategy_version, 'v071_mt_record_dragon_rank_remaining')
   assert.equal(prediction.prediction_features.table_performance.recentHitRate, 0.44)
   assert.match(prediction.predicted_result, /^(banker|player)$/)
   assert.equal(prediction.confidence >= 30, true)
   assert.equal(prediction.confidence <= 80, true)
-  assert.equal(prediction.short_run_adjustment.rule, 'v070_side_thresholds_snapshot_guard')
+  assert.equal(prediction.short_run_adjustment.rule, 'v071_mt_record_dragon_rank_remaining')
 })
 
 test('v062 equal banker/player main scores use tie-breakers instead of defaulting to banker', () => {
@@ -101,11 +101,13 @@ test('v067 main and side strategy uses high-hit weighted features', () => {
     'next_banker_road', 'next_player_road', 'dealer_name', 'total_players', 'shoe', 'round', 'shoe_stage', 'state', 'order_state',
     'raw_result', 'player_point', 'banker_point', 'point_diff', 'banker_natural', 'player_natural', 'banker_dragon', 'player_dragon', 'super_six',
     'tie_risk', 'pair_risk', 'ask_road_conflict', 'road_chaos', 'table_side_history',
+    'remaining_rank_pressure', 'remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7',
+    'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K',
   ]
   assert.deepEqual(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).sort(), mainKeys.sort())
   assert.deepEqual(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).sort(), sideKeys.sort())
   assert.equal(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length, 36)
-  assert.equal(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).length, 31)
+  assert.equal(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).length, 45)
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.big_road, 0.15)
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.table_id, 0)
   assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.pair_risk, 0.22)
@@ -131,10 +133,10 @@ test('v067 prediction rows persist high-hit main and side weights plus captured 
     sourceUpdatedAt: '2026-07-01T09:00:00Z',
   })
 
-  assert.equal(prediction.strategy_version, 'v070_side_thresholds_snapshot_guard')
+  assert.equal(prediction.strategy_version, 'v071_mt_record_dragon_rank_remaining')
   assert.deepEqual(prediction.feature_weights, ALL_MT_EQUAL_MAIN_WEIGHTS)
   assert.deepEqual(prediction.prediction_features.side_weights.bankerPair, ALL_MT_EQUAL_SIDE_WEIGHTS)
-  assert.equal(Object.keys(prediction.prediction_features.side_weights.tie).length, 31)
+  assert.equal(Object.keys(prediction.prediction_features.side_weights.tie).length, 45)
   assert.equal(prediction.prediction_features.mt_context.dealerName, '毛毛')
   assert.equal(prediction.prediction_features.mt_context.totalPlayers, 906)
   assert.equal(prediction.prediction_features.derived_main_features.shoeStage, 'middle')
@@ -161,7 +163,7 @@ test('v050 high-performing table still keeps confidence in 30-80 range', () => {
     recentPredictionCount: 25,
   })
 
-  assert.equal(neutralPrediction.strategy_version, 'v070_side_thresholds_snapshot_guard')
+  assert.equal(neutralPrediction.strategy_version, 'v071_mt_record_dragon_rank_remaining')
   assert.equal(neutralPrediction.confidence >= 30, true)
   assert.equal(neutralPrediction.confidence <= 80, true)
   assert.equal(boostedPrediction.confidence <= 80, true)

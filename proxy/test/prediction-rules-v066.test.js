@@ -10,14 +10,14 @@ test('v066 super six is actionable only when the main prediction is banker', () 
   assert.equal(bankerMainActions.superSix, true)
 })
 
-test('v069 dragon bonus predictions are disabled and cannot place either side', () => {
-  const bankerMain = buildSideActions({ tie: 0, superSix: 0, bankerPair: 0, playerPair: 0, bankerDragon: 96, playerDragon: 90 }, 'banker')
-  const playerMain = buildSideActions({ tie: 0, superSix: 0, bankerPair: 0, playerPair: 0, bankerDragon: 90, playerDragon: 96 }, 'player')
+test('v071 dragon bonus predictions are actionable only for matching main side and separated scores', () => {
+  const bankerMain = buildSideActions({ tie: 0, superSix: 0, bankerPair: 0, playerPair: 0, bankerDragon: 96, playerDragon: 10 }, 'banker')
+  const playerMain = buildSideActions({ tie: 0, superSix: 0, bankerPair: 0, playerPair: 0, bankerDragon: 10, playerDragon: 96 }, 'player')
 
-  assert.equal(bankerMain.bankerDragon, false)
+  assert.equal(bankerMain.bankerDragon, true)
   assert.equal(bankerMain.playerDragon, false)
   assert.equal(playerMain.bankerDragon, false)
-  assert.equal(playerMain.playerDragon, false)
+  assert.equal(playerMain.playerDragon, true)
 
   const tiePush = buildPredictionResultRow(
     { tableId: 'BAG66', shoe: 1, round: 3, rawResult: [1, 9, 2, 10, 0, 0, -1, -1, 9, 9], winner: 'tie' },

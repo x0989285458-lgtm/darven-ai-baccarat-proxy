@@ -33,7 +33,7 @@ test('v048 infers new rounds from round number and bead road even when aggregate
   assert.equal(events[0].round.rawResult.inferredFromRoundDelta, true)
 })
 
-test('v070 does not infer a burst of fake banker rounds from synthetic zero-count table state', async () => {
+test('v071 does not infer a burst of fake banker rounds from synthetic zero-count table state', async () => {
   const events = []
   const state = createProxyState({ onRoundEvent: async (round, table) => events.push({ round, table }) })
   state.setTables([{ tableId: 'BAG01', displayName: 'MT百家樂BAG01', shoe: 10, round: 20, bankerCount: 0, playerCount: 0, tieCount: 0 }])
@@ -43,7 +43,7 @@ test('v070 does not infer a burst of fake banker rounds from synthetic zero-coun
   assert.equal(events.length, 0)
 })
 
-test('v070 live snapshot shoe and round are not overwritten by older lastRound state', async () => {
+test('v071 live snapshot shoe and round are not overwritten by older lastRound state', async () => {
   const state = createProxyState({ onRoundEvent: async () => {} })
   state.setTables([{ tableId: 'BAG02', displayName: '2', shoe: 20, round: 30, bankerCount: 10, playerCount: 10, tieCount: 1, beadPlateRaw: '0102' }])
   state.upsertRoundEvent({ tableId: 'BAG02', shoe: 20, round: 31, winner: 'banker' })

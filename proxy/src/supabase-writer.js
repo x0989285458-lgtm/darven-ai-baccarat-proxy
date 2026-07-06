@@ -3,7 +3,7 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v049_no_observe_confidence_30_80'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v070_side_thresholds_snapshot_guard'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v071_mt_record_dragon_rank_remaining'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -29,11 +29,13 @@ const MAIN_WEIGHT_KEYS = [
   'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'pattern_tags', 'historical_backtest', 'super_six',
 ]
 
+const RANK_REMAINING_FEATURE_KEYS = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
+
 export const SIDE_WEIGHT_KEYS = [
   'tie_count', 'banker_pair_count', 'player_pair_count', 'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road',
   'next_banker_road', 'next_player_road', 'dealer_name', 'total_players', 'shoe', 'round', 'shoe_stage', 'state', 'order_state',
   'raw_result', 'player_point', 'banker_point', 'point_diff', 'banker_natural', 'player_natural', 'banker_dragon', 'player_dragon', 'super_six',
-  'tie_risk', 'pair_risk', 'ask_road_conflict', 'road_chaos', 'table_side_history',
+  'tie_risk', 'pair_risk', 'ask_road_conflict', 'road_chaos', 'table_side_history', 'remaining_rank_pressure', ...RANK_REMAINING_FEATURE_KEYS,
 ]
 
 export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildWeightedProfile(MAIN_WEIGHT_KEYS, {
@@ -48,8 +50,8 @@ export const SIDE_PREDICTION_ACTION_RATE_TARGETS = Object.freeze({
   superSix: 0.10,
   bankerPair: 0.20,
   playerPair: 0.20,
-  bankerDragon: 0,
-  playerDragon: 0,
+  bankerDragon: 0.08,
+  playerDragon: 0.08,
 })
 
 export const SIDE_PREDICTION_TARGET_HIT_RATE = 0.5
@@ -91,8 +93,8 @@ export const SIDE_PREDICTION_THRESHOLDS = {
   superSix: 50,
   bankerPair: 35,
   playerPair: 35,
-  bankerDragon: 101,
-  playerDragon: 101,
+  bankerDragon: 45,
+  playerDragon: 45,
 }
 
 const DEFAULT_EQUAL_WEIGHTS = Object.freeze({
@@ -221,7 +223,7 @@ export function buildPredictionResultRow(round = {}, table = {}) {
   const tablePerformance = buildTablePerformanceFeature(table)
   const allMtPrediction = calculateAllMtEqualMainPrediction({ round, table, facts, probabilities, tablePerformance })
   const predicted_result = allMtPrediction.predictedResult
-  const sidePredictions = buildSidePredictions(table)
+  const sidePredictions = buildSidePredictions(table, round)
   const sideActualResults = buildSideActualResults(round, facts)
   return {
     source: SOURCE,
@@ -236,7 +238,7 @@ export function buildPredictionResultRow(round = {}, table = {}) {
     table_recent_hit_rate: tablePerformance.recentHitRate,
     table_recent_prediction_count: tablePerformance.recentPredictionCount,
     short_run_adjustment: {
-      rule: 'v070_side_thresholds_snapshot_guard',
+      rule: 'v071_mt_record_dragon_rank_remaining',
       includedMainWeightCount: Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length,
       includedSideWeightCount: Object.keys(SIDE_WEIGHT_KEYS).length,
       sideActionRateTargets: SIDE_PREDICTION_ACTION_RATE_TARGETS,
@@ -249,6 +251,8 @@ export function buildPredictionResultRow(round = {}, table = {}) {
       unified_main_scores: allMtPrediction.scores,
       road_features: buildRoadFeatures(table),
       card_shoe_features: scoreCardShoeInfluence({ lastRound: round, shoeState: round.cardShoe ?? null }).features,
+      side_card_rank_features: buildSideCardRankFeatures(round.cardShoe ?? null),
+      side_prediction_rank_inputs: buildSidePredictionRankInputs(round.cardShoe ?? null),
       point_features: {
         playerPoint: facts.playerPoint,
         bankerPoint: facts.bankerPoint,
@@ -590,15 +594,15 @@ function inferAskRoadTrend(table = {}) {
 }
 
 
-function buildSidePredictions(table = {}) {
-  const featureScores = buildSideFeatureScores(table)
+function buildSidePredictions(table = {}, round = {}) {
+  const featureScores = buildSideFeatureScores(table, round)
   return Object.fromEntries(Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES).map(([key, profile]) => [
     key,
     clampPercent(Object.entries(profile).reduce((sum, [featureKey, weight]) => sum + (Number(featureScores[featureKey] ?? 0) * Number(weight ?? 0)), 0), 0, 100),
   ]))
 }
 
-function buildSideFeatureScores(table = {}) {
+function buildSideFeatureScores(table = {}, round = {}) {
   const beadCells = parseBeadCells(table.beadPlateRaw)
   const recent = beadCells.slice(-24)
   const recentBanker = recent.filter((cell) => cell.outcome === 'banker').length
@@ -624,6 +628,7 @@ function buildSideFeatureScores(table = {}) {
   const askConflict = inferAskRoadTrend(table) === 'neutral' ? 70 : 20
   const bankerDragon = clampPercent((bankerRate * 0.7) + (pointDiff * 0.3), 0, 100)
   const playerDragon = clampPercent((playerRate * 0.7) + (pointDiff * 0.3), 0, 100)
+  const rankFeatureScores = buildRemainingRankFeatureScores(round.cardShoe ?? null)
   return {
     tie_count: tieRate,
     banker_pair_count: bankerPairRate,
@@ -656,7 +661,47 @@ function buildSideFeatureScores(table = {}) {
     ask_road_conflict: askConflict,
     road_chaos: roadChaos,
     table_side_history: clampPercent(Math.max(tieRate, bankerPairRate, playerPairRate, bankerDragon, playerDragon), 0, 100),
+    ...rankFeatureScores,
   }
+}
+
+function buildSideCardRankFeatures(cardShoe = null) {
+  const remainingRankCounts = normalizeRemainingRankCounts(cardShoe?.remainingRankCounts)
+  return {
+    remainingRankCounts,
+    remainingRankFeatureScores: buildRemainingRankFeatureScores(cardShoe),
+    cardsSeenTotal: cardShoe?.cardsSeenTotal ?? null,
+    cardsRemainingTotal: cardShoe?.cardsRemainingTotal ?? null,
+    shoeProgressRatio: cardShoe?.shoeProgressRatio ?? null,
+  }
+}
+
+function buildSidePredictionRankInputs(cardShoe = null) {
+  const features = buildSideCardRankFeatures(cardShoe)
+  return Object.fromEntries(Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES).map((target) => [target, features]))
+}
+
+function buildRemainingRankFeatureScores(cardShoe = null) {
+  const remainingRankCounts = normalizeRemainingRankCounts(cardShoe?.remainingRankCounts)
+  const totalRanks = Object.values(remainingRankCounts).reduce((sum, value) => sum + Number(value ?? 0), 0)
+  const average = totalRanks / RANK_REMAINING_FEATURE_KEYS.length || 0
+  const featureScores = Object.fromEntries(RANK_REMAINING_FEATURE_KEYS.map((featureKey) => {
+    const face = featureKey.replace('remaining_', '')
+    const score = average ? (Number(remainingRankCounts[face] ?? 0) / average) * 50 : 50
+    return [featureKey, clampPercent(score, 0, 100)]
+  }))
+  const spread = Math.max(...Object.values(remainingRankCounts)) - Math.min(...Object.values(remainingRankCounts))
+  return {
+    remaining_rank_pressure: clampPercent((spread / Math.max(1, average)) * 50, 0, 100),
+    ...featureScores,
+  }
+}
+
+function normalizeRemainingRankCounts(counts = {}) {
+  return Object.fromEntries(RANK_REMAINING_FEATURE_KEYS.map((featureKey) => {
+    const face = featureKey.replace('remaining_', '')
+    return [face, Number(counts?.[face] ?? 0)]
+  }))
 }
 
 function parseBeadCells(raw = '') {
@@ -690,8 +735,8 @@ export function buildSideActions(predictions = {}, mainPrediction = null) {
   const playerDragon = Math.round(Number(predictions.playerDragon ?? 0))
   const dragonDiff = Math.abs(bankerDragon - playerDragon)
   actions.superSix = Boolean(actions.superSix) && mainPrediction === 'banker'
-  actions.bankerDragon = false && mainPrediction === 'banker' && bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon && dragonDiff >= 6
-  actions.playerDragon = false && mainPrediction === 'player' && playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon && dragonDiff >= 6
+  actions.bankerDragon = mainPrediction === 'banker' && bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon && dragonDiff >= 6
+  actions.playerDragon = mainPrediction === 'player' && playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon && dragonDiff >= 6
   return actions
 }
 

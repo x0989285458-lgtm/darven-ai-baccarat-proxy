@@ -10,10 +10,10 @@ import {
 const sideKeys = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
 
 test('v068 side predictions use independent 31-key weight profiles per target, not one merged side profile', () => {
-  assert.equal(SIDE_WEIGHT_KEYS.length, 31)
+  assert.equal(SIDE_WEIGHT_KEYS.length, 45)
   assert.deepEqual(Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES).sort(), sideKeys.sort())
   for (const key of sideKeys) {
-    assert.equal(Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES[key]).length, 31)
+    assert.equal(Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES[key]).length, 45)
     assert.deepEqual(Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES[key]).sort(), [...SIDE_WEIGHT_KEYS].sort())
     assert.equal(Number(Object.values(SIDE_PREDICTION_WEIGHT_PROFILES[key]).reduce((a, b) => a + b, 0).toFixed(10)), 1)
   }
@@ -27,8 +27,8 @@ test('v068 side action-rate targets are independent and match requested per-100 
     superSix: 0.10,
     bankerPair: 0.20,
     playerPair: 0.20,
-    bankerDragon: 0,
-    playerDragon: 0,
+    bankerDragon: 0.08,
+    playerDragon: 0.08,
   })
 })
 
@@ -37,9 +37,9 @@ test('v068 prediction row persists per-target side weights and tuning metadata',
     { tableId: 'BAG68', shoe: 1, round: 1, rawResult: [1, 9, 2, 10, 0, 0, -1, -1, 1, 9], winner: 'banker' },
     { tableId: 'BAG68', bankerCount: 40, playerCount: 35, tieCount: 5, bankerPairCount: 3, playerPairCount: 2, beadPlateRaw: '02#01#02#02#01', bigRoadRaw: 'B#P#B#B#P' },
   )
-  assert.equal(row.strategy_version, 'v070_side_thresholds_snapshot_guard')
+  assert.equal(row.strategy_version, 'v071_mt_record_dragon_rank_remaining')
   assert.deepEqual(Object.keys(row.prediction_features.side_weights).sort(), sideKeys.sort())
-  assert.equal(Object.keys(row.prediction_features.side_weights.tie).length, 31)
+  assert.equal(Object.keys(row.prediction_features.side_weights.tie).length, 45)
   assert.equal(row.prediction_features.side_tuning.tie.targetActionRate, 0.15)
   assert.equal(row.prediction_features.side_tuning.bankerDragon.targetHitRate, 0.5)
 })
