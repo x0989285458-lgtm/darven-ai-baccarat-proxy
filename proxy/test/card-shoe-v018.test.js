@@ -26,6 +26,22 @@ test('v019 parses each baccarat card into code rank face and baccarat point', ()
   assert.equal(snapshot.bankerDrew, false)
 })
 
+test('v072 dragon bonus actual counts natural no-draw direct win even when point diff is below 4', () => {
+  const bankerNatural = buildRoundCardSnapshot({ rawResult: [5, 7, 2, 1, 0, 0, -1, -1, 7, 8], winner: 2 })
+  assert.equal(bankerNatural.bankerNatural, true)
+  assert.equal(bankerNatural.playerDrew, false)
+  assert.equal(bankerNatural.bankerDrew, false)
+  assert.equal(bankerNatural.pointDiff, 1)
+  assert.equal(bankerNatural.bankerDragon, true)
+
+  const playerNatural = buildRoundCardSnapshot({ rawResult: [9, 8, 10, 13, 0, 0, -1, -1, 9, 8], winner: 1 })
+  assert.equal(playerNatural.playerNatural, true)
+  assert.equal(playerNatural.playerDrew, false)
+  assert.equal(playerNatural.bankerDrew, false)
+  assert.equal(playerNatural.pointDiff, 1)
+  assert.equal(playerNatural.playerDragon, true)
+})
+
 test('v019 tracks remaining A-K ranks and 0-9 baccarat points per table shoe', () => {
   const tracker = createShoeTracker({ deckCount: 8 })
   const first = tracker.recordRound({ tableId: 'BAG03', shoe: 912, round: 43, rawResult: [26, 20, 39, 23, 14, 0, -1, -1, 1, 7], winner: 2 })

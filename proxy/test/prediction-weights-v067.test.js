@@ -41,7 +41,7 @@ test('v067 prediction row records high-hit weight strategy version and keeps ban
       nextBankerRaw: 'weak', nextPlayerRaw: '2222222222',
     },
   )
-  assert.match(row.strategy_version, /v071/)
+  assert.match(row.strategy_version, /v072/)
   assert.ok(['banker', 'player'].includes(row.predicted_result))
-  assert.equal(row.short_run_adjustment.rule, 'v071_mt_record_dragon_rank_remaining')
+  assert.equal(row.short_run_adjustment.rule, 'v072_natural_dragon_direct_win')
 })

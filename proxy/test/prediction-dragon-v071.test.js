@@ -14,7 +14,7 @@ test('v071 prediction row records and can action dragon predictions', () => {
     { tableId: 'BAG69', shoe: 1, round: 1, rawResult: [1, 10, 2, 11, -1, -1, -1, -1, 3, 0], winner: 'banker' },
     { tableId: 'BAG69', bankerCount: 80, playerCount: 1, tieCount: 0, bankerPairCount: 0, playerPairCount: 0, beadPlateRaw: '02#02#02#02#02', bigRoadRaw: 'B#B#B#B#B' },
   )
-  assert.equal(row.strategy_version, 'v071_mt_record_dragon_rank_remaining')
+  assert.equal(row.strategy_version, 'v072_natural_dragon_direct_win')
   assert.equal(typeof row.prediction_features.side_predictions.bankerDragon, 'number')
   assert.equal(row.prediction_features.side_tuning.bankerDragon.targetActionRate, 0.08)
   assert.equal(row.prediction_features.side_tuning.playerDragon.targetActionRate, 0.08)

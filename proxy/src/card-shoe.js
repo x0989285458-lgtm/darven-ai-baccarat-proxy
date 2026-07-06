@@ -17,16 +17,19 @@ export function buildRoundCardSnapshot(round = {}) {
   const raw = Array.isArray(round.rawResult) ? round.rawResult : []
   const playerCards = [raw[0], raw[2], raw[4]].map(parseBaccaratCard)
   const bankerCards = [raw[1], raw[3], raw[5]].map(parseBaccaratCard)
+  const playerCardCodes = playerCards.map((card) => card?.code ?? 0)
+  const bankerCardCodes = bankerCards.map((card) => card?.code ?? 0)
   const playerPoint = numberOrNull(round.playerPoint ?? raw[8])
   const bankerPoint = numberOrNull(round.bankerPoint ?? raw[9])
   const playerFirstTwo = moduloPoint(playerCards[0]?.baccaratPoint, playerCards[1]?.baccaratPoint)
   const bankerFirstTwo = moduloPoint(bankerCards[0]?.baccaratPoint, bankerCards[1]?.baccaratPoint)
   const winner = normalizeWinner(round.winner, playerPoint, bankerPoint)
+  const naturalNoDrawDirectWin = !Boolean(playerCards[2]) && !Boolean(bankerCards[2]) && (playerFirstTwo === 8 || playerFirstTwo === 9 || bankerFirstTwo === 8 || bankerFirstTwo === 9)
   return {
     playerCards,
     bankerCards,
-    playerCardCodes: playerCards.map((card) => card?.code ?? 0),
-    bankerCardCodes: bankerCards.map((card) => card?.code ?? 0),
+    playerCardCodes,
+    bankerCardCodes,
     playerCardRanks: playerCards.map((card) => card?.rank ?? null),
     bankerCardRanks: bankerCards.map((card) => card?.rank ?? null),
     playerCardFaces: playerCards.map((card) => card?.face ?? null),
@@ -44,8 +47,8 @@ export function buildRoundCardSnapshot(round = {}) {
     playerPair: sameRank(playerCards[0], playerCards[1]),
     bankerPair: sameRank(bankerCards[0], bankerCards[1]),
     superSix: winner === 'banker' && bankerPoint === 6,
-    bankerDragon: winner === 'banker' && playerPoint != null && bankerPoint != null && Math.abs(bankerPoint - playerPoint) >= 4,
-    playerDragon: winner === 'player' && playerPoint != null && bankerPoint != null && Math.abs(playerPoint - bankerPoint) >= 4,
+    bankerDragon: winner === 'banker' && playerPoint != null && bankerPoint != null && (Math.abs(bankerPoint - playerPoint) >= 4 || naturalNoDrawDirectWin),
+    playerDragon: winner === 'player' && playerPoint != null && bankerPoint != null && (Math.abs(playerPoint - bankerPoint) >= 4 || naturalNoDrawDirectWin),
   }
 }
 
