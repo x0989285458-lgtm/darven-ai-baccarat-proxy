@@ -84,7 +84,7 @@ test('v012 builds Supabase roadmap and prediction rows for short-retention learn
   assert.equal(event.super_six, false)
   assert.equal(event.raw_event.sourceAction.includes('summary'), true)
 
-  assert.equal(prediction.strategy_version, 'v072_natural_dragon_direct_win')
+  assert.equal(prediction.strategy_version, 'v073_main_side_rank_tuning')
   assert.equal(prediction.predicted_result, 'banker')
   assert.equal(prediction.actual_result, 'banker')
   assert.equal(prediction.is_hit, true)
