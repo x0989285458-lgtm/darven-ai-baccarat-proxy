@@ -13,14 +13,14 @@ const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Num
 const rankKeys = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
 
 test('v075 uses Chinese version and requested side thresholds', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v079_主預測校正副預測放寬版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v080_高勝率主權重副預測修正版')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
-    tie: 45,
-    superSix: 58,
-    bankerPair: 58,
-    playerPair: 58,
-    bankerDragon: 65,
-    playerDragon: 65,
+    tie: 38,
+    superSix: 42,
+    bankerPair: 36,
+    playerPair: 36,
+    bankerDragon: 72,
+    playerDragon: 72,
   })
 })
 
@@ -33,10 +33,10 @@ test('v075 main weights rebalance away from over-player bias while keeping requi
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.confidence >= 0.08)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.probability_gap >= 0.08)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.card_points >= 0.05)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.shoe_remaining_points >= 0.02)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.shoe_remaining_points >= 0.018)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.next_player_road <= 0.01)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.near5_banker_player_bias <= 0.025)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals >= 0.07)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals >= 0.065)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.cockroach_road <= 0.01)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.tie_count <= 0.005)
 })
@@ -78,7 +78,7 @@ test('v075 prediction row records new Chinese version and thresholds remain acti
     },
     { tableId: 'BAG75', shoe: 17001, round: 12, bankerCount: 12, playerCount: 8, tieCount: 1, beadPlateRaw: '01020202', bigRoadRaw: 'BBPBBP' },
   )
-  assert.equal(row.strategy_version, 'v079_主預測校正副預測放寬版')
+  assert.equal(row.strategy_version, 'v080_高勝率主權重副預測修正版')
   assert.deepEqual(row.short_run_adjustment.sideActionRateTargets, {
     tie: 0.15,
     superSix: 0.1,

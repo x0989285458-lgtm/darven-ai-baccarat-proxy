@@ -3,7 +3,7 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v049_no_observe_confidence_30_80'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v079_主預測校正副預測放寬版'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v080_高勝率主權重副預測修正版'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -42,13 +42,13 @@ export const SIDE_WEIGHT_KEYS = [
 ]
 
 export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildWeightedProfile(MAIN_WEIGHT_KEYS, {
-  big_road: 0.095, bead_road: 0.025, big_eye_road: 0.005, small_road: 0.001, cockroach_road: 0.001,
-  next_banker_road: 0.008, next_player_road: 0.002, previous_winner: 0.004, streak_length: 0.008,
-  near5_banker_player_bias: 0.006, table_recent_hit_rate: 0.10, direction_calibration: 0.135,
-  confidence: 0.095, probability_gap: 0.10, card_points: 0.055, shoe_remaining_points: 0.02,
-  historical_backtest: 0.06, shoe_stage: 0.015, banker_count: 0.015, player_count: 0.012, tie_count: 0,
-  roadmap_trend_signals: 0.07, road_structure_signals: 0.055, derived_road_structure_signals: 0.05,
-  ask_road_signals: 0.063,
+  big_road: 0.105, bead_road: 0.025, big_eye_road: 0.002, small_road: 0, cockroach_road: 0,
+  next_banker_road: 0.02, next_player_road: 0.001, previous_winner: 0.003, streak_length: 0.006,
+  near5_banker_player_bias: 0.02, table_recent_hit_rate: 0.09, direction_calibration: 0.13,
+  confidence: 0.09, probability_gap: 0.09, card_points: 0.055, shoe_remaining_points: 0.018,
+  historical_backtest: 0.055, shoe_stage: 0.03, banker_count: 0.014, player_count: 0.011, tie_count: 0,
+  roadmap_trend_signals: 0.065, road_structure_signals: 0.075, derived_road_structure_signals: 0.035,
+  ask_road_signals: 0.06,
 })
 
 export const SIDE_PREDICTION_ACTION_RATE_TARGETS = Object.freeze({
@@ -71,10 +71,10 @@ export const SIDE_PREDICTION_WEIGHT_PROFILES = Object.freeze({
     super_six: 0.28, banker_point: 0.22, remaining_rank_total: 0.32, point_diff: 0.10, banker_natural: 0.08,
   }),
   bankerPair: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    pair_risk: 0.44, remaining_rank_pressure: 0.42, table_side_history: 0.02, remaining_rank_total: 0.12,
+    pair_risk: 0.43, remaining_rank_pressure: 0.42, table_side_history: 0.02, remaining_rank_total: 0.13,
   }),
   playerPair: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    pair_risk: 0.44, remaining_rank_pressure: 0.42, table_side_history: 0.02, remaining_rank_total: 0.12,
+    pair_risk: 0.43, remaining_rank_pressure: 0.42, table_side_history: 0.02, remaining_rank_total: 0.13,
   }),
   bankerDragon: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
     point_diff: 0.40, banker_dragon: 0.18, banker_point: 0.15, banker_natural: 0.17, remaining_rank_pressure: 0.05,
@@ -89,12 +89,12 @@ export const SIDE_PREDICTION_WEIGHT_PROFILES = Object.freeze({
 export const ALL_MT_EQUAL_SIDE_WEIGHTS = SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair
 
 export const SIDE_PREDICTION_THRESHOLDS = {
-  tie: 45,
-  superSix: 58,
-  bankerPair: 58,
-  playerPair: 58,
-  bankerDragon: 65,
-  playerDragon: 65,
+  tie: 38,
+  superSix: 42,
+  bankerPair: 36,
+  playerPair: 36,
+  bankerDragon: 72,
+  playerDragon: 72,
 }
 
 const DEFAULT_EQUAL_WEIGHTS = Object.freeze({

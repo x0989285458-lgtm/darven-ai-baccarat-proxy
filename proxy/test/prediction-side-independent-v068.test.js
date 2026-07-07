@@ -37,7 +37,7 @@ test('v068 prediction row persists per-target side weights and tuning metadata',
     { tableId: 'BAG68', shoe: 1, round: 1, rawResult: [1, 9, 2, 10, 0, 0, -1, -1, 1, 9], winner: 'banker' },
     { tableId: 'BAG68', bankerCount: 40, playerCount: 35, tieCount: 5, bankerPairCount: 3, playerPairCount: 2, beadPlateRaw: '02#01#02#02#01', bigRoadRaw: 'B#P#B#B#P' },
   )
-  assert.equal(row.strategy_version, 'v079_主預測校正副預測放寬版')
+  assert.equal(row.strategy_version, 'v080_高勝率主權重副預測修正版')
   assert.deepEqual(Object.keys(row.prediction_features.side_weights).sort(), sideKeys.sort())
   assert.equal(Object.keys(row.prediction_features.side_weights.tie).length, 28)
   assert.equal(row.prediction_features.side_tuning.tie.targetActionRate, 0.15)
