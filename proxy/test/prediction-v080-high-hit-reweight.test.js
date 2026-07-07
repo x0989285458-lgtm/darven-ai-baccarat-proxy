@@ -10,20 +10,16 @@ import {
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 
 test('v080 raises empirically higher-hit main features and suppresses weak road noise', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v080_高勝率主權重副預測修正版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v081_五路問路路單走勢主副預測版')
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
 
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.big_road >= 0.105)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.shoe_stage >= 0.03)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.near5_banker_player_bias >= 0.02)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.next_banker_road >= 0.02)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.road_structure_signals >= 0.075)
-
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.next_player_road <= 0.001)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.big_eye_road <= 0.002)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.small_road, 0)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.cockroach_road, 0)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.derived_road_structure_signals <= 0.035)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.6)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals, 0.4)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.big_road, 0)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.shoe_stage, 0)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.next_banker_road, 0)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.road_structure_signals, 0)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.derived_road_structure_signals, 0)
 })
 
 test('v080 side prediction thresholds match observed score ceilings', () => {
@@ -35,9 +31,9 @@ test('v080 side prediction thresholds match observed score ceilings', () => {
     bankerDragon: 20,
     playerDragon: 20,
   })
-  assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.remaining_rank_total >= 0.32)
-  assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair.remaining_rank_total >= 0.13)
-  assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.playerPair.remaining_rank_total >= 0.13)
+  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.remaining_rank_total, 0.30)
+  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair.remaining_rank_total, 0)
+  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.playerPair.remaining_rank_total, 0)
   for (const profile of Object.values(SIDE_PREDICTION_WEIGHT_PROFILES)) {
     assert.ok(Math.abs(sum(profile) - 1) < 1e-9)
   }

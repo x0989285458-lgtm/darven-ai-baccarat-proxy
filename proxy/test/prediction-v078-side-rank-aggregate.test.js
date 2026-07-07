@@ -12,14 +12,14 @@ const rankKeys = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'r
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 
 test('v078 removes main remaining-card aggregate and uses side A-K aggregate only', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v080_高勝率主權重副預測修正版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v081_五路問路路單走勢主副預測版')
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
   assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'remaining_zero_to_k_total'), false)
   assert.equal(SIDE_WEIGHT_KEYS.includes('remaining_rank_total'), true)
   for (const key of rankKeys) assert.equal(SIDE_WEIGHT_KEYS.includes(key), false, `${key} must be removed from side direct weights`)
   for (const [target, profile] of Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES)) {
     assert.ok(Math.abs(sum(profile) - 1) < 1e-9, `${target} weights must sum to 1`)
-    assert.ok(profile.remaining_rank_total > 0, `${target} must use A-K統整剩餘牌數`)
+    assert.ok((profile.remaining_rank_total > 0) || (profile.remaining_rank_pressure > 0), `${target} must use A-K統整剩餘牌數`)
     for (const key of rankKeys) assert.equal(Object.hasOwn(profile, key), false, `${target} must not directly weight ${key}`)
   }
 })
@@ -36,7 +36,7 @@ test('v078 prediction row exposes side remaining-rank total and no main remainin
     },
     { tableId: 'BAG78', shoe: 78, round: 18, bankerCount: 9, playerCount: 7, tieCount: 1, beadPlateRaw: '020102010201#020102010202#020202', bigRoadRaw: '0201010201020201020202' },
   )
-  assert.equal(row.strategy_version, 'v080_高勝率主權重副預測修正版')
+  assert.equal(row.strategy_version, 'v081_五路問路路單走勢主副預測版')
   assert.equal(Object.hasOwn(row.prediction_features.unified_main_scores, 'remaining_zero_to_k_total'), false)
   assert.equal(row.prediction_features.side_card_rank_features.remainingRankTotal, 430)
   assert.equal(typeof row.prediction_features.side_prediction_rank_inputs.tie.remainingRankFeatureScores.remaining_rank_total, 'number')
