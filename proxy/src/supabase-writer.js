@@ -3,7 +3,7 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v049_no_observe_confidence_30_80'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v076_主預測再平衡副預測再縮手版'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v077_路單走勢細分版'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -26,7 +26,8 @@ const MAIN_WEIGHT_KEYS = [
   'shoe', 'shoe_stage', 'banker_count', 'player_count', 'tie_count',
   'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road', 'next_banker_road', 'next_player_road',
   'previous_winner', 'streak_length', 'near5_banker_player_bias', 'table_recent_hit_rate', 'direction_calibration',
-  'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'pattern_tags', 'historical_backtest',
+  'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'historical_backtest',
+  'roadmap_trend_signals', 'road_structure_signals', 'derived_road_structure_signals', 'ask_road_signals', 'remaining_zero_to_k_total',
 ]
 
 const RANK_REMAINING_FEATURE_KEYS = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
@@ -39,12 +40,13 @@ export const SIDE_WEIGHT_KEYS = [
 ]
 
 export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildWeightedProfile(MAIN_WEIGHT_KEYS, {
-  big_road: 0.125, bead_road: 0.04, big_eye_road: 0.02, small_road: 0.003, cockroach_road: 0.005,
-  next_banker_road: 0.018, next_player_road: 0.005, previous_winner: 0.008, streak_length: 0.015,
-  near5_banker_player_bias: 0.015, table_recent_hit_rate: 0.09, direction_calibration: 0.125,
-  confidence: 0.12, probability_gap: 0.12, card_points: 0.07, shoe_remaining_points: 0.055,
-  pattern_tags: 0.025, historical_backtest: 0.05, shoe_stage: 0.03,
-  banker_count: 0.035, player_count: 0.025, tie_count: 0.001,
+  big_road: 0.09, bead_road: 0.03, big_eye_road: 0.01, small_road: 0.001, cockroach_road: 0.002,
+  next_banker_road: 0.01, next_player_road: 0.003, previous_winner: 0.005, streak_length: 0.01,
+  near5_banker_player_bias: 0.01, table_recent_hit_rate: 0.07, direction_calibration: 0.10,
+  confidence: 0.08, probability_gap: 0.08, card_points: 0.055, shoe_remaining_points: 0.025,
+  historical_backtest: 0.035, shoe_stage: 0.02, banker_count: 0.02, player_count: 0.015, tie_count: 0,
+  roadmap_trend_signals: 0.08, road_structure_signals: 0.06, derived_road_structure_signals: 0.06,
+  ask_road_signals: 0.079, remaining_zero_to_k_total: 0.05,
 })
 
 export const SIDE_PREDICTION_ACTION_RATE_TARGETS = Object.freeze({
@@ -330,6 +332,10 @@ function buildDerivedMainFeatures(round = {}, table = {}, facts = {}, probabilit
     singleJump: trend.singleJump,
     doubleJump: trend.doubleJump,
     threeJump: trend.threeJump,
+    fourJump: trend.fourJump,
+    shortDragon: trend.shortDragon,
+    brokenDragon: trend.brokenDragon,
+    turnDragon: trend.turnDragon,
     oneBankerTwoPlayer: trend.oneBankerTwoPlayer,
     onePlayerTwoBanker: trend.onePlayerTwoBanker,
     rowPairRun: trend.rowPairRun,
@@ -343,6 +349,11 @@ function buildDerivedMainFeatures(round = {}, table = {}, facts = {}, probabilit
     roadBreak: trend.roadBreak,
     derivedRoadSync: inferDerivedRoadSync(table),
     askRoadTrend: inferAskRoadTrend(table),
+    roadmapTrendSignals: buildRoadmapTrendSignals(trend),
+    roadStructureSignals: buildRoadStructureSignals(table, trend),
+    derivedRoadStructureSignals: buildDerivedRoadStructureSignals(table),
+    askRoadSignals: buildAskRoadSignals(table),
+    remainingZeroToKTotal: buildRemainingZeroToKTotal(round.cardShoe ?? round.lastRound?.cardShoe ?? null),
     directionCalibration: probabilities.banker >= probabilities.player ? 'banker_bias' : 'player_bias',
     probabilityGap: Math.abs(Number(probabilities.banker ?? 0) - Number(probabilities.player ?? 0)),
     tableRecentHitRate: tablePerformance.recentHitRate,
@@ -407,7 +418,11 @@ function scoreAllMtFeature(key, ctx) {
     case 'card_points': return scoreCardPointsFeature(facts, probabilities)
     case 'shoe_remaining_points': return scoreShoeRemainingPointsFeature(round, probabilities)
     case 'historical_backtest': return scoreHistoricalBacktestFeature(probabilities, tablePerformance)
-    case 'pattern_tags': return scorePatternTagsFeature(derived)
+    case 'roadmap_trend_signals': return scoreRoadmapTrendSignalsFeature(derived)
+    case 'road_structure_signals': return scoreRoadStructureSignalsFeature(table, derived, roadFeatures)
+    case 'derived_road_structure_signals': return scoreDerivedRoadStructureSignalsFeature(table, derived)
+    case 'ask_road_signals': return scoreAskRoadSignalsFeature(table, derived)
+    case 'remaining_zero_to_k_total': return scoreRemainingZeroToKTotalFeature(round, probabilities)
     case 'confidence': return ratioScore(probabilities.banker, probabilities.player)
     case 'probability_gap': return ratioScore(probabilities.banker, probabilities.player)
     case 'super_six': {
@@ -506,6 +521,118 @@ function scorePatternTagsFeature(derived = {}) {
   if (derived.derivedRoadSync) scores.push(derived.derivedRoadSync === 'banker' ? { banker: 0.55, player: 0.45 } : derived.derivedRoadSync === 'player' ? { banker: 0.45, player: 0.55 } : neutralScore())
   return scores.length ? averageScores(...scores) : neutralScore()
 }
+
+function buildRoadmapTrendSignals(trend = {}) {
+  return {
+    singleJump: Boolean(trend.singleJump),
+    doubleJump: Boolean(trend.doubleJump),
+    longDragon: Boolean(trend.longDragon),
+    brokenDragon: Boolean(trend.brokenDragon),
+    shortDragon: Boolean(trend.shortDragon),
+    turnDragon: Boolean(trend.turnDragon),
+    slopeRoad: Boolean(trend.upSlope || trend.downSlope),
+    threeRunRoad: Boolean(trend.threeJump),
+    fourRunRoad: Boolean(trend.fourJump),
+  }
+}
+
+function buildRoadStructureSignals(table = {}, trend = {}) {
+  const bigScore = roadStringScore(table.bigRoadRaw)
+  const beadScore = roadStringScore(table.beadPlateRaw)
+  return {
+    bigRoadDominant: bigScore.banker > bigScore.player ? 'banker' : bigScore.player > bigScore.banker ? 'player' : 'neutral',
+    beadRoadDominant: beadScore.banker > beadScore.player ? 'banker' : beadScore.player > beadScore.banker ? 'player' : 'neutral',
+    roadOrderly: Boolean(trend.singleJump || trend.doubleJump || trend.longDragon || trend.threeJump || trend.fourJump),
+    roadChaotic: Boolean(trend.brokenSingleJump || trend.roadBreak),
+  }
+}
+
+function buildDerivedRoadStructureSignals(table = {}) {
+  const bigEye = roadColorScore(table.bigEyeRaw)
+  const small = roadColorScore(table.smallRoadRaw)
+  const cockroach = roadColorScore(table.cockroachRaw)
+  const colors = [bigEye, small, cockroach].map((score) => score.banker > score.player ? 'red' : score.player > score.banker ? 'blue' : 'neutral')
+  return {
+    bigEye: colors[0],
+    smallRoad: colors[1],
+    cockroachRoad: colors[2],
+    allRed: colors.every((color) => color === 'red'),
+    allBlue: colors.every((color) => color === 'blue'),
+    mixed: new Set(colors).size > 1,
+  }
+}
+
+function buildAskRoadSignals(table = {}) {
+  const bankerScore = askRoadScore(table.nextBankerRaw, 'banker')
+  const playerScore = askRoadScore(table.nextPlayerRaw, 'player')
+  const bankerAdvantage = Number((bankerScore.banker - bankerScore.player).toFixed(6))
+  const playerAdvantage = Number((playerScore.player - playerScore.banker).toFixed(6))
+  return {
+    bankerAdvantage,
+    playerAdvantage,
+    preferred: bankerAdvantage > playerAdvantage ? 'banker' : playerAdvantage > bankerAdvantage ? 'player' : 'neutral',
+    gap: Number(Math.abs(bankerAdvantage - playerAdvantage).toFixed(6)),
+  }
+}
+
+function buildRemainingZeroToKTotal(cardShoe = null) {
+  const pointCounts = cardShoe?.remainingPointCounts && typeof cardShoe.remainingPointCounts === 'object' ? cardShoe.remainingPointCounts : {}
+  const rankCounts = cardShoe?.remainingRankCounts && typeof cardShoe.remainingRankCounts === 'object' ? cardShoe.remainingRankCounts : {}
+  const pointTotal = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'].reduce((sum, key) => sum + Math.max(0, Number(pointCounts[key] ?? 0)), 0)
+  const rankTotal = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'].reduce((sum, key) => sum + Math.max(0, Number(rankCounts[key] ?? 0)), 0)
+  return {
+    pointTotal,
+    rankTotal,
+    cardsRemainingTotal: Number(cardShoe?.cardsRemainingTotal ?? (rankTotal || pointTotal || 0)),
+  }
+}
+
+function scoreRoadmapTrendSignalsFeature(derived = {}) {
+  const scores = []
+  if (derived.singleJump) scores.push(invertWinnerScore(derived.previousWinner))
+  if (derived.doubleJump) scores.push(winnerScore(derived.previousWinner))
+  if (derived.longDragon) scores.push(winnerScore(derived.previousWinner))
+  if (derived.brokenDragon || derived.roadBreak) scores.push(winnerScore(derived.previousWinner))
+  if (derived.shortDragon) scores.push(winnerScore(derived.previousWinner))
+  if (derived.turnDragon) scores.push(winnerScore(derived.previousWinner))
+  if (derived.upSlope) scores.push(winnerScore(derived.previousWinner))
+  if (derived.downSlope) scores.push(invertWinnerScore(derived.previousWinner))
+  if (derived.threeJump || derived.fourJump) scores.push(invertWinnerScore(derived.previousWinner))
+  return scores.length ? averageScores(...scores) : neutralScore()
+}
+
+function scoreRoadStructureSignalsFeature(table = {}, derived = {}, roadFeatures = {}) {
+  const scores = [roadStringScore(roadFeatures.bigRoadRaw || table.bigRoadRaw), roadStringScore(roadFeatures.beadPlateRaw || table.beadPlateRaw)]
+  if (derived.roadmapTrendSignals?.singleJump || derived.roadmapTrendSignals?.doubleJump || derived.roadmapTrendSignals?.longDragon) scores.push(scoreRoadmapTrendSignalsFeature(derived))
+  return averageScores(...scores)
+}
+
+function scoreDerivedRoadStructureSignalsFeature(table = {}, derived = {}) {
+  const base = inferDerivedRoadSync(table)
+  const syncScore = base === 'banker' ? { banker: 0.55, player: 0.45 } : base === 'player' ? { banker: 0.45, player: 0.55 } : neutralScore()
+  const structure = derived.derivedRoadStructureSignals ?? buildDerivedRoadStructureSignals(table)
+  if (structure.allRed || structure.allBlue) return syncScore
+  if (structure.mixed) return averageScores(syncScore, neutralScore())
+  return syncScore
+}
+
+function scoreAskRoadSignalsFeature(table = {}, derived = {}) {
+  const signals = derived.askRoadSignals ?? buildAskRoadSignals(table)
+  if (signals.preferred === 'banker') return { banker: 0.56, player: 0.44 }
+  if (signals.preferred === 'player') return { banker: 0.44, player: 0.56 }
+  return neutralScore()
+}
+
+function scoreRemainingZeroToKTotalFeature(round = {}, probabilities = {}) {
+  const aggregate = buildRemainingZeroToKTotal(round.cardShoe ?? round.lastRound?.cardShoe ?? null)
+  if (!aggregate.cardsRemainingTotal) return neutralScore()
+  const pointCounts = round.cardShoe?.remainingPointCounts ?? round.lastRound?.cardShoe?.remainingPointCounts ?? {}
+  const high = ['6', '7', '8', '9'].reduce((sum, key) => sum + Math.max(0, Number(pointCounts[key] ?? 0)), 0)
+  const low = ['0', '1', '2', '3'].reduce((sum, key) => sum + Math.max(0, Number(pointCounts[key] ?? 0)), 0)
+  if (high === low) return ratioScore(probabilities.banker, probabilities.player)
+  const baseSide = pickPrediction(probabilities)
+  return high > low ? winnerScore(baseSide) : invertWinnerScore(baseSide)
+}
 function roadStringScore(raw = '') {
   const text = String(raw)
   const banker = (text.match(/2/g) || []).length + (text.match(/B/gi) || []).length
@@ -558,6 +685,10 @@ function inferRoadTrendFeatures(raw = '') {
       singleJump: false,
       doubleJump: false,
       threeJump: false,
+      fourJump: false,
+      shortDragon: false,
+      brokenDragon: false,
+      turnDragon: false,
       oneBankerTwoPlayer: false,
       onePlayerTwoBanker: false,
       rowPairRun: false,
@@ -579,6 +710,9 @@ function inferRoadTrendFeatures(raw = '') {
   const strongestRun = groups.reduce((best, run) => run.length > best.length ? run : best, { side: null, length: 0 })
   const lengths = groups.map((run) => run.length).slice(-4)
   const lastGroups3 = groups.slice(-3)
+  const lastGroup = groups.at(-1) ?? { side: null, length: 0 }
+  const previousGroup = groups.at(-2) ?? { side: null, length: 0 }
+  const thirdPreviousGroup = groups.at(-3) ?? { side: null, length: 0 }
   return {
     roadTrend: tokens.at(-1),
     longDragon: streakLength >= 3 || strongestRun.length >= 3,
@@ -589,6 +723,10 @@ function inferRoadTrendFeatures(raw = '') {
     singleJump: last6.length >= 5 && last6.slice(-5).every((value, index, arr) => index === 0 || value !== arr[index - 1]),
     doubleJump: last6.length >= 6 && last6[0] === last6[1] && last6[2] === last6[3] && last6[4] === last6[5] && last6[0] !== last6[2] && last6[2] !== last6[4],
     threeJump: lastGroups3.length === 3 && lastGroups3.every((run) => run.length === 3) && lastGroups3[0].side === lastGroups3[2].side && lastGroups3[0].side !== lastGroups3[1].side,
+    fourJump: lastGroups3.length >= 2 && lastGroups3.slice(-2).every((run) => run.length === 4),
+    shortDragon: lastGroup.length >= 2 && lastGroup.length <= 3,
+    brokenDragon: previousGroup.length >= 2 && lastGroup.length === 1 && previousGroup.side !== lastGroup.side,
+    turnDragon: thirdPreviousGroup.length >= 2 && previousGroup.length === 1 && lastGroup.length >= 2 && thirdPreviousGroup.side === lastGroup.side,
     oneBankerTwoPlayer: tailMatches(recent, ['banker', 'player', 'player', 'banker', 'player', 'player']),
     onePlayerTwoBanker: tailMatches(recent, ['player', 'banker', 'banker', 'player', 'banker', 'banker']),
     rowPairRun: groups.length >= 4 && groups.slice(-4).every((run) => run.length >= 2),

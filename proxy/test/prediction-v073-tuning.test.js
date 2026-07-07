@@ -11,7 +11,7 @@ import {
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 
 const removedMainKeys = ['table_id', 'display_name', 'dealer_name', 'room_id', 'order_state']
-const addedMainKeys = ['card_points', 'shoe_remaining_points', 'table_recent_hit_rate', 'direction_calibration', 'historical_backtest', 'pattern_tags']
+const addedMainKeys = ['card_points', 'shoe_remaining_points', 'table_recent_hit_rate', 'direction_calibration', 'historical_backtest', 'roadmap_trend_signals', 'road_structure_signals', 'derived_road_structure_signals', 'ask_road_signals', 'remaining_zero_to_k_total']
 const removedSideKeys = ['dealer_name', 'total_players', 'order_state', 'state']
 const rankKeys = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
 
@@ -53,7 +53,7 @@ test('v073 prediction row records new strategy and preserves requested predictio
     },
     { tableId: 'BAG05', displayName: '桌5', dealerName: 'ignored', roomId: 29, orderState: 1, state: 1, totalPlayers: 20, shoe: 15396, round: 1, beadPlateRaw: '0202', bankerCount: 1, playerCount: 0, tieCount: 0 },
   )
-  assert.equal(row.strategy_version, 'v076_主預測再平衡副預測再縮手版')
+  assert.equal(row.strategy_version, 'v077_路單走勢細分版')
   assert.ok(['banker', 'player'].includes(row.predicted_result))
   assert.equal(row.prediction_features.side_weights.bankerPair.dealer_name, undefined)
   assert.equal(row.prediction_features.side_weights.bankerPair.total_players, undefined)

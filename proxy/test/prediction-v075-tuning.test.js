@@ -13,7 +13,7 @@ const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Num
 const rankKeys = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
 
 test('v075 uses Chinese version and requested side thresholds', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v076_主預測再平衡副預測再縮手版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v077_路單走勢細分版')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 55,
     superSix: 70,
@@ -29,14 +29,14 @@ test('v075 main weights rebalance away from over-player bias while keeping requi
   for (const removed of ['round', 'super_six', 'banker_pair_count', 'player_pair_count']) {
     assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, removed), false)
   }
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.direction_calibration >= 0.10)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.confidence >= 0.10)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.probability_gap >= 0.10)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.card_points >= 0.06)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.shoe_remaining_points >= 0.05)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.direction_calibration >= 0.08)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.confidence >= 0.08)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.probability_gap >= 0.08)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.card_points >= 0.05)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.shoe_remaining_points >= 0.02)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.next_player_road <= 0.01)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.near5_banker_player_bias <= 0.025)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.pattern_tags <= 0.035)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals >= 0.08)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.cockroach_road <= 0.01)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.tie_count <= 0.005)
 })
@@ -78,7 +78,7 @@ test('v075 prediction row records new Chinese version and thresholds remain acti
     },
     { tableId: 'BAG75', shoe: 17001, round: 12, bankerCount: 12, playerCount: 8, tieCount: 1, beadPlateRaw: '01020202', bigRoadRaw: 'BBPBBP' },
   )
-  assert.equal(row.strategy_version, 'v076_主預測再平衡副預測再縮手版')
+  assert.equal(row.strategy_version, 'v077_路單走勢細分版')
   assert.deepEqual(row.short_run_adjustment.sideActionRateTargets, {
     tie: 0.15,
     superSix: 0.1,

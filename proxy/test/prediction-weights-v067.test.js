@@ -5,12 +5,12 @@ import { ALL_MT_EQUAL_MAIN_WEIGHTS, ALL_MT_EQUAL_SIDE_WEIGHTS, SIDE_PREDICTION_T
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 
 test('v067 main recommendation weights strongly favor empirically higher-hit signals', () => {
-  assert.equal(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length, 27)
+  assert.equal(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length, 31)
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.big_road, 0.125)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.big_eye_road, 0.02)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.next_player_road, 0.005)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.shoe_stage, 0.03)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.big_road, 0.09)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.big_eye_road, 0.01)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.next_player_road, 0.003)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.shoe_stage, 0.02)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.card_points > 0)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.shoe_remaining_points > 0)
   assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'table_id'), false)
@@ -41,7 +41,7 @@ test('v067 prediction row records high-hit weight strategy version and keeps ban
       nextBankerRaw: 'weak', nextPlayerRaw: '2222222222',
     },
   )
-  assert.match(row.strategy_version, /v076/)
+  assert.match(row.strategy_version, /v077/)
   assert.ok(['banker', 'player'].includes(row.predicted_result))
-  assert.equal(row.short_run_adjustment.rule, 'v076_主預測再平衡副預測再縮手版')
+  assert.equal(row.short_run_adjustment.rule, 'v077_路單走勢細分版')
 })

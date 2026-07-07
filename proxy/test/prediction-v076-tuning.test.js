@@ -12,7 +12,7 @@ const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Num
 const rankKeys = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
 
 test('v076 uses Chinese version and requested tighter side thresholds', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v076_主預測再平衡副預測再縮手版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v077_路單走勢細分版')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 55,
     superSix: 70,
@@ -25,16 +25,16 @@ test('v076 uses Chinese version and requested tighter side thresholds', () => {
 
 test('v076 main weights further reduce player-biased noise and emphasize calibration', () => {
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.direction_calibration >= 0.12)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.confidence >= 0.12)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.probability_gap >= 0.12)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.table_recent_hit_rate >= 0.09)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.big_road >= 0.12)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.card_points >= 0.07)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.shoe_remaining_points >= 0.055)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.next_player_road <= 0.005)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.near5_banker_player_bias <= 0.015)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.pattern_tags <= 0.025)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.direction_calibration >= 0.10)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.confidence >= 0.08)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.probability_gap >= 0.08)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.table_recent_hit_rate >= 0.07)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.big_road >= 0.09)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.card_points >= 0.055)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.shoe_remaining_points >= 0.025)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.next_player_road <= 0.003)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.near5_banker_player_bias <= 0.01)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals >= 0.08)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.cockroach_road <= 0.005)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.tie_count <= 0.001)
 })
@@ -68,6 +68,6 @@ test('v076 prediction row records new strategy without changing main action-rate
     },
     { tableId: 'BAG76', shoe: 18001, round: 18, bankerCount: 12, playerCount: 8, tieCount: 1, beadPlateRaw: '01020202', bigRoadRaw: 'BBPBBP' },
   )
-  assert.equal(row.strategy_version, 'v076_主預測再平衡副預測再縮手版')
+  assert.equal(row.strategy_version, 'v077_路單走勢細分版')
   assert.equal(row.predicted_result === 'banker' || row.predicted_result === 'player', true)
 })
