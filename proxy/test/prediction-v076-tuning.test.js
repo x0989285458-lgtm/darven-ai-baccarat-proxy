@@ -12,7 +12,7 @@ const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Num
 const rankKeys = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
 
 test('v076 uses Chinese version and requested tighter side thresholds', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v077_路單走勢細分版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v078_副預測剩餘牌統整版')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 55,
     superSix: 70,
@@ -34,7 +34,7 @@ test('v076 main weights further reduce player-biased noise and emphasize calibra
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.shoe_remaining_points >= 0.025)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.next_player_road <= 0.003)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.near5_banker_player_bias <= 0.01)
-  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals >= 0.08)
+  assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals >= 0.10)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.cockroach_road <= 0.005)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.tie_count <= 0.001)
 })
@@ -42,14 +42,14 @@ test('v076 main weights further reduce player-biased noise and emphasize calibra
 test('v076 side weights keep tie useful but shrink superSix pair and dragon noise', () => {
   for (const [target, profile] of Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES)) {
     assert.ok(Math.abs(sum(profile) - 1) < 1e-9, `${target} must sum to 1`)
-    assert.ok(rankKeys.some((key) => profile[key] > 0), `${target} keeps derived rank features`)
+    assert.ok(profile.remaining_rank_total > 0, `${target} keeps A-K統整剩餘牌數`)
   }
   assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.tie.tie_risk >= 0.34)
   assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.tie.point_diff >= 0.28)
   assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.tie.bead_road, 0)
   assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.table_side_history, 0)
   assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.super_six >= 0.32)
-  assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.remaining_6 >= 0.25)
+  assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.remaining_rank_total >= 0.25)
   assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair.pair_risk >= 0.48)
   assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.playerPair.pair_risk >= 0.48)
   assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.bankerDragon.point_diff >= 0.42)
@@ -68,6 +68,6 @@ test('v076 prediction row records new strategy without changing main action-rate
     },
     { tableId: 'BAG76', shoe: 18001, round: 18, bankerCount: 12, playerCount: 8, tieCount: 1, beadPlateRaw: '01020202', bigRoadRaw: 'BBPBBP' },
   )
-  assert.equal(row.strategy_version, 'v077_路單走勢細分版')
+  assert.equal(row.strategy_version, 'v078_副預測剩餘牌統整版')
   assert.equal(row.predicted_result === 'banker' || row.predicted_result === 'player', true)
 })

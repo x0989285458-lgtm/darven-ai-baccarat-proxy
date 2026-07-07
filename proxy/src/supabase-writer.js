@@ -3,7 +3,7 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v049_no_observe_confidence_30_80'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v077_路單走勢細分版'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v078_副預測剩餘牌統整版'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -27,16 +27,18 @@ const MAIN_WEIGHT_KEYS = [
   'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road', 'next_banker_road', 'next_player_road',
   'previous_winner', 'streak_length', 'near5_banker_player_bias', 'table_recent_hit_rate', 'direction_calibration',
   'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'historical_backtest',
-  'roadmap_trend_signals', 'road_structure_signals', 'derived_road_structure_signals', 'ask_road_signals', 'remaining_zero_to_k_total',
+  'roadmap_trend_signals', 'road_structure_signals', 'derived_road_structure_signals', 'ask_road_signals',
 ]
 
 const RANK_REMAINING_FEATURE_KEYS = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
+const RANK_REMAINING_TOTAL_KEY = 'remaining_rank_total'
+const RANK_REMAINING_FACES = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
 
 export const SIDE_WEIGHT_KEYS = [
   'tie_count', 'banker_pair_count', 'player_pair_count', 'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road',
   'next_banker_road', 'next_player_road', 'shoe', 'round', 'shoe_stage',
   'player_point', 'banker_point', 'point_diff', 'banker_natural', 'player_natural', 'banker_dragon', 'player_dragon', 'super_six',
-  'tie_risk', 'pair_risk', 'ask_road_conflict', 'road_chaos', 'table_side_history', 'remaining_rank_pressure', ...RANK_REMAINING_FEATURE_KEYS,
+  'tie_risk', 'pair_risk', 'ask_road_conflict', 'road_chaos', 'table_side_history', 'remaining_rank_pressure', RANK_REMAINING_TOTAL_KEY,
 ]
 
 export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildWeightedProfile(MAIN_WEIGHT_KEYS, {
@@ -45,8 +47,8 @@ export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildWeightedProfile(MAIN_WEIGHT_KEYS, 
   near5_banker_player_bias: 0.01, table_recent_hit_rate: 0.07, direction_calibration: 0.10,
   confidence: 0.08, probability_gap: 0.08, card_points: 0.055, shoe_remaining_points: 0.025,
   historical_backtest: 0.035, shoe_stage: 0.02, banker_count: 0.02, player_count: 0.015, tie_count: 0,
-  roadmap_trend_signals: 0.08, road_structure_signals: 0.06, derived_road_structure_signals: 0.06,
-  ask_road_signals: 0.079, remaining_zero_to_k_total: 0.05,
+  roadmap_trend_signals: 0.10, road_structure_signals: 0.075, derived_road_structure_signals: 0.06,
+  ask_road_signals: 0.094,
 })
 
 export const SIDE_PREDICTION_ACTION_RATE_TARGETS = Object.freeze({
@@ -63,36 +65,24 @@ export const SIDE_PREDICTION_TARGET_HIT_RATE = 0.5
 export const SIDE_PREDICTION_WEIGHT_PROFILES = Object.freeze({
   tie: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
     tie_risk: 0.34, point_diff: 0.28, remaining_rank_pressure: 0.19, tie_count: 0.06, road_chaos: 0.05,
-    table_side_history: 0.04, ask_road_conflict: 0.027,
-    remaining_A: 0.001, remaining_2: 0.001, remaining_3: 0.001, remaining_4: 0.001, remaining_5: 0.001, remaining_6: 0.001,
-    remaining_7: 0.001, remaining_8: 0.001, remaining_9: 0.001, remaining_10: 0.001, remaining_J: 0.001, remaining_Q: 0.001, remaining_K: 0.001,
+    table_side_history: 0.04, ask_road_conflict: 0.027, remaining_rank_total: 0.013,
   }),
   superSix: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    super_six: 0.32, banker_point: 0.24, remaining_6: 0.258, point_diff: 0.08, banker_natural: 0.08,
-    remaining_A: 0.003, remaining_2: 0.003, remaining_3: 0.003, remaining_4: 0.003, remaining_5: 0.003,
-    remaining_7: 0.001, remaining_8: 0.001, remaining_9: 0.001, remaining_10: 0.001, remaining_J: 0.001, remaining_Q: 0.001, remaining_K: 0.001,
+    super_six: 0.32, banker_point: 0.24, remaining_rank_total: 0.28, point_diff: 0.08, banker_natural: 0.08,
   }),
   bankerPair: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    pair_risk: 0.48, remaining_rank_pressure: 0.42, table_side_history: 0.009,
-    remaining_A: 0.007, remaining_2: 0.007, remaining_3: 0.007, remaining_4: 0.007, remaining_5: 0.007, remaining_6: 0.007,
-    remaining_7: 0.007, remaining_8: 0.007, remaining_9: 0.007, remaining_10: 0.007, remaining_J: 0.007, remaining_Q: 0.007, remaining_K: 0.007,
+    pair_risk: 0.48, remaining_rank_pressure: 0.42, table_side_history: 0.009, remaining_rank_total: 0.091,
   }),
   playerPair: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    pair_risk: 0.48, remaining_rank_pressure: 0.42, table_side_history: 0.009,
-    remaining_A: 0.007, remaining_2: 0.007, remaining_3: 0.007, remaining_4: 0.007, remaining_5: 0.007, remaining_6: 0.007,
-    remaining_7: 0.007, remaining_8: 0.007, remaining_9: 0.007, remaining_10: 0.007, remaining_J: 0.007, remaining_Q: 0.007, remaining_K: 0.007,
+    pair_risk: 0.48, remaining_rank_pressure: 0.42, table_side_history: 0.009, remaining_rank_total: 0.091,
   }),
   bankerDragon: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
     point_diff: 0.42, banker_dragon: 0.18, banker_point: 0.16, banker_natural: 0.17, remaining_rank_pressure: 0.04,
-    table_side_history: 0.004,
-    remaining_A: 0.002, remaining_2: 0.002, remaining_3: 0.002, remaining_4: 0.002, remaining_5: 0.002, remaining_6: 0.002,
-    remaining_7: 0.002, remaining_8: 0.002, remaining_9: 0.002, remaining_10: 0.002, remaining_J: 0.002, remaining_Q: 0.002, remaining_K: 0.002,
+    table_side_history: 0.004, remaining_rank_total: 0.026,
   }),
   playerDragon: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
     point_diff: 0.42, player_dragon: 0.18, player_point: 0.16, player_natural: 0.17, remaining_rank_pressure: 0.04,
-    table_side_history: 0.004,
-    remaining_A: 0.002, remaining_2: 0.002, remaining_3: 0.002, remaining_4: 0.002, remaining_5: 0.002, remaining_6: 0.002,
-    remaining_7: 0.002, remaining_8: 0.002, remaining_9: 0.002, remaining_10: 0.002, remaining_J: 0.002, remaining_Q: 0.002, remaining_K: 0.002,
+    table_side_history: 0.004, remaining_rank_total: 0.026,
   }),
 })
 
@@ -353,7 +343,6 @@ function buildDerivedMainFeatures(round = {}, table = {}, facts = {}, probabilit
     roadStructureSignals: buildRoadStructureSignals(table, trend),
     derivedRoadStructureSignals: buildDerivedRoadStructureSignals(table),
     askRoadSignals: buildAskRoadSignals(table),
-    remainingZeroToKTotal: buildRemainingZeroToKTotal(round.cardShoe ?? round.lastRound?.cardShoe ?? null),
     directionCalibration: probabilities.banker >= probabilities.player ? 'banker_bias' : 'player_bias',
     probabilityGap: Math.abs(Number(probabilities.banker ?? 0) - Number(probabilities.player ?? 0)),
     tableRecentHitRate: tablePerformance.recentHitRate,
@@ -422,7 +411,6 @@ function scoreAllMtFeature(key, ctx) {
     case 'road_structure_signals': return scoreRoadStructureSignalsFeature(table, derived, roadFeatures)
     case 'derived_road_structure_signals': return scoreDerivedRoadStructureSignalsFeature(table, derived)
     case 'ask_road_signals': return scoreAskRoadSignalsFeature(table, derived)
-    case 'remaining_zero_to_k_total': return scoreRemainingZeroToKTotalFeature(round, probabilities)
     case 'confidence': return ratioScore(probabilities.banker, probabilities.player)
     case 'probability_gap': return ratioScore(probabilities.banker, probabilities.player)
     case 'super_six': {
@@ -863,8 +851,10 @@ function buildSideFeatureScores(table = {}, round = {}) {
 
 function buildSideCardRankFeatures(cardShoe = null) {
   const remainingRankCounts = normalizeRemainingRankCounts(cardShoe?.remainingRankCounts)
+  const remainingRankTotal = sumRemainingRankCounts(remainingRankCounts)
   return {
     remainingRankCounts,
+    remainingRankTotal,
     remainingRankFeatureScores: buildRemainingRankFeatureScores(cardShoe),
     cardsSeenTotal: cardShoe?.cardsSeenTotal ?? null,
     cardsRemainingTotal: cardShoe?.cardsRemainingTotal ?? null,
@@ -879,18 +869,19 @@ function buildSidePredictionRankInputs(cardShoe = null) {
 
 function buildRemainingRankFeatureScores(cardShoe = null) {
   const remainingRankCounts = normalizeRemainingRankCounts(cardShoe?.remainingRankCounts)
-  const totalRanks = Object.values(remainingRankCounts).reduce((sum, value) => sum + Number(value ?? 0), 0)
-  const average = totalRanks / RANK_REMAINING_FEATURE_KEYS.length || 0
-  const featureScores = Object.fromEntries(RANK_REMAINING_FEATURE_KEYS.map((featureKey) => {
-    const face = featureKey.replace('remaining_', '')
-    const score = average ? (Number(remainingRankCounts[face] ?? 0) / average) * 50 : 50
-    return [featureKey, clampPercent(score, 0, 100)]
-  }))
-  const spread = Math.max(...Object.values(remainingRankCounts)) - Math.min(...Object.values(remainingRankCounts))
+  const totalRanks = sumRemainingRankCounts(remainingRankCounts)
+  const average = totalRanks / RANK_REMAINING_FACES.length || 0
+  const values = Object.values(remainingRankCounts)
+  const spread = values.length ? Math.max(...values) - Math.min(...values) : 0
+  const expectedTotal = Math.max(1, Number(cardShoe?.deckCount ?? 8) * 52)
   return {
     remaining_rank_pressure: clampPercent((spread / Math.max(1, average)) * 50, 0, 100),
-    ...featureScores,
+    remaining_rank_total: clampPercent((totalRanks / expectedTotal) * 100, 0, 100),
   }
+}
+
+function sumRemainingRankCounts(remainingRankCounts = {}) {
+  return RANK_REMAINING_FACES.reduce((sum, face) => sum + Math.max(0, Number(remainingRankCounts?.[face] ?? 0)), 0)
 }
 
 function normalizeRemainingRankCounts(counts = {}) {
