@@ -89,12 +89,12 @@ export const SIDE_PREDICTION_WEIGHT_PROFILES = Object.freeze({
 export const ALL_MT_EQUAL_SIDE_WEIGHTS = SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair
 
 export const SIDE_PREDICTION_THRESHOLDS = {
-  tie: 38,
-  superSix: 42,
-  bankerPair: 36,
-  playerPair: 36,
-  bankerDragon: 72,
-  playerDragon: 72,
+  tie: 20,
+  superSix: 20,
+  bankerPair: 20,
+  playerPair: 20,
+  bankerDragon: 20,
+  playerDragon: 20,
 }
 
 const DEFAULT_EQUAL_WEIGHTS = Object.freeze({
@@ -920,10 +920,9 @@ export function buildSideActions(predictions = {}, mainPrediction = null) {
   const actions = Object.fromEntries(Object.entries(SIDE_PREDICTION_THRESHOLDS).map(([key, threshold]) => [key, Number(predictions[key] ?? 0) >= threshold]))
   const bankerDragon = Math.round(Number(predictions.bankerDragon ?? 0))
   const playerDragon = Math.round(Number(predictions.playerDragon ?? 0))
-  const dragonDiff = Math.abs(bankerDragon - playerDragon)
   actions.superSix = Boolean(actions.superSix) && mainPrediction === 'banker'
-  actions.bankerDragon = mainPrediction === 'banker' && bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon && dragonDiff >= 6
-  actions.playerDragon = mainPrediction === 'player' && playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon && dragonDiff >= 6
+  actions.bankerDragon = mainPrediction === 'banker' && bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon
+  actions.playerDragon = mainPrediction === 'player' && playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon
   return actions
 }
 

@@ -18,12 +18,12 @@ const rankKeys = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'r
 test('v074 uses Chinese version name and preserves action-rate thresholds', () => {
   assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v080_高勝率主權重副預測修正版')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
-    tie: 38,
-    superSix: 42,
-    bankerPair: 36,
-    playerPair: 36,
-    bankerDragon: 72,
-    playerDragon: 72,
+    tie: 20,
+    superSix: 20,
+    bankerPair: 20,
+    playerPair: 20,
+    bankerDragon: 20,
+    playerDragon: 20,
   })
 })
 

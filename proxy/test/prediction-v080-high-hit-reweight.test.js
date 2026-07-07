@@ -28,12 +28,12 @@ test('v080 raises empirically higher-hit main features and suppresses weak road 
 
 test('v080 side prediction thresholds match observed score ceilings', () => {
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
-    tie: 38,
-    superSix: 42,
-    bankerPair: 36,
-    playerPair: 36,
-    bankerDragon: 72,
-    playerDragon: 72,
+    tie: 20,
+    superSix: 20,
+    bankerPair: 20,
+    playerPair: 20,
+    bankerDragon: 20,
+    playerDragon: 20,
   })
   assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.remaining_rank_total >= 0.32)
   assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair.remaining_rank_total >= 0.13)

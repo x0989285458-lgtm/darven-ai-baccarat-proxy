@@ -22,12 +22,12 @@ test('v067 side recommendation weights and thresholds suppress low-hit bonus noi
   assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.pair_risk, 0.43)
   assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.banker_pair_count, 0)
   assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.remaining_rank_pressure, 0.42)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerPair, 36)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerPair, 36)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.tie, 38)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.superSix, 42)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerDragon, 72)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerDragon, 72)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerPair, 20)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerPair, 20)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.tie, 20)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.superSix, 20)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerDragon, 20)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerDragon, 20)
 })
 
 test('v067 prediction row records high-hit weight strategy version and keeps banker/player output', () => {

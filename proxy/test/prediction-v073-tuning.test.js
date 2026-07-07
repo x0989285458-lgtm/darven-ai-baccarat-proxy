@@ -23,12 +23,12 @@ test('v073 main prediction removes unstable identity fields and gives real weigh
 
 test('v073 side prediction thresholds are original baseline plus five', () => {
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
-    tie: 38,
-    superSix: 42,
-    bankerPair: 36,
-    playerPair: 36,
-    bankerDragon: 72,
-    playerDragon: 72,
+    tie: 20,
+    superSix: 20,
+    bankerPair: 20,
+    playerPair: 20,
+    bankerDragon: 20,
+    playerDragon: 20,
   })
 })
 

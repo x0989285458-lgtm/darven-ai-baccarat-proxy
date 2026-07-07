@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { SIDE_PREDICTION_THRESHOLDS, SIDE_PREDICTION_ACTION_RATE_TARGETS, buildPredictionResultRow } from '../src/supabase-writer.js'
 
 test('v071 enables banker/player dragon predictions with action-rate targets', () => {
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerDragon, 72)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerDragon, 72)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerDragon, 20)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerDragon, 20)
   assert.equal(SIDE_PREDICTION_ACTION_RATE_TARGETS.bankerDragon, 0.08)
   assert.equal(SIDE_PREDICTION_ACTION_RATE_TARGETS.playerDragon, 0.08)
 })
