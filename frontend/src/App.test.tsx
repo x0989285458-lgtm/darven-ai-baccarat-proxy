@@ -426,7 +426,7 @@ describe('AI百家預測軟體', () => {
   })
 
 
-  it('v063 dragon bonus can only action one side and requires at least 6-point separation', () => {
+  it('v083 dragon bonus follows main side and threshold', () => {
     expect(getSidePredictionActions({
       tie: 0,
       superSix: 0,
@@ -442,7 +442,7 @@ describe('AI百家預測軟體', () => {
       playerPair: 0,
       bankerDragon: 95,
       playerDragon: 95,
-    }, 'Banker')).toEqual(expect.objectContaining({ bankerDragon: false, playerDragon: false }))
+    }, 'Banker')).toEqual(expect.objectContaining({ bankerDragon: true, playerDragon: false }))
   })
 
   it('v083 gates super six and dragon bonus by main prediction', () => {

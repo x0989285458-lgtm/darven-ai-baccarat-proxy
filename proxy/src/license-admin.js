@@ -410,9 +410,8 @@ function sideActionStats(rows, keys) {
     if (keys.includes('bankerDragon') || keys.includes('playerDragon')) {
       const bankerDragon = Math.round(sideScore(f, 'bankerDragon'))
       const playerDragon = Math.round(sideScore(f, 'playerDragon'))
-      const diff = Math.abs(bankerDragon - playerDragon)
-      if (bankerDragon >= SIDE_THRESHOLDS.bankerDragon && bankerDragon > playerDragon && diff >= 6) { actions += 1; if (sideHit(f, 'bankerDragon')) hits += 1 }
-      else if (playerDragon >= SIDE_THRESHOLDS.playerDragon && playerDragon > bankerDragon && diff >= 6) { actions += 1; if (sideHit(f, 'playerDragon')) hits += 1 }
+      if (bankerDragon >= SIDE_THRESHOLDS.bankerDragon) { actions += 1; if (sideHit(f, 'bankerDragon')) hits += 1 }
+      if (playerDragon >= SIDE_THRESHOLDS.playerDragon) { actions += 1; if (sideHit(f, 'playerDragon')) hits += 1 }
     }
   }
   return { actions, hits, rate: pctText(hits, actions) }

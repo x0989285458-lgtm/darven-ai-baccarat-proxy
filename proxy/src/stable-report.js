@@ -513,10 +513,9 @@ function buildSideActions(predictions = {}, mainPrediction = null) {
   const actions = Object.fromEntries(Object.entries(SIDE_PREDICTION_THRESHOLDS).map(([key, threshold]) => [key, Number(predictions[key] ?? 0) >= threshold]))
   const bankerDragon = Math.round(Number(predictions.bankerDragon ?? 0))
   const playerDragon = Math.round(Number(predictions.playerDragon ?? 0))
-  const dragonDiff = Math.abs(bankerDragon - playerDragon)
   actions.superSix = Boolean(actions.superSix) && mainPrediction === '莊'
-  actions.bankerDragon = mainPrediction === '莊' && bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon && dragonDiff >= 6
-  actions.playerDragon = mainPrediction === '閒' && playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon && dragonDiff >= 6
+  actions.bankerDragon = mainPrediction === '莊' && bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon
+  actions.playerDragon = mainPrediction === '閒' && playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon
   return actions
 }
 

@@ -138,10 +138,9 @@ export function getSidePredictionActions(predictions: BonusPredictions, mainPred
   const actions = Object.fromEntries(keys.map((key) => [key, isSidePredictionActionable(key, predictions[key])])) as SideActions
   const bankerDragon = Math.round(predictions.bankerDragon ?? 0)
   const playerDragon = Math.round(predictions.playerDragon ?? 0)
-  const dragonDiff = Math.abs(bankerDragon - playerDragon)
   actions.superSix = actions.superSix && mainPrediction === 'Banker'
-  actions.bankerDragon = mainPrediction === 'Banker' && bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon && dragonDiff >= 6
-  actions.playerDragon = mainPrediction === 'Player' && playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon && dragonDiff >= 6
+  actions.bankerDragon = mainPrediction === 'Banker' && bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon
+  actions.playerDragon = mainPrediction === 'Player' && playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon
   return actions
 }
 
