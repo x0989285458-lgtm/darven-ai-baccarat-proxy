@@ -57,12 +57,12 @@ test('v050 low-performing table keeps banker/player prediction and records all-M
     recentPredictionCount: 25,
   })
 
-  assert.equal(prediction.strategy_version, 'v082_五路問路修路點數入庫版')
+  assert.equal(prediction.strategy_version, 'v083_副預測門檻調整版')
   assert.equal(prediction.prediction_features.table_performance.recentHitRate, 0.44)
   assert.match(prediction.predicted_result, /^(banker|player)$/)
   assert.equal(prediction.confidence >= 30, true)
   assert.equal(prediction.confidence <= 80, true)
-  assert.equal(prediction.short_run_adjustment.rule, 'v082_五路問路修路點數入庫版')
+  assert.equal(prediction.short_run_adjustment.rule, 'v083_副預測門檻調整版')
 })
 
 test('v062 equal banker/player main scores use tie-breakers instead of defaulting to banker', () => {
@@ -133,7 +133,7 @@ test('v067 prediction rows persist high-hit main and side weights plus captured 
     sourceUpdatedAt: '2026-07-01T09:00:00Z',
   })
 
-  assert.equal(prediction.strategy_version, 'v082_五路問路修路點數入庫版')
+  assert.equal(prediction.strategy_version, 'v083_副預測門檻調整版')
   assert.deepEqual(prediction.feature_weights, ALL_MT_EQUAL_MAIN_WEIGHTS)
   assert.deepEqual(prediction.prediction_features.side_weights.bankerPair, ALL_MT_EQUAL_SIDE_WEIGHTS)
   assert.equal(Object.keys(prediction.prediction_features.side_weights.tie).length, 28)
@@ -163,7 +163,7 @@ test('v050 high-performing table still keeps confidence in 30-80 range', () => {
     recentPredictionCount: 25,
   })
 
-  assert.equal(neutralPrediction.strategy_version, 'v082_五路問路修路點數入庫版')
+  assert.equal(neutralPrediction.strategy_version, 'v083_副預測門檻調整版')
   assert.equal(neutralPrediction.confidence >= 30, true)
   assert.equal(neutralPrediction.confidence <= 80, true)
   assert.equal(boostedPrediction.confidence <= 80, true)

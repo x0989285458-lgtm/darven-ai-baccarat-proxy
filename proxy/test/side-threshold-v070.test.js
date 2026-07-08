@@ -3,12 +3,12 @@ import assert from 'node:assert/strict'
 import { SIDE_PREDICTION_THRESHOLDS, buildSideActions } from '../src/supabase-writer.js'
 
 test('v075 side thresholds shrink side actions and dragon remains directional', () => {
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.tie, 20)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.superSix, 20)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerPair, 20)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerPair, 20)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerDragon, 20)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerDragon, 20)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.tie, 45)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.superSix, 45)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerPair, 30)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerPair, 30)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerDragon, 40)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerDragon, 40)
 
   const actions = buildSideActions({ tie: 55, superSix: 70, bankerPair: 75, playerPair: 75, bankerDragon: 85, playerDragon: 20 }, 'banker')
   assert.equal(actions.tie, true)

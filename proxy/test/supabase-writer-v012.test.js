@@ -84,7 +84,7 @@ test('v012 builds Supabase roadmap and prediction rows for short-retention learn
   assert.equal(event.super_six, false)
   assert.equal(event.raw_event.sourceAction.includes('summary'), true)
 
-  assert.equal(prediction.strategy_version, 'v082_五路問路修路點數入庫版')
+  assert.equal(prediction.strategy_version, 'v083_副預測門檻調整版')
   assert.ok(['banker', 'player'].includes(prediction.predicted_result))
   assert.equal(prediction.actual_result, 'banker')
   assert.equal(typeof prediction.is_hit, 'boolean')

@@ -56,12 +56,12 @@ export type BonusPredictions = {
 }
 
 export const SIDE_PREDICTION_THRESHOLDS = {
-  tie: 85,
-  superSix: 90,
-  bankerPair: 80,
-  playerPair: 80,
-  bankerDragon: 101,
-  playerDragon: 101,
+  tie: 45,
+  superSix: 45,
+  bankerPair: 30,
+  playerPair: 30,
+  bankerDragon: 40,
+  playerDragon: 40,
 } as const
 
 function buildEqualWeights<const T extends readonly string[]>(keys: T) {
@@ -108,8 +108,8 @@ export const SIDE_PREDICTION_ACTION_RATE_TARGETS = Object.freeze({
   superSix: 0.10,
   bankerPair: 0.20,
   playerPair: 0.20,
-  bankerDragon: 0,
-  playerDragon: 0,
+  bankerDragon: 0.08,
+  playerDragon: 0.08,
 })
 export const SIDE_PREDICTION_TARGET_HIT_RATE = 0.5
 export const SIDE_PREDICTION_WEIGHT_PROFILES = Object.freeze({
@@ -130,7 +130,6 @@ export type SideActuals = Record<SidePredictionKey, boolean> & { mainPrediction?
 export type SideActions = Record<SidePredictionKey, boolean>
 
 export function isSidePredictionActionable(key: SidePredictionKey, probability: number) {
-  if (key === 'bankerDragon' || key === 'playerDragon') return false
   return Math.round(probability) >= SIDE_PREDICTION_THRESHOLDS[key]
 }
 

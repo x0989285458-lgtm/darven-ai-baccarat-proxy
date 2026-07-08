@@ -3,7 +3,7 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v049_no_observe_confidence_30_80'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v082_五路問路修路點數入庫版'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v083_副預測門檻調整版'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -81,12 +81,12 @@ export const SIDE_PREDICTION_WEIGHT_PROFILES = Object.freeze({
 export const ALL_MT_EQUAL_SIDE_WEIGHTS = SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair
 
 export const SIDE_PREDICTION_THRESHOLDS = {
-  tie: 20,
-  superSix: 20,
-  bankerPair: 20,
-  playerPair: 20,
-  bankerDragon: 20,
-  playerDragon: 20,
+  tie: 45,
+  superSix: 45,
+  bankerPair: 30,
+  playerPair: 30,
+  bankerDragon: 40,
+  playerDragon: 40,
 }
 
 const DEFAULT_EQUAL_WEIGHTS = Object.freeze({
