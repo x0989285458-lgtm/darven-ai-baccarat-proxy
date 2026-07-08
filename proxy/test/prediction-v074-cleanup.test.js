@@ -16,14 +16,14 @@ const sideTargets = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDrago
 const rankKeys = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
 
 test('v074 uses Chinese version name and preserves action-rate thresholds', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v084_副預測比例收斂版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v085_比例門檻校正版')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
-    tie: 50,
-    superSix: 50,
-    bankerPair: 35,
-    playerPair: 35,
-    bankerDragon: 45,
-    playerDragon: 45,
+    tie: 47,
+    superSix: 65,
+    bankerPair: 50,
+    playerPair: 50,
+    bankerDragon: 53,
+    playerDragon: 53,
   })
 })
 
@@ -64,7 +64,7 @@ test('v074 prediction row records Chinese strategy and keeps derived point/rank 
       nextBankerRaw: '1111', nextPlayerRaw: '2222',
     },
   )
-  assert.equal(row.strategy_version, 'v084_副預測比例收斂版')
+  assert.equal(row.strategy_version, 'v085_比例門檻校正版')
   assert.ok(row.prediction_features.point_features)
   assert.ok(row.prediction_features.card_shoe_features)
   assert.ok(row.prediction_features.side_card_rank_features)

@@ -56,12 +56,12 @@ export type BonusPredictions = {
 }
 
 export const SIDE_PREDICTION_THRESHOLDS = {
-  tie: 50,
-  superSix: 50,
-  bankerPair: 35,
-  playerPair: 35,
-  bankerDragon: 45,
-  playerDragon: 45,
+  tie: 47,
+  superSix: 65,
+  bankerPair: 50,
+  playerPair: 50,
+  bankerDragon: 53,
+  playerDragon: 53,
 } as const
 
 function buildEqualWeights<const T extends readonly string[]>(keys: T) {
@@ -113,12 +113,12 @@ export const SIDE_PREDICTION_ACTION_RATE_TARGETS = Object.freeze({
 })
 export const SIDE_PREDICTION_TARGET_HIT_RATE = 0.5
 export const SIDE_PREDICTION_WEIGHT_PROFILES = Object.freeze({
-  tie: buildWeightedProfile(ALL_MT_EQUAL_SIDE_WEIGHT_KEYS, { tie_risk: 0.45, tie_count: 0.25, shoe_stage: 0.15, road_chaos: 0.10, table_side_history: 0.05 }),
-  superSix: buildWeightedProfile(ALL_MT_EQUAL_SIDE_WEIGHT_KEYS, { banker_point: 0.40, table_side_history: 0.20, super_six: 0.20, point_diff: 0.10, shoe_stage: 0.10 }),
-  bankerPair: buildWeightedProfile(ALL_MT_EQUAL_SIDE_WEIGHT_KEYS, { pair_risk: 0.45, table_side_history: 0.25, banker_pair_count: 0.15, shoe_stage: 0.10, banker_point: 0.05 }),
-  playerPair: buildWeightedProfile(ALL_MT_EQUAL_SIDE_WEIGHT_KEYS, { pair_risk: 0.45, table_side_history: 0.25, player_pair_count: 0.15, shoe_stage: 0.10, player_point: 0.05 }),
-  bankerDragon: buildWeightedProfile(ALL_MT_EQUAL_SIDE_WEIGHT_KEYS, { point_diff: 0.35, banker_natural: 0.25, banker_point: 0.20, banker_dragon: 0.15, big_road: 0.05 }),
-  playerDragon: buildWeightedProfile(ALL_MT_EQUAL_SIDE_WEIGHT_KEYS, { point_diff: 0.35, player_natural: 0.25, player_point: 0.20, player_dragon: 0.15, big_road: 0.05 }),
+  tie: buildWeightedProfile(ALL_MT_EQUAL_SIDE_WEIGHT_KEYS, { tie_risk: 0.40, tie_count: 0.25, shoe_stage: 0.15, road_chaos: 0.10, table_side_history: 0.10 }),
+  superSix: buildWeightedProfile(ALL_MT_EQUAL_SIDE_WEIGHT_KEYS, { banker_point: 0.45, table_side_history: 0.20, super_six: 0.20, point_diff: 0.05, shoe_stage: 0.10 }),
+  bankerPair: buildWeightedProfile(ALL_MT_EQUAL_SIDE_WEIGHT_KEYS, { pair_risk: 0.10, table_side_history: 0.30, banker_pair_count: 0.25, shoe_stage: 0.10, banker_point: 0.25 }),
+  playerPair: buildWeightedProfile(ALL_MT_EQUAL_SIDE_WEIGHT_KEYS, { pair_risk: 0.10, table_side_history: 0.30, player_pair_count: 0.25, shoe_stage: 0.10, player_point: 0.25 }),
+  bankerDragon: buildWeightedProfile(ALL_MT_EQUAL_SIDE_WEIGHT_KEYS, { point_diff: 0.35, banker_natural: 0.25, banker_point: 0.20, banker_dragon: 0.10, big_road: 0.10 }),
+  playerDragon: buildWeightedProfile(ALL_MT_EQUAL_SIDE_WEIGHT_KEYS, { point_diff: 0.35, player_natural: 0.25, player_point: 0.20, player_dragon: 0.10, big_road: 0.10 }),
 })
 export const ALL_MT_EQUAL_SIDE_WEIGHTS = SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair
 export const MAIN_PREDICTION_WEIGHTS = ALL_MT_EQUAL_MAIN_WEIGHTS

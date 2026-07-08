@@ -317,11 +317,11 @@ describe('AI百家預測軟體', () => {
       total_round_player_pair: 2,
     })).toEqual({
       bankerDragon: 51,
-      playerDragon: 39,
-      bankerPair: 72,
-      playerPair: 71,
+      playerDragon: 40,
+      bankerPair: 55,
+      playerPair: 49,
       superSix: 45,
-      tie: 48,
+      tie: 47,
     })
   })
 
@@ -376,20 +376,20 @@ describe('AI百家預測軟體', () => {
 
   it('v051 records every side prediction for learning but only counts action when each threshold is reached', () => {
     expect(SIDE_PREDICTION_THRESHOLDS).toEqual({
-      tie: 50,
-      superSix: 50,
-      bankerPair: 35,
-      playerPair: 35,
-      bankerDragon: 45,
-      playerDragon: 45,
+      tie: 47,
+      superSix: 65,
+      bankerPair: 50,
+      playerPair: 50,
+      bankerDragon: 53,
+      playerDragon: 53,
     })
     expect(createSidePredictionLearningRecord({
-      tie: 44,
-      superSix: 44,
-      bankerPair: 29,
-      playerPair: 35,
-      bankerDragon: 45,
-      playerDragon: 39,
+      tie: 46,
+      superSix: 64,
+      bankerPair: 49,
+      playerPair: 50,
+      bankerDragon: 53,
+      playerDragon: 52,
     }, {
       tie: true,
       superSix: false,
@@ -413,16 +413,16 @@ describe('AI百家預測軟體', () => {
       }),
     }))
 
-    expect(isSidePredictionActionable('tie', 49)).toBe(false)
-    expect(isSidePredictionActionable('tie', 50)).toBe(true)
-    expect(isSidePredictionActionable('superSix', 49)).toBe(false)
-    expect(isSidePredictionActionable('superSix', 50)).toBe(true)
-    expect(isSidePredictionActionable('bankerPair', 34)).toBe(false)
-    expect(isSidePredictionActionable('playerPair', 35)).toBe(true)
-    expect(isSidePredictionActionable('bankerDragon', 44)).toBe(false)
-    expect(isSidePredictionActionable('bankerDragon', 45)).toBe(true)
-    expect(isSidePredictionActionable('playerDragon', 44)).toBe(false)
-    expect(isSidePredictionActionable('playerDragon', 45)).toBe(true)
+    expect(isSidePredictionActionable('tie', 46)).toBe(false)
+    expect(isSidePredictionActionable('tie', 47)).toBe(true)
+    expect(isSidePredictionActionable('superSix', 64)).toBe(false)
+    expect(isSidePredictionActionable('superSix', 65)).toBe(true)
+    expect(isSidePredictionActionable('bankerPair', 49)).toBe(false)
+    expect(isSidePredictionActionable('playerPair', 50)).toBe(true)
+    expect(isSidePredictionActionable('bankerDragon', 52)).toBe(false)
+    expect(isSidePredictionActionable('bankerDragon', 53)).toBe(true)
+    expect(isSidePredictionActionable('playerDragon', 52)).toBe(false)
+    expect(isSidePredictionActionable('playerDragon', 53)).toBe(true)
   })
 
 
@@ -432,7 +432,7 @@ describe('AI百家預測軟體', () => {
       superSix: 0,
       bankerPair: 0,
       playerPair: 0,
-      bankerDragon: 45,
+      bankerDragon: 53,
       playerDragon: 0,
     }, 'Banker')).toEqual(expect.objectContaining({ bankerDragon: true, playerDragon: false }))
     expect(getSidePredictionActions({

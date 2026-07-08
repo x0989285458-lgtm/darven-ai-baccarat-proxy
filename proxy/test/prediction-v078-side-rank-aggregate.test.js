@@ -12,7 +12,7 @@ const rankKeys = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'r
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 
 test('v078 removes main remaining-card aggregate and uses side A-K aggregate only', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v084_副預測比例收斂版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v085_比例門檻校正版')
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
   assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'remaining_zero_to_k_total'), false)
   assert.equal(SIDE_WEIGHT_KEYS.includes('remaining_rank_total'), true)
@@ -36,7 +36,7 @@ test('v078 prediction row exposes side remaining-rank total and no main remainin
     },
     { tableId: 'BAG78', shoe: 78, round: 18, bankerCount: 9, playerCount: 7, tieCount: 1, beadPlateRaw: '020102010201#020102010202#020202', bigRoadRaw: '0201010201020201020202' },
   )
-  assert.equal(row.strategy_version, 'v084_副預測比例收斂版')
+  assert.equal(row.strategy_version, 'v085_比例門檻校正版')
   assert.equal(Object.hasOwn(row.prediction_features.unified_main_scores, 'remaining_zero_to_k_total'), false)
   assert.equal(row.prediction_features.side_card_rank_features.remainingRankTotal, 430)
   assert.equal(typeof row.prediction_features.side_prediction_rank_inputs.tie.remainingRankFeatureScores.remaining_rank_total, 'number')
