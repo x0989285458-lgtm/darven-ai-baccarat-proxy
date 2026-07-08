@@ -23,12 +23,12 @@ test('v073 main prediction removes unstable identity fields and gives real weigh
 
 test('v073 side prediction thresholds are original baseline plus five', () => {
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
-    tie: 45,
-    superSix: 45,
-    bankerPair: 30,
-    playerPair: 30,
-    bankerDragon: 40,
-    playerDragon: 40,
+    tie: 50,
+    superSix: 50,
+    bankerPair: 35,
+    playerPair: 35,
+    bankerDragon: 45,
+    playerDragon: 45,
   })
 })
 
@@ -53,7 +53,7 @@ test('v073 prediction row records new strategy and preserves requested predictio
     },
     { tableId: 'BAG05', displayName: '桌5', dealerName: 'ignored', roomId: 29, orderState: 1, state: 1, totalPlayers: 20, shoe: 15396, round: 1, beadPlateRaw: '0202', bankerCount: 1, playerCount: 0, tieCount: 0 },
   )
-  assert.equal(row.strategy_version, 'v083_副預測門檻調整版')
+  assert.equal(row.strategy_version, 'v084_副預測比例收斂版')
   assert.ok(['banker', 'player'].includes(row.predicted_result))
   assert.equal(row.prediction_features.side_weights.bankerPair.dealer_name, undefined)
   assert.equal(row.prediction_features.side_weights.bankerPair.total_players, undefined)
