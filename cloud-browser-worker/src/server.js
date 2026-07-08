@@ -9,7 +9,7 @@ const MT_LOGIN_URL = process.env.MT_LOGIN_URL ?? ''
 const SNAPSHOT_PATH = process.env.SNAPSHOT_PATH ?? '/snapshot'
 const PAGE_TIMEOUT_MS = Number(process.env.PAGE_TIMEOUT_MS ?? 45000)
 const MAX_CAPTURED_PAYLOADS = Number(process.env.MAX_CAPTURED_PAYLOADS ?? 250)
-const MAX_CAPTURED_ROUND_PAYLOADS = Number(process.env.MAX_CAPTURED_ROUND_PAYLOADS ?? 8000)
+const MAX_CAPTURED_ROUND_PAYLOADS = Number(process.env.MAX_CAPTURED_ROUND_PAYLOADS ?? 500)
 
 const capturedPayloads = []
 const capturedRoundPayloads = []
