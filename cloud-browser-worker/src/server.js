@@ -9,8 +9,10 @@ const MT_LOGIN_URL = process.env.MT_LOGIN_URL ?? ''
 const SNAPSHOT_PATH = process.env.SNAPSHOT_PATH ?? '/snapshot'
 const PAGE_TIMEOUT_MS = Number(process.env.PAGE_TIMEOUT_MS ?? 45000)
 const MAX_CAPTURED_PAYLOADS = Number(process.env.MAX_CAPTURED_PAYLOADS ?? 250)
+const MAX_CAPTURED_ROUND_PAYLOADS = Number(process.env.MAX_CAPTURED_ROUND_PAYLOADS ?? 8000)
 
 const capturedPayloads = []
+const capturedRoundPayloads = []
 let browserPromise = null
 let pagePromise = null
 let lastSnapshot = null
@@ -60,7 +62,7 @@ async function getSnapshot() {
 
   const page = await ensurePage()
   const browserPayload = await collectBrowserPayload(page)
-  const payloads = [...capturedPayloads, browserPayload]
+  const payloads = [...capturedPayloads, ...capturedRoundPayloads, browserPayload]
   const snapshot = extractSnapshotFromPayloads(payloads, {
     sessionId: process.env.SESSION_ID ?? 'darven-cloud-browser',
     now: new Date().toISOString(),
@@ -158,10 +160,20 @@ function rememberPayload(payload) {
   if (!text.trim()) return
   capturedPayloads.push(text)
   while (capturedPayloads.length > MAX_CAPTURED_PAYLOADS) capturedPayloads.shift()
+  if (isRoundPayload(text)) {
+    capturedRoundPayloads.push(text)
+    while (capturedRoundPayloads.length > MAX_CAPTURED_ROUND_PAYLOADS) capturedRoundPayloads.shift()
+  }
 }
 
 function resetCapturedPayloads() {
   capturedPayloads.length = 0
+  capturedRoundPayloads.length = 0
+}
+
+function isRoundPayload(text = '') {
+  return /show_poker|roundResult|round_result/i.test(text)
+    && /"result"|"cards"|"cardList"|"card_list"/i.test(text)
 }
 
 async function closePage() {

@@ -1,6 +1,6 @@
 import { createShoeTracker } from './card-shoe.js'
 
-export function createProxyState({ onRoundEvent } = {}) {
+export function createProxyState({ onRoundEvent, inferSnapshotRounds = true } = {}) {
   const shoeTracker = createShoeTracker({ deckCount: 8 })
   const state = {
     status: {
@@ -32,7 +32,7 @@ export function createProxyState({ onRoundEvent } = {}) {
     },
     setTables(tables = []) {
       const previousTables = state.tables
-      const inferredEvents = Array.isArray(tables) ? inferRoundEventsFromSnapshots(previousTables, tables) : []
+      const inferredEvents = inferSnapshotRounds && Array.isArray(tables) ? inferRoundEventsFromSnapshots(previousTables, tables) : []
       state.tables = Array.isArray(tables) ? mergeExistingRoundData(tables, previousTables) : []
       state.status.tableCount = state.tables.length
       for (const item of inferredEvents) emitRoundEvent(item.round, item.predictionTable)

@@ -192,5 +192,5 @@ test('prefers nested trend roads over body text duplicates and filters non-BAG g
 
   assert.equal(snapshot.tables.some((table) => table.tableId === 'DTG01'), false)
   assert.equal(snapshot.tables.find((table) => table.tableId === 'BAG07').bigRoadRaw, '0901,0801,#0702')
-  assert.equal(snapshot.tables.find((table) => table.tableId === 'BAG3A').bigRoadRaw, '0202')
+  assert.equal(snapshot.tables.find((table) => table.tableId === 'BAG03A').bigRoadRaw, '0202')
 })

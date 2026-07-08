@@ -17,6 +17,17 @@ test('state store keeps normalized tables and connection status for admin/fronte
   assert.equal(snapshot.tables[0].tableId, 'BAG01')
 })
 
+test('strict real-card mode does not emit inferred no-card rounds from table deltas', () => {
+  const emitted = []
+  const state = createProxyState({ inferSnapshotRounds: false, onRoundEvent: (round) => emitted.push(round) })
+  state.setTables([{ tableId: 'BAG01', tableType: 'BAC', shoe: 1, round: 10, bankerCount: 5, playerCount: 5, tieCount: 0 }])
+  state.setTables([{ tableId: 'BAG01', tableType: 'BAC', shoe: 1, round: 11, bankerCount: 6, playerCount: 5, tieCount: 0 }])
+  assert.equal(emitted.length, 0)
+
+  state.upsertRoundEvent({ tableId: 'BAG01', shoe: 1, round: 11, winner: 'banker', rawResult: [1, 2, 3, 4, 0, 0, -1, -1, 5, 4] })
+  assert.equal(emitted.length, 1)
+})
+
 test('state store records errors without exposing token secrets', () => {
   const state = createProxyState()
   state.recordError('connect failed token=abc123 secret=hidden')

@@ -25,7 +25,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     CLOUD_CAPTURE_POLL_MS: process.env.CLOUD_CAPTURE_POLL_MS,
   })
   const shouldAutoConnect = autoConnect ?? deployConfig.autoConnect
+  const strictRealCardRounds = process.env.REQUIRE_REAL_CARD_ROUNDS === 'true'
   const state = createProxyState({
+    inferSnapshotRounds: !strictRealCardRounds,
     onRoundEvent: async (round, table) => {
       if (!supabaseClient?.configured && !supabaseClient?.persistRound) return
       try {

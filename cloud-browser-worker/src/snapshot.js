@@ -205,7 +205,9 @@ function isTableLike(value) {
 
 function normalizeTableId(value) {
   const id = String(value ?? '').trim().toUpperCase()
-  return id === 'BAG03A' ? 'BAG3A' : id
+  const match = id.match(/^BAG(\d{1,2})(A?)$/)
+  if (!match) return id
+  return `BAG${match[1].padStart(2, '0')}${match[2] ?? ''}`
 }
 
 function isWantedBaccaratTable(table) {

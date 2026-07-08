@@ -9,7 +9,7 @@ export function normalizeMtTables(rawTables = []) {
 
 export function normalizeMtTable(raw, index = 0) {
   const trend = raw?.trend ?? {}
-  const tableId = String(raw?.table_id ?? raw?.id ?? `UNKNOWN_${index + 1}`)
+  const tableId = normalizeTableId(raw?.table_id ?? raw?.id ?? `UNKNOWN_${index + 1}`)
   const tableName = raw?.table_name ?? raw?.name ?? `${index + 1}`
   return {
     tableId,
@@ -36,6 +36,13 @@ export function normalizeMtTable(raw, index = 0) {
     orderState: raw?.orderState ?? null,
     sourceUpdatedAt: raw?.updated_at ?? raw?.updatedAt ?? null,
   }
+}
+
+function normalizeTableId(value) {
+  const id = String(value ?? '').trim().toUpperCase()
+  const match = id.match(/^BAG(\d{1,2})(A?)$/)
+  if (!match) return id
+  return `BAG${match[1].padStart(2, '0')}${match[2] ?? ''}`
 }
 
 function toNumberOrZero(value) {
