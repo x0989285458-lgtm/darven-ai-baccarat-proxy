@@ -30,6 +30,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     inferSnapshotRounds: !strictRealCardRounds,
     onRoundEvent: async (round, table) => {
       if (!supabaseClient?.configured && !supabaseClient?.persistRound) return
+      if (strictRealCardRounds && !hasRealCardCodes(round)) return
       try {
         await supabaseClient.ensureInitialStrategy?.()
         await supabaseClient.persistRound?.(round, table)
@@ -386,6 +387,17 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     },
     cloudCaptureClient,
   }
+}
+
+function hasRealCardCodes(round = {}) {
+  const result = Array.isArray(round.rawResult) ? round.rawResult : []
+  const playerCards = [result[0], result[2], result[4]]
+    .map(Number)
+    .filter((value) => Number.isFinite(value) && value > 0)
+  const bankerCards = [result[1], result[3], result[5]]
+    .map(Number)
+    .filter((value) => Number.isFinite(value) && value > 0)
+  return playerCards.length >= 2 && bankerCards.length >= 2
 }
 
 function parseJsonBody(rawBody) {
