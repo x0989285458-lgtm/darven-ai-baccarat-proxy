@@ -49,8 +49,8 @@ export function createProxyState({ onRoundEvent } = {}) {
         tableId,
         shoe: event.shoe ?? null,
         round: event.round ?? null,
-        playerPoint: event.playerPoint ?? null,
-        bankerPoint: event.bankerPoint ?? null,
+        playerPoint: event.playerPoint ?? pointFromRawResult(event.rawResult, 8),
+        bankerPoint: event.bankerPoint ?? pointFromRawResult(event.rawResult, 9),
         winner: event.winner ?? null,
         rawResult: event.rawResult ?? null,
         sourceAction: event.sourceAction ?? null,
@@ -94,6 +94,12 @@ export function createProxyState({ onRoundEvent } = {}) {
   }
 }
 
+function pointFromRawResult(rawResult, index) {
+  if (!Array.isArray(rawResult)) return null
+  const value = Number(rawResult[index])
+  return Number.isFinite(value) ? value : null
+}
+
 export function redactSecrets(message) {
   return message
     .replace(/token=([^\s&]+)/gi, 'token=[redacted]')
@@ -123,19 +129,23 @@ function inferRoundEventsFromSnapshots(previousTables = [], nextTables = []) {
     const currentRound = Number(next.round ?? previous.round ?? 0)
     const startRound = Math.max(1, currentRound - winners.length + 1)
     winners.forEach((winner, index) => {
+      const inferredRoundNo = startRound + index
+      const exactRound = findMatchingRoundData([next.lastRound, previous.lastRound], next, inferredRoundNo)
       events.push({
         predictionTable: structuredCloneSafe(previous),
         round: {
           tableId: String(next.tableId),
           shoe: next.shoe ?? previous.shoe ?? null,
-          round: startRound + index,
-          winner,
+          round: inferredRoundNo,
+          winner: exactRound?.winner ?? winner,
+          playerPoint: exactRound?.playerPoint ?? null,
+          bankerPoint: exactRound?.bankerPoint ?? null,
           sideActualResults: {
             bankerPair: deltas.bankerPair > 0,
             playerPair: deltas.playerPair > 0,
             tie: winner === 'tie',
           },
-          rawResult: { inferredFromTableDelta: true, inferredFromRoundDelta: winners.length > inferWinnersFromCountDeltas(deltas).length, previousCounts: compactCounts(previous), nextCounts: compactCounts(next) },
+          rawResult: exactRound?.rawResult ?? { inferredFromTableDelta: true, inferredFromRoundDelta: winners.length > inferWinnersFromCountDeltas(deltas).length, previousCounts: compactCounts(previous), nextCounts: compactCounts(next) },
           sourceAction: 'table_snapshot_delta',
           receivedAt: new Date().toISOString(),
         },
@@ -143,6 +153,15 @@ function inferRoundEventsFromSnapshots(previousTables = [], nextTables = []) {
     })
   }
   return events
+}
+
+function findMatchingRoundData(candidates = [], table = {}, roundNo = null) {
+  return candidates.find((round) => {
+    if (!round) return false
+    if (roundNo != null && round.round != null && Number(round.round) !== Number(roundNo)) return false
+    if (table.shoe != null && round.shoe != null && String(round.shoe) !== String(table.shoe)) return false
+    return Array.isArray(round.rawResult) || round.playerPoint != null || round.bankerPoint != null
+  }) ?? null
 }
 
 function hasReliableSnapshotCounts(table = {}) {

@@ -3,7 +3,7 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v049_no_observe_confidence_30_80'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v081_五路問路路單走勢主副預測版'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v082_五路問路修路點數入庫版'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -626,11 +626,30 @@ function roadColorScore(raw = '') {
   return ratioScore(red, blue)
 }
 function askRoadScore(raw, side) {
+  const parsed = scoreFiveRoadPayload(raw)
+  if (parsed) return parsed
   if (!raw) return neutralScore()
   const text = typeof raw === 'string' ? raw : JSON.stringify(raw)
   const filled = text.replace(/[,#\s]/g, '').length
   const bump = Math.min(0.08, filled / 2000)
   return side === 'banker' ? { banker: 0.5 + bump, player: 0.5 - bump } : { banker: 0.5 - bump, player: 0.5 + bump }
+}
+
+function scoreFiveRoadPayload(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const roadValue = (...keys) => keys.map((key) => raw[key]).find((value) => value != null && value !== '')
+  const scores = []
+  const bead = roadValue('bead_plate', 'beadPlateRaw', 'beadPlate', 'bead')
+  const big = roadValue('big', 'bigRoadRaw', 'bigRoad')
+  const bigEye = roadValue('big_eye', 'bigEyeRaw', 'bigEye')
+  const small = roadValue('small', 'smallRoadRaw', 'smallRoad')
+  const cockroach = roadValue('cockroach', 'cockroachRaw', 'cockroachRoad')
+  if (bead) scores.push(roadStringScore(bead))
+  if (big) scores.push(roadStringScore(big))
+  if (bigEye) scores.push(roadColorScore(bigEye))
+  if (small) scores.push(roadColorScore(small))
+  if (cockroach) scores.push(roadColorScore(cockroach))
+  return scores.length ? averageScores(...scores) : null
 }
 function inferPreviousWinner(bead = '') {
   const tokens = String(bead).match(/[123BP]/gi) || []
