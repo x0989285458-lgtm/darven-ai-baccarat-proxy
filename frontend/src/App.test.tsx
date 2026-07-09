@@ -379,7 +379,7 @@ describe('AI百家預測軟體', () => {
       tie: 47,
       superSix: 65,
       bankerPair: 50,
-      playerPair: 50,
+      playerPair: 55,
       bankerDragon: 53,
       playerDragon: 53,
     })
@@ -387,7 +387,7 @@ describe('AI百家預測軟體', () => {
       tie: 46,
       superSix: 64,
       bankerPair: 49,
-      playerPair: 50,
+      playerPair: 55,
       bankerDragon: 53,
       playerDragon: 52,
     }, {
@@ -418,7 +418,8 @@ describe('AI百家預測軟體', () => {
     expect(isSidePredictionActionable('superSix', 64)).toBe(false)
     expect(isSidePredictionActionable('superSix', 65)).toBe(true)
     expect(isSidePredictionActionable('bankerPair', 49)).toBe(false)
-    expect(isSidePredictionActionable('playerPair', 50)).toBe(true)
+    expect(isSidePredictionActionable('playerPair', 54)).toBe(false)
+    expect(isSidePredictionActionable('playerPair', 55)).toBe(true)
     expect(isSidePredictionActionable('bankerDragon', 52)).toBe(false)
     expect(isSidePredictionActionable('bankerDragon', 53)).toBe(true)
     expect(isSidePredictionActionable('playerDragon', 52)).toBe(false)

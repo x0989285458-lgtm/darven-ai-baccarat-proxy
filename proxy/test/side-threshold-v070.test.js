@@ -6,7 +6,7 @@ test('v075 side thresholds shrink side actions and dragon remains directional', 
   assert.equal(SIDE_PREDICTION_THRESHOLDS.tie, 47)
   assert.equal(SIDE_PREDICTION_THRESHOLDS.superSix, 65)
   assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerPair, 50)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerPair, 50)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerPair, 55)
   assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerDragon, 53)
   assert.equal(SIDE_PREDICTION_THRESHOLDS.playerDragon, 53)
 

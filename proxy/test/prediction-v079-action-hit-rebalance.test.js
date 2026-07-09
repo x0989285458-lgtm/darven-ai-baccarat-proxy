@@ -10,12 +10,12 @@ import {
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 
 test('v079 rebalances main prediction away from noisy road overfit toward calibration and history', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v085_比例門檻校正版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v086_主預測實戰偏移校正版')
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
   assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'remaining_zero_to_k_total'), false)
 
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.5)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals, 0.5)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.35)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals, 0.30)
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.direction_calibration, 0)
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.table_recent_hit_rate, 0)
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.historical_backtest, 0)
@@ -26,7 +26,7 @@ test('v079 loosens side prediction thresholds and strengthens side aggregate ran
     tie: 47,
     superSix: 65,
     bankerPair: 50,
-    playerPair: 50,
+    playerPair: 55,
     bankerDragon: 53,
     playerDragon: 53,
   })

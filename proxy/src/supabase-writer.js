@@ -3,7 +3,7 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v049_no_observe_confidence_30_80'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v085_比例門檻校正版'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v086_主預測實戰偏移校正版'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -28,6 +28,7 @@ const MAIN_WEIGHT_KEYS = [
   'previous_winner', 'streak_length', 'near5_banker_player_bias', 'table_recent_hit_rate', 'direction_calibration',
   'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'historical_backtest',
   'roadmap_trend_signals', 'road_structure_signals', 'derived_road_structure_signals', 'ask_road_signals',
+  'recent_practical_calibration', 'shoe_banker_player_bias',
 ]
 
 const RANK_REMAINING_FEATURE_KEYS = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
@@ -42,8 +43,10 @@ export const SIDE_WEIGHT_KEYS = [
 ]
 
 export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildWeightedProfile(MAIN_WEIGHT_KEYS, {
-  ask_road_signals: 0.50,
-  roadmap_trend_signals: 0.50,
+  ask_road_signals: 0.35,
+  roadmap_trend_signals: 0.30,
+  recent_practical_calibration: 0.25,
+  shoe_banker_player_bias: 0.10,
 })
 
 export const SIDE_PREDICTION_ACTION_RATE_TARGETS = Object.freeze({
@@ -84,7 +87,7 @@ export const SIDE_PREDICTION_THRESHOLDS = {
   tie: 47,
   superSix: 65,
   bankerPair: 50,
-  playerPair: 50,
+  playerPair: 55,
   bankerDragon: 53,
   playerDragon: 53,
 }
@@ -338,6 +341,8 @@ function buildDerivedMainFeatures(round = {}, table = {}, facts = {}, probabilit
     directionCalibration: probabilities.banker >= probabilities.player ? 'banker_bias' : 'player_bias',
     probabilityGap: Math.abs(Number(probabilities.banker ?? 0) - Number(probabilities.player ?? 0)),
     tableRecentHitRate: tablePerformance.recentHitRate,
+    recentPracticalCalibration: buildRecentPracticalCalibration(tablePerformance, probabilities),
+    shoeBankerPlayerBias: buildShoeBankerPlayerBias(table),
     actualWinner: facts.winner,
   }
 }
@@ -403,6 +408,8 @@ function scoreAllMtFeature(key, ctx) {
     case 'road_structure_signals': return scoreRoadStructureSignalsFeature(table, derived, roadFeatures)
     case 'derived_road_structure_signals': return scoreDerivedRoadStructureSignalsFeature(table, derived)
     case 'ask_road_signals': return scoreAskRoadSignalsFeature(table, derived)
+    case 'recent_practical_calibration': return scoreRecentPracticalCalibrationFeature(probabilities, tablePerformance)
+    case 'shoe_banker_player_bias': return scoreShoeBankerPlayerBiasFeature(table)
     case 'confidence': return ratioScore(probabilities.banker, probabilities.player)
     case 'probability_gap': return ratioScore(probabilities.banker, probabilities.player)
     case 'super_six': {
@@ -601,6 +608,53 @@ function scoreAskRoadSignalsFeature(table = {}, derived = {}) {
   if (signals.preferred === 'banker') return { banker: 0.56, player: 0.44 }
   if (signals.preferred === 'player') return { banker: 0.44, player: 0.56 }
   return neutralScore()
+}
+
+function buildRecentPracticalCalibration(tablePerformance = {}, probabilities = {}) {
+  const score = scoreRecentPracticalCalibrationFeature(probabilities, tablePerformance)
+  return {
+    recentHitRate: tablePerformance.recentHitRate ?? null,
+    recentPredictionCount: tablePerformance.recentPredictionCount ?? null,
+    source: tablePerformance.source ?? 'unavailable',
+    preferred: score.banker > score.player ? 'banker' : score.player > score.banker ? 'player' : 'neutral',
+    banker: score.banker,
+    player: score.player,
+  }
+}
+
+function scoreRecentPracticalCalibrationFeature(probabilities = {}, tablePerformance = {}) {
+  const count = numberOrZero(tablePerformance.recentPredictionCount)
+  const rate = tablePerformance.recentHitRate
+  if (rate == null || count < 6) return neutralScore()
+  const baseSide = pickPrediction(probabilities)
+  if (rate >= 0.58) return winnerScore(baseSide)
+  if (rate <= 0.45) return invertWinnerScore(baseSide)
+  return averageScores(winnerScore(baseSide), neutralScore())
+}
+
+function buildShoeBankerPlayerBias(table = {}) {
+  const score = scoreShoeBankerPlayerBiasFeature(table)
+  const banker = numberOrZero(table.bankerCount)
+  const player = numberOrZero(table.playerCount)
+  return {
+    bankerCount: banker,
+    playerCount: player,
+    gap: banker - player,
+    preferred: score.banker > score.player ? 'banker' : score.player > score.banker ? 'player' : 'neutral',
+    banker: score.banker,
+    player: score.player,
+  }
+}
+
+function scoreShoeBankerPlayerBiasFeature(table = {}) {
+  const banker = numberOrZero(table.bankerCount)
+  const player = numberOrZero(table.playerCount)
+  const total = banker + player
+  if (total < 8 || banker === player) return neutralScore()
+  const gap = Math.abs(banker - player) / total
+  if (gap < 0.08) return neutralScore()
+  const bump = Math.min(0.08, gap * 0.5)
+  return banker > player ? { banker: 0.5 + bump, player: 0.5 - bump } : { banker: 0.5 - bump, player: 0.5 + bump }
 }
 
 function scoreRemainingZeroToKTotalFeature(round = {}, probabilities = {}) {

@@ -37,7 +37,7 @@ test('v016 side predictions are recorded every round but actions require per-ite
     tie: 47,
     superSix: 65,
     bankerPair: 50,
-    playerPair: 50,
+    playerPair: 55,
     bankerDragon: 53,
     playerDragon: 53,
   })

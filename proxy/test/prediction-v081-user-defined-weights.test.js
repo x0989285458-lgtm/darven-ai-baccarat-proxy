@@ -11,11 +11,13 @@ const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Num
 const nonZero = (weights) => Object.fromEntries(Object.entries(weights).filter(([, value]) => Number(value) !== 0))
 
 test('v081 uses only the user-defined main weights and ignores previous main weights', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v085_比例門檻校正版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v086_主預測實戰偏移校正版')
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
   assert.deepEqual(nonZero(ALL_MT_EQUAL_MAIN_WEIGHTS), {
-    ask_road_signals: 0.5,
-    roadmap_trend_signals: 0.5,
+    ask_road_signals: 0.35,
+    roadmap_trend_signals: 0.30,
+    recent_practical_calibration: 0.25,
+    shoe_banker_player_bias: 0.10,
   })
 })
 
@@ -24,7 +26,7 @@ test('v081 uses user-defined side thresholds and independent side weight profile
     tie: 47,
     superSix: 65,
     bankerPair: 50,
-    playerPair: 50,
+    playerPair: 55,
     bankerDragon: 53,
     playerDragon: 53,
   })

@@ -10,7 +10,7 @@ export const SIDE_PREDICTION_THRESHOLDS = {
   tie: 47,
   superSix: 65,
   bankerPair: 50,
-  playerPair: 50,
+  playerPair: 55,
   bankerDragon: 53,
   playerDragon: 53,
 }
