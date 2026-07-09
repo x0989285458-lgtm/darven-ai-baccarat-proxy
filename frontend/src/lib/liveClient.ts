@@ -31,7 +31,7 @@ export type LiveTable = {
 }
 
 type Status = { state: 'connecting' | 'connected' | 'error' | 'disconnected'; message: string }
-type LiveClientOptions = { token: string; onTables: (tables: LiveTable[]) => void; onStatus: (status: Status) => void }
+type LiveClientOptions = { onTables: (tables: LiveTable[]) => void; onStatus: (status: Status) => void }
 
 type ProxyTable = {
   tableId?: string

@@ -489,10 +489,6 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10)
 }
 
-function rejectPlainAgentAdmin(adminAccount) {
-  if (/^Agent/i.test(String(adminAccount ?? ''))) throw new Error('Operation requires total manager permission')
-}
-
 function dateOnly(value) {
   if (!value) return null
   return String(value).slice(0, 10)

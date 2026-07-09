@@ -6,7 +6,6 @@ import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from '.
 import { checkOnlineCoreStatus, getOnlineMemoryCenter, getOnlineStrategyAnalysis, updateOnlineAppSetting, type OnlineCoreStatus, type OnlineMemoryCenter, type OnlineStrategyAnalysis } from './lib/onlineCoreClient'
 import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents, deleteOnlineLicense, extendOnlineLicense, getCloudDataStatus, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
 
-const defaultToken = '1973d0138bb7bad7ea5d2a989d14c662'
 const SUPER_ADMIN = 'dv1788'
 const label = { Banker: '莊', Player: '閒', Tie: '和' }
 const tableDisplayOrder = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
@@ -98,7 +97,6 @@ export default function App() {
   const start = () => {
     client.current?.disconnect(false)
     client.current = new LiveRoadClient({
-      token: defaultToken,
       onTables: (next) => {
         if (next.length) {
           setTables(next)
@@ -899,13 +897,6 @@ function rolePermission(role: string) {
   return '可建碼'
 }
 
-function loginRole(account: string, agents: AgentRow[]) {
-  if (account.toLowerCase() === SUPER_ADMIN) return 'super'
-  const row = agents.find((agent) => agent.account === account)
-  if (row?.level.includes('管理員')) return 'manager'
-  if (row?.level.includes('觀察')) return 'viewer'
-  return 'agent'
-}
 
 function formatSideHitRate(report: any) {
   const value = report?.side_hit_rate ?? report?.sideHitRate ?? report?.bonus_hit_rate

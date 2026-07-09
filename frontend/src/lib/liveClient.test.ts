@@ -15,7 +15,7 @@ describe('LiveRoadClient v032 status messages', () => {
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
     }))
 
-    const client = new LiveRoadClient({ token: 'expired-token', onTables: vi.fn(), onStatus: (status) => statuses.push(status) })
+    const client = new LiveRoadClient({ onTables: vi.fn(), onStatus: (status) => statuses.push(status) })
     client.connect()
     await vi.runOnlyPendingTimersAsync()
     client.disconnect(false)
@@ -31,7 +31,7 @@ describe('LiveRoadClient v032 status messages', () => {
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
     }))
 
-    const client = new LiveRoadClient({ token: 'valid-token', onTables: vi.fn(), onStatus: (status) => statuses.push(status) })
+    const client = new LiveRoadClient({ onTables: vi.fn(), onStatus: (status) => statuses.push(status) })
     client.connect()
     await vi.runOnlyPendingTimersAsync()
     client.disconnect(false)
@@ -47,7 +47,7 @@ describe('LiveRoadClient v032 status messages', () => {
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
     }))
 
-    const client = new LiveRoadClient({ token: 'chrome-mode', onTables: vi.fn(), onStatus: (status) => statuses.push(status) })
+    const client = new LiveRoadClient({ onTables: vi.fn(), onStatus: (status) => statuses.push(status) })
     client.connect()
     await vi.runOnlyPendingTimersAsync()
     client.disconnect(false)
@@ -69,7 +69,7 @@ describe('LiveRoadClient v032 status messages', () => {
       }]) })
     }))
 
-    const client = new LiveRoadClient({ token: 'rich-fields', onTables: (tables) => received.push(...tables), onStatus: vi.fn() })
+    const client = new LiveRoadClient({ onTables: (tables) => received.push(...tables), onStatus: vi.fn() })
     client.connect()
     await vi.runOnlyPendingTimersAsync()
     client.disconnect(false)
