@@ -464,6 +464,31 @@ function inferCurrentStreakLength(cells: RoadCell[]) {
 function inferNear5Bias(cells: RoadCell[]) {
   return cells.map((cell) => normalizeMainOutcome(cell.outcome)).filter(Boolean).slice(-5).reduce((sum, side) => sum + (side === 'Banker' ? 1 : -1), 0)
 }
+
+function calculateConservativeMainConfidence(scores: Record<string, DirectionScore>, weights: Record<string, number>) {
+  let activeWeight = 0
+  let agreementSum = 0
+  let strengthSum = 0
+  Object.entries(weights).forEach(([key, rawWeight]) => {
+    const weight = Math.max(0, Number(rawWeight ?? 0))
+    if (!weight) return
+    const score = scores[key] ?? neutralScore()
+    const banker = Math.max(0, Number(score.banker ?? 0.5))
+    const player = Math.max(0, Number(score.player ?? 0.5))
+    const total = banker + player
+    const share = total > 0 ? banker / total : 0.5
+    const edge = Math.abs(share - 0.5) * 2
+    const signedEdge = share >= 0.5 ? edge : -edge
+    activeWeight += weight
+    agreementSum += weight * signedEdge
+    strengthSum += weight * edge
+  })
+  if (!activeWeight) return 30
+  const agreement = Math.abs(agreementSum) / activeWeight
+  const strength = strengthSum / activeWeight
+  const combined = clamp(agreement * 0.7 + strength * 0.3, 0, 1)
+  return Math.round(clamp(30 + 40 * combined, 30, 70))
+}
 function shoeStage(round: unknown) {
   const roundNo = toNumber(round as number | string | undefined)
   return roundNo <= 10 ? 'early' : roundNo <= 40 ? 'middle' : 'late'
@@ -557,7 +582,7 @@ export function evaluateFiveRoadPrediction(input: FiveRoadPredictionInput): Pred
   const recommendation: MainOutcome = difference < 1e-9
     ? breakMainPredictionTie({ outcomes: shoeOutcomes, stats: input.tableStats })
     : totals.banker > totals.player ? 'Banker' : 'Player'
-  const confidence = clamp(50 + difference * 100, 30, 80)
+  const confidence = difference < 1e-9 ? 30 : calculateConservativeMainConfidence(sourceScores, weights)
   const risk: Prediction['risk'] = difference <= 0.007 ? 'High' : difference <= 0.02 ? 'Medium' : 'Low'
   const patterns = detectRoadTrends(bigRoadOutcomes.length ? bigRoadOutcomes : beadOutcomes)
   return {
@@ -593,7 +618,7 @@ export function calculatePrediction(input: RoadCell[] | FiveRoadPredictionInput)
       : totals.banker > totals.player ? 'Banker' : 'Player'
     return {
       recommendation,
-      confidence: clamp(30 + (1 - Math.exp(-difference / 8)) * 50, 30, 80),
+      confidence: difference < 1e-9 ? 30 : calculateConservativeMainConfidence({ beadRoad: totals }, { beadRoad: 1 }),
       risk: difference <= 0.7 ? 'High' : difference <= 2 ? 'Medium' : 'Low',
       reason: `路單走勢輸出 ${recommendation === 'Banker' ? '莊' : '閒'}。`,
       weights: MAIN_PREDICTION_WEIGHTS,

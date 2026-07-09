@@ -50,8 +50,8 @@ test('v016 side predictions are recorded every round but actions require per-ite
   assert.equal(typeof report.tables[0].sidePredictions.tie.actionable, 'boolean')
 })
 
-test('v051 low-confidence main predictions stay visible but skip simulated action evaluation', () => {
-  assert.equal(MAIN_ACTION_CONFIDENCE_THRESHOLD, 50)
+test('v088 low-confidence main predictions stay visible and are still evaluated without observe', () => {
+  assert.equal(MAIN_ACTION_CONFIDENCE_THRESHOLD, 30)
   const session = createStableReportSession({ startedAt: '2026-01-01T00:00:00.000Z' })
   session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [makeTable({
     bankerCount: 1,
@@ -63,16 +63,15 @@ test('v051 low-confidence main predictions stay visible but skip simulated actio
   })] }, 't1')
   const report = session.getReport('2026-01-01T00:10:00.000Z')
   assert.equal(report.tables[0].lastPrediction, '莊')
-  assert.equal(report.tables[0].lastConfidence < MAIN_ACTION_CONFIDENCE_THRESHOLD, true)
+  assert.equal(report.tables[0].lastConfidence >= MAIN_ACTION_CONFIDENCE_THRESHOLD, true)
   assert.equal(report.total.rounds, 1)
-  assert.equal(report.total.mainEvaluated, 0)
-  assert.equal(report.total.hits, 0)
-  assert.equal(report.total.misses, 0)
+  assert.equal(report.total.mainEvaluated, 1)
+  assert.equal(report.total.hits + report.total.misses, 1)
 })
 
-test('v016 confidence is clamped between 30 and 80', () => {
+test('v088 confidence is clamped between 30 and 70', () => {
   const session = createStableReportSession({ startedAt: '2026-01-01T00:00:00.000Z' })
   session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [makeTable({ bankerCount: 999, playerCount: 1, beadPlateRaw: '02#02#02#02#02#02#02#02#02#02', lastRound: { tableId: 'BAG01', shoe: 1, round: 1, winner: 2 } })] }, 't1')
   const report = session.getReport('2026-01-01T00:10:00.000Z')
-  assert.equal(report.tables[0].lastConfidence, 80)
+  assert.equal(report.tables[0].lastConfidence, 70)
 })

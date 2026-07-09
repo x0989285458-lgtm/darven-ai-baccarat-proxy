@@ -15,7 +15,7 @@ export const SIDE_PREDICTION_THRESHOLDS = {
   playerDragon: 53,
 }
 
-export const MAIN_ACTION_CONFIDENCE_THRESHOLD = 50
+export const MAIN_ACTION_CONFIDENCE_THRESHOLD = 30
 
 export const MAIN_PREDICTION_WEIGHTS = {
   shoeRoad: 0.30,
@@ -283,7 +283,7 @@ export function evaluateFiveRoadPrediction(table = {}, { globalStats = null, tab
   const strategyAdjustment = buildV036StrategyAdjustment(rawMain, performance, totalScore)
   const main = strategyAdjustment.adjustedMain
   const difference = Math.abs(totalScore.banker - totalScore.player)
-  const rawConfidence = clamp(30 + difference * 18, 30, 80)
+  const rawConfidence = difference < 1e-9 ? 30 : calculateConservativeMainConfidence(sourceScores, MAIN_PREDICTION_WEIGHTS)
   const confidenceCalibration = calibrateConfidenceForTablePerformance(rawConfidence, performance, strategyAdjustment)
   const confidence = confidenceCalibration.finalConfidence
   return {
@@ -309,6 +309,31 @@ function combineWeightedScores(sourceScores, weights = MAIN_PREDICTION_WEIGHTS, 
     acc.player += Number(score.player ?? 0) * weight
     return acc
   }, { banker: 0, player: 0 })
+}
+
+function calculateConservativeMainConfidence(sourceScores = {}, weights = MAIN_PREDICTION_WEIGHTS) {
+  let activeWeight = 0
+  let agreementSum = 0
+  let strengthSum = 0
+  for (const [key, rawWeight] of Object.entries(weights)) {
+    const weight = Math.max(0, Number(rawWeight ?? 0))
+    if (!weight) continue
+    const score = sourceScores[key] ?? { banker: 0.5, player: 0.5 }
+    const banker = Math.max(0, Number(score.banker ?? 0.5))
+    const player = Math.max(0, Number(score.player ?? 0.5))
+    const total = banker + player
+    const share = total > 0 ? banker / total : 0.5
+    const edge = Math.abs(share - 0.5) * 2
+    const signedEdge = share >= 0.5 ? edge : -edge
+    activeWeight += weight
+    agreementSum += weight * signedEdge
+    strengthSum += weight * edge
+  }
+  if (!activeWeight) return 30
+  const agreement = Math.abs(agreementSum) / activeWeight
+  const strength = strengthSum / activeWeight
+  const combined = clamp(agreement * 0.7 + strength * 0.3, 0, 1)
+  return Math.round(clamp(30 + 40 * combined, 30, 70))
 }
 
 function buildWeightAblation(sourceScores, weights, totalScore) {
@@ -454,7 +479,7 @@ function calibrateConfidenceForTablePerformance(confidence, performance, strateg
     finalConfidence = clamp(Math.min(confidence - 14, 46), 30, 46)
     reason = 'low-table-cap'
   } else if (strategyAdjustment?.mode === 'strong-table-boost' || tier === 'strong') {
-    finalConfidence = clamp(confidence + 4, 30, 80)
+    finalConfidence = clamp(confidence + 4, 30, 70)
     reason = 'v036-strong-table-conservative-boost'
   }
   return { rawConfidence: confidence, finalConfidence, reason, tier, hitRate, currentMissStreak, windowSize, strategyMode: strategyAdjustment?.mode ?? 'normal' }

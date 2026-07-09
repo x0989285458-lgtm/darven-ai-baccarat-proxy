@@ -41,7 +41,7 @@ test('v019 evaluates five-road weights plus global stats without producing a dis
   assert.ok(prediction.cardShoeFeatures)
   assert.ok(prediction.sourceScores.recentTrend)
   assert.ok(prediction.sourceScores.shoeRoad.banker > prediction.sourceScores.shoeRoad.player)
-  assert.ok(prediction.confidence >= 30 && prediction.confidence <= 80)
+  assert.ok(prediction.confidence >= 30 && prediction.confidence <= 70)
 })
 
 test('v019 stable report exposes only main/side hit rates in formatted report while retaining internal weights in JSON', () => {

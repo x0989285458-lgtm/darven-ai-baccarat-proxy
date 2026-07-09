@@ -341,7 +341,7 @@ describe('AI百家預測軟體', () => {
     })).toEqual({ banker: 42, player: 48, tie: 10 })
   })
 
-  it('v016 predicts only Banker or Player with confidence varied within 30-80 and no observe recommendation', () => {
+  it('v016 predicts only Banker or Player with confidence varied within 30-70 and no observe recommendation', () => {
     expect(calculatePrediction([])).toMatchObject({ recommendation: 'Player', confidence: 30 })
     expect(calculatePrediction([
       { code: '01', outcome: 'Player' },
@@ -354,7 +354,7 @@ describe('AI百家預測軟體', () => {
     const strongBanker = calculatePrediction(Array.from({ length: 20 }, () => ({ code: '02', outcome: 'Banker' })))
     expect(strongBanker.recommendation).toBe('Banker')
     expect(strongBanker.confidence).toBeGreaterThan(30)
-    expect(strongBanker.confidence).toBeLessThan(80)
+    expect(strongBanker.confidence).toBeLessThanOrEqual(70)
   })
 
   it('v062 breaks exact main-score ties without defaulting to banker', () => {
@@ -526,7 +526,7 @@ describe('AI百家預測軟體', () => {
     expect(prediction.sourceScores.big_eye_road).toBeDefined()
     expect(prediction.sourceScores.next_banker_road).toBeDefined()
     expect(prediction.confidence).toBeGreaterThanOrEqual(30)
-    expect(prediction.confidence).toBeLessThanOrEqual(80)
+    expect(prediction.confidence).toBeLessThanOrEqual(70)
   })
 
   it('v064 main probability row uses five-road weighted score totals instead of mirroring confidence', () => {

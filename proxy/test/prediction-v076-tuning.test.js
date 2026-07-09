@@ -12,7 +12,7 @@ const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Num
 const rankKeys = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
 
 test('v084 keeps main prediction unchanged while applying requested side ratios and thresholds', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v087_最佳權重收斂版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v088_信心值30到70一致性校正版')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 47,
     superSix: 65,
@@ -61,6 +61,6 @@ test('v076 prediction row records new strategy without changing main action-rate
     },
     { tableId: 'BAG76', shoe: 18001, round: 18, bankerCount: 12, playerCount: 8, tieCount: 1, beadPlateRaw: '01020202', bigRoadRaw: 'BBPBBP' },
   )
-  assert.equal(row.strategy_version, 'v087_最佳權重收斂版')
+  assert.equal(row.strategy_version, 'v088_信心值30到70一致性校正版')
   assert.equal(row.predicted_result === 'banker' || row.predicted_result === 'player', true)
 })

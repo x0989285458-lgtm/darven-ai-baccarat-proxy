@@ -42,7 +42,7 @@ test('v036 reverse correction activates only for weak table with three misses an
   assert.ok(prediction.confidence <= 55)
 })
 
-test('v036 strong table applies conservative boost while keeping confidence within 80 cap', () => {
+test('v088 strong table applies conservative boost while keeping confidence within 70 cap', () => {
   const tracker = createTablePerformanceTracker()
   ;[
     ['莊', '莊'], ['莊', '莊'], ['閒', '閒'], ['莊', '莊'], ['閒', '閒'], ['莊', '莊'],
@@ -53,5 +53,5 @@ test('v036 strong table applies conservative boost while keeping confidence with
   assert.equal(prediction.tablePerformance.tier, 'strong')
   assert.equal(prediction.strategyAdjustment.mode, 'strong-table-boost')
   assert.equal(prediction.strategyAdjustment.statusText, '強桌加權中')
-  assert.ok(prediction.confidence <= 80)
+  assert.ok(prediction.confidence <= 70)
 })

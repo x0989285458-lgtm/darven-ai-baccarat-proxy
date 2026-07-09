@@ -2,8 +2,8 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
-export const SHORT_RUN_STRATEGY_VERSION = 'v049_no_observe_confidence_30_80'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v087_最佳權重收斂版'
+export const SHORT_RUN_STRATEGY_VERSION = 'v088_no_observe_confidence_30_70'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v088_信心值30到70一致性校正版'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -140,9 +140,9 @@ export function buildShortRunAdjustedStrategy() {
       auto_adjust: true,
       low_performance_threshold: 0.45,
       high_performance_threshold: 0.65,
-      description: '短測桌況加權；低表現桌保留莊/閒方向但降信心，高表現桌小幅加信心且信心限制30-80，路單與問路權重小幅提高。',
+      description: '短測桌況加權；低表現桌保留莊/閒方向但降信心，高表現桌小幅加信心且信心限制30-70，路單與問路權重小幅提高。',
     },
-    notes: 'v049 no-observe confidence calibration for live round learning: every main row remains banker/player and confidence stays 30-80.',
+    notes: 'v049 no-observe confidence calibration for live round learning: every main row remains banker/player and confidence stays 30-70.',
   }
 }
 
@@ -359,7 +359,7 @@ function calculateAllMtEqualMainPrediction({ round = {}, table = {}, facts = {},
   }, { banker: 0, player: 0 })
   const difference = Math.abs(total.banker - total.player)
   const predictedResult = difference < 1e-9 ? breakAllMtMainTie({ round, table, facts, probabilities }) : (total.banker > total.player ? 'banker' : 'player')
-  const confidence = difference < 1e-9 ? 30 : clampPercent(50 + difference * 100, 30, 80)
+  const confidence = difference < 1e-9 ? 30 : calculateConservativeMainConfidence(scores, ALL_MT_EQUAL_MAIN_WEIGHTS)
   return { predictedResult, confidence, scores, total }
 }
 
@@ -374,6 +374,31 @@ function breakAllMtMainTie({ round = {}, table = {}, facts = {}, probabilities =
   let sum = 0
   for (const char of seed) sum += char.charCodeAt(0)
   return sum % 2 === 0 ? 'player' : 'banker'
+}
+
+function calculateConservativeMainConfidence(scores = {}, weights = {}) {
+  let activeWeight = 0
+  let agreementSum = 0
+  let strengthSum = 0
+  for (const [key, rawWeight] of Object.entries(weights)) {
+    const weight = Math.max(0, Number(rawWeight ?? 0))
+    if (!weight) continue
+    const score = scores[key] ?? neutralScore()
+    const banker = Math.max(0, Number(score.banker ?? 0.5))
+    const player = Math.max(0, Number(score.player ?? 0.5))
+    const total = banker + player
+    const share = total > 0 ? banker / total : 0.5
+    const edge = Math.abs(share - 0.5) * 2
+    const signedEdge = share >= 0.5 ? edge : -edge
+    activeWeight += weight
+    agreementSum += weight * signedEdge
+    strengthSum += weight * edge
+  }
+  if (!activeWeight) return 30
+  const agreement = Math.abs(agreementSum) / activeWeight
+  const strength = strengthSum / activeWeight
+  const combined = clampPercent((agreement * 0.7 + strength * 0.3) * 100, 0, 100) / 100
+  return Math.round(clampPercent(30 + 40 * combined, 30, 70))
 }
 
 function scoreAllMtFeature(key, ctx) {
@@ -1271,17 +1296,17 @@ function applyShortRunTablePerformanceAdjustment({ predictedResult, probabilitie
   if (rate != null && rate < 0.45) {
     return {
       predictedResult,
-      confidence: clampPercent(Math.min(50, baseConfidence), 30, 80),
+      confidence: clampPercent(Math.min(50, baseConfidence), 30, 70),
     }
   }
   if (rate != null && rate > 0.65) {
     const boost = rate >= 0.80 ? 10 : 5
     return {
       predictedResult,
-      confidence: clampPercent(baseConfidence + boost, 30, 80),
+      confidence: clampPercent(baseConfidence + boost, 30, 70),
     }
   }
-  return { predictedResult, confidence: clampPercent(baseConfidence, 30, 80) }
+  return { predictedResult, confidence: clampPercent(baseConfidence, 30, 70) }
 }
 
 function buildShortRunAdjustmentSummary({ basePrediction, adjusted, tablePerformance }) {
