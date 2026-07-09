@@ -3,7 +3,7 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v049_no_observe_confidence_30_80'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v086_主預測實戰偏移校正版'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v087_最佳權重收斂版'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -43,9 +43,9 @@ export const SIDE_WEIGHT_KEYS = [
 ]
 
 export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildWeightedProfile(MAIN_WEIGHT_KEYS, {
-  ask_road_signals: 0.35,
-  roadmap_trend_signals: 0.30,
-  recent_practical_calibration: 0.25,
+  ask_road_signals: 0.05,
+  roadmap_trend_signals: 0.75,
+  recent_practical_calibration: 0.10,
   shoe_banker_player_bias: 0.10,
 })
 
@@ -62,22 +62,22 @@ export const SIDE_PREDICTION_TARGET_HIT_RATE = 0.5
 
 export const SIDE_PREDICTION_WEIGHT_PROFILES = Object.freeze({
   tie: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    tie_risk: 0.40, tie_count: 0.25, shoe_stage: 0.15, road_chaos: 0.10, remaining_rank_total: 0.10,
+    tie_risk: 0.05, tie_count: 0.55, shoe_stage: 0.10, road_chaos: 0.10, remaining_rank_total: 0.20,
   }),
   superSix: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    banker_point: 0.45, remaining_rank_total: 0.25, table_side_history: 0.20, shoe_stage: 0.10,
+    banker_point: 0.65, remaining_rank_total: 0.05, table_side_history: 0.25, shoe_stage: 0.05,
   }),
   bankerPair: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    remaining_rank_pressure: 0.25, table_side_history: 0.30, banker_pair_count: 0.25, shoe_stage: 0.10, pair_risk: 0.10,
+    remaining_rank_pressure: 0.40, table_side_history: 0.25, banker_pair_count: 0.05, shoe_stage: 0.05, pair_risk: 0.25,
   }),
   playerPair: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    remaining_rank_pressure: 0.25, table_side_history: 0.30, player_pair_count: 0.25, shoe_stage: 0.10, pair_risk: 0.10,
+    remaining_rank_pressure: 0.25, table_side_history: 0.10, player_pair_count: 0.05, shoe_stage: 0.55, pair_risk: 0.05,
   }),
   bankerDragon: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    point_diff: 0.35, banker_natural: 0.25, banker_point: 0.20, remaining_rank_total: 0.10, big_road: 0.10,
+    point_diff: 0.40, banker_natural: 0.20, banker_point: 0.20, remaining_rank_total: 0.15, big_road: 0.05,
   }),
   playerDragon: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    point_diff: 0.35, player_natural: 0.25, player_point: 0.20, remaining_rank_total: 0.10, big_road: 0.10,
+    point_diff: 0.05, player_natural: 0.25, player_point: 0.25, remaining_rank_total: 0.25, big_road: 0.20,
   }),
 })
 

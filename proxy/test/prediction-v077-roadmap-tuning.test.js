@@ -9,12 +9,12 @@ import {
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 
 test('v077 main weights add requested roadmap and remaining-card aggregate features', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v086_主預測實戰偏移校正版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v087_最佳權重收斂版')
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals > 0)
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.road_structure_signals, 0)
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.derived_road_structure_signals, 0)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.35)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.05)
   assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'remaining_zero_to_k_total'), false)
   assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'pattern_tags'), false)
 })
@@ -41,7 +41,7 @@ test('v077 prediction features expose Chinese-requested roadmap details and 0-K 
       nextPlayerRaw: { big_eye: '222', small: '222', cockroach: '222' },
     },
   )
-  assert.equal(row.strategy_version, 'v086_主預測實戰偏移校正版')
+  assert.equal(row.strategy_version, 'v087_最佳權重收斂版')
   const features = row.prediction_features.derived_main_features
   assert.ok(features.roadmapTrendSignals)
   assert.ok(Object.hasOwn(features.roadmapTrendSignals, 'singleJump'))

@@ -317,11 +317,11 @@ describe('AI百家預測軟體', () => {
       total_round_player_pair: 2,
     })).toEqual({
       bankerDragon: 51,
-      playerDragon: 40,
-      bankerPair: 55,
-      playerPair: 49,
-      superSix: 45,
-      tie: 47,
+      playerDragon: 36,
+      bankerPair: 62,
+      playerPair: 46,
+      superSix: 49,
+      tie: 38,
     })
   })
 
@@ -581,8 +581,8 @@ describe('AI百家預測軟體', () => {
 
     await renderApp()
 
-    await waitFor(() => expect(screen.getByLabelText('莊預測')).toHaveTextContent('33%'))
-    expect(screen.getByLabelText('閒預測')).toHaveTextContent('29%')
+    await waitFor(() => expect(screen.getByLabelText('莊預測')).toHaveTextContent('38%'))
+    expect(screen.getByLabelText('閒預測')).toHaveTextContent('33%')
   })
 
   it('v030 member login calls online license API and enters frontend only after success', async () => {
