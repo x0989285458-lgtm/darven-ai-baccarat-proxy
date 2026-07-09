@@ -9,6 +9,7 @@ async function renderApp(path = '/', waitForConnected = true) {
   if (path === '/' || path === '') window.sessionStorage.setItem('darven-member-login', 'yes')
   if (path === '/admin') {
     if (!window.sessionStorage.getItem('darven-admin-account')) window.sessionStorage.setItem('darven-admin-account', 'DV1788')
+    if (!window.sessionStorage.getItem('darven-admin-session-token')) window.sessionStorage.setItem('darven-admin-session-token', 'test-admin-session')
     if (!window.sessionStorage.getItem('darven-admin-role')) {
       const account = window.sessionStorage.getItem('darven-admin-account')?.toLowerCase()
       window.sessionStorage.setItem('darven-admin-role', account === 'dv1788' ? 'super' : 'manager')
@@ -211,7 +212,7 @@ describe('AI百家預測軟體', () => {
     fireEvent.click(screen.getByRole('button', { name: '建立授權' }))
     fireEvent.change(screen.getByPlaceholderText('輸入代理帳號尾碼'), { target: { value: 'A1688' } })
     fireEvent.click(screen.getByRole('button', { name: '新增帳號' }))
-    await waitFor(() => expect(calls.some((call) => call.url.includes('/api/online-license/licenses') && call.body.memberAccount === 'User1688' && call.body.adminAccount === 'Admin001')).toBe(true))
+    await waitFor(() => expect(calls.some((call) => call.url.includes('/api/online-license/licenses') && call.body.memberAccount === 'User1688' && call.body.adminSessionToken === 'test-admin-session')).toBe(true))
     expect(document.body.textContent).toMatch(/88/)
   })
 

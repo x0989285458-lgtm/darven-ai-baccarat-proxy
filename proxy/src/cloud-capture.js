@@ -26,7 +26,7 @@ export function parseCloudCapturePayload(payload = {}) {
   }
 }
 
-export function createCloudCaptureClient({ url, state, writer = null, fetchImpl = globalThis.fetch, pollMs = DEFAULT_POLL_MS, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS } = {}) {
+export function createCloudCaptureClient({ url, state, writer = null, fetchImpl = globalThis.fetch, pollMs = DEFAULT_POLL_MS, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, adminKey = process.env.WORKER_ADMIN_KEY } = {}) {
   let timer = null
   let stopped = true
 
@@ -39,7 +39,7 @@ export function createCloudCaptureClient({ url, state, writer = null, fetchImpl 
     try {
       const controller = typeof AbortController === 'function' ? new AbortController() : null
       const timeout = controller ? setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs) || DEFAULT_REQUEST_TIMEOUT_MS)) : null
-      const response = await fetchImpl(url, { cache: 'no-store', signal: controller?.signal }).finally(() => {
+      const response = await fetchImpl(url, { cache: 'no-store', signal: controller?.signal, headers: adminKey ? { 'x-worker-admin-key': adminKey } : undefined }).finally(() => {
         if (timeout) clearTimeout(timeout)
       })
       if (!response?.ok) {

@@ -1,5 +1,6 @@
 import http from 'node:http'
 import { chromium } from 'playwright'
+import { isWorkerAdminAuthorized } from './admin-auth.js'
 import { extractSnapshotFromPayloads, redactUrlSecrets } from './snapshot.js'
 
 const SERVICE = 'darven-cloud-browser-worker'
@@ -33,11 +34,13 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && url.pathname === SNAPSHOT_PATH) {
+      if (!isWorkerAdminAuthorized(req)) return sendJson(res, 401, { ok: false, error: 'unauthorized' })
       const snapshot = await getSnapshot()
       return sendJson(res, 200, snapshot)
     }
 
     if (req.method === 'POST' && url.pathname === '/reload') {
+      if (!isWorkerAdminAuthorized(req)) return sendJson(res, 401, { ok: false, error: 'unauthorized' })
       resetCapturedPayloads()
       await closePage()
       const snapshot = await getSnapshot()

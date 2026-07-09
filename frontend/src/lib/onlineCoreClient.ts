@@ -77,7 +77,7 @@ export async function getOnlineStrategyAnalysis(fetchImpl = fetch): Promise<Onli
   }
 }
 
-export async function updateOnlineAppSetting(payload: { scope: string; key: string; value: unknown; isPublic?: boolean }, fetchImpl = fetch) {
+export async function updateOnlineAppSetting(payload: { scope: string; key: string; value: unknown; isPublic?: boolean; adminSessionToken?: string }, fetchImpl = fetch) {
   const response = await fetchImpl(`${proxyUrl}/api/online-core/settings`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -87,7 +87,7 @@ export async function updateOnlineAppSetting(payload: { scope: string; key: stri
   return response.json()
 }
 
-export async function updateOnlineFeatureFlag(payload: { flagKey: string; enabled: boolean }, fetchImpl = fetch) {
+export async function updateOnlineFeatureFlag(payload: { flagKey: string; enabled: boolean; adminSessionToken?: string }, fetchImpl = fetch) {
   const response = await fetchImpl(`${proxyUrl}/api/online-core/feature-flags`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

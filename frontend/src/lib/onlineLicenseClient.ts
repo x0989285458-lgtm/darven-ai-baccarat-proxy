@@ -12,6 +12,8 @@ export type OnlineLicenseStatus = {
   licenseRows: Array<{ member: string; code: string; status: string; remain: string; agentCode?: string; expiresOn?: string }>
 }
 
+type AdminSessionPayload = { adminSessionToken?: string }
+
 export async function memberLogin(payload: { memberAccount: string; verificationPassword: string; turnstileToken?: string }, fetchImpl = fetch) {
   return postJson('/api/online-license/member-login', payload, fetchImpl)
 }
@@ -20,35 +22,39 @@ export async function agentLogin(payload: { agentAccount: string; turnstileToken
   return postJson('/api/online-license/agent-login', payload, fetchImpl)
 }
 
-export async function createOnlineAgent(payload: { code: string; name?: string; role?: string; parentCode?: string; permission?: string; adminAccount?: string }, fetchImpl = fetch) {
+export async function createOnlineAgent(payload: { code: string; name?: string; role?: string; parentCode?: string; permission?: string; adminAccount?: string } & AdminSessionPayload, fetchImpl = fetch) {
   return postJson('/api/online-license/agents', payload, fetchImpl)
 }
 
-export async function deleteOnlineAgents(payload: { codes: string[]; adminAccount?: string }, fetchImpl = fetch) {
+export async function deleteOnlineAgents(payload: { codes: string[]; adminAccount?: string } & AdminSessionPayload, fetchImpl = fetch) {
   return postJson('/api/online-license/agents/delete', payload, fetchImpl)
 }
 
-export async function createOnlineLicense(payload: { memberAccount: string; code: string; agentCode: string; durationDays: number; planName?: string; adminAccount?: string }, fetchImpl = fetch) {
+export async function createOnlineLicense(payload: { memberAccount: string; code: string; agentCode: string; durationDays: number; planName?: string; adminAccount?: string } & AdminSessionPayload, fetchImpl = fetch) {
   return postJson('/api/online-license/licenses', { planName: '正式月卡', ...payload }, fetchImpl)
 }
 
-export async function setOnlineLicenseStatus(payload: { code: string; status: 'active' | 'suspended' | 'expired'; adminAccount?: string }, fetchImpl = fetch) {
+export async function setOnlineLicenseStatus(payload: { code: string; status: 'active' | 'suspended' | 'expired'; adminAccount?: string } & AdminSessionPayload, fetchImpl = fetch) {
   return postJson('/api/online-license/licenses/status', payload, fetchImpl)
 }
 
-export async function extendOnlineLicense(payload: { code: string; days: number; adminAccount?: string }, fetchImpl = fetch) {
+export async function extendOnlineLicense(payload: { code: string; days: number; adminAccount?: string } & AdminSessionPayload, fetchImpl = fetch) {
   return postJson('/api/online-license/licenses/extend', payload, fetchImpl)
 }
 
-export async function deleteOnlineLicense(payload: { code: string; adminAccount?: string }, fetchImpl = fetch) {
+export async function deleteOnlineLicense(payload: { code: string; adminAccount?: string } & AdminSessionPayload, fetchImpl = fetch) {
   return postJson('/api/online-license/licenses/delete', payload, fetchImpl)
 }
 
-export async function getOnlineLicenseStatus(adminAccountOrFetch?: string | typeof fetch, fetchImpl = fetch): Promise<OnlineLicenseStatus> {
+export async function getOnlineLicenseStatus(adminAccountOrFetch?: string | { adminAccount?: string; adminSessionToken?: string } | typeof fetch, fetchImpl = fetch): Promise<OnlineLicenseStatus> {
   try {
-    const adminAccount = typeof adminAccountOrFetch === 'string' ? adminAccountOrFetch : undefined
+    const adminAccount = typeof adminAccountOrFetch === 'string' ? adminAccountOrFetch : typeof adminAccountOrFetch === 'object' ? adminAccountOrFetch.adminAccount : undefined
+    const adminSessionToken = typeof adminAccountOrFetch === 'object' ? adminAccountOrFetch.adminSessionToken : undefined
     const resolvedFetch = typeof adminAccountOrFetch === 'function' ? adminAccountOrFetch : fetchImpl
-    const suffix = adminAccount ? `?adminAccount=${encodeURIComponent(adminAccount)}` : ''
+    const params = new URLSearchParams()
+    if (adminAccount) params.set('adminAccount', adminAccount)
+    if (adminSessionToken) params.set('adminSessionToken', adminSessionToken)
+    const suffix = params.toString() ? `?${params.toString()}` : ''
     const response = await resolvedFetch(`${proxyUrl}/api/online-license/status${suffix}`)
     if (!response.ok) return emptyStatus()
     const body = await response.json()

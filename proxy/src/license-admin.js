@@ -76,9 +76,11 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     if (!code) throw new Error('Agent code is required')
     await assertCanManageRole(adminAccount, role)
     const displayName = name || code
-    const resolvedParentCode = isSuperAdmin(parentCode) ? null : parentCode
+    const resolvedParentCode = isSuperAdmin(parentCode) ? null : (parentCode || (isSuperAdmin(adminAccount) ? null : adminAccount))
     if (resolvedParentCode && String(resolvedParentCode).toLowerCase() === String(code).toLowerCase()) throw new Error('不能把帳號新增到自己底下')
+    if (resolvedParentCode) await assertCanManageAgentCode(adminAccount, resolvedParentCode)
     const existing = await db.query('select id from public.agents where code = $1 limit 1', [code])
+    if (existing.rows[0]) await assertCanManageAgentCode(adminAccount, code)
     const result = existing.rows[0]
       ? await db.query(`update public.agents set name = $2, role = $3, parent_code = $4, permission = $5, is_active = true, updated_at = now()
                        where code = $1 returning id, code, name, role, parent_code, permission, is_active, created_at`, [code, displayName, role, resolvedParentCode, permission])
@@ -94,18 +96,26 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     const list = Array.isArray(codes) ? codes.filter(Boolean) : []
     if (!list.length) throw new Error('Agent codes are required')
     const allAgents = await db.query(`select code, parent_code, role from public.agents where coalesce(is_active, true) = true`)
+    for (const code of list) assertAgentInScope(adminAccount, code, allAgents.rows)
     const toDelete = collectAgentDeleteCodes(list, allAgents.rows)
     const result = await db.query(`update public.agents set is_active = false, updated_at = now()
                                   where code = any($1::text[])
                                   returning id, code, name, role, parent_code, is_active`, [toDelete])
-    await logAdminOperation({ adminAccount, action: 'delete_agents', targetType: 'agent', targetCode: toDelete.join(','), payload: { requestedCodes: list, deletedCodes: toDelete } })
-    return { ok: true, rows: result.rows, deletedCodes: toDelete }
+    const suspendedLicenses = await db.query(`update public.licenses l set status = 'suspended', updated_at = now()
+                                  from public.agents a
+                                  where l.agent_id = a.id
+                                    and a.code = any($1::text[])
+                                    and l.status <> 'expired'
+                                  returning l.id, l.code, l.status`, [toDelete])
+    await logAdminOperation({ adminAccount, action: 'delete_agents', targetType: 'agent', targetCode: toDelete.join(','), payload: { requestedCodes: list, deletedCodes: toDelete, suspendedLicenseCodes: suspendedLicenses.rows.map((row) => row.code) } })
+    return { ok: true, rows: result.rows, deletedCodes: toDelete, suspendedLicenses: suspendedLicenses.rows }
   }
 
   async function createLicense({ memberAccount, code, agentCode, planName = '正式月卡', durationDays = 30, startsOn = todayIso(), adminAccount = 'dv1788' } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
     if (!code || !agentCode) throw new Error('license code and agentCode are required')
     await assertCanManageCodes(adminAccount)
+    await assertCanManageAgentCode(adminAccount, agentCode)
     const resolvedMemberAccount = memberAccount || `User${String(code).match(/(\d+)/)?.[1]?.slice(-4)?.padStart(4, '0') ?? '0001'}`
     const plan = await getOrCreatePlan({ name: planName, durationDays })
     const agent = await getOrCreateAgentByCode(agentCode)
@@ -132,6 +142,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
     await assertCanManageCodes(adminAccount)
     if (!code || !status) throw new Error('License code and status are required')
+    await assertCanManageLicenseCode(adminAccount, code)
     const result = await db.query(
       `update public.licenses set status = $2, updated_at = now() where code = $1 returning id, code, status, expires_on`,
       [code, status],
@@ -144,6 +155,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
     if (!code) throw new Error('License code is required')
     await assertCanManageCodes(adminAccount)
+    await assertCanManageLicenseCode(adminAccount, code)
     const result = await db.query(
       `update public.licenses set expires_on = expires_on + ($2::int * interval '1 day'), updated_at = now() where code = $1 returning id, code, status, expires_on`,
       [code, Number(days)],
@@ -156,6 +168,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
     if (!code) throw new Error('License code is required')
     await assertCanManageCodes(adminAccount)
+    await assertCanManageLicenseCode(adminAccount, code)
     const result = await db.query(
       `update public.licenses set status = 'expired', updated_at = now() where code = $1 returning id, code, status, expires_on`,
       [code],
@@ -348,6 +361,32 @@ function isDescendantAgent(agent, ancestor, agents) {
   }
   return false
 }
+function assertAgentInScope(adminAccount, targetCode, agents) {
+  if (!targetCode || isSuperAdmin(adminAccount)) return true
+  if (String(targetCode).toLowerCase() === String(adminAccount).toLowerCase()) return true
+  const target = agents.find((agent) => String(agent.code).toLowerCase() === String(targetCode).toLowerCase())
+  if (target && isDescendantAgent(target, adminAccount, agents)) return true
+  throw new Error('無權操作此代理或下級')
+}
+
+async function assertCanManageAgentCode(adminAccount, targetCode) {
+  if (!targetCode || isSuperAdmin(adminAccount)) return true
+  const allAgents = await db.query(`select code, parent_code, role from public.agents where coalesce(is_active, true) = true`)
+  return assertAgentInScope(adminAccount, targetCode, allAgents.rows)
+}
+
+async function assertCanManageLicenseCode(adminAccount, licenseCode) {
+  if (!licenseCode || isSuperAdmin(adminAccount)) return true
+  const result = await db.query(`select a.code as agent_code
+    from public.licenses l
+    join public.agents a on a.id = l.agent_id
+    where l.code = $1
+    limit 1`, [licenseCode])
+  const agentCode = result.rows[0]?.agent_code
+  if (!agentCode) throw new Error('驗證碼不存在')
+  return assertCanManageAgentCode(adminAccount, agentCode)
+}
+
 
 function collectAgentDeleteCodes(requestedCodes, agents) {
   const requested = new Set(requestedCodes.map(String))

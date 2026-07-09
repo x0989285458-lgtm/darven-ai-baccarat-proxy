@@ -40,7 +40,7 @@ describe('onlineLicenseClient v030', () => {
 
   it('creates online license through backend API', async () => {
     const fetchImpl = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, row: { code: 'DVAI0888_015' } }) })) as unknown as typeof fetch
-    const result = await createOnlineLicense({ memberAccount: 'User0888', code: 'DVAI0888_015', agentCode: 'DVAI', durationDays: 30, adminAccount: 'DV1788' }, fetchImpl)
+    const result = await createOnlineLicense({ memberAccount: 'User0888', code: 'DVAI0888_015', agentCode: 'DVAI', durationDays: 30, adminSessionToken: 'session-1' }, fetchImpl)
     expect(result.row?.code).toBe('DVAI0888_015')
     expect(String((fetchImpl as any).mock.calls[0][0])).toContain('/api/online-license/licenses')
     expect((fetchImpl as any).mock.calls[0][1]).toEqual(expect.objectContaining({ method: 'POST' }))
@@ -48,17 +48,17 @@ describe('onlineLicenseClient v030', () => {
 
   it('v031 posts suspend extend and delete license operations with DV1788 admin permission', async () => {
     const fetchImpl = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, row: { code: 'DVAI1788_001' } }) })) as unknown as typeof fetch
-    await setOnlineLicenseStatus({ code: 'DVAI1788_001', status: 'suspended', adminAccount: 'DV1788' }, fetchImpl)
-    await extendOnlineLicense({ code: 'DVAI1788_001', days: 15, adminAccount: 'DV1788' }, fetchImpl)
-    await deleteOnlineLicense({ code: 'DVAI1788_001', adminAccount: 'DV1788' }, fetchImpl)
+    await setOnlineLicenseStatus({ code: 'DVAI1788_001', status: 'suspended', adminSessionToken: 'session-1' }, fetchImpl)
+    await extendOnlineLicense({ code: 'DVAI1788_001', days: 15, adminSessionToken: 'session-1' }, fetchImpl)
+    await deleteOnlineLicense({ code: 'DVAI1788_001', adminSessionToken: 'session-1' }, fetchImpl)
     expect(String((fetchImpl as any).mock.calls[0][0])).toContain('/api/online-license/licenses/status')
     expect(String((fetchImpl as any).mock.calls[1][0])).toContain('/api/online-license/licenses/extend')
     expect(String((fetchImpl as any).mock.calls[2][0])).toContain('/api/online-license/licenses/delete')
     expect((fetchImpl as any).mock.calls[0][1]).toEqual(expect.objectContaining({ method: 'POST' }))
     expect((fetchImpl as any).mock.calls[1][1]).toEqual(expect.objectContaining({ method: 'POST' }))
     expect((fetchImpl as any).mock.calls[2][1]).toEqual(expect.objectContaining({ method: 'POST' }))
-    expect(JSON.parse((fetchImpl as any).mock.calls[0][1].body)).toEqual({ adminAccount: 'DV1788', code: 'DVAI1788_001', status: 'suspended' })
-    expect(JSON.parse((fetchImpl as any).mock.calls[1][1].body)).toEqual({ adminAccount: 'DV1788', code: 'DVAI1788_001', days: 15 })
-    expect(JSON.parse((fetchImpl as any).mock.calls[2][1].body)).toEqual({ adminAccount: 'DV1788', code: 'DVAI1788_001' })
+    expect(JSON.parse((fetchImpl as any).mock.calls[0][1].body)).toEqual({ adminSessionToken: 'session-1', code: 'DVAI1788_001', status: 'suspended' })
+    expect(JSON.parse((fetchImpl as any).mock.calls[1][1].body)).toEqual({ adminSessionToken: 'session-1', code: 'DVAI1788_001', days: 15 })
+    expect(JSON.parse((fetchImpl as any).mock.calls[2][1].body)).toEqual({ adminSessionToken: 'session-1', code: 'DVAI1788_001' })
   })
 })

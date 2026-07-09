@@ -42,15 +42,20 @@ test('v027 server exposes online license status and bootstrap endpoints', async 
   const calls = []
   const licenseAdminClient = {
     configured: true,
-    async getStatus() { calls.push('status'); return { managers: [], agents: [], plans: [], licenses: [] } },
+    async validateAgentLogin(input) { calls.push(['login', input.agentAccount]); return { ok: true, account: { code: input.agentAccount, role: 'total' }, agent: null } },
+    async getStatus(input) { calls.push(['status', input.adminAccount]); return { managers: [], agents: [], plans: [], licenses: [] } },
     async bootstrap(input) { calls.push(['bootstrap', input.username]); return { ok: true, manager: { username: input.username }, plan: { name: input.planName } } },
   }
   const app = createApp({ autoConnect: false, licenseAdminClient })
-  const status = await app.inject({ method: 'GET', url: '/api/online-license/status' })
-  const bootstrap = await app.inject({ method: 'POST', url: '/api/online-license/bootstrap', body: JSON.stringify({ username: 'Dv1788', password: 'safe-pass', planName: '正式月卡', durationDays: 30 }) })
+  const login = await app.inject({ method: 'POST', url: '/api/online-license/agent-login', body: JSON.stringify({ agentAccount: 'dv1788' }) })
+  const token = JSON.parse(login.body).adminSessionToken
+  const status = await app.inject({ method: 'GET', url: `/api/online-license/status?adminSessionToken=${encodeURIComponent(token)}` })
+  const unauthBootstrap = await app.inject({ method: 'POST', url: '/api/online-license/bootstrap', body: JSON.stringify({ username: 'Dv1788', password: 'safe-pass', planName: '正式月卡', durationDays: 30 }) })
+  const bootstrap = await app.inject({ method: 'POST', url: '/api/online-license/bootstrap', body: JSON.stringify({ username: 'Dv1788', password: 'safe-pass', planName: '正式月卡', durationDays: 30, adminSessionToken: token }) })
   assert.equal(status.statusCode, 200)
+  assert.equal(unauthBootstrap.statusCode, 401)
   assert.equal(bootstrap.statusCode, 200)
-  assert.deepEqual(calls, ['status', ['bootstrap', 'Dv1788']])
+  assert.deepEqual(calls, [['login', 'dv1788'], ['status', 'dv1788'], ['bootstrap', 'Dv1788']])
 })
 
 function fakeResult(sql, params) {

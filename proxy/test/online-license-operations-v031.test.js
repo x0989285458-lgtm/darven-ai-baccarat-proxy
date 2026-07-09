@@ -32,19 +32,23 @@ test('v031 server exposes backend-only license operation endpoints', async () =>
   const calls = []
   const licenseAdminClient = {
     configured: true,
+    async validateAgentLogin(input) { calls.push(['login', input.agentAccount]); return { ok: true, account: { code: input.agentAccount, role: 'manager' }, agent: { code: input.agentAccount, role: 'manager' } } },
     async setLicenseStatus(input) { calls.push(['status', input.code, input.status, input.adminAccount]); return { ok: true, row: { code: input.code, status: input.status } } },
     async extendLicense(input) { calls.push(['extend', input.code, input.days, input.adminAccount]); return { ok: true, row: { code: input.code, expires_on: '2026-08-28' } } },
     async deleteLicense(input) { calls.push(['delete', input.code, input.adminAccount]); return { ok: true, row: { code: input.code, status: 'expired' } } },
   }
   const app = createApp({ autoConnect: false, licenseAdminClient })
-  const suspend = await app.inject({ method: 'POST', url: '/api/online-license/licenses/status', body: JSON.stringify({ code: 'DVAI1788_001', status: 'suspended', adminAccount: 'DV1788' }) })
-  const extend = await app.inject({ method: 'POST', url: '/api/online-license/licenses/extend', body: JSON.stringify({ code: 'DVAI1788_001', days: 15, adminAccount: 'DV1788' }) })
-  const remove = await app.inject({ method: 'POST', url: '/api/online-license/licenses/delete', body: JSON.stringify({ code: 'DVAI1788_001', adminAccount: 'DV1788' }) })
+  const login = await app.inject({ method: 'POST', url: '/api/online-license/agent-login', body: JSON.stringify({ agentAccount: 'DV1788' }) })
+  const token = JSON.parse(login.body).adminSessionToken
+  const suspend = await app.inject({ method: 'POST', url: '/api/online-license/licenses/status', body: JSON.stringify({ code: 'DVAI1788_001', status: 'suspended', adminAccount: 'Evil', adminSessionToken: token }) })
+  const extend = await app.inject({ method: 'POST', url: '/api/online-license/licenses/extend', body: JSON.stringify({ code: 'DVAI1788_001', days: 15, adminAccount: 'Evil', adminSessionToken: token }) })
+  const remove = await app.inject({ method: 'POST', url: '/api/online-license/licenses/delete', body: JSON.stringify({ code: 'DVAI1788_001', adminAccount: 'Evil', adminSessionToken: token }) })
 
   assert.equal(suspend.statusCode, 200)
   assert.equal(extend.statusCode, 200)
   assert.equal(remove.statusCode, 200)
   assert.deepEqual(calls, [
+    ['login', 'DV1788'],
     ['status', 'DVAI1788_001', 'suspended', 'DV1788'],
     ['extend', 'DVAI1788_001', 15, 'DV1788'],
     ['delete', 'DVAI1788_001', 'DV1788'],

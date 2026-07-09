@@ -19,7 +19,7 @@ function tableNumber(table: LiveTable, index: number) {
 export default function App() {
   const path = window.location.pathname
   const memberLoggedIn = window.sessionStorage.getItem('darven-member-login') === 'yes'
-  const adminLoggedIn = Boolean(window.sessionStorage.getItem('darven-admin-account'))
+  const adminLoggedIn = Boolean(window.sessionStorage.getItem('darven-admin-account') && window.sessionStorage.getItem('darven-admin-session-token'))
   const [tables, setTables] = useState<LiveTable[]>([])
   const [stableSelected, setStableSelected] = useState<LiveTable | null>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -202,6 +202,8 @@ function enforceMaintenanceLogout(status: OnlineCoreStatus, path: string, liveCl
     if (account !== SUPER_ADMIN && role !== 'super') {
       window.sessionStorage.removeItem('darven-admin-account')
       window.sessionStorage.removeItem('darven-admin-role')
+      window.sessionStorage.removeItem('darven-admin-session-token')
+      window.sessionStorage.removeItem('darven-admin-session-expires-at')
       window.sessionStorage.removeItem('darven_admin_login')
       if (window.location.pathname !== '/admin-login') window.location.assign('/admin-login')
     }
@@ -274,6 +276,8 @@ function AdminLoginApp() {
       }
       window.sessionStorage.setItem('darven-admin-account', agentAccount.trim())
       window.sessionStorage.setItem('darven-admin-role', normalizeRole(result.account?.role ?? result.agent?.role ?? (agentAccount.trim().toLowerCase() === SUPER_ADMIN ? 'super' : 'viewer')))
+      if (result.adminSessionToken) window.sessionStorage.setItem('darven-admin-session-token', result.adminSessionToken)
+      if (result.sessionExpiresAt) window.sessionStorage.setItem('darven-admin-session-expires-at', result.sessionExpiresAt)
       setLoginMessage('登入成功，正在進入後台')
       window.location.assign('/admin')
     } catch {
@@ -325,6 +329,7 @@ const initialCodes: CodeRow[] = [
 function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTable[]; supabaseStatus: { state: string; message: string }; onlineCoreStatus: OnlineCoreStatus }) {
   const totalRounds = tables.reduce((sum, table) => sum + Number(table.trend.current_round ?? 0), 0)
   const loginAgent = window.sessionStorage.getItem('darven-admin-account')?.trim() || SUPER_ADMIN
+  const adminSessionToken = window.sessionStorage.getItem('darven-admin-session-token') ?? undefined
   const loginRoleName = normalizeRole(window.sessionStorage.getItem('darven-admin-role') || (loginAgent.toLowerCase() === SUPER_ADMIN ? 'super' : 'viewer'))
   const isSuper = loginRoleName === 'super' || loginAgent.toLowerCase() === SUPER_ADMIN
   const [memberAccount, setMemberAccount] = useState('')
@@ -368,7 +373,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   useEffect(() => {
     if (onlineCoreStatus.maintenanceMode && !isSuper) logoutAdmin()
   }, [onlineCoreStatus.maintenanceMode, isSuper])
-  useEffect(() => { getOnlineLicenseStatus(displayManager).then((status) => {
+  useEffect(() => { getOnlineLicenseStatus({ adminAccount: displayManager, adminSessionToken }).then((status) => {
     setLicenseStatus(status)
     if (status.licenseRows.length) {
       const rows = pruneExpiredCodes(status.licenseRows as CodeRow[])
@@ -399,16 +404,16 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const createAuthorization = async () => {
     if (!canManageCodes) return notify('此角色不能建立驗證碼')
     const nextCode = buildLicenseCode(displayManager, displayMember, serialNo)
-    const result = await createOnlineLicense({ memberAccount: displayMember, code: nextCode, agentCode: displayManager, durationDays: clampedPlanDays, adminAccount: displayManager })
+    const result = await createOnlineLicense({ memberAccount: displayMember, code: nextCode, agentCode: displayManager, durationDays: clampedPlanDays, adminSessionToken })
     setLatestMember(displayMember)
     setLatestCode(result.row?.code ?? nextCode)
-    const nextRows = await getOnlineLicenseStatus(displayManager)
+    const nextRows = await getOnlineLicenseStatus({ adminAccount: displayManager, adminSessionToken })
     setLicenseStatus(nextRows)
     if (nextRows.licenseRows.length) setCodes(pruneExpiredCodes(nextRows.licenseRows as CodeRow[]))
     else setCodes((rows) => pruneExpiredCodes([{ member: displayMember, code: result.row?.code ?? nextCode, status: '啟用中', remain: `${clampedPlanDays}天` }, ...rows]))
   }
   const refreshLicenses = async () => {
-    const nextRows = await getOnlineLicenseStatus(displayManager)
+    const nextRows = await getOnlineLicenseStatus({ adminAccount: displayManager, adminSessionToken })
     setLicenseStatus(nextRows)
     if (nextRows.licenseRows.length) setCodes(pruneExpiredCodes(nextRows.licenseRows as CodeRow[]))
     return nextRows
@@ -418,6 +423,9 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const toggleCollapse = (account: string) => setCollapsedAgents((current) => current.includes(account) ? current.filter((item) => item !== account) : [...current, account])
   const logoutAdmin = () => {
     window.sessionStorage.removeItem('darven-admin-account')
+    window.sessionStorage.removeItem('darven-admin-role')
+    window.sessionStorage.removeItem('darven-admin-session-token')
+    window.sessionStorage.removeItem('darven-admin-session-expires-at')
     window.sessionStorage.removeItem('darven_admin_login')
     window.location.assign('/admin-login')
   }
@@ -428,7 +436,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     if (!rows.length) return notify('請先勾選驗證碼')
     setCodeActionBusy(true)
     try {
-      await Promise.all(rows.map((row) => deleteOnlineLicense({ code: row.code, adminAccount: displayManager })))
+      await Promise.all(rows.map((row) => deleteOnlineLicense({ code: row.code, adminSessionToken })))
       setSelectedCodeMembers([])
       await refreshLicenses()
       notify('已刪除選取驗證碼')
@@ -444,7 +452,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     if (!rows.length) return notify('請先勾選驗證碼')
     setCodeActionBusy(true)
     try {
-      await Promise.all(rows.map((row) => setOnlineLicenseStatus({ code: row.code, status: 'suspended', adminAccount: displayManager })))
+      await Promise.all(rows.map((row) => setOnlineLicenseStatus({ code: row.code, status: 'suspended', adminSessionToken })))
       await refreshLicenses()
       notify('已暫停選取驗證碼')
     } catch (error: any) {
@@ -459,7 +467,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     if (!rows.length) return notify('請先勾選驗證碼')
     setCodeActionBusy(true)
     try {
-      await Promise.all(rows.map((row) => setOnlineLicenseStatus({ code: row.code, status: 'active', adminAccount: displayManager })))
+      await Promise.all(rows.map((row) => setOnlineLicenseStatus({ code: row.code, status: 'active', adminSessionToken })))
       await refreshLicenses()
       notify('已開啟選取驗證碼')
     } catch (error: any) {
@@ -474,7 +482,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     if (!rows.length) return notify('請先勾選驗證碼')
     setCodeActionBusy(true)
     try {
-      await Promise.all(rows.map((row) => extendOnlineLicense({ code: row.code, days: clampedPlanDays, adminAccount: displayManager })))
+      await Promise.all(rows.map((row) => extendOnlineLicense({ code: row.code, days: clampedPlanDays, adminSessionToken })))
       await refreshLicenses()
       notify(`已延長選取驗證碼 ${clampedPlanDays} 天`)
     } catch (error: any) {
@@ -494,7 +502,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     const code = buildChildAgentAccount(parentCode, rawCode)
     setAgentActionBusy(true)
     try {
-      const result = await createOnlineAgent({ code, name: code, role: newAgentRole, parentCode, adminAccount: displayManager, permission: rolePermission(newAgentRole) })
+      const result = await createOnlineAgent({ code, name: code, role: newAgentRole, parentCode, adminSessionToken, permission: rolePermission(newAgentRole) })
       if (!result.ok && !result.skipped) throw new Error(result.error || '建立失敗')
       setNewAgentCode('')
       setNewAgentParent('')
@@ -514,7 +522,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     try {
       await Promise.all(selectedAgents.map((code) => {
         const current = agents.find((agent) => agent.account === code)
-        return createOnlineAgent({ code, name: code, role: newAgentRole, parentCode: current?.parent ?? displayManager, adminAccount: displayManager, permission: rolePermission(newAgentRole) })
+        return createOnlineAgent({ code, name: code, role: newAgentRole, parentCode: current?.parent ?? displayManager, adminSessionToken, permission: rolePermission(newAgentRole) })
       }))
       await refreshLicenses()
       notify('代理角色已調整')
@@ -529,7 +537,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     if (!selectedAgents.length) return notify('請先勾選代理')
     setAgentActionBusy(true)
     try {
-      await deleteOnlineAgents({ codes: selectedAgents, adminAccount: displayManager })
+      await deleteOnlineAgents({ codes: selectedAgents, adminSessionToken })
       setSelectedAgents([])
       await refreshLicenses()
       notify('已刪除選取帳號；若選取管理員，其附屬下級也已刪除')
@@ -541,7 +549,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   }
   const enableMaintenanceMode = async () => {
     if (!isSuper) return notify('只有超級管理員可以啟用維護模式')
-    await updateOnlineAppSetting({ scope: 'frontend', key: 'ui_defaults', value: { maintenanceMode: true, enabledAt: new Date().toISOString() }, isPublic: true })
+    await updateOnlineAppSetting({ scope: 'frontend', key: 'ui_defaults', value: { maintenanceMode: true, enabledAt: new Date().toISOString() }, isPublic: true, adminSessionToken })
     notify('維護模式已啟用')
     window.location.reload()
   }
@@ -661,6 +669,9 @@ function useInactivityLogout(mode: 'admin' | 'member' | null) {
     const clearLogin = () => {
       if (mode === 'admin') {
         window.sessionStorage.removeItem('darven-admin-account')
+        window.sessionStorage.removeItem('darven-admin-role')
+        window.sessionStorage.removeItem('darven-admin-session-token')
+        window.sessionStorage.removeItem('darven-admin-session-expires-at')
         window.sessionStorage.removeItem('darven_admin_login')
         if (window.location.pathname === '/admin') window.location.assign('/admin-login')
         return

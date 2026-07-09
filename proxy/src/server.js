@@ -1,4 +1,5 @@
 import http from 'node:http'
+import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { createProxyState } from './state-store.js'
 import { createMtClient } from './mt-client.js'
@@ -25,7 +26,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     CLOUD_CAPTURE_POLL_MS: process.env.CLOUD_CAPTURE_POLL_MS,
   })
   const shouldAutoConnect = autoConnect ?? deployConfig.autoConnect
-  const strictRealCardRounds = process.env.REQUIRE_REAL_CARD_ROUNDS === 'true'
+  const strictRealCardRounds = process.env.REQUIRE_REAL_CARD_ROUNDS !== 'false'
+  const adminSessions = new Map()
+  const adminSessionTtlMs = Math.max(60000, Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000) || 30 * 60 * 1000)
   const state = createProxyState({
     inferSnapshotRounds: !strictRealCardRounds,
     onRoundEvent: async (round, table) => {
@@ -44,19 +47,22 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   state.setStatus({ deployMode: deployConfig.deployMode, captureSource, captureMode: captureSource, cloudReady: true, statusText: describeCaptureStatus({ captureSource }) })
   const mtClient = createMtClient({ token, state })
   const chromeClient = createChromeCaptureClient({ url: captureUrl, state })
-  const cloudCaptureClient = createCloudCaptureClient({ url: cloudBrowserUrl, state, writer: supabaseClient, fetchImpl, pollMs: deployConfig.cloudCapturePollMs })
+  const cloudCaptureClient = createCloudCaptureClient({ url: cloudBrowserUrl, state, writer: supabaseClient, fetchImpl, pollMs: deployConfig.cloudCapturePollMs, adminKey: process.env.WORKER_ADMIN_KEY })
 
-  async function handle(method, url, rawBody = '') {
+  async function handle(method, url, rawBody = '', headers = {}) {
     const requestUrl = new URL(url, 'http://127.0.0.1')
     const pathname = requestUrl.pathname
     if (method === 'OPTIONS') return jsonResponse(204, {}, frontendOrigin)
     if (!['GET', 'POST'].includes(method)) return jsonResponse(405, { error: 'Method Not Allowed' }, frontendOrigin)
 
-    async function adminWrite(action) {
+    async function adminWrite(action, { requireSession = false, requireSuper = false } = {}) {
       try {
-        return jsonResponse(200, await action(), frontendOrigin)
+        const payload = parseJsonBody(rawBody)
+        const session = requireSession ? (requireSuper ? requireSuperAdminSession(payload, requestUrl, headers) : requireAdminSession(payload, requestUrl, headers)) : null
+        const scopedPayload = session ? { ...payload, adminAccount: session.adminAccount } : payload
+        return jsonResponse(200, await action(scopedPayload, session), frontendOrigin)
       } catch (error) {
-        return jsonResponse(400, { ok: false, error: error?.message ?? String(error) }, frontendOrigin)
+        return jsonResponse(error?.statusCode ?? 400, { ok: false, error: error?.message ?? String(error) }, frontendOrigin)
       }
     }
 
@@ -133,39 +139,80 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     if (method === 'POST' && pathname === '/api/online-core/settings') {
       try {
         const payload = parseJsonBody(rawBody)
-        const result = await onlineCoreClient.updateAppSetting?.({ ...payload, updatedBy: payload.updatedBy ?? 'admin-ui' })
+        const session = requireSuperAdminSession(payload, requestUrl, headers)
+        const result = await onlineCoreClient.updateAppSetting?.({ ...payload, updatedBy: session.adminAccount })
         return jsonResponse(200, { ok: true, result }, frontendOrigin)
       } catch (error) {
-        return jsonResponse(400, { ok: false, error: error?.message ?? String(error) }, frontendOrigin)
+        return jsonResponse(error?.statusCode ?? 400, { ok: false, error: error?.message ?? String(error) }, frontendOrigin)
       }
     }
     if (method === 'POST' && pathname === '/api/online-core/feature-flags') {
       try {
         const payload = parseJsonBody(rawBody)
-        const result = await onlineCoreClient.updateFeatureFlag?.({ ...payload, updatedBy: payload.updatedBy ?? 'admin-ui' })
+        const session = requireSuperAdminSession(payload, requestUrl, headers)
+        const result = await onlineCoreClient.updateFeatureFlag?.({ ...payload, updatedBy: session.adminAccount })
         return jsonResponse(200, { ok: true, result }, frontendOrigin)
       } catch (error) {
-        return jsonResponse(400, { ok: false, error: error?.message ?? String(error) }, frontendOrigin)
+        return jsonResponse(error?.statusCode ?? 400, { ok: false, error: error?.message ?? String(error) }, frontendOrigin)
       }
     }
     if (pathname === '/api/online-license/status') {
       try {
-        return jsonResponse(200, await licenseAdminClient.getStatus?.({ adminAccount: requestUrl.searchParams.get('adminAccount') }), frontendOrigin)
+        const session = requireAdminSession({}, requestUrl, headers)
+        return jsonResponse(200, await licenseAdminClient.getStatus?.({ adminAccount: session.adminAccount }), frontendOrigin)
       } catch (error) {
-        return jsonResponse(200, { configured: Boolean(licenseAdminClient?.configured), managers: [], agents: [], plans: [], licenses: [], error: error?.message ?? String(error) }, frontendOrigin)
+        return jsonResponse(error?.statusCode ?? 401, { configured: Boolean(licenseAdminClient?.configured), managers: [], agents: [], plans: [], licenses: [], error: error?.message ?? String(error) }, frontendOrigin)
       }
     }
     if (method === 'POST' && pathname === '/api/online-license/member-login') return adminWrite(() => licenseAdminClient.validateMemberLogin?.(parseJsonBody(rawBody)))
-    if (method === 'POST' && pathname === '/api/online-license/agent-login') return adminWrite(() => licenseAdminClient.validateAgentLogin?.(parseJsonBody(rawBody)))
-    if (method === 'POST' && pathname === '/api/online-license/bootstrap') return adminWrite(() => licenseAdminClient.bootstrap?.(parseJsonBody(rawBody)))
-    if (method === 'POST' && pathname === '/api/online-license/agents') return adminWrite(() => licenseAdminClient.createAgent?.(parseJsonBody(rawBody)))
-    if (method === 'POST' && pathname === '/api/online-license/agents/delete') return adminWrite(() => licenseAdminClient.deleteAgents?.(parseJsonBody(rawBody)))
-    if (method === 'POST' && pathname === '/api/online-license/licenses') return adminWrite(() => licenseAdminClient.createLicense?.(parseJsonBody(rawBody)))
-    if (method === 'POST' && pathname === '/api/online-license/licenses/status') return adminWrite(() => licenseAdminClient.setLicenseStatus?.(parseJsonBody(rawBody)))
-    if (method === 'POST' && pathname === '/api/online-license/licenses/extend') return adminWrite(() => licenseAdminClient.extendLicense?.(parseJsonBody(rawBody)))
-    if (method === 'POST' && pathname === '/api/online-license/licenses/delete') return adminWrite(() => licenseAdminClient.deleteLicense?.(parseJsonBody(rawBody)))
+    if (method === 'POST' && pathname === '/api/online-license/agent-login') return adminWrite(async (payload) => {
+      const result = await licenseAdminClient.validateAgentLogin?.(payload)
+      if (!result?.ok) return result
+      const session = issueAdminSession(result, payload.agentAccount)
+      return { ...result, adminSessionToken: session.token, sessionExpiresAt: session.expiresAt }
+    })
+    if (method === 'POST' && pathname === '/api/online-license/bootstrap') return adminWrite((payload) => licenseAdminClient.bootstrap?.(payload), { requireSession: true, requireSuper: true })
+    if (method === 'POST' && pathname === '/api/online-license/agents') return adminWrite((payload) => licenseAdminClient.createAgent?.(payload), { requireSession: true })
+    if (method === 'POST' && pathname === '/api/online-license/agents/delete') return adminWrite((payload) => licenseAdminClient.deleteAgents?.(payload), { requireSession: true })
+    if (method === 'POST' && pathname === '/api/online-license/licenses') return adminWrite((payload) => licenseAdminClient.createLicense?.(payload), { requireSession: true })
+    if (method === 'POST' && pathname === '/api/online-license/licenses/status') return adminWrite((payload) => licenseAdminClient.setLicenseStatus?.(payload), { requireSession: true })
+    if (method === 'POST' && pathname === '/api/online-license/licenses/extend') return adminWrite((payload) => licenseAdminClient.extendLicense?.(payload), { requireSession: true })
+    if (method === 'POST' && pathname === '/api/online-license/licenses/delete') return adminWrite((payload) => licenseAdminClient.deleteLicense?.(payload), { requireSession: true })
 
     return jsonResponse(404, { error: 'Not Found' }, frontendOrigin)
+  }
+
+  function issueAdminSession(loginResult = {}, fallbackAccount = '') {
+    const adminAccount = resolveAdminAccount(loginResult, fallbackAccount)
+    const token = crypto.randomBytes(32).toString('base64url')
+    const expiresAtMs = Date.now() + adminSessionTtlMs
+    const expiresAt = new Date(expiresAtMs).toISOString()
+    adminSessions.set(token, { adminAccount, role: resolveAdminRole(loginResult), expiresAtMs })
+    return { token, expiresAt }
+  }
+
+  function requireAdminSession(payload = {}, requestUrl, headers = {}) {
+    const token = payload.adminSessionToken
+      ?? requestUrl.searchParams.get('adminSessionToken')
+      ?? headers['x-admin-session-token']
+      ?? headers['authorization']?.replace(/^Bearer\s+/i, '')
+    const session = token ? adminSessions.get(String(token)) : null
+    if (!session || session.expiresAtMs <= Date.now()) {
+      if (token) adminSessions.delete(String(token))
+      const error = new Error('admin session is required')
+      error.statusCode = 401
+      throw error
+    }
+    return session
+  }
+
+
+  function requireSuperAdminSession(payload = {}, requestUrl, headers = {}) {
+    const session = requireAdminSession(payload, requestUrl, headers)
+    if (String(session.adminAccount).toLowerCase() === 'dv1788' || ['total','super'].includes(String(session.role ?? '').toLowerCase())) return session
+    const error = new Error('super admin session is required')
+    error.statusCode = 403
+    throw error
   }
 
   async function persistCloudStateSnapshot(status) {
@@ -286,7 +333,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       return streamTables(res)
     }
     const rawBody = await readRequestBody(req)
-    const result = await handle(req.method ?? 'GET', req.url ?? '/', rawBody)
+    const result = await handle(req.method ?? 'GET', req.url ?? '/', rawBody, req.headers)
     res.writeHead(result.statusCode, result.headers)
     res.end(result.body)
   })
@@ -356,7 +403,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       'x-accel-buffering': 'no',
       'access-control-allow-origin': frontendOrigin,
       'access-control-allow-methods': 'GET,POST,OPTIONS',
-      'access-control-allow-headers': 'Content-Type,Authorization',
+      'access-control-allow-headers': 'Content-Type,Authorization,X-Admin-Session-Token',
     })
     streamClients.add(res)
     ensureStreamTimer()
@@ -382,8 +429,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       cloudCaptureClient.stop()
       return new Promise((resolve) => server.close(() => resolve()))
     },
-    async inject({ method = 'GET', url = '/', body = '' } = {}) {
-      return handle(method, url, body)
+    async inject({ method = 'GET', url = '/', body = '', headers = {} } = {}) {
+      return handle(method, url, body, headers)
     },
     cloudCaptureClient,
   }
@@ -398,6 +445,21 @@ function hasRealCardCodes(round = {}) {
     .map(Number)
     .filter((value) => Number.isFinite(value) && value > 0)
   return playerCards.length >= 2 && bankerCards.length >= 2
+}
+
+function resolveAdminAccount(loginResult = {}, fallbackAccount = '') {
+  return loginResult.account?.code
+    ?? loginResult.account?.username
+    ?? loginResult.agent?.code
+    ?? loginResult.manager?.username
+    ?? fallbackAccount
+}
+
+function resolveAdminRole(loginResult = {}) {
+  return loginResult.account?.role
+    ?? loginResult.agent?.role
+    ?? loginResult.manager?.role
+    ?? null
 }
 
 function parseJsonBody(rawBody) {
@@ -421,7 +483,7 @@ function jsonResponse(statusCode, payload, frontendOrigin = '*') {
       'content-type': 'application/json; charset=utf-8',
       'access-control-allow-origin': frontendOrigin,
       'access-control-allow-methods': 'GET,POST,OPTIONS',
-      'access-control-allow-headers': 'Content-Type,Authorization',
+      'access-control-allow-headers': 'Content-Type,Authorization,X-Admin-Session-Token',
       'cache-control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
       pragma: 'no-cache',
     },

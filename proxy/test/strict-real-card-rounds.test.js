@@ -46,3 +46,35 @@ test('strict real-card mode persists only show_poker rounds with actual card cod
     else process.env.REQUIRE_REAL_CARD_ROUNDS = previous
   }
 })
+
+test('strict real-card mode is enabled by default unless REQUIRE_REAL_CARD_ROUNDS=false', async () => {
+  const previous = process.env.REQUIRE_REAL_CARD_ROUNDS
+  delete process.env.REQUIRE_REAL_CARD_ROUNDS
+  const persisted = []
+  const app = createApp({
+    port: 0,
+    autoConnect: false,
+    supabaseClient: {
+      configured: true,
+      ensureInitialStrategy: async () => {},
+      persistRound: async (round) => persisted.push(round),
+    },
+  })
+
+  try {
+    app.state.upsertRoundEvent({
+      tableId: 'BAG01',
+      shoe: 1,
+      round: 1,
+      winner: 'banker',
+      rawResult: [0, 0, 0, 0, 0, 0, -1, -1, 7, 9],
+      sourceAction: 'table_snapshot_delta',
+    })
+    await setImmediate()
+    assert.equal(persisted.length, 0)
+  } finally {
+    await app.stop().catch(() => {})
+    if (previous === undefined) delete process.env.REQUIRE_REAL_CARD_ROUNDS
+    else process.env.REQUIRE_REAL_CARD_ROUNDS = previous
+  }
+})

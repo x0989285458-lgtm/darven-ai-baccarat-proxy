@@ -48,12 +48,18 @@ test('v025 server accepts admin setting and feature flag updates', async () => {
     async updateAppSetting(input) { writes.push({ kind: 'setting', input }); return { ok: true, row: input } },
     async updateFeatureFlag(input) { writes.push({ kind: 'flag', input }); return { ok: true, row: input } },
   }
-  const app = createApp({ autoConnect: false, onlineCoreClient })
-  const setting = await app.inject({ method: 'POST', url: '/api/online-core/settings', body: JSON.stringify({ scope: 'frontend', key: 'ui_defaults', value: { maintenanceMode: true }, isPublic: true }) })
-  const flag = await app.inject({ method: 'POST', url: '/api/online-core/feature-flags', body: JSON.stringify({ flagKey: 'cloud_capture', enabled: true }) })
+  const licenseAdminClient = {
+    async validateAgentLogin(input) { return { ok: true, account: { code: input.agentAccount, role: 'total' }, agent: null } },
+  }
+  const app = createApp({ autoConnect: false, onlineCoreClient, licenseAdminClient })
+  const login = await app.inject({ method: 'POST', url: '/api/online-license/agent-login', body: JSON.stringify({ agentAccount: 'dv1788' }) })
+  const token = JSON.parse(login.body).adminSessionToken
+  const setting = await app.inject({ method: 'POST', url: '/api/online-core/settings', body: JSON.stringify({ scope: 'frontend', key: 'ui_defaults', value: { maintenanceMode: true }, isPublic: true, updatedBy: 'Evil', adminSessionToken: token }) })
+  const flag = await app.inject({ method: 'POST', url: '/api/online-core/feature-flags', body: JSON.stringify({ flagKey: 'cloud_capture', enabled: true, updatedBy: 'Evil', adminSessionToken: token }) })
   assert.equal(setting.statusCode, 200)
   assert.equal(flag.statusCode, 200)
   assert.deepEqual(writes.map((write) => write.kind), ['setting', 'flag'])
+  assert.deepEqual(writes.map((write) => write.input.updatedBy), ['dv1788', 'dv1788'])
 })
 
 function jsonResponse(payload, status = 200) {

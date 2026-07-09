@@ -24,19 +24,23 @@ test('v046 manages agent hierarchy through backend-only endpoints and logs delet
   const calls = []
   const licenseAdminClient = {
     configured: true,
+    async validateAgentLogin(input) { calls.push(['login', input.agentAccount]); return { ok: true, account: { code: input.agentAccount, role: 'manager' }, agent: { code: input.agentAccount, role: 'manager' } } },
     async createAgent(input) { calls.push(['createAgent', input.code, input.role, input.parentCode, input.adminAccount]); return { ok: true, row: { code: input.code, role: input.role, parent_code: input.parentCode } } },
     async deleteAgents(input) { calls.push(['deleteAgents', input.codes, input.adminAccount]); return { ok: true, rows: input.codes.map((code) => ({ code, is_active: false })) } },
     async getCloudDataStatus() { calls.push(['cloudStatus']); return { ok: true, mtAutoLoginEnabled: false, captureSource: 'manual_or_worker', tableCount: 0 } },
   }
   const app = createApp({ autoConnect: false, licenseAdminClient })
-  const create = await app.inject({ method: 'POST', url: '/api/online-license/agents', body: JSON.stringify({ code: 'A1688', role: 'agent', parentCode: 'Admin001', adminAccount: 'DVAI' }) })
-  const remove = await app.inject({ method: 'POST', url: '/api/online-license/agents/delete', body: JSON.stringify({ codes: ['A1688'], adminAccount: 'DVAI' }) })
+  const login = await app.inject({ method: 'POST', url: '/api/online-license/agent-login', body: JSON.stringify({ agentAccount: 'DVAI' }) })
+  const token = JSON.parse(login.body).adminSessionToken
+  const create = await app.inject({ method: 'POST', url: '/api/online-license/agents', body: JSON.stringify({ code: 'A1688', role: 'agent', parentCode: 'Admin001', adminAccount: 'Evil', adminSessionToken: token }) })
+  const remove = await app.inject({ method: 'POST', url: '/api/online-license/agents/delete', body: JSON.stringify({ codes: ['A1688'], adminAccount: 'Evil', adminSessionToken: token }) })
   const cloudStatus = await app.inject({ method: 'GET', url: '/api/cloud-data/status' })
 
   assert.equal(create.statusCode, 200)
   assert.equal(remove.statusCode, 200)
   assert.equal(JSON.parse(cloudStatus.body).mtAutoLoginEnabled, false)
   assert.deepEqual(calls, [
+    ['login', 'DVAI'],
     ['createAgent', 'A1688', 'agent', 'Admin001', 'DVAI'],
     ['deleteAgents', ['A1688'], 'DVAI'],
     ['cloudStatus'],

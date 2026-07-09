@@ -18,6 +18,20 @@ test('v040 parses cloud worker payload into normalized tables and status', () =>
   assert.equal(payload.rounds[0].winner, 'banker')
 })
 
+test('v090 cloud capture sends worker admin key header when configured', async () => {
+  const state = createFakeState()
+  const client = createCloudCaptureClient({
+    url: 'https://cloud-worker.example/snapshot',
+    state,
+    adminKey: 'worker-secret',
+    fetchImpl: async (_url, init = {}) => {
+      assert.equal(init.headers?.['x-worker-admin-key'], 'worker-secret')
+      return { ok: true, status: 200, json: async () => ({ connected: true, authenticated: true, tables: [] }) }
+    },
+  })
+  await client.tick()
+})
+
 test('v040 cloud capture tick fetches worker, updates state, and writes Supabase cloud rows', async () => {
   const writes = []
   const state = createFakeState()
