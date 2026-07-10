@@ -1,4 +1,5 @@
 import { Pool } from 'pg'
+import { writeLocalBacktestResult } from './local-backtest-store.js'
 import { buildStrategyAnalysis } from './strategy-analysis.js'
 
 const DEFAULT_PROJECT_SLUG = 'ai-baccarat'
@@ -77,6 +78,7 @@ export function createOnlineCoreClient({
   }
 
   async function persistTestReport(report = {}, slug = DEFAULT_PROJECT_SLUG) {
+    if (isBacktestReport(report)) return writeLocalBacktestResult(report, { prefix: report.reportType ?? report.report_type ?? report.version ?? 'backtest' })
     if (!configured) return { skipped: true, reason: 'Supabase online core is not configured' }
     const project = await getProject(slug)
     if (!project) throw new Error(`Project ${slug} not found`)
@@ -176,9 +178,91 @@ export function buildMemoryReportRow(report = {}, projectId) {
     side_hits: numberOrZero(total.sideHits ?? total.side_hits ?? report.sideHits),
     side_hit_rate: numberOrNull(total.sideHitRate ?? total.side_hit_rate ?? report.sideHitRate),
     report_path: report.reportPath ?? report.report_path ?? null,
-    raw_summary: report.rawSummary ?? report.raw_summary ?? report,
-    metadata: report.metadata ?? {},
+    raw_summary: buildCompactMemoryReportSummary(report),
+    metadata: compactReportMetadata(report.metadata ?? {}),
   }
+}
+
+export function buildCompactMemoryReportSummary(report = {}) {
+  const raw = report.rawSummary ?? report.raw_summary ?? {}
+  const total = report.total ?? raw.total ?? {}
+  const tables = Array.isArray(report.tables) ? report.tables : Array.isArray(raw.tables) ? raw.tables : []
+  return pruneEmpty({
+    title: report.title ?? raw.title ?? null,
+    reportType: report.reportType ?? report.report_type ?? raw.reportType ?? raw.report_type ?? null,
+    strategyVersion: report.strategyVersion ?? report.strategy_version ?? report.version ?? raw.strategyVersion ?? raw.strategy_version ?? null,
+    startedAt: report.startedAt ?? report.started_at ?? raw.startedAt ?? raw.started_at ?? null,
+    endedAt: report.endedAt ?? report.ended_at ?? raw.endedAt ?? raw.ended_at ?? null,
+    generatedAt: report.generatedAt ?? report.generated_at ?? raw.generatedAt ?? raw.generated_at ?? null,
+    total: {
+      rounds: numberOrZero(total.rounds ?? report.rounds),
+      hits: numberOrZero(total.hits ?? report.hits),
+      misses: numberOrZero(total.misses ?? report.misses),
+      pushes: numberOrZero(total.pushes ?? report.pushes),
+      mainEvaluated: numberOrZero(total.mainEvaluated ?? total.main_evaluated ?? report.mainEvaluated),
+      hitRate: numberOrNull(total.hitRate ?? total.mainHitRate ?? total.main_hit_rate ?? report.mainHitRate),
+      sideActions: numberOrZero(total.sideActions ?? total.side_actions ?? report.sideActions),
+      sideHits: numberOrZero(total.sideHits ?? total.side_hits ?? report.sideHits),
+      sideHitRate: numberOrNull(total.sideHitRate ?? total.side_hit_rate ?? report.sideHitRate),
+    },
+    tableCount: tables.length || numberOrZero(report.tableCount ?? raw.tableCount),
+    tables: tables.slice(0, 32).map(compactTableReportSummary),
+  })
+}
+
+function compactTableReportSummary(table = {}) {
+  return pruneEmpty({
+    tableId: table.tableId ?? table.table_id ?? null,
+    displayName: table.displayName ?? table.display_name ?? null,
+    slot: numberOrNull(table.slot),
+    rounds: numberOrZero(table.rounds),
+    hits: numberOrZero(table.hits),
+    misses: numberOrZero(table.misses),
+    pushes: numberOrZero(table.pushes),
+    mainEvaluated: numberOrZero(table.mainEvaluated ?? table.main_evaluated),
+    hitRate: numberOrNull(table.hitRate ?? table.mainHitRate ?? table.main_hit_rate),
+    sideActions: numberOrZero(table.sideActions ?? table.side_actions),
+    sideHits: numberOrZero(table.sideHits ?? table.side_hits),
+    sideHitRate: numberOrNull(table.sideHitRate ?? table.side_hit_rate),
+    lastPrediction: table.lastPrediction ?? table.last_prediction ?? null,
+    lastWinner: table.lastWinner ?? table.last_winner ?? null,
+    lastConfidence: numberOrNull(table.lastConfidence ?? table.last_confidence),
+  })
+}
+
+function compactReportMetadata(metadata = {}) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return {}
+  const blocked = new Set(['events', 'rounds', 'rawSummary', 'raw_summary', 'report', 'tables', 'diagnostics', 'lastDiagnostics'])
+  return Object.fromEntries(Object.entries(metadata).flatMap(([key, value]) => {
+    if (blocked.has(key)) return []
+    const compact = compactMetadataValue(value)
+    return compact === undefined ? [] : [[key, compact]]
+  }))
+}
+
+function compactMetadataValue(value) {
+  if (value == null || ['string', 'number', 'boolean'].includes(typeof value)) return value
+  if (Array.isArray(value)) {
+    if (value.length > 20) return undefined
+    return value.every((item) => item == null || ['string', 'number', 'boolean'].includes(typeof item)) ? value : undefined
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value)
+      .filter(([, nested]) => nested == null || ['string', 'number', 'boolean'].includes(typeof nested))
+      .slice(0, 20)
+    return entries.length ? Object.fromEntries(entries) : undefined
+  }
+  return undefined
+}
+
+function pruneEmpty(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => {
+    if (item == null) return false
+    if (Array.isArray(item)) return item.length > 0
+    if (typeof item === 'object') return Object.keys(item).length > 0
+    return true
+  }))
 }
 
 function groupSettings(rows) {
@@ -194,6 +278,12 @@ function stripProjectId(project) {
   if (!project) return null
   const { id, ...publicProject } = project
   return publicProject
+}
+
+function isBacktestReport(report = {}) {
+  const type = String(report.reportType ?? report.report_type ?? report.rawSummary?.reportType ?? report.raw_summary?.report_type ?? '').toLowerCase()
+  const metadataSource = String(report.metadata?.source ?? '').toLowerCase()
+  return type.includes('backtest') || type.includes('grid') || metadataSource.includes('backtest') || metadataSource.includes('grid')
 }
 
 function numberOrZero(value) {

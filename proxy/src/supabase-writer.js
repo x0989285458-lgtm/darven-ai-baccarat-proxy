@@ -207,7 +207,7 @@ export function buildRoadmapEventRow(round = {}, table = {}) {
       tableSnapshot: compactTableSnapshot(table),
     },
     road_features: buildRoadFeatures(table),
-    remaining_rank_counts: round.lastRound?.cardShoe?.remainingRankCounts ?? round.cardShoe?.remainingRankCounts ?? null,
+    remaining_rank_counts: round.lastRound?.cardShoe?.remainingRankCounts ?? round.cardShoe?.remainingRankCounts ?? {},
     remaining_point_counts: round.lastRound?.cardShoe?.remainingPointCounts ?? round.cardShoe?.remainingPointCounts ?? buildUnknownRemainingPointCounts(),
   }
 }
@@ -275,6 +275,122 @@ export function buildPredictionResultRow(round = {}, table = {}) {
     probabilities,
     feature_weights: { ...ALL_MT_EQUAL_MAIN_WEIGHTS },
     resolved_at: new Date().toISOString(),
+  }
+}
+
+export function buildCompactRoadmapEventDbRow(row = {}) {
+  const raw = row.raw_event && typeof row.raw_event === 'object' ? row.raw_event : {}
+  return {
+    source: row.source,
+    table_id: row.table_id,
+    shoe_no: row.shoe_no,
+    round_no: row.round_no,
+    main_result: row.main_result,
+    banker_points: row.banker_points,
+    player_points: row.player_points,
+    banker_pair: row.banker_pair,
+    player_pair: row.player_pair,
+    super_six: row.super_six,
+    banker_dragon: row.banker_dragon,
+    player_dragon: row.player_dragon,
+    player_card_codes: row.player_card_codes,
+    banker_card_codes: row.banker_card_codes,
+    player_card_points: row.player_card_points,
+    banker_card_points: row.banker_card_points,
+    player_card_ranks: row.player_card_ranks,
+    banker_card_ranks: row.banker_card_ranks,
+    player_card_faces: row.player_card_faces,
+    banker_card_faces: row.banker_card_faces,
+    player_drew: row.player_drew,
+    banker_drew: row.banker_drew,
+    player_natural: row.player_natural,
+    banker_natural: row.banker_natural,
+    bead_code: row.bead_code,
+    raw_event: {
+      sourceAction: raw.sourceAction ?? null,
+      rawResult: raw.rawResult ?? null,
+    },
+    remaining_rank_counts: row.remaining_rank_counts ?? {},
+    remaining_point_counts: row.remaining_point_counts ?? null,
+  }
+}
+
+export function buildCompactPredictionResultDbRow(row = {}) {
+  const features = row.prediction_features && typeof row.prediction_features === 'object' ? row.prediction_features : {}
+  const derived = features.derived_main_features && typeof features.derived_main_features === 'object' ? features.derived_main_features : {}
+  const mt = features.mt_context && typeof features.mt_context === 'object' ? features.mt_context : {}
+  return {
+    source: row.source,
+    table_id: row.table_id,
+    shoe_no: row.shoe_no,
+    round_no: row.round_no,
+    strategy_version: row.strategy_version,
+    predicted_result: row.predicted_result,
+    confidence: row.confidence,
+    actual_result: row.actual_result,
+    is_hit: row.is_hit,
+    table_recent_hit_rate: row.table_recent_hit_rate,
+    table_recent_prediction_count: row.table_recent_prediction_count,
+    short_run_adjustment: {
+      rule: row.short_run_adjustment?.rule ?? null,
+      includedMainWeightCount: row.short_run_adjustment?.includedMainWeightCount ?? null,
+      includedSideWeightCount: row.short_run_adjustment?.includedSideWeightCount ?? null,
+      sideActionRateTargets: row.short_run_adjustment?.sideActionRateTargets ?? null,
+      sideTargetHitRate: row.short_run_adjustment?.sideTargetHitRate ?? null,
+      baseProbabilities: row.short_run_adjustment?.baseProbabilities ?? row.probabilities ?? null,
+    },
+    prediction_features: {
+      side_actions: features.side_actions ?? {},
+      side_hits: features.side_hits ?? {},
+      side_predictions: features.side_predictions ?? {},
+      side_actual_results: features.side_actual_results ?? {},
+      side_results: features.side_results ?? {},
+      point_features: features.point_features ?? {},
+      table_performance: features.table_performance ?? {},
+      feature_summary: compactPredictionFeatureSummary({ row, derived, mt }),
+    },
+    probabilities: row.probabilities,
+    resolved_at: row.resolved_at,
+  }
+}
+
+function compactPredictionFeatureSummary({ row = {}, derived = {}, mt = {} } = {}) {
+  return {
+    table: {
+      tableId: mt.tableId ?? row.table_id ?? null,
+      tableType: mt.tableType ?? null,
+      shoe: mt.shoe ?? row.shoe_no ?? null,
+      round: mt.round ?? row.round_no ?? null,
+      bankerCount: mt.bankerCount ?? null,
+      playerCount: mt.playerCount ?? null,
+      tieCount: mt.tieCount ?? null,
+      bankerPairCount: mt.bankerPairCount ?? null,
+      playerPairCount: mt.playerPairCount ?? null,
+    },
+    main: {
+      predictedResult: row.predicted_result ?? null,
+      actualResult: row.actual_result ?? null,
+      confidence: row.confidence ?? null,
+      isHit: row.is_hit ?? null,
+      directionCalibration: derived.directionCalibration ?? null,
+      probabilityGap: derived.probabilityGap ?? null,
+    },
+    road: {
+      shoeStage: derived.shoeStage ?? null,
+      previousWinner: derived.previousWinner ?? null,
+      streakLength: derived.streakLength ?? null,
+      near5BankerPlayerBias: derived.near5BankerPlayerBias ?? null,
+      roadTrend: derived.roadTrend ?? null,
+      roadmapTrendSignals: derived.roadmapTrendSignals ?? null,
+      roadStructureSignals: derived.roadStructureSignals ?? null,
+      derivedRoadStructureSignals: derived.derivedRoadStructureSignals ?? null,
+      askRoadSignals: derived.askRoadSignals ?? null,
+    },
+    calibration: {
+      tableRecentHitRate: derived.tableRecentHitRate ?? row.table_recent_hit_rate ?? null,
+      recentPracticalCalibration: derived.recentPracticalCalibration ?? null,
+      shoeBankerPlayerBias: derived.shoeBankerPlayerBias ?? null,
+    },
   }
 }
 
@@ -1084,9 +1200,76 @@ export function buildCloudStrategyReportRow({ report = {}, reportPath = null, me
     main_evaluated: numberOrZero(total.mainEvaluated ?? total.main_evaluated ?? report.mainEvaluated ?? ((total.hits ?? report.hits) != null || (total.misses ?? report.misses) != null ? numberOrZero(total.hits ?? report.hits) + numberOrZero(total.misses ?? report.misses) : 0)),
     main_hit_rate: numberOrNull(total.hitRate ?? total.mainHitRate ?? total.main_hit_rate ?? report.mainHitRate),
     report_path: reportPath ?? report.reportPath ?? report.report_path ?? null,
-    raw_summary: report.rawSummary ?? report.raw_summary ?? report,
-    metadata,
+    raw_summary: buildCompactStrategyReportSummary(report),
+    metadata: compactReportMetadata(metadata),
   }
+}
+
+function buildCompactStrategyReportSummary(report = {}) {
+  const raw = report.rawSummary ?? report.raw_summary ?? {}
+  const total = report.total ?? raw.total ?? {}
+  const tables = Array.isArray(report.tables) ? report.tables : Array.isArray(raw.tables) ? raw.tables : []
+  return pruneEmpty({
+    title: report.title ?? raw.title ?? null,
+    reportType: report.reportType ?? report.report_type ?? raw.reportType ?? raw.report_type ?? null,
+    strategyVersion: report.strategyVersion ?? report.strategy_version ?? report.version ?? raw.strategyVersion ?? raw.strategy_version ?? null,
+    startedAt: report.startedAt ?? report.started_at ?? raw.startedAt ?? raw.started_at ?? null,
+    endedAt: report.endedAt ?? report.ended_at ?? raw.endedAt ?? raw.ended_at ?? null,
+    generatedAt: report.generatedAt ?? report.generated_at ?? raw.generatedAt ?? raw.generated_at ?? null,
+    total: {
+      rounds: numberOrZero(total.rounds ?? report.rounds),
+      hits: numberOrZero(total.hits ?? report.hits),
+      misses: numberOrZero(total.misses ?? report.misses),
+      pushes: numberOrZero(total.pushes ?? report.pushes),
+      mainEvaluated: numberOrZero(total.mainEvaluated ?? total.main_evaluated ?? report.mainEvaluated),
+      hitRate: numberOrNull(total.hitRate ?? total.mainHitRate ?? total.main_hit_rate ?? report.mainHitRate),
+    },
+    tableCount: tables.length || numberOrZero(report.tableCount ?? raw.tableCount),
+    tables: tables.slice(0, 32).map((table = {}) => pruneEmpty({
+      tableId: table.tableId ?? table.table_id ?? null,
+      displayName: table.displayName ?? table.display_name ?? null,
+      rounds: numberOrZero(table.rounds),
+      hits: numberOrZero(table.hits),
+      misses: numberOrZero(table.misses),
+      pushes: numberOrZero(table.pushes),
+      hitRate: numberOrNull(table.hitRate ?? table.mainHitRate ?? table.main_hit_rate),
+    })),
+  })
+}
+
+function compactReportMetadata(metadata = {}) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return {}
+  const blocked = new Set(['events', 'rounds', 'rawSummary', 'raw_summary', 'report', 'tables', 'diagnostics', 'lastDiagnostics'])
+  return Object.fromEntries(Object.entries(metadata).flatMap(([key, value]) => {
+    if (blocked.has(key)) return []
+    const compact = compactMetadataValue(value)
+    return compact === undefined ? [] : [[key, compact]]
+  }))
+}
+
+function compactMetadataValue(value) {
+  if (value == null || ['string', 'number', 'boolean'].includes(typeof value)) return value
+  if (Array.isArray(value)) {
+    if (value.length > 20) return undefined
+    return value.every((item) => item == null || ['string', 'number', 'boolean'].includes(typeof item)) ? value : undefined
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value)
+      .filter(([, nested]) => nested == null || ['string', 'number', 'boolean'].includes(typeof nested))
+      .slice(0, 20)
+    return entries.length ? Object.fromEntries(entries) : undefined
+  }
+  return undefined
+}
+
+function pruneEmpty(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => {
+    if (item == null) return false
+    if (Array.isArray(item)) return item.length > 0
+    if (typeof item === 'object') return Object.keys(item).length > 0
+    return true
+  }))
 }
 
 export function buildStrategyAdjustmentStatsRows({ reportId = null, stats = {}, metadata = {} } = {}) {
@@ -1150,9 +1333,11 @@ export function createSupabaseIngestionClient({
     async persistRound(round, table) {
       const event = buildRoadmapEventRow(round, table)
       const prediction = buildPredictionResultRow(round, table)
-      await postRest('daily_roadmap_events', event, 'source,table_id,shoe_no,round_no')
-      await postRest('daily_prediction_results', prediction, 'source,table_id,shoe_no,round_no,strategy_version')
-      return { event, prediction }
+      const compactEvent = buildCompactRoadmapEventDbRow(event)
+      const compactPrediction = buildCompactPredictionResultDbRow(prediction)
+      await postRest('daily_roadmap_events', compactEvent, 'source,table_id,shoe_no,round_no')
+      await postRest('daily_prediction_results', compactPrediction, 'source,table_id,shoe_no,round_no,strategy_version')
+      return { event, prediction, compactEvent, compactPrediction }
     },
     async writeCloudCaptureStatus(payload) {
       const row = buildCloudCaptureStatusRow(payload)
