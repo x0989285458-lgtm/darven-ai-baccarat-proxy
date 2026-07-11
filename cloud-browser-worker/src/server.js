@@ -9,6 +9,7 @@ const PORT = Number(process.env.PORT ?? 8787)
 const MT_LOGIN_URL = process.env.MT_LOGIN_URL ?? ''
 const SNAPSHOT_PATH = process.env.SNAPSHOT_PATH ?? '/snapshot'
 const PAGE_TIMEOUT_MS = Number(process.env.PAGE_TIMEOUT_MS ?? 45000)
+const SNAPSHOT_TIMEOUT_MS = Number(process.env.SNAPSHOT_TIMEOUT_MS ?? PAGE_TIMEOUT_MS)
 const MAX_CAPTURED_PAYLOADS = Number(process.env.MAX_CAPTURED_PAYLOADS ?? 250)
 const MAX_CAPTURED_ROUND_PAYLOADS = Number(process.env.MAX_CAPTURED_ROUND_PAYLOADS ?? 500)
 
@@ -50,6 +51,9 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 404, { ok: false, error: 'not_found', paths: ['/health', SNAPSHOT_PATH, '/reload'] })
   } catch (error) {
     lastError = redactUrlSecrets(error?.message ?? String(error))
+    resetCapturedPayloads()
+    await closePage()
+    lastSnapshot = null
     return sendJson(res, 500, buildErrorSnapshot(lastError))
   }
 })
@@ -63,23 +67,31 @@ async function getSnapshot() {
     return buildErrorSnapshot('MT_LOGIN_URL is required')
   }
 
-  const page = await ensurePage()
-  const browserPayload = await collectBrowserPayload(page)
-  const payloads = [...capturedPayloads, ...capturedRoundPayloads, browserPayload]
-  const snapshot = extractSnapshotFromPayloads(payloads, {
-    sessionId: process.env.SESSION_ID ?? 'darven-cloud-browser',
-    now: new Date().toISOString(),
-    url: MT_LOGIN_URL,
-  })
+  try {
+    const page = await withTimeout(ensurePage(), SNAPSHOT_TIMEOUT_MS, 'MT page startup timed out')
+    const browserPayload = await withTimeout(collectBrowserPayload(page), SNAPSHOT_TIMEOUT_MS, 'MT page snapshot timed out')
+    const payloads = [...capturedPayloads, ...capturedRoundPayloads, browserPayload]
+    const snapshot = extractSnapshotFromPayloads(payloads, {
+      sessionId: process.env.SESSION_ID ?? 'darven-cloud-browser',
+      now: new Date().toISOString(),
+      url: MT_LOGIN_URL,
+    })
 
-  if (snapshot.tables.length === 0 && snapshot.rounds.length === 0) {
-    snapshot.authenticated = false
-    snapshot.errorMessage = 'MT page is open, but no table payload was detected yet. Keep worker running or inspect selector/websocket payloads.'
+    if (snapshot.tables.length === 0 && snapshot.rounds.length === 0) {
+      snapshot.authenticated = false
+      snapshot.errorMessage = 'MT page is open, but no table payload was detected yet. Keep worker running or inspect selector/websocket payloads.'
+    }
+
+    lastSnapshot = snapshot
+    lastError = null
+    return snapshot
+  } catch (error) {
+    lastError = redactUrlSecrets(error?.message ?? String(error))
+    resetCapturedPayloads()
+    await closePage()
+    lastSnapshot = null
+    return buildErrorSnapshot(lastError)
   }
-
-  lastSnapshot = snapshot
-  lastError = null
-  return snapshot
 }
 
 async function ensurePage() {
@@ -180,7 +192,7 @@ function isRoundPayload(text = '') {
 }
 
 async function closePage() {
-  const page = pagePromise ? await pagePromise.catch(() => null) : null
+  const page = pagePromise ? await withTimeout(pagePromise, 5000, 'MT page close wait timed out').catch(() => null) : null
   pagePromise = null
   if (page) await page.close().catch(() => {})
 }
@@ -191,10 +203,21 @@ function buildErrorSnapshot(errorMessage) {
     authenticated: false,
     sessionId: process.env.SESSION_ID ?? 'darven-cloud-browser',
     snapshotAt: new Date().toISOString(),
-    tables: lastSnapshot?.tables ?? [],
+    tables: [],
     rounds: [],
     errorMessage: redactUrlSecrets(errorMessage),
+    staleStateCleared: true,
   }
+}
+
+function withTimeout(promise, timeoutMs, message) {
+  let timer = null
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), Math.max(1, Number(timeoutMs) || PAGE_TIMEOUT_MS))
+  })
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer)
+  })
 }
 
 function sendJson(res, status, body) {

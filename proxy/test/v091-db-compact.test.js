@@ -176,3 +176,57 @@ test('v091 online core routes backtest/grid reports to local tmp files instead o
     process.chdir(cwd)
   }
 })
+
+test('v092 real MT card array is retained and pair flags use rank instead of baccarat point', () => {
+  const row = buildRoadmapEventRow({
+    tableId: 'BAG08',
+    shoe: 7788,
+    round: 21,
+    // 閒前兩張 J/Q 都是 0 點但不同 rank，不可誤判閒對；莊 10/10 同 rank 才是莊對。
+    rawResult: [11, 10, 12, 23, -1, -1, -1, -1, 0, 0],
+    winner: 'tie',
+  }, { tableId: 'BAG08' })
+  const compact = buildCompactRoadmapEventDbRow(row)
+
+  assert.deepEqual(compact.raw_event.rawResult, [11, 10, 12, 23, -1, -1, -1, -1, 0, 0])
+  assert.deepEqual(compact.player_card_codes, [11, 12, 0])
+  assert.deepEqual(compact.banker_card_codes, [10, 23, 0])
+  assert.deepEqual(compact.player_card_ranks, [11, 12, null])
+  assert.deepEqual(compact.banker_card_ranks, [10, 10, null])
+  assert.equal(compact.player_pair, false)
+  assert.equal(compact.banker_pair, true)
+})
+
+test('v092 Supabase writer serializes retries and skips duplicate actual rounds in one process', async () => {
+  const requests = []
+  let activeRequests = 0
+  let maxActiveRequests = 0
+  let failOnce = true
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co',
+    serviceKey: 'sb_secret_test_key',
+    retryDelayMs: 1,
+    fetchImpl: async (url, init) => {
+      activeRequests += 1
+      maxActiveRequests = Math.max(maxActiveRequests, activeRequests)
+      await new Promise((resolve) => setTimeout(resolve, 2))
+      requests.push({ url: String(url), body: JSON.parse(init.body) })
+      activeRequests -= 1
+      if (failOnce && String(url).includes('/daily_roadmap_events')) {
+        failOnce = false
+        return { ok: false, status: 503, text: async () => 'temporary unavailable' }
+      }
+      return { ok: true, status: 201, text: async () => '' }
+    },
+  })
+
+  await Promise.all([
+    client.persistRound(round, table),
+    client.persistRound({ ...round }, { ...table }),
+    client.persistRound({ ...round, rawResult: [...round.rawResult] }, { ...table }),
+  ])
+
+  assert.equal(maxActiveRequests, 1)
+  assert.equal(requests.filter((request) => request.url.includes('/daily_roadmap_events')).length, 2)
+  assert.equal(requests.filter((request) => request.url.includes('/daily_prediction_results')).length, 1)
+})

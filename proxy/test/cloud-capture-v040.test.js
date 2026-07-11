@@ -122,6 +122,40 @@ test('v052 cloud capture aborts a hung worker request instead of leaving stale s
   assert.match(state.snapshot().status.errorMessage, /aborted by test signal/)
 })
 
+
+test('v092 cloud capture retries a transient worker snapshot failure and replaces stale tables with fresh data', async () => {
+  const state = createFakeState()
+  state.setTables([{ tableId: 'BAG01', round: 35 }])
+  let attempts = 0
+  const client = createCloudCaptureClient({
+    url: 'https://cloud-worker.example/snapshot',
+    state,
+    timeoutMs: 50,
+    retryDelayMs: 1,
+    fetchImpl: async () => {
+      attempts += 1
+      if (attempts === 1) throw new Error('temporary worker socket reset')
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          connected: true,
+          authenticated: true,
+          sessionId: 'worker-recovered',
+          tables: [{ tableId: 'BAG01', displayName: 'MT百家樂第1桌', tableType: 'BAC', round: 36 }],
+        }),
+      }
+    },
+  })
+
+  const parsed = await client.tick()
+
+  assert.equal(attempts, 2)
+  assert.equal(parsed.sessionId, 'worker-recovered')
+  assert.equal(state.snapshot().tables[0].round, 36)
+  assert.equal(state.snapshot().status.connected, true)
+})
+
 function createFakeState() {
   const data = { status: {}, tables: [] }
   return {

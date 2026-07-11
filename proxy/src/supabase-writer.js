@@ -1288,25 +1288,53 @@ export function createSupabaseIngestionClient({
   url = process.env.SUPABASE_URL,
   serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY,
   fetchImpl = globalThis.fetch,
+  retryAttempts = 3,
+  retryDelayMs = 250,
 } = {}) {
   const configured = Boolean(url && serviceKey && fetchImpl)
+  const completedRoundKeys = new Set()
+  const inFlightRoundWrites = new Map()
+  let writeQueue = Promise.resolve()
 
   async function postRest(path, body, conflict) {
     if (!configured) return { skipped: true, reason: 'Supabase backend key is not configured' }
     const endpoint = new URL(`/rest/v1/${path}`, url)
     if (conflict) endpoint.searchParams.set('on_conflict', conflict)
-    const response = await fetchImpl(endpoint, {
-      method: 'POST',
-      headers: {
-        ['api' + 'key']: serviceKey,
-        ['Author' + 'ization']: ['Bearer', serviceKey].join(' '),
-        'Content-Type': 'application/json',
-        Prefer: 'resolution=merge-duplicates,return=minimal',
-      },
-      body: JSON.stringify(body),
+    return withRetry(async () => {
+      const response = await fetchImpl(endpoint, {
+        method: 'POST',
+        headers: {
+          ['api' + 'key']: serviceKey,
+          ['Author' + 'ization']: ['Bearer', serviceKey].join(' '),
+          'Content-Type': 'application/json',
+          Prefer: 'resolution=merge-duplicates,return=minimal',
+        },
+        body: JSON.stringify(body),
+      })
+      if (!response.ok) throw new Error(`Supabase ${path} failed: ${response.status} ${await response.text()}`)
+      return { ok: true, status: response.status }
     })
-    if (!response.ok) throw new Error(`Supabase ${path} failed: ${response.status} ${await response.text()}`)
-    return { ok: true, status: response.status }
+  }
+
+  function enqueueWrite(operation) {
+    const next = writeQueue.catch(() => {}).then(operation)
+    writeQueue = next.catch(() => {})
+    return next
+  }
+
+  async function withRetry(operation) {
+    let lastError = null
+    const attempts = Math.max(1, Number(retryAttempts) || 1)
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        return await operation()
+      } catch (error) {
+        lastError = error
+        if (attempt >= attempts || !isRetryableError(error)) break
+        await delay(Math.max(0, Number(retryDelayMs) || 0) * attempt)
+      }
+    }
+    throw lastError
   }
 
   async function getRest(path, query = {}) {
@@ -1335,18 +1363,30 @@ export function createSupabaseIngestionClient({
       const prediction = buildPredictionResultRow(round, table)
       const compactEvent = buildCompactRoadmapEventDbRow(event)
       const compactPrediction = buildCompactPredictionResultDbRow(prediction)
-      await postRest('daily_roadmap_events', compactEvent, 'source,table_id,shoe_no,round_no')
-      await postRest('daily_prediction_results', compactPrediction, 'source,table_id,shoe_no,round_no,strategy_version')
-      return { event, prediction, compactEvent, compactPrediction }
+      const roundKey = buildRoundDedupeKey(compactEvent, compactPrediction)
+      if (completedRoundKeys.has(roundKey)) return { skipped: true, reason: 'duplicate_round', event, prediction, compactEvent, compactPrediction }
+      if (inFlightRoundWrites.has(roundKey)) return inFlightRoundWrites.get(roundKey)
+
+      const writePromise = enqueueWrite(async () => {
+        if (completedRoundKeys.has(roundKey)) return { skipped: true, reason: 'duplicate_round', event, prediction, compactEvent, compactPrediction }
+        await postRest('daily_roadmap_events', compactEvent, 'source,table_id,shoe_no,round_no')
+        await postRest('daily_prediction_results', compactPrediction, 'source,table_id,shoe_no,round_no,strategy_version')
+        completedRoundKeys.add(roundKey)
+        return { event, prediction, compactEvent, compactPrediction }
+      }).finally(() => {
+        inFlightRoundWrites.delete(roundKey)
+      })
+      inFlightRoundWrites.set(roundKey, writePromise)
+      return writePromise
     },
     async writeCloudCaptureStatus(payload) {
       const row = buildCloudCaptureStatusRow(payload)
-      await postRest('cloud_capture_status', row, 'session_id')
+      await enqueueWrite(() => postRest('cloud_capture_status', row, 'session_id'))
       return { ok: true, row }
     },
     async writeCloudTableSnapshot(payload) {
       const row = buildCloudTableSnapshotRow(payload)
-      await postRest('cloud_table_snapshots', row)
+      await enqueueWrite(() => postRest('cloud_table_snapshots', row))
       return { ok: true, row }
     },
     async getLatestCloudTableSnapshot() {
@@ -1365,17 +1405,17 @@ export function createSupabaseIngestionClient({
     },
     async writeCloudRoundEvent(payload) {
       const row = buildCloudRoundEventRow(payload)
-      await postRest('cloud_table_rounds', row, 'source,table_id,shoe_no,round_no')
+      await enqueueWrite(() => postRest('cloud_table_rounds', row, 'source,table_id,shoe_no,round_no'))
       return { ok: true, row }
     },
     async writeCloudStrategyReport(payload) {
       const row = buildCloudStrategyReportRow(payload)
-      await postRest('cloud_strategy_reports', row)
+      await enqueueWrite(() => postRest('cloud_strategy_reports', row))
       return { ok: true, row }
     },
     async writeStrategyAdjustmentStats(payload) {
       const rows = buildStrategyAdjustmentStatsRows(payload)
-      await postRest('cloud_strategy_adjustment_stats', rows)
+      await enqueueWrite(() => postRest('cloud_strategy_adjustment_stats', rows))
       return { ok: true, rows }
     },
   }
@@ -1390,6 +1430,31 @@ function cardPointOrNull(code) {
 function sameRank(a, b) {
   if (!a || !b) return false
   return (((Number(a) - 1) % 13) + 1) === (((Number(b) - 1) % 13) + 1)
+}
+
+function buildRoundDedupeKey(event = {}, prediction = {}) {
+  const rawResult = Array.isArray(event.raw_event?.rawResult) ? event.raw_event.rawResult : []
+  return JSON.stringify({
+    source: event.source,
+    tableId: event.table_id,
+    shoeNo: event.shoe_no,
+    roundNo: event.round_no,
+    strategyVersion: prediction.strategy_version,
+    rawResult,
+    mainResult: event.main_result,
+    bankerPoints: event.banker_points,
+    playerPoints: event.player_points,
+  })
+}
+
+function isRetryableError(error) {
+  const message = String(error?.message ?? error)
+  const status = Number(message.match(/failed:\s*(\d+)/)?.[1] ?? 0)
+  return status === 0 || status === 408 || status === 429 || status >= 500 || /timeout|aborted|network|fetch failed/i.test(message)
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function numberOrZero(value) {

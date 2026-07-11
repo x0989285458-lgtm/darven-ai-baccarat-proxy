@@ -320,15 +320,27 @@ function toNumber(value, fallback) {
   return number == null ? fallback : number
 }
 
-function dedupeBy(items, keyFn) {
+function dedupeRounds(rounds) {
   const map = new Map()
-  for (const item of items) {
-    const key = keyFn(item)
-    if (!map.has(key)) map.set(key, item)
+  for (const round of rounds) {
+    const key = `${round.tableId}:${round.shoe ?? ''}:${round.round}`
+    const current = map.get(key)
+    map.set(key, chooseBetterRound(current, round))
   }
   return [...map.values()]
 }
 
-function dedupeRounds(rounds) {
-  return dedupeBy(rounds, (round) => `${round.tableId}:${round.shoe ?? ''}:${round.round}`)
+function chooseBetterRound(current, next) {
+  if (!current) return next
+  return roundScore(next) >= roundScore(current) ? next : current
+}
+
+function roundScore(round = {}) {
+  const raw = round.rawResult
+  return (Array.isArray(raw) ? 100 + raw.filter((value) => Number(value) > 0).length : 0)
+    + (round.playerPoint != null ? 10 : 0)
+    + (round.bankerPoint != null ? 10 : 0)
+    + (round.sourceAction ? 5 : 0)
+    + (raw && typeof raw === 'object' && !Array.isArray(raw) && (raw.action || raw.event || raw.round) ? 2 : 0)
+    + (round.winner ? 1 : 0)
 }

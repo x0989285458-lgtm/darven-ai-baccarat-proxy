@@ -121,6 +121,27 @@ test('extracts MT show_poker round result with banker/player points for Super Si
   assert.deepEqual(snapshot.rounds[0].rawResult, [11, 25, 7, 19, -1, -1, -1, -1, 4, 6])
 })
 
+test('v092 dedupes completed rounds by keeping the real MT card array over stale summary', () => {
+  const snapshot = extractSnapshotFromPayloads([
+    { event: 'roundResult', round: { table_id: 'BAG06', shoe: 15669, round_no: 12, result: 'B' } },
+    JSON.stringify({
+      action: { name: '/api/v1/gametype/*/game/*/room/*/table/*/show_poker' },
+      body: {
+        table_id: 'BAG06',
+        shoe: 15669,
+        round: 12,
+        winner: 2,
+        result: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
+      },
+    }),
+  ], { sessionId: 'test-session', now: '2026-06-30T00:00:00.000Z' })
+
+  assert.equal(snapshot.rounds.length, 1)
+  assert.equal(snapshot.rounds[0].playerPoint, 4)
+  assert.equal(snapshot.rounds[0].bankerPoint, 6)
+  assert.deepEqual(snapshot.rounds[0].rawResult, [11, 25, 7, 19, -1, -1, -1, -1, 4, 6])
+})
+
 test('redacts token and secret values from login URL before exposing diagnostics', () => {
   assert.equal(
     redactUrlSecrets('https://gsa.ofalive99.net/?token=abc123&lang=zhtw&secret=def456'),

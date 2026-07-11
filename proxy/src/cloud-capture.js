@@ -2,6 +2,7 @@ import { normalizeMtTables } from './normalize-table.js'
 
 const DEFAULT_POLL_MS = 2000
 const DEFAULT_REQUEST_TIMEOUT_MS = 15000
+const DEFAULT_REQUEST_RETRIES = 2
 
 export function parseCloudCapturePayload(payload = {}) {
   const tables = normalizeCloudTables(payload.tables ?? payload.snapshot?.tables ?? [])
@@ -26,7 +27,7 @@ export function parseCloudCapturePayload(payload = {}) {
   }
 }
 
-export function createCloudCaptureClient({ url, state, writer = null, fetchImpl = globalThis.fetch, pollMs = DEFAULT_POLL_MS, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, adminKey = process.env.WORKER_ADMIN_KEY } = {}) {
+export function createCloudCaptureClient({ url, state, writer = null, fetchImpl = globalThis.fetch, pollMs = DEFAULT_POLL_MS, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, requestRetries = DEFAULT_REQUEST_RETRIES, retryDelayMs = 250, adminKey = process.env.WORKER_ADMIN_KEY } = {}) {
   let timer = null
   let stopped = true
 
@@ -37,11 +38,7 @@ export function createCloudCaptureClient({ url, state, writer = null, fetchImpl 
       return null
     }
     try {
-      const controller = typeof AbortController === 'function' ? new AbortController() : null
-      const timeout = controller ? setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs) || DEFAULT_REQUEST_TIMEOUT_MS)) : null
-      const response = await fetchImpl(url, { cache: 'no-store', signal: controller?.signal, headers: adminKey ? { 'x-worker-admin-key': adminKey } : undefined }).finally(() => {
-        if (timeout) clearTimeout(timeout)
-      })
+      const response = await fetchWorkerSnapshot({ url, fetchImpl, timeoutMs, requestRetries, retryDelayMs, adminKey })
       if (!response?.ok) {
         const text = typeof response?.text === 'function' ? await response.text().catch(() => '') : ''
         throw new Error(`Cloud capture worker failed: ${response?.status ?? 'unknown'} ${text}`)
@@ -81,6 +78,34 @@ export function createCloudCaptureClient({ url, state, writer = null, fetchImpl 
   }
 
   return { start, stop, tick, isRunning }
+}
+
+
+async function fetchWorkerSnapshot({ url, fetchImpl, timeoutMs, requestRetries, retryDelayMs, adminKey }) {
+  let lastError = null
+  const attempts = Math.max(1, Number(requestRetries) || 1)
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const controller = typeof AbortController === 'function' ? new AbortController() : null
+    const timeout = controller ? setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs) || DEFAULT_REQUEST_TIMEOUT_MS)) : null
+    try {
+      return await fetchImpl(url, { cache: 'no-store', signal: controller?.signal, headers: adminKey ? { 'x-worker-admin-key': adminKey } : undefined })
+    } catch (error) {
+      lastError = error
+      if (attempt >= attempts || !isTransientWorkerError(error)) throw error
+      await delay(Math.max(0, Number(retryDelayMs) || 0) * attempt)
+    } finally {
+      if (timeout) clearTimeout(timeout)
+    }
+  }
+  throw lastError
+}
+
+function isTransientWorkerError(error) {
+  return /timeout|abort|socket|reset|network|fetch failed|temporar/i.test(String(error?.message ?? error))
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 async function persistParsedCapture({ parsed, writer }) {
