@@ -1,6 +1,6 @@
 import { normalizeMtTables } from './normalize-table.js'
 
-const DEFAULT_POLL_MS = 2000
+const DEFAULT_POLL_MS = 5000
 const DEFAULT_REQUEST_TIMEOUT_MS = 15000
 const DEFAULT_REQUEST_RETRIES = 2
 

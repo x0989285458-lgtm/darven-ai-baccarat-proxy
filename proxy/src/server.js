@@ -14,7 +14,7 @@ import { chooseCaptureSource, describeCaptureStatus } from './capture-source.js'
 const VERSION = '042'
 const SERVICE = 'Draven MT資料代理伺服器'
 
-export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient() } = {}) {
+export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient() } = {}) {
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
     CAPTURE_SOURCE: requestedCaptureSource,
@@ -100,15 +100,21 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       }
     }
     if (method === 'POST' && pathname === '/api/cloud-capture/tick') {
+      const controlError = requireControlAccess(headers)
+      if (controlError) return controlError
       const parsed = await cloudCaptureClient.tick()
       return jsonResponse(200, { ok: Boolean(parsed), running: cloudCaptureClient.isRunning(), status: state.snapshot().status }, frontendOrigin)
     }
     if (method === 'POST' && pathname === '/api/cloud-capture/start') {
+      const controlError = requireControlAccess(headers)
+      if (controlError) return controlError
       if (!cloudBrowserUrl) return jsonResponse(400, { ok: false, error: 'CLOUD_BROWSER_URL is required before starting cloud capture' }, frontendOrigin)
       cloudCaptureClient.start()
       return jsonResponse(200, { ok: true, running: cloudCaptureClient.isRunning(), status: state.snapshot().status }, frontendOrigin)
     }
     if (method === 'POST' && pathname === '/api/cloud-capture/stop') {
+      const controlError = requireControlAccess(headers)
+      if (controlError) return controlError
       cloudCaptureClient.stop()
       return jsonResponse(200, { ok: true, running: cloudCaptureClient.isRunning(), status: state.snapshot().status }, frontendOrigin)
     }
@@ -180,6 +186,19 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     if (method === 'POST' && pathname === '/api/online-license/licenses/delete') return adminWrite((payload) => licenseAdminClient.deleteLicense?.(payload), { requireSession: true })
 
     return jsonResponse(404, { error: 'Not Found' }, frontendOrigin)
+  }
+
+  function requireControlAccess(headers = {}) {
+    const origin = headers.origin ?? headers.Origin
+    const allowedOrigin = String(controlAllowedOrigin || '').trim()
+    if (allowedOrigin && allowedOrigin !== '*' && origin && String(origin) !== allowedOrigin) {
+      return jsonResponse(403, { ok: false, error: 'control origin is not allowed' }, frontendOrigin)
+    }
+    if (!controlToken) return null
+    const provided = headers['x-control-token']
+      ?? headers['authorization']?.replace(/^Bearer\s+/i, '')
+    if (safeEqual(provided, controlToken)) return null
+    return jsonResponse(401, { ok: false, error: 'control token is required' }, frontendOrigin)
   }
 
   function issueAdminSession(loginResult = {}, fallbackAccount = '') {
@@ -385,7 +404,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
 
   function ensureStreamTimer() {
     if (streamTimer) return
-    streamTimer = setInterval(() => { void broadcastTables(false) }, 1500)
+    streamTimer = setInterval(() => { void broadcastTables(false) }, 3000)
   }
 
   function stopStreamTimerIfIdle() {
@@ -403,7 +422,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       'x-accel-buffering': 'no',
       'access-control-allow-origin': frontendOrigin,
       'access-control-allow-methods': 'GET,POST,OPTIONS',
-      'access-control-allow-headers': 'Content-Type,Authorization,X-Admin-Session-Token',
+      'access-control-allow-headers': 'Content-Type,Authorization,X-Admin-Session-Token,X-Control-Token',
     })
     streamClients.add(res)
     ensureStreamTimer()
@@ -462,6 +481,14 @@ function resolveAdminRole(loginResult = {}) {
     ?? null
 }
 
+function safeEqual(provided, expected) {
+  if (provided == null || expected == null) return false
+  const left = Buffer.from(String(provided))
+  const right = Buffer.from(String(expected))
+  if (left.length !== right.length) return false
+  return crypto.timingSafeEqual(left, right)
+}
+
 function parseJsonBody(rawBody) {
   if (!rawBody) return {}
   return JSON.parse(rawBody)
@@ -483,7 +510,7 @@ function jsonResponse(statusCode, payload, frontendOrigin = '*') {
       'content-type': 'application/json; charset=utf-8',
       'access-control-allow-origin': frontendOrigin,
       'access-control-allow-methods': 'GET,POST,OPTIONS',
-      'access-control-allow-headers': 'Content-Type,Authorization,X-Admin-Session-Token',
+      'access-control-allow-headers': 'Content-Type,Authorization,X-Admin-Session-Token,X-Control-Token',
       'cache-control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
       pragma: 'no-cache',
     },

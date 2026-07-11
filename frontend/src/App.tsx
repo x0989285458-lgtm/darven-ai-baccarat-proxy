@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { mockTables } from './data/mockTables'
-import { LiveRoadClient, type LiveTable } from './lib/liveClient'
+import { LiveRoadClient, isLiveTableStale, type LiveTable } from './lib/liveClient'
 import { calculatePrediction, calculateMainOutcomeProbabilities, calculateBonusPredictions, getSidePredictionActions, parseBeadPlate, parseBigRoad } from './lib/roadParser'
 import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from './lib/supabaseClient'
 import { checkOnlineCoreStatus, getOnlineMemoryCenter, getOnlineStrategyAnalysis, updateOnlineAppSetting, type OnlineCoreStatus, type OnlineMemoryCenter, type OnlineStrategyAnalysis } from './lib/onlineCoreClient'
@@ -35,6 +35,12 @@ export default function App() {
     if (isCompleteTableUpdate(selected)) setStableSelected(selected)
   }, [selected])
   const displaySelected = stableSelected ?? selected
+  const staleNotice = useMemo(() => {
+    const staleTables = visibleTables.filter((table) => isLiveTableStale(table)).length
+    if (staleTables > 0) return `資料過期：${staleTables}桌桌況資料可能不是即時`
+    if (/過期|stale/i.test(status.message)) return status.message
+    return ''
+  }, [visibleTables, status.message])
   const fullRoad = useMemo(() => parseBeadPlate(displaySelected?.trend.bead_plate2 ?? ''), [displaySelected])
   const allBigRoad = useMemo(() => parseBigRoad(displaySelected?.trend.big2 ?? ''), [displaySelected])
   const bigRoad = useMemo(() => markBigRoadTies(allBigRoad), [allBigRoad])
@@ -90,7 +96,7 @@ export default function App() {
       enforceMaintenanceLogout(result, path, client.current)
     })
     loadCoreStatus()
-    const timer = window.setInterval(loadCoreStatus, 5000)
+    const timer = window.setInterval(loadCoreStatus, 15000)
     return () => { active = false; window.clearInterval(timer) }
   }, [path, memberLoggedIn, adminLoggedIn])
 
@@ -143,7 +149,7 @@ export default function App() {
         <h1>AI百家預測軟體</h1>
         <p className="eyebrow">瑞文AI版 010</p>
       </div>
-      <div className="header-meta"><span className={`status ${supabaseStatus.state}`} title={supabaseConfig.projectRef}>{supabaseStatus.message}</span></div>
+      <div className="header-meta"><span className={`status ${supabaseStatus.state}`} title={supabaseConfig.projectRef}>{supabaseStatus.message}</span>{staleNotice ? <span className="status stale" title={staleNotice} aria-label={staleNotice}>資料過期</span> : null}</div>
     </header>
     <div className="workspace">
       <aside className="sidebar balanced-sidebar-line" aria-label="桌號與資料選擇">

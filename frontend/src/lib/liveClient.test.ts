@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { LiveRoadClient } from './liveClient'
+import { LiveRoadClient, isLiveTableStale } from './liveClient'
 
 describe('LiveRoadClient v032 status messages', () => {
   afterEach(() => {
@@ -82,6 +82,40 @@ describe('LiveRoadClient v032 status messages', () => {
     expect(received[0].totalPlayers).toBe(123)
     expect(received[0].roomId).toBe('29')
     expect(received[0].sourceUpdatedAt).toBe('2026-07-05T00:00:00.000Z')
+  })
+
+  it('v093 marks source-updated tables as stale after the allowed live window', () => {
+    const now = Date.parse('2026-07-11T10:00:00.000Z')
+    expect(isLiveTableStale({ sourceUpdatedAt: '2026-07-11T09:59:20.000Z' }, now, 60000)).toBe(false)
+    expect(isLiveTableStale({ sourceUpdatedAt: '2026-07-11T09:58:00.000Z' }, now, 60000)).toBe(true)
+    expect(isLiveTableStale({ sourceUpdatedAt: null }, now, 60000)).toBe(false)
+  })
+
+  it('v093 throttles backup polling while SSE heartbeat is fresh', async () => {
+    vi.useFakeTimers()
+    class FakeEventSource {
+      static instance: FakeEventSource | null = null
+      onopen: (() => void) | null = null
+      onerror: (() => void) | null = null
+      private listeners: Record<string, Array<() => void>> = {}
+      constructor() { FakeEventSource.instance = this }
+      addEventListener(name: string, handler: () => void) { this.listeners[name] = [...(this.listeners[name] ?? []), handler] }
+      close() {}
+      emit(name: string) { for (const handler of this.listeners[name] ?? []) handler() }
+    }
+    const fetchMock = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve([]) }))
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('EventSource', FakeEventSource as any)
+
+    const client = new LiveRoadClient({ onTables: vi.fn(), onStatus: vi.fn() })
+    client.connect()
+    FakeEventSource.instance?.onopen?.()
+    await vi.advanceTimersByTimeAsync(11000)
+    FakeEventSource.instance?.emit('heartbeat')
+    await vi.advanceTimersByTimeAsync(3000)
+    client.disconnect(false)
+
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining('/api/tables'), expect.anything())
   })
 
 })

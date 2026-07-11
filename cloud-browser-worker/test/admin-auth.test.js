@@ -9,7 +9,12 @@ test('v090 worker admin key is backward compatible when unset', () => {
 })
 
 test('v090 worker admin key accepts header or query when configured', () => {
-  assert.equal(isWorkerAdminAuthorized({ headers: {}, url: '/snapshot' }, 'secret'), false)
-  assert.equal(isWorkerAdminAuthorized({ headers: { 'x-worker-admin-key': 'secret' }, url: '/snapshot' }, 'secret'), true)
-  assert.equal(isWorkerAdminAuthorized({ headers: {}, url: '/snapshot?adminKey=secret' }, 'secret'), true)
+  assert.equal(isWorkerAdminAuthorized({ method: 'GET', headers: {}, url: '/snapshot' }, 'secret'), false)
+  assert.equal(isWorkerAdminAuthorized({ method: 'GET', headers: { 'x-worker-admin-key': 'secret' }, url: '/snapshot' }, 'secret'), true)
+  assert.equal(isWorkerAdminAuthorized({ method: 'GET', headers: {}, url: '/snapshot?adminKey=secret' }, 'secret'), true)
+})
+
+test('v093 worker control actions require header token and do not accept query token', () => {
+  assert.equal(isWorkerAdminAuthorized({ method: 'POST', headers: {}, url: '/reload?adminKey=secret' }, 'secret', { allowQuery: false }), false)
+  assert.equal(isWorkerAdminAuthorized({ method: 'POST', headers: { 'x-worker-admin-key': 'secret' }, url: '/reload' }, 'secret', { allowQuery: false }), true)
 })

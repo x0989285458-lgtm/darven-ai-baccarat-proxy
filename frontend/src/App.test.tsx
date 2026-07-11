@@ -69,6 +69,17 @@ describe('AI百家預測軟體', () => {
     expect(within(header).queryByText(/更新：/)).not.toBeInTheDocument()
   })
 
+  it('v093 shows stale data badge without treating old sourceUpdatedAt as realtime', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table) => ({ ...table, sourceUpdatedAt: '2026-07-11T00:00:00.000Z' }))) })
+      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 9, statusText: '雲端資料過期，等待Worker重新抓牌' }) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: [], reports: [], strategies: [] }) })
+    }))
+    await renderApp('/', false)
+    expect(await screen.findByText('資料過期')).toBeInTheDocument()
+    expect(screen.getByLabelText(/桌況資料可能不是即時/)).toBeInTheDocument()
+  })
+
   it('v032 shows actual Supabase 401 failure instead of leaving frontend/header ambiguous', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: false, status: 401 })))
     await renderApp('/', false)

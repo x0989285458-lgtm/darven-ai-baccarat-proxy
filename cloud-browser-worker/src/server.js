@@ -41,7 +41,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname === '/reload') {
-      if (!isWorkerAdminAuthorized(req)) return sendJson(res, 401, { ok: false, error: 'unauthorized' })
+      if (!isWorkerAdminAuthorized(req, process.env.WORKER_ADMIN_KEY, { allowQuery: false })) return sendJson(res, 401, { ok: false, error: 'unauthorized' })
       resetCapturedPayloads()
       await closePage()
       const snapshot = await getSnapshot()

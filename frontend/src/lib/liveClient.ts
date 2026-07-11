@@ -60,7 +60,9 @@ type ProxyTable = {
 }
 
 const proxyApiUrl = dravenApiBaseUrl
-const pollIntervalMs = Number(import.meta.env.VITE_DRAVEN_PROXY_POLL_MS ?? 3000)
+const pollIntervalMs = Number(import.meta.env.VITE_DRAVEN_PROXY_POLL_MS ?? 5000)
+const streamStaleMs = Number(import.meta.env.VITE_DRAVEN_STREAM_STALE_MS ?? 15000)
+const liveTableMaxAgeMs = Number(import.meta.env.VITE_DRAVEN_TABLE_MAX_AGE_MS ?? 120000)
 
 export class LiveRoadClient {
   private timer?: number
@@ -81,7 +83,7 @@ export class LiveRoadClient {
     this.connectStream()
     this.streamWatchdog = window.setInterval(() => {
       if (this.stopped) return
-      if (!this.lastStreamAt || Date.now() - this.lastStreamAt > 4000) void this.poll()
+      if (!this.lastStreamAt || Date.now() - this.lastStreamAt > streamStaleMs) void this.poll()
     }, pollIntervalMs)
   }
 
@@ -113,7 +115,7 @@ export class LiveRoadClient {
         this.lastGoodTables = tables
         this.consecutiveFailures = 0
         this.options.onTables(tables)
-        this.options.onStatus({ state: 'connected', message: `即時同步中（${tables.length}桌）` })
+        this.options.onStatus(buildTableStatus(tables, `即時同步中（${tables.length}桌）`))
       })
       this.stream.addEventListener('heartbeat', () => { this.lastStreamAt = Date.now() })
       this.stream.onerror = () => {
@@ -137,7 +139,7 @@ export class LiveRoadClient {
         this.lastGoodTables = tables
         this.consecutiveFailures = 0
         this.options.onTables(tables)
-        this.options.onStatus({ state: 'connected', message: `雲端資料已連線（${tables.length}桌）` })
+        this.options.onStatus(buildTableStatus(tables, `雲端資料已連線（${tables.length}桌）`))
         return
       }
       this.consecutiveFailures += 1
@@ -176,6 +178,19 @@ async function readProxyStatus(): Promise<Status> {
   } catch {
     return { state: 'error', message: '雲端代理未啟動或無法讀取狀態' }
   }
+}
+
+export function isLiveTableStale(table: Pick<LiveTable, 'sourceUpdatedAt'> | { sourceUpdatedAt?: string | null }, now = Date.now(), maxAgeMs = liveTableMaxAgeMs) {
+  if (!table.sourceUpdatedAt) return false
+  const timestamp = Date.parse(table.sourceUpdatedAt)
+  if (!Number.isFinite(timestamp)) return false
+  return now - timestamp > Math.max(1000, Number(maxAgeMs) || 120000)
+}
+
+function buildTableStatus(tables: LiveTable[], liveMessage: string): Status {
+  const staleCount = tables.filter((table) => isLiveTableStale(table)).length
+  if (staleCount > 0) return { state: 'connecting', message: `桌況資料可能不是即時（${staleCount}桌過期），等待Worker更新` }
+  return { state: 'connected', message: liveMessage }
 }
 
 function normalizeProxyTables(tables: ProxyTable[]): LiveTable[] {

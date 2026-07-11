@@ -9,6 +9,7 @@
     "dev": "node src/server.js",
     "test": "node --test",
     "health": "node scripts/health-check.mjs",
+    "monitor:v093": "node scripts/v093-health-monitor.mjs",
     "update-token": "node scripts/update-token.mjs",
     "stable-report": "node scripts/stable-capture-report.mjs",
     "smoke:cloud": "node scripts/smoke-cloud-deploy.mjs",

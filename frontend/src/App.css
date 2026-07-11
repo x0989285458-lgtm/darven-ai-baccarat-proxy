@@ -121,6 +121,7 @@ h1 {
 }
 .status.connected { color: #6ae3b3; }
 .status.error { color: #ff9090; }
+.status.stale { color: #ffd166; background: #2f2614; }
 
 .workspace {
   display: grid;
