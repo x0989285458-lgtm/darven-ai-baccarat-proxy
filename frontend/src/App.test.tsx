@@ -35,6 +35,13 @@ function proxyTablesFromMocks() {
     playerPairCount: table.trend.total_round_player_pair,
     beadPlateRaw: table.trend.bead_plate2,
     bigRoadRaw: table.trend.big2,
+    prediction: {
+      source: 'backend',
+      strategyVersion: 'v094_信心值前後端統一版',
+      predictedResult: index % 2 === 0 ? 'banker' : 'player',
+      confidence: 34,
+      scoreTotals: { banker: 38, player: 33 },
+    },
   }))
 }
 
@@ -606,6 +613,10 @@ describe('AI百家預測軟體', () => {
         bigRoadRaw: table.trend.big2,
         nextBankerRaw: '111',
         nextPlayerRaw: '222',
+        prediction: {
+          source: 'backend', strategyVersion: 'v094_信心值前後端統一版',
+          predictedResult: 'banker', confidence: 34, scoreTotals: { banker: 38, player: 33 },
+        },
       }))),
     } as Response))
 

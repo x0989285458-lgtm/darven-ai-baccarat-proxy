@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { mockTables } from './data/mockTables'
 import { LiveRoadClient, isLiveTableStale, type LiveTable } from './lib/liveClient'
-import { calculatePrediction, calculateMainOutcomeProbabilities, calculateBonusPredictions, getSidePredictionActions, parseBeadPlate, parseBigRoad, type MainOutcome, type Prediction } from './lib/roadParser'
+import { calculateMainOutcomeProbabilities, calculateBonusPredictions, getSidePredictionActions, parseBeadPlate, parseBigRoad, type MainOutcome, type Prediction } from './lib/roadParser'
 import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from './lib/supabaseClient'
 import { checkOnlineCoreStatus, getOnlineMemoryCenter, getOnlineStrategyAnalysis, updateOnlineAppSetting, type OnlineCoreStatus, type OnlineMemoryCenter, type OnlineStrategyAnalysis } from './lib/onlineCoreClient'
 import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents, deleteOnlineLicense, extendOnlineLicense, getCloudDataStatus, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
@@ -73,41 +73,14 @@ export default function App() {
   const fullRoad = useMemo(() => parseBeadPlate(displaySelected?.trend.bead_plate2 ?? ''), [displaySelected])
   const allBigRoad = useMemo(() => parseBigRoad(displaySelected?.trend.big2 ?? ''), [displaySelected])
   const bigRoad = useMemo(() => markBigRoadTies(allBigRoad), [allBigRoad])
-  const prediction = useMemo(() => backendPredictionFromTable(displaySelected) ?? calculatePrediction({
-    beadCells: fullRoad,
-    bigRoadCells: bigRoad,
-    askRoad: displaySelected?.trend,
-    tableStats: {
-      total_round_banker: displaySelected?.trend.total_round_banker,
-      total_round_player: displaySelected?.trend.total_round_player,
-      total_round_tie: displaySelected?.trend.total_round_tie,
-      total_round_banker_pair: displaySelected?.trend.total_round_banker_pair,
-      total_round_player_pair: displaySelected?.trend.total_round_player_pair,
-    },
-    tableContext: {
-      table_id: displaySelected?.table_id,
-      display_name: displaySelected?.name,
-      table_type: displaySelected?.table_type,
-      room_id: displaySelected?.roomId,
-      dealer_name: displaySelected?.dealerName,
-      total_players: displaySelected?.totalPlayers,
-      state: displaySelected?.state,
-      order_state: displaySelected?.orderState,
-      source_updated_at: displaySelected?.sourceUpdatedAt,
-      shoe: displaySelected?.trend.current_shoe,
-      round: displaySelected?.trend.current_round,
-    },
-    roadRaw: {
-      bead_road: displaySelected?.trend.bead_plate2 ?? '',
-      big_road: displaySelected?.trend.big2 ?? '',
-      big_eye_road: displaySelected?.trend.big_eye2 ?? '',
-      small_road: displaySelected?.trend.small2 ?? '',
-      cockroach_road: displaySelected?.trend.cockroach2 ?? '',
-    },
-  }), [fullRoad, bigRoad, displaySelected])
+  const prediction = useMemo(() => backendPredictionFromTable(displaySelected), [displaySelected])
   const bonusPredictions = useMemo(() => calculateBonusPredictions(fullRoad, displaySelected?.trend), [fullRoad, displaySelected])
-  const sideActions = useMemo(() => getSidePredictionActions(bonusPredictions, prediction.recommendation), [bonusPredictions, prediction])
-  const outcomePredictions = useMemo(() => calculateMainOutcomeProbabilities(prediction, bonusPredictions.tie), [prediction, bonusPredictions])
+  const sideActions = useMemo(() => prediction ? getSidePredictionActions(bonusPredictions, prediction.recommendation) : {
+    playerDragon: false, playerPair: false, superSix: false, bankerPair: false, bankerDragon: false,
+  }, [bonusPredictions, prediction])
+  const outcomePredictions = useMemo(() => prediction
+    ? calculateMainOutcomeProbabilities(prediction, bonusPredictions.tie)
+    : { player: 0, tie: 0, banker: 0 }, [prediction, bonusPredictions])
 
   useEffect(() => () => client.current?.disconnect(false), [])
   useEffect(() => {
@@ -202,13 +175,15 @@ export default function App() {
             <PredictionMetric title="莊對" value={bonusPredictions.bankerPair} tone="Banker" active={sideActions.bankerPair} />
             <PredictionMetric title="莊龍寶" value={bonusPredictions.bankerDragon} tone="Banker" active={sideActions.bankerDragon} />
           </div>
-          <div className="prediction-row main-probability-row" aria-label="莊閒預測機率">
-            <PredictionMetric title="閒" value={outcomePredictions.player} tone="Player" active={prediction.recommendation === 'Player'} />
-            <PredictionMetric title="和" value={outcomePredictions.tie} tone="Tie" active={label[prediction.recommendation] === '和'} />
-            <PredictionMetric title="莊" value={outcomePredictions.banker} tone="Banker" active={prediction.recommendation === 'Banker'} />
-          </div>
-          <h2 className="ai-prediction-line">AI預測:<span className={prediction.recommendation}>{label[prediction.recommendation]}</span></h2>
-          <strong className="ai-confidence-line">AI信心值:{prediction.confidence}%</strong>
+          {prediction ? <>
+            <div className="prediction-row main-probability-row" aria-label="莊閒預測機率">
+              <PredictionMetric title="閒" value={outcomePredictions.player} tone="Player" active={prediction.recommendation === 'Player'} />
+              <PredictionMetric title="和" value={outcomePredictions.tie} tone="Tie" active={label[prediction.recommendation] === '和'} />
+              <PredictionMetric title="莊" value={outcomePredictions.banker} tone="Banker" active={prediction.recommendation === 'Banker'} />
+            </div>
+            <h2 className="ai-prediction-line">AI預測:<span className={prediction.recommendation}>{label[prediction.recommendation]}</span></h2>
+            <strong className="ai-confidence-line">AI信心值:{prediction.confidence}%</strong>
+          </> : <strong className="ai-confidence-line">等待後端預測</strong>}
         </section>
         <div className="roads-grid single-road">
           <RoadCard title="大路" subtitle="紅圈＝莊　藍圈＝閒">
