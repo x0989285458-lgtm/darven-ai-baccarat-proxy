@@ -10,16 +10,19 @@
     "test": "node --test",
     "health": "node scripts/health-check.mjs",
     "monitor:v093": "node scripts/v093-health-monitor.mjs",
+    "backup:v094": "node scripts/supabase-v094-backup-restore.mjs backup",
+    "restore:v094": "node scripts/supabase-v094-backup-restore.mjs restore",
+    "rollback-check:v094": "node scripts/v094-rollback-check.mjs",
     "update-token": "node scripts/update-token.mjs",
     "stable-report": "node scripts/stable-capture-report.mjs",
     "smoke:cloud": "node scripts/smoke-cloud-deploy.mjs",
     "mock:cloud-worker": "node scripts/mock-cloud-worker.mjs"
   },
   "dependencies": {
-    "pg": "^8.13.1",
-    "ws": "^8.18.0"
+    "pg": "8.22.0",
+    "ws": "8.21.0"
   },
   "devDependencies": {
-    "pm2": "^5.4.3"
+    "pm2": "5.4.3"
   }
 }

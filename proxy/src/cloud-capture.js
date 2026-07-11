@@ -1,4 +1,5 @@
 import { normalizeMtTables } from './normalize-table.js'
+import { buildOperationalEvent, toStatusEvent } from './event-layer.js'
 
 const DEFAULT_POLL_MS = 5000
 const DEFAULT_REQUEST_TIMEOUT_MS = 15000
@@ -48,11 +49,19 @@ export function createCloudCaptureClient({ url, state, writer = null, fetchImpl 
       state?.setStatus?.(parsed.status)
       state?.setTables?.(parsed.tables)
       for (const round of parsed.rounds) state?.upsertRoundEvent?.(round)
-      await persistParsedCapture({ parsed, writer })
+      try {
+        await persistParsedCapture({ parsed, writer })
+      } catch (error) {
+        const event = buildOperationalEvent({ component: 'supabase_writer', kind: 'persist_capture', message: error?.message ?? String(error) })
+        state?.setStatus?.({ ...toStatusEvent(event), persistenceStatus: 'error', persistenceError: event.eventMessage })
+        await writer?.writeOperationalEvent?.(event).catch(() => {})
+      }
       return parsed
     } catch (error) {
-      state?.recordError?.(redactSecrets(error?.message ?? String(error)))
-      state?.setStatus?.({ captureSource: 'cloud_browser', captureMode: 'cloud_browser', connected: false, authenticated: false, cloudReady: true })
+      const event = buildOperationalEvent({ component: 'cloud_capture', kind: 'worker_snapshot', message: error?.message ?? String(error) })
+      state?.recordError?.(event.eventMessage)
+      state?.setStatus?.({ captureSource: 'cloud_browser', captureMode: 'cloud_browser', connected: false, authenticated: false, cloudReady: true, ...toStatusEvent(event) })
+      await writer?.writeOperationalEvent?.(event).catch(() => {})
       return null
     }
   }
@@ -147,11 +156,4 @@ function normalizeCloudTables(tables) {
     orderState: table.orderState ?? table.order_state ?? null,
     sourceUpdatedAt: table.sourceUpdatedAt ?? table.updated_at ?? table.updatedAt ?? null,
   }))
-}
-
-function redactSecrets(message = '') {
-  return String(message)
-    .replace(/token=([^\s&]+)/gi, 'token=[redacted]')
-    .replace(/secret=([^\s&]+)/gi, 'secret=[redacted]')
-    .replace(/(sb_secret_[A-Za-z0-9._-]+)/g, '[redacted]')
 }

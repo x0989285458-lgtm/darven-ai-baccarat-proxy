@@ -10,6 +10,7 @@ import { createSupabaseIngestionClient } from './supabase-writer.js'
 import { createOnlineCoreClient } from './online-core.js'
 import { createLicenseAdminClient } from './license-admin.js'
 import { chooseCaptureSource, describeCaptureStatus } from './capture-source.js'
+import { buildOperationalEvent, toStatusEvent } from './event-layer.js'
 
 const VERSION = '042'
 const SERVICE = 'Draven MT資料代理伺服器'
@@ -48,6 +49,13 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const mtClient = createMtClient({ token, state })
   const chromeClient = createChromeCaptureClient({ url: captureUrl, state })
   const cloudCaptureClient = createCloudCaptureClient({ url: cloudBrowserUrl, state, writer: supabaseClient, fetchImpl, pollMs: deployConfig.cloudCapturePollMs, adminKey: process.env.WORKER_ADMIN_KEY })
+
+  async function recordOperationalEvent({ component, kind, message, statusCode = null, metadata = {} }) {
+    const event = buildOperationalEvent({ component, kind, message, statusCode, metadata })
+    state.setStatus(toStatusEvent(event))
+    await supabaseClient?.writeOperationalEvent?.(event).catch(() => {})
+    return event
+  }
 
   async function handle(method, url, rawBody = '', headers = {}) {
     const requestUrl = new URL(url, 'http://127.0.0.1')
@@ -192,12 +200,14 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     const origin = headers.origin ?? headers.Origin
     const allowedOrigin = String(controlAllowedOrigin || '').trim()
     if (allowedOrigin && allowedOrigin !== '*' && origin && String(origin) !== allowedOrigin) {
+      void recordOperationalEvent({ component: 'control_api', kind: 'origin_denied', statusCode: 403, message: 'control origin is not allowed', metadata: { origin } })
       return jsonResponse(403, { ok: false, error: 'control origin is not allowed' }, frontendOrigin)
     }
     if (!controlToken) return null
     const provided = headers['x-control-token']
       ?? headers['authorization']?.replace(/^Bearer\s+/i, '')
     if (safeEqual(provided, controlToken)) return null
+    void recordOperationalEvent({ component: 'control_api', kind: 'unauthorized', statusCode: 401, message: 'control token is required' })
     return jsonResponse(401, { ok: false, error: 'control token is required' }, frontendOrigin)
   }
 
@@ -245,7 +255,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       }
       state.setStatus({ persistenceStatus: 'ok', persistenceError: null })
     } catch (error) {
-      state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+      const event = await recordOperationalEvent({ component: 'supabase_writer', kind: 'persist_cloud_state', message: error?.message ?? String(error) })
+      state.setStatus({ persistenceStatus: 'error', persistenceError: event.eventMessage })
     }
   }
 
@@ -311,7 +322,21 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       const snapshot = await readLatestCloudSnapshot({ requireFresh: true })
       const statusSource = String(status?.capture_source ?? status?.captureSource ?? '').toLowerCase()
       const statusIsFresh = statusSource === 'local_chrome' || isFreshCloudTimestamp(status?.last_message_at ?? status?.snapshot_at ?? status?.updated_at ?? status?.created_at)
-      if (!statusIsFresh && !snapshot) return null
+      if (!statusIsFresh && !snapshot) {
+        const event = await recordOperationalEvent({ component: 'cloud_status', kind: 'stale_data', message: 'Cloud snapshot is stale' })
+        return {
+          captureSource: status?.capture_source ?? captureSource,
+          captureMode: status?.capture_source ?? captureSource,
+          connected: false,
+          authenticated: false,
+          tableCount: 0,
+          lastMessageAt: null,
+          lastTablesAt: null,
+          statusText: '雲端資料過期，等待Worker重新抓牌',
+          errorMessage: event.eventMessage,
+          ...toStatusEvent(event),
+        }
+      }
       const snapshotTableCount = Array.isArray(snapshot?.tables) ? snapshot.tables.length : Number(snapshot?.table_count ?? 0)
       const preferSnapshot = snapshotTableCount > Number(statusIsFresh ? status?.table_count ?? 0 : 0)
       const source = preferSnapshot ? snapshot?.capture_source : (status?.capture_source ?? snapshot?.capture_source)

@@ -1156,6 +1156,28 @@ export function buildCloudCaptureStatusRow({ sessionId = null, captureSource = n
   }
 }
 
+export function buildOperationalEventRow({
+  eventLayer = null,
+  eventSeverity = 'info',
+  eventComponent = null,
+  eventKind = null,
+  eventStatusCode = null,
+  eventMessage = '',
+  eventAt = new Date().toISOString(),
+  eventMetadata = {},
+} = {}) {
+  return {
+    event_layer: eventLayer,
+    severity: eventSeverity,
+    component: eventComponent,
+    event_kind: eventKind,
+    status_code: eventStatusCode == null ? null : Number(eventStatusCode),
+    message: redactSecrets(eventMessage),
+    occurred_at: eventAt,
+    metadata: eventMetadata,
+  }
+}
+
 export function buildCloudTableSnapshotRow({ sessionId = null, tables = [], status = {}, metadata = {} } = {}) {
   const safeTables = Array.isArray(tables) ? tables : []
   return {
@@ -1382,6 +1404,11 @@ export function createSupabaseIngestionClient({
     async writeCloudCaptureStatus(payload) {
       const row = buildCloudCaptureStatusRow(payload)
       await enqueueWrite(() => postRest('cloud_capture_status', row, 'session_id'))
+      return { ok: true, row }
+    },
+    async writeOperationalEvent(payload) {
+      const row = buildOperationalEventRow(payload)
+      await enqueueWrite(() => postRest('cloud_operational_events', row))
       return { ok: true, row }
     },
     async writeCloudTableSnapshot(payload) {
