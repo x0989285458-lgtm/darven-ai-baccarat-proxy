@@ -40,6 +40,31 @@ test('v039 builds cloud table snapshot row with normalized table summary', () =>
   assert.equal(row.table_summary[0].round, 12)
 })
 
+test('v094 cloud table snapshot carries backend-only live prediction confidence', () => {
+  const row = buildCloudTableSnapshotRow({
+    sessionId: 'session-1',
+    tables: [{
+      tableId: 'BAG01',
+      displayName: 'MT百家樂第1桌',
+      shoe: 3,
+      round: 12,
+      bankerCount: 10,
+      playerCount: 18,
+      tieCount: 2,
+      beadPlateRaw: '0101010101020202',
+      bigRoadRaw: '0101,0101,#0202,0202',
+    }],
+    status: { captureSource: 'cloud_browser' },
+  })
+
+  assert.equal(row.tables[0].prediction.source, 'backend')
+  assert.match(row.tables[0].prediction.strategyVersion, /^v\d+_/)
+  assert.match(row.tables[0].prediction.predictedResult, /^(banker|player)$/)
+  assert.equal(row.tables[0].prediction.confidence >= 30, true)
+  assert.equal(row.tables[0].prediction.confidence <= 70, true)
+  assert.equal(row.table_summary[0].prediction.confidence, row.tables[0].prediction.confidence)
+})
+
 test('v039 builds cloud round, strategy report, and adjustment stats rows', () => {
   const round = buildCloudRoundEventRow({
     sessionId: 'session-1',

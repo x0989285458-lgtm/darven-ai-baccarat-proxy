@@ -28,6 +28,7 @@ export type LiveTable = {
   state?: string | number | null
   orderState?: string | number | null
   sourceUpdatedAt?: string | null
+  prediction?: { source?: string; strategyVersion: string; predictedResult: 'banker' | 'player'; recommendation?: string; confidence: number; probabilities?: { banker?: number; player?: number; tie?: number }; scoreTotals?: { banker?: number; player?: number } }
 }
 
 type Status = { state: 'connecting' | 'connected' | 'error' | 'disconnected'; message: string }
@@ -57,6 +58,7 @@ type ProxyTable = {
   state?: string | number | null
   orderState?: string | number | null
   sourceUpdatedAt?: string | null
+  prediction?: { source?: string; strategyVersion: string; predictedResult: 'banker' | 'player'; recommendation?: string; confidence: number; probabilities?: { banker?: number; player?: number; tie?: number }; scoreTotals?: { banker?: number; player?: number } }
 }
 
 const proxyApiUrl = dravenApiBaseUrl
@@ -224,6 +226,7 @@ function normalizeProxyTables(tables: ProxyTable[]): LiveTable[] {
       state: table.state ?? null,
       orderState: table.orderState ?? null,
       sourceUpdatedAt: table.sourceUpdatedAt ?? null,
+      prediction: table.prediction,
     }
   })
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { mockTables } from './data/mockTables'
 import { LiveRoadClient, isLiveTableStale, type LiveTable } from './lib/liveClient'
-import { calculatePrediction, calculateMainOutcomeProbabilities, calculateBonusPredictions, getSidePredictionActions, parseBeadPlate, parseBigRoad } from './lib/roadParser'
+import { calculatePrediction, calculateMainOutcomeProbabilities, calculateBonusPredictions, getSidePredictionActions, parseBeadPlate, parseBigRoad, type MainOutcome, type Prediction } from './lib/roadParser'
 import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from './lib/supabaseClient'
 import { checkOnlineCoreStatus, getOnlineMemoryCenter, getOnlineStrategyAnalysis, updateOnlineAppSetting, type OnlineCoreStatus, type OnlineMemoryCenter, type OnlineStrategyAnalysis } from './lib/onlineCoreClient'
 import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents, deleteOnlineLicense, extendOnlineLicense, getCloudDataStatus, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
@@ -9,11 +9,40 @@ import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents,
 const SUPER_ADMIN = 'dv1788'
 const label = { Banker: '莊', Player: '閒', Tie: '和' }
 const tableDisplayOrder = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
+type BackendScoreTotals = NonNullable<NonNullable<LiveTable['prediction']>['scoreTotals']>
 
 function tableNumber(table: LiveTable, index: number) {
   if (tableDisplayOrder[index]) return tableDisplayOrder[index]
   const match = String(table.table_name ?? table.name ?? table.id).match(/\d+/)
   return match?.[0] ? String(Number(match[0])) : String(index + 1)
+}
+
+function backendPredictionFromTable(table?: LiveTable | null): Prediction | null {
+  const livePrediction = table?.prediction
+  const recommendation = normalizeBackendRecommendation(livePrediction?.recommendation ?? livePrediction?.predictedResult)
+  const confidence = Number(livePrediction?.confidence)
+  if (!recommendation || !Number.isFinite(confidence)) return null
+  return {
+    recommendation,
+    confidence: Math.max(30, Math.min(70, Math.round(confidence))),
+    risk: 'Medium',
+    reason: '後端已計算該局方向與信心值，前端僅顯示。',
+    scoreTotals: normalizeBackendScoreTotals(livePrediction?.scoreTotals),
+  }
+}
+
+function normalizeBackendScoreTotals(value?: BackendScoreTotals) {
+  const banker = Number(value?.banker)
+  const player = Number(value?.player)
+  if (!Number.isFinite(banker) || !Number.isFinite(player)) return undefined
+  return { banker, player }
+}
+
+function normalizeBackendRecommendation(value: unknown): MainOutcome | null {
+  const text = String(value ?? '').toLowerCase()
+  if (text === 'banker' || text === '莊' || text === '2') return 'Banker'
+  if (text === 'player' || text === '閒' || text === '1') return 'Player'
+  return null
 }
 
 export default function App() {
@@ -44,7 +73,7 @@ export default function App() {
   const fullRoad = useMemo(() => parseBeadPlate(displaySelected?.trend.bead_plate2 ?? ''), [displaySelected])
   const allBigRoad = useMemo(() => parseBigRoad(displaySelected?.trend.big2 ?? ''), [displaySelected])
   const bigRoad = useMemo(() => markBigRoadTies(allBigRoad), [allBigRoad])
-  const prediction = useMemo(() => calculatePrediction({
+  const prediction = useMemo(() => backendPredictionFromTable(displaySelected) ?? calculatePrediction({
     beadCells: fullRoad,
     bigRoadCells: bigRoad,
     askRoad: displaySelected?.trend,

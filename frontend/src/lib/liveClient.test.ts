@@ -65,6 +65,7 @@ describe('LiveRoadClient v032 status messages', () => {
         bankerCount: 11, playerCount: 10, tieCount: 2, bankerPairCount: 3, playerPairCount: 4,
         beadPlateRaw: '0102#0201', bigRoadRaw: '0102,0201', bigEyeRaw: '1,2', smallRoadRaw: '2,1', cockroachRaw: '1,1',
         nextBankerRaw: { big: 'ask banker' }, nextPlayerRaw: { big: 'ask player' },
+        prediction: { strategyVersion: 'v094_信心值前後端統一版', predictedResult: 'banker', confidence: 57 },
         dealerName: '小旻', totalPlayers: 123, roomId: '29', state: 0, orderState: 1, sourceUpdatedAt: '2026-07-05T00:00:00.000Z',
       }]) })
     }))
@@ -82,6 +83,7 @@ describe('LiveRoadClient v032 status messages', () => {
     expect(received[0].totalPlayers).toBe(123)
     expect(received[0].roomId).toBe('29')
     expect(received[0].sourceUpdatedAt).toBe('2026-07-05T00:00:00.000Z')
+    expect(received[0].prediction).toEqual({ strategyVersion: 'v094_信心值前後端統一版', predictedResult: 'banker', confidence: 57 })
   })
 
   it('v093 marks source-updated tables as stale after the allowed live window', () => {

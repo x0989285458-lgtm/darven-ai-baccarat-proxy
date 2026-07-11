@@ -28,7 +28,14 @@ test('v047 cloud proxy reads latest Supabase cloud snapshot when in-memory table
   const app = createApp({ autoConnect: false, deployMode: 'cloud', captureSource: 'cloud_browser', supabaseClient })
 
   const tables = await app.inject({ method: 'GET', url: '/api/tables' })
-  assert.deepEqual(JSON.parse(tables.body), [{ tableId: 'BAG01', displayName: 'MT百家樂第1桌', round: 8 }])
+  const tableBody = JSON.parse(tables.body)
+  assert.equal(tableBody[0].tableId, 'BAG01')
+  assert.equal(tableBody[0].displayName, 'MT百家樂第1桌')
+  assert.equal(tableBody[0].round, 8)
+  assert.equal(tableBody[0].prediction.source, 'backend')
+  assert.match(tableBody[0].prediction.predictedResult, /^(banker|player)$/)
+  assert.equal(tableBody[0].prediction.confidence >= 30, true)
+  assert.equal(tableBody[0].prediction.confidence <= 70, true)
 
   const status = await app.inject({ method: 'GET', url: '/api/status' })
   const body = JSON.parse(status.body)

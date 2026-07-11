@@ -33,8 +33,8 @@ const bankerLeaningTable = {
 
 test('v049 short-run strategy weights sum to 1 and match required proportions', () => {
   const strategy = buildShortRunAdjustedStrategy()
-  assert.equal(SHORT_RUN_STRATEGY_VERSION, 'v088_no_observe_confidence_30_70')
-  assert.equal(strategy.version, 'v088_no_observe_confidence_30_70')
+  assert.equal(SHORT_RUN_STRATEGY_VERSION, 'v094_no_observe_confidence_30_70')
+  assert.equal(strategy.version, 'v094_no_observe_confidence_30_70')
   assert.equal(strategy.status, 'active')
   assert.deepEqual(strategy.weights, {
     bead_road: 0.15,
@@ -57,12 +57,12 @@ test('v050 low-performing table keeps banker/player prediction and records all-M
     recentPredictionCount: 25,
   })
 
-  assert.equal(prediction.strategy_version, 'v088_信心值30到70一致性校正版')
+  assert.equal(prediction.strategy_version, 'v094_信心值前後端統一版')
   assert.equal(prediction.prediction_features.table_performance.recentHitRate, 0.44)
   assert.match(prediction.predicted_result, /^(banker|player)$/)
   assert.equal(prediction.confidence >= 30, true)
   assert.equal(prediction.confidence <= 70, true)
-  assert.equal(prediction.short_run_adjustment.rule, 'v088_信心值30到70一致性校正版')
+  assert.equal(prediction.short_run_adjustment.rule, 'v094_信心值前後端統一版')
 })
 
 test('v062 equal banker/player main scores use tie-breakers instead of defaulting to banker', () => {
@@ -133,7 +133,7 @@ test('v067 prediction rows persist high-hit main and side weights plus captured 
     sourceUpdatedAt: '2026-07-01T09:00:00Z',
   })
 
-  assert.equal(prediction.strategy_version, 'v088_信心值30到70一致性校正版')
+  assert.equal(prediction.strategy_version, 'v094_信心值前後端統一版')
   assert.deepEqual(prediction.feature_weights, ALL_MT_EQUAL_MAIN_WEIGHTS)
   assert.deepEqual(prediction.prediction_features.side_weights.bankerPair, ALL_MT_EQUAL_SIDE_WEIGHTS)
   assert.equal(Object.keys(prediction.prediction_features.side_weights.tie).length, 28)
@@ -163,7 +163,7 @@ test('v050 high-performing table still keeps confidence in 30-70 range', () => {
     recentPredictionCount: 25,
   })
 
-  assert.equal(neutralPrediction.strategy_version, 'v088_信心值30到70一致性校正版')
+  assert.equal(neutralPrediction.strategy_version, 'v094_信心值前後端統一版')
   assert.equal(neutralPrediction.confidence >= 30, true)
   assert.equal(neutralPrediction.confidence <= 70, true)
   assert.equal(boostedPrediction.confidence <= 70, true)

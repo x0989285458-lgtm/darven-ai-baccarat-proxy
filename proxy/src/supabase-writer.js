@@ -2,8 +2,8 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
-export const SHORT_RUN_STRATEGY_VERSION = 'v088_no_observe_confidence_30_70'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v088_信心值30到70一致性校正版'
+export const SHORT_RUN_STRATEGY_VERSION = 'v094_no_observe_confidence_30_70'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v094_信心值前後端統一版'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -477,6 +477,31 @@ function calculateAllMtEqualMainPrediction({ round = {}, table = {}, facts = {},
   const predictedResult = difference < 1e-9 ? breakAllMtMainTie({ round, table, facts, probabilities }) : (total.banker > total.player ? 'banker' : 'player')
   const confidence = difference < 1e-9 ? 30 : calculateConservativeMainConfidence(scores, ALL_MT_EQUAL_MAIN_WEIGHTS)
   return { predictedResult, confidence, scores, total }
+}
+
+export function buildLivePrediction(table = {}) {
+  const probabilities = calculateInitialProbabilities(table)
+  const tablePerformance = buildTablePerformanceFeature(table)
+  const nextRound = {
+    tableId: table.tableId,
+    shoe: table.shoe,
+    round: Number(table.round ?? 0) + 1,
+  }
+  const prediction = calculateAllMtEqualMainPrediction({
+    round: nextRound,
+    table,
+    facts: {},
+    probabilities,
+    tablePerformance,
+  })
+  return {
+    source: 'backend',
+    strategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION,
+    predictedResult: prediction.predictedResult,
+    confidence: prediction.confidence,
+    probabilities,
+    scoreTotals: prediction.total,
+  }
 }
 
 function breakAllMtMainTie({ round = {}, table = {}, facts = {}, probabilities = {} } = {}) {
@@ -1179,7 +1204,7 @@ export function buildOperationalEventRow({
 }
 
 export function buildCloudTableSnapshotRow({ sessionId = null, tables = [], status = {}, metadata = {} } = {}) {
-  const safeTables = Array.isArray(tables) ? tables : []
+  const safeTables = Array.isArray(tables) ? tables.map(enrichTableWithLivePrediction) : []
   return {
     session_id: sessionId,
     capture_source: status.captureSource ?? status.captureMode ?? 'offline',
@@ -1188,6 +1213,15 @@ export function buildCloudTableSnapshotRow({ sessionId = null, tables = [], stat
     table_summary: safeTables.map((table) => compactTableSnapshot(table)),
     snapshot_at: new Date().toISOString(),
     metadata,
+  }
+}
+
+function enrichTableWithLivePrediction(table = {}) {
+  if (table.prediction?.source === 'backend' && Number.isFinite(Number(table.prediction.confidence))) return table
+  try {
+    return { ...table, prediction: buildLivePrediction(table) }
+  } catch {
+    return table
   }
 }
 
@@ -1517,6 +1551,7 @@ function compactTableSnapshot(table = {}) {
     displayName: table.displayName ?? null,
     shoe: table.shoe ?? null,
     round: table.round ?? null,
+    prediction: table.prediction ?? null,
   }
 }
 

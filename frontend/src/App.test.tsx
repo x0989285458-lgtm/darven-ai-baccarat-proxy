@@ -138,6 +138,24 @@ describe('AI百家預測軟體', () => {
     expect(within(prediction).queryByText('近期莊閒趨勢相近，建議持續觀察。')).not.toBeInTheDocument()
   })
 
+  it('v094 displays backend prediction confidence without recalculating table state on the frontend', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table, index) => ({
+        ...table,
+        prediction: { source: 'backend', predictedResult: index % 2 === 0 ? 'banker' : 'player', confidence: 34, strategyVersion: 'v094_信心值前後端統一版' },
+      }))) })
+      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tables: [], statusText: '已抓到9桌' }) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: [], reports: [], strategies: [] }) })
+    }))
+
+    await renderApp()
+
+    const prediction = screen.getByLabelText('AI預測結果')
+    expect(within(prediction).getByText('AI信心值:34%')).toBeInTheDocument()
+    expect(within(prediction).getByText('AI預測:')).toHaveTextContent('莊')
+  })
+
+
   it('v044 removes manual token connection controls and reads backend tables automatically', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTables.map((table, index) => ({

@@ -6,7 +6,7 @@ import { createMtClient } from './mt-client.js'
 import { createChromeCaptureClient } from './chrome-capture.js'
 import { createCloudCaptureClient } from './cloud-capture.js'
 import { loadLocalEnv, maskToken, resolveDeployConfig } from './config.js'
-import { createSupabaseIngestionClient } from './supabase-writer.js'
+import { buildLivePrediction, createSupabaseIngestionClient } from './supabase-writer.js'
 import { createOnlineCoreClient } from './online-core.js'
 import { createLicenseAdminClient } from './license-admin.js'
 import { chooseCaptureSource, describeCaptureStatus } from './capture-source.js'
@@ -308,9 +308,13 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
 
   async function readBestTables() {
     const localTables = state.snapshot().tables
-    if (localTables.length > 0) return localTables
+    if (localTables.length > 0) return localTables.map(withLivePrediction)
     const cloudSnapshot = await readLatestCloudSnapshot({ requireFresh: true })
-    return cloudSnapshot?.tables ?? []
+    return (cloudSnapshot?.tables ?? []).map(withLivePrediction)
+  }
+
+  function withLivePrediction(table) {
+    return { ...table, prediction: buildLivePrediction(table) }
   }
 
 
