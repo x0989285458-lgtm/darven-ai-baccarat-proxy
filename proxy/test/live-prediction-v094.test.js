@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { ALL_MT_EQUAL_STRATEGY_VERSION, buildLivePrediction } from '../src/supabase-writer.js'
+import { ALL_MT_EQUAL_STRATEGY_VERSION, buildLivePrediction, buildPredictionResultRow } from '../src/supabase-writer.js'
 
 test('v094 exposes one backend live prediction with a non-fixed 30-70 confidence', () => {
   const table = {
@@ -25,4 +25,14 @@ test('v094 exposes one backend live prediction with a non-fixed 30-70 confidence
 test('v094 live prediction is computed without a revealed round result', () => {
   const table = { tableId: 'BAG02', shoe: 7, round: 12, bankerCount: 9, playerCount: 3, tieCount: 0, beadPlateRaw: '020202020202' }
   assert.deepEqual(buildLivePrediction(table), buildLivePrediction({ ...table }))
+})
+
+test('v094 settlement persists the pre-result backend direction and confidence', () => {
+  const table = { tableId: 'BAG03', shoe: 9, round: 20, bankerCount: 8, playerCount: 12, tieCount: 1, beadPlateRaw: '0102010201' }
+  const precomputed = { source: 'backend', predictedResult: 'player', confidence: 57, scoreTotals: { banker: 20, player: 80 } }
+  const row = buildPredictionResultRow({ tableId: 'BAG03', shoe: 9, round: 21, winner: 'banker', rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9] }, table, precomputed)
+  assert.equal(row.predicted_result, 'player')
+  assert.equal(row.confidence, 57)
+  assert.equal(row.is_hit, false)
+  assert.equal(row.prediction_features.prediction_timing, 'pre_result_context')
 })

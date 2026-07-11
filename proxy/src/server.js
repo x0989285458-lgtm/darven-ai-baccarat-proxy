@@ -37,7 +37,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       if (strictRealCardRounds && !hasRealCardCodes(round)) return
       try {
         await supabaseClient.ensureInitialStrategy?.()
-        await supabaseClient.persistRound?.(round, table)
+        const precomputedPrediction = buildLivePrediction(table)
+        await supabaseClient.persistRound?.(round, table, precomputedPrediction)
         state.setStatus({ persistenceStatus: 'ok', persistenceError: null })
       } catch (error) {
         state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })

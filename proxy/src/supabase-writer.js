@@ -212,11 +212,19 @@ export function buildRoadmapEventRow(round = {}, table = {}) {
   }
 }
 
-export function buildPredictionResultRow(round = {}, table = {}) {
+export function buildPredictionResultRow(round = {}, table = {}, precomputedPrediction = null) {
   const facts = deriveBaccaratRoundFacts(round)
   const probabilities = calculateInitialProbabilities(table)
   const tablePerformance = buildTablePerformanceFeature(table)
-  const allMtPrediction = calculateAllMtEqualMainPrediction({ round, table, facts, probabilities, tablePerformance })
+  const calculatedPrediction = calculateAllMtEqualMainPrediction({ round, table, facts, probabilities, tablePerformance })
+  const hasPrecomputedPrediction = precomputedPrediction?.source === 'backend'
+    && ['banker', 'player'].includes(precomputedPrediction?.predictedResult)
+    && Number.isFinite(Number(precomputedPrediction?.confidence))
+  const allMtPrediction = hasPrecomputedPrediction ? {
+    predictedResult: precomputedPrediction.predictedResult,
+    confidence: Math.max(30, Math.min(70, Math.round(Number(precomputedPrediction.confidence)))),
+    scores: precomputedPrediction.scoreTotals ?? calculatedPrediction.scores,
+  } : calculatedPrediction
   const predicted_result = allMtPrediction.predictedResult
   const sidePredictions = buildSidePredictions(table, round)
   const sideActualResults = buildSideActualResults(round, facts)
@@ -241,6 +249,7 @@ export function buildPredictionResultRow(round = {}, table = {}) {
       baseProbabilities: probabilities,
     },
     prediction_features: {
+      prediction_timing: hasPrecomputedPrediction ? 'pre_result_context' : 'legacy_resolved_context',
       mt_context: buildMtContextFeatures(table),
       derived_main_features: buildDerivedMainFeatures(round, table, facts, probabilities, tablePerformance),
       unified_main_scores: allMtPrediction.scores,
@@ -340,6 +349,7 @@ export function buildCompactPredictionResultDbRow(row = {}) {
       baseProbabilities: row.short_run_adjustment?.baseProbabilities ?? row.probabilities ?? null,
     },
     prediction_features: {
+      prediction_timing: features.prediction_timing ?? null,
       side_actions: features.side_actions ?? {},
       side_hits: features.side_hits ?? {},
       side_predictions: features.side_predictions ?? {},
@@ -1414,9 +1424,9 @@ export function createSupabaseIngestionClient({
     async ensureInitialStrategy() {
       return postRest('ai_strategy_versions', buildShortRunAdjustedStrategy(), 'version')
     },
-    async persistRound(round, table) {
+    async persistRound(round, table, precomputedPrediction = null) {
       const event = buildRoadmapEventRow(round, table)
-      const prediction = buildPredictionResultRow(round, table)
+      const prediction = buildPredictionResultRow(round, table, precomputedPrediction)
       const compactEvent = buildCompactRoadmapEventDbRow(event)
       const compactPrediction = buildCompactPredictionResultDbRow(prediction)
       const roundKey = buildRoundDedupeKey(compactEvent, compactPrediction)
