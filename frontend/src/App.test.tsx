@@ -37,10 +37,12 @@ function proxyTablesFromMocks() {
     bigRoadRaw: table.trend.big2,
     prediction: {
       source: 'backend',
-      strategyVersion: 'v094_信心值前後端統一版',
+      strategyVersion: 'v096_副預測權重與信心校準版',
       predictedResult: index % 2 === 0 ? 'banker' : 'player',
       confidence: 34,
       scoreTotals: { banker: 38, player: 33 },
+      sidePredictions: { tie: 11, superSix: 22, bankerPair: 33, playerPair: 44, bankerDragon: 55, playerDragon: 66 },
+      sideActions: { tie: false, superSix: false, bankerPair: false, playerPair: false, bankerDragon: true, playerDragon: false },
     },
   }))
 }
@@ -149,7 +151,7 @@ describe('AI百家預測軟體', () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table, index) => ({
         ...table,
-        prediction: { source: 'backend', predictedResult: index % 2 === 0 ? 'banker' : 'player', confidence: 34, strategyVersion: 'v094_信心值前後端統一版' },
+        prediction: { source: 'backend', predictedResult: index % 2 === 0 ? 'banker' : 'player', confidence: 34, strategyVersion: 'v096_副預測權重與信心校準版' },
       }))) })
       if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tables: [], statusText: '已抓到9桌' }) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: [], reports: [], strategies: [] }) })
@@ -160,6 +162,25 @@ describe('AI百家預測軟體', () => {
     const prediction = screen.getByLabelText('AI預測結果')
     expect(within(prediction).getByText('AI信心值:34%')).toBeInTheDocument()
     expect(within(prediction).getByText('AI預測:')).toHaveTextContent('莊')
+  })
+
+  it('v096 displays backend side prediction values and actions without frontend recalculation', async () => {
+    await renderApp()
+    const sideRow = screen.getByLabelText('副項目預測機率')
+    expect(Array.from(sideRow.querySelectorAll('.probability-value')).map((node) => node.textContent)).toEqual(['66%', '44%', '22%', '33%', '55%'])
+    expect(Array.from(sideRow.querySelectorAll('.prediction-metric.active')).map((node) => node.textContent)).toEqual([expect.stringContaining('55%')])
+  })
+
+  it('v096 waits and never takes side actions when backend side prediction data is missing', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table) => ({ ...table, prediction: { source: 'backend', strategyVersion: 'v096_副預測權重與信心校準版', predictedResult: 'banker', confidence: 34 } }))) })
+      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tables: [], statusText: '已抓到9桌' }) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: [], reports: [], strategies: [] }) })
+    }))
+    await renderApp()
+    const sideRow = screen.getByLabelText('副項目預測機率')
+    expect(sideRow.querySelectorAll('.prediction-metric.active')).toHaveLength(0)
+    expect(Array.from(sideRow.querySelectorAll('.probability-value')).map((node) => node.textContent)).toEqual(['等待', '等待', '等待', '等待', '等待'])
   })
 
 
@@ -353,12 +374,12 @@ describe('AI百家預測軟體', () => {
       total_round_banker_pair: 2,
       total_round_player_pair: 2,
     })).toEqual({
-      bankerDragon: 51,
-      playerDragon: 36,
-      bankerPair: 62,
-      playerPair: 46,
-      superSix: 49,
-      tie: 38,
+      bankerDragon: 46,
+      playerDragon: 35,
+      bankerPair: 37,
+      playerPair: 40,
+      superSix: 45,
+      tie: 41,
     })
   })
 
@@ -415,10 +436,10 @@ describe('AI百家預測軟體', () => {
     expect(SIDE_PREDICTION_THRESHOLDS).toEqual({
       tie: 47,
       superSix: 65,
-      bankerPair: 50,
+      bankerPair: 53,
       playerPair: 55,
       bankerDragon: 53,
-      playerDragon: 53,
+      playerDragon: 57,
     })
     expect(createSidePredictionLearningRecord({
       tie: 46,
@@ -459,8 +480,8 @@ describe('AI百家預測軟體', () => {
     expect(isSidePredictionActionable('playerPair', 55)).toBe(true)
     expect(isSidePredictionActionable('bankerDragon', 52)).toBe(false)
     expect(isSidePredictionActionable('bankerDragon', 53)).toBe(true)
-    expect(isSidePredictionActionable('playerDragon', 52)).toBe(false)
-    expect(isSidePredictionActionable('playerDragon', 53)).toBe(true)
+    expect(isSidePredictionActionable('playerDragon', 56)).toBe(false)
+    expect(isSidePredictionActionable('playerDragon', 57)).toBe(true)
   })
 
 
@@ -522,8 +543,8 @@ describe('AI百家預測軟體', () => {
       bankerDragon: 0.08,
       playerDragon: 0.08,
     })
-    expect(Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES.tie)).toHaveLength(31)
-    expect(Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES.superSix)).toHaveLength(31)
+    expect(Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES.tie)).toHaveLength(33)
+    expect(Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES.superSix)).toHaveLength(33)
     expect(SIDE_PREDICTION_WEIGHT_PROFILES.tie).not.toEqual(SIDE_PREDICTION_WEIGHT_PROFILES.superSix)
     expect(SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair).not.toEqual(SIDE_PREDICTION_WEIGHT_PROFILES.bankerDragon)
   })
@@ -554,7 +575,7 @@ describe('AI百家預測軟體', () => {
     })
 
     expect(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS)).toHaveLength(36)
-    expect(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS)).toHaveLength(31)
+    expect(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS)).toHaveLength(33)
     expect(prediction.weights.table_id).toBe(0)
     expect(prediction.weights.big_road).toBeCloseTo(0.15)
     expect(prediction.weights.big_eye_road).toBeCloseTo(0.13)
@@ -614,7 +635,7 @@ describe('AI百家預測軟體', () => {
         nextBankerRaw: '111',
         nextPlayerRaw: '222',
         prediction: {
-          source: 'backend', strategyVersion: 'v094_信心值前後端統一版',
+          source: 'backend', strategyVersion: 'v096_副預測權重與信心校準版',
           predictedResult: 'banker', confidence: 34, scoreTotals: { banker: 38, player: 33 },
         },
       }))),
@@ -622,8 +643,8 @@ describe('AI百家預測軟體', () => {
 
     await renderApp()
 
-    await waitFor(() => expect(screen.getByLabelText('莊預測')).toHaveTextContent('38%'))
-    expect(screen.getByLabelText('閒預測')).toHaveTextContent('33%')
+    await waitFor(() => expect(screen.getByLabelText('莊預測')).toHaveTextContent('54%'))
+    expect(screen.getByLabelText('閒預測')).toHaveTextContent('46%')
   })
 
   it('v030 member login calls online license API and enters frontend only after success', async () => {

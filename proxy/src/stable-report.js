@@ -9,10 +9,10 @@ const WINNER_LABELS = new Map([
 export const SIDE_PREDICTION_THRESHOLDS = {
   tie: 47,
   superSix: 65,
-  bankerPair: 50,
+  bankerPair: 53,
   playerPair: 55,
   bankerDragon: 53,
-  playerDragon: 53,
+  playerDragon: 57,
 }
 
 export const MAIN_ACTION_CONFIDENCE_THRESHOLD = 30
@@ -333,7 +333,8 @@ function calculateConservativeMainConfidence(sourceScores = {}, weights = MAIN_P
   const agreement = Math.abs(agreementSum) / activeWeight
   const strength = strengthSum / activeWeight
   const combined = clamp(agreement * 0.7 + strength * 0.3, 0, 1)
-  return Math.round(clamp(30 + 40 * combined, 30, 70))
+  const rawConfidence = 30 + 40 * combined
+  return Math.round(clamp(45 + 2 * (rawConfidence - 32.03), 30, 70))
 }
 
 function buildWeightAblation(sourceScores, weights, totalScore) {

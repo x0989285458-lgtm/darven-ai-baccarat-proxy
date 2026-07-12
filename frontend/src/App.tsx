@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { mockTables } from './data/mockTables'
-import { LiveRoadClient, isLiveTableStale, type LiveTable } from './lib/liveClient'
-import { calculateMainOutcomeProbabilities, calculateBonusPredictions, getSidePredictionActions, parseBeadPlate, parseBigRoad, type MainOutcome, type Prediction } from './lib/roadParser'
+import { LiveRoadClient, isLiveTableStale, type BackendSideActions, type BackendSidePredictions, type LiveTable, type SidePredictionKey } from './lib/liveClient'
+import { calculateMainOutcomeProbabilities, parseBigRoad, type MainOutcome, type Prediction } from './lib/roadParser'
 import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from './lib/supabaseClient'
 import { checkOnlineCoreStatus, getOnlineMemoryCenter, getOnlineStrategyAnalysis, updateOnlineAppSetting, type OnlineCoreStatus, type OnlineMemoryCenter, type OnlineStrategyAnalysis } from './lib/onlineCoreClient'
 import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents, deleteOnlineLicense, extendOnlineLicense, getCloudDataStatus, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
@@ -10,6 +10,7 @@ const SUPER_ADMIN = 'dv1788'
 const label = { Banker: '莊', Player: '閒', Tie: '和' }
 const tableDisplayOrder = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
 type BackendScoreTotals = NonNullable<NonNullable<LiveTable['prediction']>['scoreTotals']>
+const sidePredictionKeys: SidePredictionKey[] = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
 
 function tableNumber(table: LiveTable, index: number) {
   if (tableDisplayOrder[index]) return tableDisplayOrder[index]
@@ -45,6 +46,18 @@ function normalizeBackendRecommendation(value: unknown): MainOutcome | null {
   return null
 }
 
+function backendSidePredictionsFromTable(table?: LiveTable | null): BackendSidePredictions | null {
+  const value = table?.prediction?.sidePredictions
+  if (!value || !sidePredictionKeys.every((key) => Number.isFinite(Number(value[key])))) return null
+  return Object.fromEntries(sidePredictionKeys.map((key) => [key, Math.max(0, Math.min(100, Math.round(Number(value[key]))))])) as BackendSidePredictions
+}
+
+function backendSideActionsFromTable(table?: LiveTable | null): BackendSideActions | null {
+  const value = table?.prediction?.sideActions
+  if (!value || !sidePredictionKeys.every((key) => typeof value[key] === 'boolean')) return null
+  return Object.fromEntries(sidePredictionKeys.map((key) => [key, value[key]])) as BackendSideActions
+}
+
 export default function App() {
   const path = window.location.pathname
   const memberLoggedIn = window.sessionStorage.getItem('darven-member-login') === 'yes'
@@ -70,16 +83,13 @@ export default function App() {
     if (/過期|stale/i.test(status.message)) return status.message
     return ''
   }, [visibleTables, status.message])
-  const fullRoad = useMemo(() => parseBeadPlate(displaySelected?.trend.bead_plate2 ?? ''), [displaySelected])
   const allBigRoad = useMemo(() => parseBigRoad(displaySelected?.trend.big2 ?? ''), [displaySelected])
   const bigRoad = useMemo(() => markBigRoadTies(allBigRoad), [allBigRoad])
   const prediction = useMemo(() => backendPredictionFromTable(displaySelected), [displaySelected])
-  const bonusPredictions = useMemo(() => calculateBonusPredictions(fullRoad, displaySelected?.trend), [fullRoad, displaySelected])
-  const sideActions = useMemo(() => prediction ? getSidePredictionActions(bonusPredictions, prediction.recommendation) : {
-    playerDragon: false, playerPair: false, superSix: false, bankerPair: false, bankerDragon: false,
-  }, [bonusPredictions, prediction])
+  const bonusPredictions = useMemo(() => backendSidePredictionsFromTable(displaySelected), [displaySelected])
+  const sideActions = useMemo(() => backendSideActionsFromTable(displaySelected), [displaySelected])
   const outcomePredictions = useMemo(() => prediction
-    ? calculateMainOutcomeProbabilities(prediction, bonusPredictions.tie)
+    ? calculateMainOutcomeProbabilities(prediction, bonusPredictions?.tie ?? 0)
     : { player: 0, tie: 0, banker: 0 }, [prediction, bonusPredictions])
 
   useEffect(() => () => client.current?.disconnect(false), [])
@@ -169,11 +179,11 @@ export default function App() {
         </div>
         <section className="prediction-card" aria-label="AI預測結果">
           <div className="prediction-row side-prediction-row" aria-label="副項目預測機率">
-            <PredictionMetric title="閒龍寶" value={bonusPredictions.playerDragon} tone="Player" active={sideActions.playerDragon} />
-            <PredictionMetric title="閒對" value={bonusPredictions.playerPair} tone="Player" active={sideActions.playerPair} />
-            <PredictionMetric title="超六" value={bonusPredictions.superSix} tone="Tie" active={sideActions.superSix} />
-            <PredictionMetric title="莊對" value={bonusPredictions.bankerPair} tone="Banker" active={sideActions.bankerPair} />
-            <PredictionMetric title="莊龍寶" value={bonusPredictions.bankerDragon} tone="Banker" active={sideActions.bankerDragon} />
+            <PredictionMetric title="閒龍寶" value={bonusPredictions?.playerDragon ?? null} tone="Player" active={sideActions?.playerDragon ?? false} />
+            <PredictionMetric title="閒對" value={bonusPredictions?.playerPair ?? null} tone="Player" active={sideActions?.playerPair ?? false} />
+            <PredictionMetric title="超六" value={bonusPredictions?.superSix ?? null} tone="Tie" active={sideActions?.superSix ?? false} />
+            <PredictionMetric title="莊對" value={bonusPredictions?.bankerPair ?? null} tone="Banker" active={sideActions?.bankerPair ?? false} />
+            <PredictionMetric title="莊龍寶" value={bonusPredictions?.bankerDragon ?? null} tone="Banker" active={sideActions?.bankerDragon ?? false} />
           </div>
           {prediction ? <>
             <div className="prediction-row main-probability-row" aria-label="莊閒預測機率">
@@ -940,5 +950,5 @@ function formatConnectionMetric(status: { state: string; message: string }, labe
 
 function AdminMetric({ title, value, tone }: { title: string; value: string; tone: 'green' | 'cyan' | 'purple' | 'yellow' }) { return <article className={`admin-metric ${tone}`}><span>{title}</span><strong>{value}</strong></article> }
 function Stat({ title, value, tone, accent = false }: { title: string; value: string; tone?: 'Banker' | 'Player' | 'Tie'; accent?: boolean }) { return <article className={`stat-card result-stat centered-stat ${tone ?? ''} ${accent ? 'accent' : ''}`}><span>{title}</span><strong>{value}</strong></article> }
-function PredictionMetric({ title, value, tone, active = false }: { title: string; value: number; tone: 'Banker' | 'Player' | 'Tie'; active?: boolean }) { return <article className={`prediction-metric ${tone} ${active ? 'active' : ''}`} aria-label={`${title}預測`}><span>{title}</span><strong className="probability-value">{value}%</strong></article> }
+function PredictionMetric({ title, value, tone, active = false }: { title: string; value: number | null; tone: 'Banker' | 'Player' | 'Tie'; active?: boolean }) { return <article className={`prediction-metric ${tone} ${active ? 'active' : ''}`} aria-label={`${title}預測`}><span>{title}</span><strong className="probability-value">{value == null ? '等待' : `${value}%`}</strong></article> }
 function RoadCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) { return <section className="road-card"><div className="card-heading"><h2>{title}</h2><span>{subtitle}</span></div>{children}</section> }

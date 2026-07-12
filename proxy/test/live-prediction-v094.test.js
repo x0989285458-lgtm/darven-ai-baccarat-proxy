@@ -15,16 +15,22 @@ test('v094 exposes one backend live prediction with a non-fixed 30-70 confidence
 
   const prediction = buildLivePrediction(table)
 
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v094_信心值前後端統一版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v096_副預測權重與信心校準版')
   assert.equal(prediction.strategyVersion, ALL_MT_EQUAL_STRATEGY_VERSION)
   assert.match(prediction.predictedResult, /^(banker|player)$/)
   assert.ok(prediction.confidence > 30)
   assert.ok(prediction.confidence <= 70)
+  assert.deepEqual(Object.keys(prediction.sidePredictions).sort(), ['bankerDragon', 'bankerPair', 'playerDragon', 'playerPair', 'superSix', 'tie'].sort())
+  assert.deepEqual(Object.keys(prediction.sideActions).sort(), Object.keys(prediction.sidePredictions).sort())
+  assert.equal(typeof prediction.sidePredictions.tie, 'number')
+  assert.equal(typeof prediction.sideActions.tie, 'boolean')
 })
 
 test('v094 live prediction is computed without a revealed round result', () => {
   const table = { tableId: 'BAG02', shoe: 7, round: 12, bankerCount: 9, playerCount: 3, tieCount: 0, beadPlateRaw: '020202020202' }
-  assert.deepEqual(buildLivePrediction(table), buildLivePrediction({ ...table }))
+  const beforeReveal = buildLivePrediction(table)
+  const afterRevealFieldsInjected = buildLivePrediction({ ...table, winner: 'player', rawResult: [1, 9, 2, 1] })
+  assert.deepEqual(afterRevealFieldsInjected, beforeReveal)
 })
 
 test('v094 settlement persists the pre-result backend direction and confidence', () => {

@@ -9,7 +9,7 @@ test('HTTP API exposes health, status, tables and latest snapshot', async () => 
 
   const health = await app.inject({ method: 'GET', url: '/health' })
   assert.equal(health.statusCode, 200)
-  assert.deepEqual(JSON.parse(health.body), { ok: true, service: 'Draven MT資料代理伺服器', version: '094', deployMode: 'local' })
+  assert.deepEqual(JSON.parse(health.body), { ok: true, service: 'Draven MT資料代理伺服器', version: '096', deployMode: 'local' })
 
   const status = await app.inject({ method: 'GET', url: '/api/status' })
   assert.equal(status.statusCode, 200)
@@ -17,7 +17,10 @@ test('HTTP API exposes health, status, tables and latest snapshot', async () => 
 
   const tables = await app.inject({ method: 'GET', url: '/api/tables' })
   assert.equal(tables.statusCode, 200)
-  assert.equal(JSON.parse(tables.body)[0].tableId, 'BAG01')
+  const tablePayload = JSON.parse(tables.body)[0]
+  assert.equal(tablePayload.tableId, 'BAG01')
+  assert.deepEqual(Object.keys(tablePayload.prediction.sidePredictions).sort(), ['bankerDragon', 'bankerPair', 'playerDragon', 'playerPair', 'superSix', 'tie'].sort())
+  assert.deepEqual(Object.keys(tablePayload.prediction.sideActions).sort(), Object.keys(tablePayload.prediction.sidePredictions).sort())
 
   const snapshot = await app.inject({ method: 'GET', url: '/api/snapshot' })
   assert.equal(snapshot.statusCode, 200)

@@ -13,14 +13,14 @@ const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Num
 const rankKeys = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
 
 test('v075 uses Chinese version and requested side thresholds', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v094_信心值前後端統一版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v096_副預測權重與信心校準版')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 47,
     superSix: 65,
-    bankerPair: 50,
+    bankerPair: 53,
     playerPair: 55,
     bankerDragon: 53,
-    playerDragon: 53,
+    playerDragon: 57,
   })
 })
 
@@ -48,18 +48,18 @@ test('v075 side weights shrink bonus noise and remove weak side features', () =>
   assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.big_road, 0)
   assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.round, 0)
   assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.shoe_stage, 0.05)
-  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair.banker_pair_count, 0.05)
-  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.playerPair.player_pair_count, 0.05)
+  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair.banker_pair_count, 0.10)
+  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.playerPair.player_pair_count, 0.10)
   assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair.banker_point, 0)
   assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.playerPair.player_point, 0)
   assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.bankerDragon.big_road, 0.05)
-  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.playerDragon.big_road, 0.20)
+  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.playerDragon.big_road, 0.05)
   assert.ok(SIDE_PREDICTION_WEIGHT_PROFILES.tie.tie_risk >= 0.05)
   assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.tie.point_diff, 0)
-  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair.remaining_rank_pressure, 0.40)
-  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.playerPair.remaining_rank_pressure, 0.25)
-  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.bankerDragon.point_diff, 0.40)
-  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.playerDragon.point_diff, 0.05)
+  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair.remaining_rank_pressure, 0.50)
+  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.playerPair.remaining_rank_pressure, 0.45)
+  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.bankerDragon.point_diff, 0.35)
+  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.playerDragon.point_diff, 0.35)
 })
 
 test('v075 prediction row records new Chinese version and thresholds remain active', () => {
@@ -74,7 +74,7 @@ test('v075 prediction row records new Chinese version and thresholds remain acti
     },
     { tableId: 'BAG75', shoe: 17001, round: 12, bankerCount: 12, playerCount: 8, tieCount: 1, beadPlateRaw: '01020202', bigRoadRaw: 'BBPBBP' },
   )
-  assert.equal(row.strategy_version, 'v094_信心值前後端統一版')
+  assert.equal(row.strategy_version, 'v096_副預測權重與信心校準版')
   assert.deepEqual(row.short_run_adjustment.sideActionRateTargets, {
     tie: 0.15,
     superSix: 0.1,

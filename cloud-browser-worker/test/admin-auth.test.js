@@ -3,9 +3,16 @@ import assert from 'node:assert/strict'
 import { isWorkerAdminAuthorized } from '../src/admin-auth.js'
 
 test('v090 worker admin key is backward compatible when unset', () => {
+  const originalKey = process.env.WORKER_ADMIN_KEY
+  delete process.env.WORKER_ADMIN_KEY
   const req = { headers: {}, url: '/snapshot' }
-  assert.equal(isWorkerAdminAuthorized(req, ''), true)
-  assert.equal(isWorkerAdminAuthorized(req, undefined), true)
+  try {
+    assert.equal(isWorkerAdminAuthorized(req, ''), true)
+    assert.equal(isWorkerAdminAuthorized(req, undefined), true)
+  } finally {
+    if (originalKey === undefined) delete process.env.WORKER_ADMIN_KEY
+    else process.env.WORKER_ADMIN_KEY = originalKey
+  }
 })
 
 test('v090 worker admin key accepts header or query when configured', () => {

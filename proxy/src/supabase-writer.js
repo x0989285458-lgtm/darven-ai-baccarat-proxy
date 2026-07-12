@@ -3,7 +3,7 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v094_no_observe_confidence_30_70'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v094_信心值前後端統一版'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v096_副預測權重與信心校準版'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -62,22 +62,22 @@ export const SIDE_PREDICTION_TARGET_HIT_RATE = 0.5
 
 export const SIDE_PREDICTION_WEIGHT_PROFILES = Object.freeze({
   tie: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    tie_risk: 0.05, tie_count: 0.55, shoe_stage: 0.10, road_chaos: 0.10, remaining_rank_total: 0.20,
+    tie_risk: 0.25, tie_count: 0.35, shoe_stage: 0.05, road_chaos: 0.25, remaining_rank_total: 0.10,
   }),
   superSix: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    banker_point: 0.65, remaining_rank_total: 0.05, table_side_history: 0.25, shoe_stage: 0.05,
+    banker_point: 0.45, remaining_rank_total: 0.10, table_side_history: 0.40, shoe_stage: 0.05,
   }),
   bankerPair: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    remaining_rank_pressure: 0.40, table_side_history: 0.25, banker_pair_count: 0.05, shoe_stage: 0.05, pair_risk: 0.25,
+    remaining_rank_pressure: 0.50, table_side_history: 0.10, banker_pair_count: 0.10, shoe_stage: 0.05, pair_risk: 0.25,
   }),
   playerPair: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    remaining_rank_pressure: 0.25, table_side_history: 0.10, player_pair_count: 0.05, shoe_stage: 0.55, pair_risk: 0.05,
+    remaining_rank_pressure: 0.45, table_side_history: 0.10, player_pair_count: 0.10, shoe_stage: 0.10, pair_risk: 0.25,
   }),
   bankerDragon: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    point_diff: 0.40, banker_natural: 0.20, banker_point: 0.20, remaining_rank_total: 0.15, big_road: 0.05,
+    point_diff: 0.35, banker_natural: 0.25, banker_point: 0.25, remaining_rank_total: 0.10, big_road: 0.05,
   }),
   playerDragon: buildWeightedProfile(SIDE_WEIGHT_KEYS, {
-    point_diff: 0.05, player_natural: 0.25, player_point: 0.25, remaining_rank_total: 0.25, big_road: 0.20,
+    point_diff: 0.35, player_natural: 0.25, player_point: 0.25, remaining_rank_total: 0.10, big_road: 0.05,
   }),
 })
 
@@ -86,10 +86,10 @@ export const ALL_MT_EQUAL_SIDE_WEIGHTS = SIDE_PREDICTION_WEIGHT_PROFILES.bankerP
 export const SIDE_PREDICTION_THRESHOLDS = {
   tie: 47,
   superSix: 65,
-  bankerPair: 50,
+  bankerPair: 53,
   playerPair: 55,
   bankerDragon: 53,
-  playerDragon: 53,
+  playerDragon: 57,
 }
 
 const DEFAULT_EQUAL_WEIGHTS = Object.freeze({
@@ -504,6 +504,8 @@ export function buildLivePrediction(table = {}) {
     probabilities,
     tablePerformance,
   })
+  const sidePredictions = buildSidePredictions(table, nextRound)
+  const sideActions = buildSideActions(sidePredictions, prediction.predictedResult)
   return {
     source: 'backend',
     strategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION,
@@ -511,6 +513,8 @@ export function buildLivePrediction(table = {}) {
     confidence: prediction.confidence,
     probabilities,
     scoreTotals: prediction.total,
+    sidePredictions,
+    sideActions,
   }
 }
 
@@ -549,7 +553,12 @@ function calculateConservativeMainConfidence(scores = {}, weights = {}) {
   const agreement = Math.abs(agreementSum) / activeWeight
   const strength = strengthSum / activeWeight
   const combined = clampPercent((agreement * 0.7 + strength * 0.3) * 100, 0, 100) / 100
-  return Math.round(clampPercent(30 + 40 * combined, 30, 70))
+  const rawConfidence = 30 + 40 * combined
+  return calibrateMainConfidenceV096(rawConfidence)
+}
+
+export function calibrateMainConfidenceV096(rawConfidence) {
+  return Math.round(clampPercent(45 + 2 * (Number(rawConfidence) - 32.03), 30, 70))
 }
 
 function scoreAllMtFeature(key, ctx) {

@@ -7,6 +7,7 @@ test('v041 cloud capture management endpoints expose status, tick, start, and st
   const app = createApp({
     port: 0,
     autoConnect: false,
+    controlToken: '',
     deployMode: 'cloud',
     captureSource: 'cloud_browser',
     cloudBrowserUrl: 'https://cloud-worker.example/snapshot',
@@ -39,7 +40,7 @@ test('v041 cloud capture management endpoints expose status, tick, start, and st
 })
 
 test('v041 cloud capture management refuses start when worker URL is missing', async () => {
-  const app = createApp({ autoConnect: false, deployMode: 'cloud', captureSource: 'cloud_browser', cloudBrowserUrl: '' })
+  const app = createApp({ autoConnect: false, controlToken: '', deployMode: 'cloud', captureSource: 'cloud_browser', cloudBrowserUrl: '' })
   const start = await app.inject({ method: 'POST', url: '/api/cloud-capture/start' })
   assert.equal(start.statusCode, 400)
   assert.match(JSON.parse(start.body).error, /CLOUD_BROWSER_URL/)

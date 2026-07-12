@@ -28,8 +28,13 @@ export type LiveTable = {
   state?: string | number | null
   orderState?: string | number | null
   sourceUpdatedAt?: string | null
-  prediction?: { source?: string; strategyVersion: string; predictedResult: 'banker' | 'player'; recommendation?: string; confidence: number; probabilities?: { banker?: number; player?: number; tie?: number }; scoreTotals?: { banker?: number; player?: number } }
+  prediction?: BackendPrediction
 }
+
+export type SidePredictionKey = 'tie' | 'superSix' | 'bankerPair' | 'playerPair' | 'bankerDragon' | 'playerDragon'
+export type BackendSidePredictions = Record<SidePredictionKey, number>
+export type BackendSideActions = Record<SidePredictionKey, boolean>
+export type BackendPrediction = { source?: string; strategyVersion: string; predictedResult: 'banker' | 'player'; recommendation?: string; confidence: number; probabilities?: { banker?: number; player?: number; tie?: number }; scoreTotals?: { banker?: number; player?: number }; sidePredictions?: BackendSidePredictions; sideActions?: BackendSideActions }
 
 type Status = { state: 'connecting' | 'connected' | 'error' | 'disconnected'; message: string }
 type LiveClientOptions = { onTables: (tables: LiveTable[]) => void; onStatus: (status: Status) => void }
@@ -58,7 +63,7 @@ type ProxyTable = {
   state?: string | number | null
   orderState?: string | number | null
   sourceUpdatedAt?: string | null
-  prediction?: { source?: string; strategyVersion: string; predictedResult: 'banker' | 'player'; recommendation?: string; confidence: number; probabilities?: { banker?: number; player?: number; tie?: number }; scoreTotals?: { banker?: number; player?: number } }
+  prediction?: BackendPrediction
 }
 
 const proxyApiUrl = dravenApiBaseUrl
