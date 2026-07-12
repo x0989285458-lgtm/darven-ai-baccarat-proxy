@@ -5,6 +5,7 @@ import {
   SIDE_PREDICTION_THRESHOLDS,
   SIDE_PREDICTION_WEIGHT_PROFILES,
   calibrateMainConfidenceV096,
+  buildLivePrediction,
 } from '../src/supabase-writer.js'
 
 const expectedProfiles = {
@@ -41,4 +42,9 @@ test('v096 maps raw main confidence through the approved linear calibration', ()
   assert.deepEqual([30, 31, 32, 33, 34].map(calibrateMainConfidenceV096), [41, 43, 45, 47, 49])
   assert.equal(calibrateMainConfidenceV096(-100), 30)
   assert.equal(calibrateMainConfidenceV096(100), 70)
+})
+
+test('v096 applies calibration to neutral live predictions instead of leaving them at 30', () => {
+  const prediction = buildLivePrediction({ tableId: 'BAG00', shoe: 1, round: 0 })
+  assert.equal(prediction.confidence, 41)
 })

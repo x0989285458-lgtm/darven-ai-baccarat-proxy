@@ -485,7 +485,7 @@ function calculateAllMtEqualMainPrediction({ round = {}, table = {}, facts = {},
   }, { banker: 0, player: 0 })
   const difference = Math.abs(total.banker - total.player)
   const predictedResult = difference < 1e-9 ? breakAllMtMainTie({ round, table, facts, probabilities }) : (total.banker > total.player ? 'banker' : 'player')
-  const confidence = difference < 1e-9 ? 30 : calculateConservativeMainConfidence(scores, ALL_MT_EQUAL_MAIN_WEIGHTS)
+  const confidence = difference < 1e-9 ? calibrateMainConfidenceV096(30) : calculateConservativeMainConfidence(scores, ALL_MT_EQUAL_MAIN_WEIGHTS)
   return { predictedResult, confidence, scores, total }
 }
 

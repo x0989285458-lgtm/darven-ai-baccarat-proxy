@@ -84,8 +84,8 @@ test('v062 equal banker/player main scores use tie-breakers instead of defaultin
 
   assert.equal(afterBanker.predicted_result, 'player')
   assert.equal(afterPlayer.predicted_result, 'banker')
-  assert.equal(afterBanker.confidence, 30)
-  assert.equal(afterPlayer.confidence, 30)
+  assert.equal(afterBanker.confidence, 41)
+  assert.equal(afterPlayer.confidence, 41)
 })
 
 test('v067 main and side strategy uses high-hit weighted features', () => {
