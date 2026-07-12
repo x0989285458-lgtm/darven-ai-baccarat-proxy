@@ -2,6 +2,7 @@ import http from 'node:http'
 import { chromium } from 'playwright'
 import { isWorkerAdminAuthorized } from './admin-auth.js'
 import { extractSnapshotFromPayloads, redactUrlSecrets } from './snapshot.js'
+import { createSnapshotPusher } from './snapshot-pusher.js'
 
 const SERVICE = 'darven-cloud-browser-worker'
 const VERSION = '0.48.0'
@@ -19,6 +20,14 @@ let browserPromise = null
 let pagePromise = null
 let lastSnapshot = null
 let lastError = null
+
+const snapshotPusher = createSnapshotPusher({
+  targetUrl: process.env.PUSH_TARGET_URL,
+  key: process.env.PUSH_KEY || process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY,
+  getSnapshot,
+  intervalMs: Number(process.env.PUSH_INTERVAL_MS ?? 5000),
+  queuePath: process.env.PUSH_QUEUE_PATH ?? './data/latest-snapshot.json',
+})
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
@@ -60,6 +69,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`${SERVICE} v${VERSION} listening on :${PORT}`)
+  snapshotPusher.start()
 })
 
 async function getSnapshot() {
@@ -233,6 +243,7 @@ process.on('SIGTERM', shutdown)
 process.on('SIGINT', shutdown)
 
 async function shutdown() {
+  snapshotPusher.stop()
   const browser = browserPromise ? await browserPromise.catch(() => null) : null
   if (browser) await browser.close().catch(() => {})
   server.close(() => process.exit(0))

@@ -46,11 +46,8 @@ export function createCloudCaptureClient({ url, state, writer = null, fetchImpl 
       }
       const body = await response.json()
       const parsed = parseCloudCapturePayload(body)
-      state?.setStatus?.(parsed.status)
-      state?.setTables?.(parsed.tables)
-      for (const round of parsed.rounds) state?.upsertRoundEvent?.(round)
       try {
-        await persistParsedCapture({ parsed, writer })
+        await applyCloudCapturePayload({ parsed, state, writer })
       } catch (error) {
         const event = buildOperationalEvent({ component: 'supabase_writer', kind: 'persist_capture', message: error?.message ?? String(error) })
         state?.setStatus?.({ ...toStatusEvent(event), persistenceStatus: 'error', persistenceError: event.eventMessage })
@@ -117,7 +114,10 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function persistParsedCapture({ parsed, writer }) {
+export async function applyCloudCapturePayload({ parsed, state, writer }) {
+  state?.setStatus?.(parsed.status)
+  state?.setTables?.(parsed.tables)
+  for (const round of parsed.rounds) state?.upsertRoundEvent?.(round)
   if (!writer?.configured) return
   const sessionId = parsed.sessionId ?? 'cloud-browser'
   await writer.writeCloudCaptureStatus?.({ sessionId, captureSource: 'cloud_browser', status: parsed.status })

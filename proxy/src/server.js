@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { createProxyState } from './state-store.js'
 import { createMtClient } from './mt-client.js'
 import { createChromeCaptureClient } from './chrome-capture.js'
-import { createCloudCaptureClient } from './cloud-capture.js'
+import { applyCloudCapturePayload, createCloudCaptureClient, parseCloudCapturePayload } from './cloud-capture.js'
 import { loadLocalEnv, maskToken, resolveDeployConfig } from './config.js'
 import { buildLivePrediction, createSupabaseIngestionClient } from './supabase-writer.js'
 import { createOnlineCoreClient } from './online-core.js'
@@ -15,7 +15,7 @@ import { buildOperationalEvent, toStatusEvent } from './event-layer.js'
 const VERSION = '094'
 const SERVICE = 'Draven MT資料代理伺服器'
 
-export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient() } = {}) {
+export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, now = Date.now, fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient() } = {}) {
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
     CAPTURE_SOURCE: requestedCaptureSource,
@@ -29,6 +29,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const shouldAutoConnect = autoConnect ?? deployConfig.autoConnect
   const strictRealCardRounds = process.env.REQUIRE_REAL_CARD_ROUNDS !== 'false'
   const adminSessions = new Map()
+  const ingestSequences = new Map()
   const adminSessionTtlMs = Math.max(60000, Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000) || 30 * 60 * 1000)
   const state = createProxyState({
     inferSnapshotRounds: !strictRealCardRounds,
@@ -90,6 +91,25 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
     if (pathname === '/api/snapshot') {
       return jsonResponse(200, state.snapshot(), frontendOrigin)
+    }
+    if (method === 'POST' && pathname === '/api/cloud-ingest/snapshot') {
+      if (!ingestKey || !safeEqual(headers['x-worker-key'], ingestKey)) return jsonResponse(401, { ok: false, error: 'unauthorized' }, frontendOrigin)
+      if (Buffer.byteLength(rawBody, 'utf8') > 1024 * 1024) return jsonResponse(413, { ok: false, error: 'payload_too_large' }, frontendOrigin)
+      try {
+        const envelope = parseJsonBody(rawBody)
+        validateIngestEnvelope(envelope, now())
+        const sessionId = String(envelope.snapshot.sessionId ?? envelope.snapshot.session_id ?? 'cloud-browser')
+        const previous = ingestSequences.get(sessionId)
+        if (previous != null && envelope.sequence <= previous) {
+          return jsonResponse(200, { ok: true, duplicate: true, sequence: envelope.sequence }, frontendOrigin)
+        }
+        const parsed = parseCloudCapturePayload(envelope.snapshot)
+        await applyCloudCapturePayload({ parsed, state, writer: supabaseClient })
+        ingestSequences.set(sessionId, envelope.sequence)
+        return jsonResponse(200, { ok: true, duplicate: false, sequence: envelope.sequence, tableCount: parsed.tables.length }, frontendOrigin)
+      } catch (error) {
+        return jsonResponse(error?.statusCode ?? 400, { ok: false, error: error?.message ?? String(error) }, frontendOrigin)
+      }
     }
     if (pathname === '/api/cloud-capture/status') {
       return jsonResponse(200, buildCloudCaptureManagementStatus(), frontendOrigin)
@@ -524,6 +544,26 @@ function parseJsonBody(rawBody) {
   return JSON.parse(rawBody)
 }
 
+function validateIngestEnvelope(envelope, currentTime) {
+  if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) throw new Error('invalid payload')
+  const timestamp = Number(envelope.timestamp)
+  if (!Number.isFinite(timestamp) || Math.abs(Number(currentTime) - timestamp) > 5 * 60 * 1000) {
+    const error = new Error('timestamp outside allowed window')
+    error.statusCode = 409
+    throw error
+  }
+  if (!Number.isSafeInteger(envelope.sequence) || envelope.sequence < 0) throw new Error('sequence must be a non-negative integer')
+  const snapshot = envelope.snapshot
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) throw new Error('snapshot must be an object')
+  if (!Array.isArray(snapshot.tables)) throw new Error('tables must be an array')
+  if (snapshot.tables.length > 128) throw new Error('tables exceeds maximum length')
+  for (const table of snapshot.tables) {
+    if (!table || typeof table !== 'object' || Array.isArray(table)) throw new Error('each table must be an object')
+    if (table.tableId == null && table.table_id == null && table.id == null) throw new Error('each table requires tableId')
+  }
+  if (snapshot.rounds != null && !Array.isArray(snapshot.rounds)) throw new Error('rounds must be an array')
+}
+
 function readRequestBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = []
@@ -540,7 +580,7 @@ function jsonResponse(statusCode, payload, frontendOrigin = '*') {
       'content-type': 'application/json; charset=utf-8',
       'access-control-allow-origin': frontendOrigin,
       'access-control-allow-methods': 'GET,POST,OPTIONS',
-      'access-control-allow-headers': 'Content-Type,Authorization,X-Admin-Session-Token,X-Control-Token',
+      'access-control-allow-headers': 'Content-Type,Authorization,X-Admin-Session-Token,X-Control-Token,X-Worker-Key',
       'cache-control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
       pragma: 'no-cache',
     },
