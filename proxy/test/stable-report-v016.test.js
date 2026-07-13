@@ -34,12 +34,12 @@ test('v016 main hit-rate excludes tie rounds from denominator', () => {
 
 test('v016 side predictions are recorded every round but actions require per-item thresholds', () => {
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
-    tie: 47,
-    superSix: 65,
-    bankerPair: 53,
-    playerPair: 55,
-    bankerDragon: 53,
-    playerDragon: 57,
+    tie: 42,
+    superSix: 60,
+    bankerPair: 48,
+    playerPair: 50,
+    bankerDragon: 48,
+    playerDragon: 52,
   })
   const session = createStableReportSession({ startedAt: '2026-01-01T00:00:00.000Z' })
   session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [makeTable({ bankerCount: 5, playerCount: 5, tieCount: 90, bankerPairCount: 2, playerPairCount: 2, lastRound: { tableId: 'BAG01', shoe: 1, round: 1, winner: 1 } })] }, 't1')

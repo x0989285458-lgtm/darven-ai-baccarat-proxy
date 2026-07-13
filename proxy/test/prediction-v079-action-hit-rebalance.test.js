@@ -10,7 +10,7 @@ import {
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 
 test('v079 rebalances main prediction away from noisy road overfit toward calibration and history', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v096_副預測權重與信心校準版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v097_副預測命中校準與門檻降5版')
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
   assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'remaining_zero_to_k_total'), false)
 
@@ -23,18 +23,18 @@ test('v079 rebalances main prediction away from noisy road overfit toward calibr
 
 test('v079 loosens side prediction thresholds and strengthens side aggregate rank signal', () => {
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
-    tie: 47,
-    superSix: 65,
-    bankerPair: 53,
-    playerPair: 55,
-    bankerDragon: 53,
-    playerDragon: 57,
+    tie: 42,
+    superSix: 60,
+    bankerPair: 48,
+    playerPair: 50,
+    bankerDragon: 48,
+    playerDragon: 52,
   })
-  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.remaining_rank_total, 0.10)
+  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.remaining_rank_total, 0.15)
   assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair.remaining_rank_total, 0)
   assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.playerPair.remaining_rank_total, 0)
-  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.bankerDragon.remaining_rank_total, 0.10)
-  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.playerDragon.remaining_rank_total, 0.10)
+  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.bankerDragon.remaining_rank_total, 0.35)
+  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.playerDragon.remaining_rank_total, 0.40)
   for (const profile of Object.values(SIDE_PREDICTION_WEIGHT_PROFILES)) {
     assert.ok(Math.abs(sum(profile) - 1) < 1e-9)
   }

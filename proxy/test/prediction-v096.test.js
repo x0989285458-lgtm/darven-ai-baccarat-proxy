@@ -9,33 +9,39 @@ import {
 } from '../src/supabase-writer.js'
 
 const expectedProfiles = {
-  tie: { tie_risk: 0.25, tie_count: 0.35, shoe_stage: 0.05, road_chaos: 0.25, remaining_rank_total: 0.10 },
-  superSix: { banker_point: 0.45, remaining_rank_total: 0.10, table_side_history: 0.40, shoe_stage: 0.05 },
-  bankerPair: { remaining_rank_pressure: 0.50, table_side_history: 0.10, banker_pair_count: 0.10, shoe_stage: 0.05, pair_risk: 0.25 },
-  playerPair: { remaining_rank_pressure: 0.45, table_side_history: 0.10, player_pair_count: 0.10, shoe_stage: 0.10, pair_risk: 0.25 },
-  bankerDragon: { point_diff: 0.35, banker_natural: 0.25, banker_point: 0.25, remaining_rank_total: 0.10, big_road: 0.05 },
-  playerDragon: { point_diff: 0.35, player_natural: 0.25, player_point: 0.25, remaining_rank_total: 0.10, big_road: 0.05 },
+  tie: { tie_risk: 0.65, tie_count: 0.05, shoe_stage: 0.05, road_chaos: 0.05, remaining_rank_total: 0.20 },
+  superSix: { banker_point: 0.40, remaining_rank_total: 0.15, table_side_history: 0.40, shoe_stage: 0.05 },
+  bankerPair: { remaining_rank_pressure: 0.05, table_side_history: 0.05, banker_pair_count: 0.10, shoe_stage: 0.50, pair_risk: 0.30 },
+  playerPair: { remaining_rank_pressure: 0.15, table_side_history: 0.35, player_pair_count: 0.15, shoe_stage: 0.30, pair_risk: 0.05 },
+  bankerDragon: { point_diff: 0.10, banker_natural: 0.05, banker_point: 0.40, remaining_rank_total: 0.35, big_road: 0.10 },
+  playerDragon: { point_diff: 0.05, player_natural: 0.05, player_point: 0.45, remaining_rank_total: 0.40, big_road: 0.05 },
 }
 
-test('v096 uses the approved Traditional Chinese strategy name and side thresholds', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v096_副預測權重與信心校準版')
+test('v097 uses the approved Traditional Chinese strategy name and side thresholds', () => {
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v097_副預測命中校準與門檻降5版')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
-    tie: 47,
-    superSix: 65,
-    bankerPair: 53,
-    playerPair: 55,
-    bankerDragon: 53,
-    playerDragon: 57,
+    tie: 42,
+    superSix: 60,
+    bankerPair: 48,
+    playerPair: 50,
+    bankerDragon: 48,
+    playerDragon: 52,
   })
 })
 
-test('v096 side profiles keep only the approved existing weighted items and each sum to one', () => {
+test('v097 side profiles keep only the approved existing weighted items and each sum to one', () => {
   for (const [target, expected] of Object.entries(expectedProfiles)) {
     const profile = SIDE_PREDICTION_WEIGHT_PROFILES[target]
     const active = Object.fromEntries(Object.entries(profile).filter(([, weight]) => weight > 0))
     assert.deepEqual(active, expected, `${target} active weights`)
     assert.ok(Math.abs(Object.values(profile).reduce((sum, weight) => sum + weight, 0) - 1) < 1e-9, `${target} sum`)
   }
+})
+
+test('v097 live prediction emits only the approved strategy instead of a v096 fallback', () => {
+  const prediction = buildLivePrediction({ tableId: 'BAG97', shoe: 1, round: 0 })
+  assert.equal(prediction.strategyVersion, 'v097_副預測命中校準與門檻降5版')
+  assert.equal(prediction.strategyVersion.includes('v096'), false)
 })
 
 test('v096 maps raw main confidence through the approved linear calibration', () => {

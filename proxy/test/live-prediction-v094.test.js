@@ -15,7 +15,7 @@ test('v094 exposes one backend live prediction with a non-fixed 30-70 confidence
 
   const prediction = buildLivePrediction(table)
 
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v096_副預測權重與信心校準版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v097_副預測命中校準與門檻降5版')
   assert.equal(prediction.strategyVersion, ALL_MT_EQUAL_STRATEGY_VERSION)
   assert.match(prediction.predictedResult, /^(banker|player)$/)
   assert.ok(prediction.confidence > 30)
