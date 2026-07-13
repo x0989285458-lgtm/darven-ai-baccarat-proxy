@@ -21,8 +21,9 @@ function createMemberApp(overrides = {}) {
       validateMemberLogin: async () => ({
         ok: true,
         memberAccount: 'Member001',
-        license: { code: 'LICENSE001', status: 'active' },
+        license: { id: 'license-1', code: 'LICENSE001', status: 'active' },
       }),
+      validateMemberSession: async () => ({ ok: true }),
     },
     ...overrides,
   })
@@ -59,6 +60,24 @@ test('v098 tables polling accepts only Authorization bearer and rejects every qu
   assert.equal((await app.inject({ url: '/api/tables', headers: { authorization: `Bearer ${memberSessionToken}` } })).statusCode, 200)
   assert.equal((await app.inject({ url: '/api/tables', headers: { 'x-member-session-token': memberSessionToken } })).statusCode, 401)
   assert.equal((await app.inject({ url: '/api/tables?memberSessionToken=forbidden-query-token', headers: { authorization: `Bearer ${memberSessionToken}` } })).statusCode, 400)
+})
+
+test('v098 session authorization never replays the member login password', async () => {
+  let loginCalls = 0
+  const app = createMemberApp({
+    licenseAdminClient: {
+      validateMemberLogin: async () => {
+        loginCalls += 1
+        return { ok: true, memberAccount: 'Member001', license: { id: 'license-1', status: 'active' } }
+      },
+    },
+  })
+  const { memberSessionToken } = await login(app)
+
+  const response = await app.inject({ url: '/api/tables', headers: { authorization: `Bearer ${memberSessionToken}` } })
+
+  assert.equal(response.statusCode, 401)
+  assert.equal(loginCalls, 1)
 })
 
 test('v098 tables SSE accepts Authorization bearer and never accepts a query ticket or query session', async () => {

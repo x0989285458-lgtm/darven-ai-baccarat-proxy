@@ -82,17 +82,7 @@ export function createSnapshotPusher({
       .map((round) => ({ round, key: roundKey(round) }))
       .filter((candidate) => candidate.key)
 
-    if (!cursorInitialized) {
-      for (const candidate of candidates) observedRoundKeys.add(candidate.key)
-      cursorInitialized = true
-      trimCursor()
-      await saveCursor()
-      if (queue.length === 0) {
-        queue.push(createEnvelope(snapshot, [], [], timestamp))
-        await saveQueue()
-      }
-      return
-    }
+    if (!cursorInitialized) cursorInitialized = true
 
     const queuedRoundKeys = new Set(queue.flatMap((entry) => entry.roundKeys))
     const pending = candidates.filter(({ key: roundKeyValue }) => (

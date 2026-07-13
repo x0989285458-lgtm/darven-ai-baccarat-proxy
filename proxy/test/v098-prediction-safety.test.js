@@ -216,7 +216,10 @@ test('v098 member login issues a short-lived opaque bearer session required by t
     now: () => clock,
     memberAuthRequired: true,
     memberSessionTtlMs: 60_000,
-    licenseAdminClient: { validateMemberLogin: async () => ({ ok: true, memberAccount: 'User001', license: { code: 'CODE001' } }) },
+    licenseAdminClient: {
+      validateMemberLogin: async () => ({ ok: true, memberAccount: 'User001', license: { code: 'CODE001' } }),
+      validateMemberSession: async () => ({ ok: true }),
+    },
   })
   app.state.setTables([table])
 
@@ -240,7 +243,10 @@ test('v098 SSE accepts bearer authorization and rejects every query token', asyn
     autoConnect: false,
     port: 0,
     memberAuthRequired: true,
-    licenseAdminClient: { validateMemberLogin: async () => ({ ok: true, memberAccount: 'User001', license: { code: 'CODE001' } }) },
+    licenseAdminClient: {
+      validateMemberLogin: async () => ({ ok: true, memberAccount: 'User001', license: { code: 'CODE001' } }),
+      validateMemberSession: async () => ({ ok: true }),
+    },
   })
   const login = await app.inject({ method: 'POST', url: '/api/online-license/member-login', body: JSON.stringify({ memberAccount: 'User001', verificationPassword: 'CODE001' }) })
   const session = JSON.parse(login.body)

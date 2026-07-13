@@ -7,7 +7,7 @@ import { createApp } from '../src/server.js'
 const table = { tableId: 'BAG01', shoe: 88, round: 20, bankerCount: 10, playerCount: 9 }
 const completed = { tableId: 'BAG01', shoe: 88, round: 21, winner: 'banker', rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9] }
 
-test('v098 settlement RPC inserts both required rows in one database transaction', () => {
+test('v098 settlement RPC accepts duplicate identities only when every immutable value matches', () => {
   const sql = readFileSync(new URL('../../frontend/supabase/schema_v098_snapshot_safety.sql', import.meta.url), 'utf8')
   const rpc = sql.match(/create or replace function public\.persist_v098_settled_round[\s\S]*?\$\$;/i)?.[0] ?? ''
 
@@ -15,13 +15,35 @@ test('v098 settlement RPC inserts both required rows in one database transaction
   assert.match(rpc, /insert into public\.daily_prediction_results/i)
   assert.match(rpc, /on conflict \(source, table_id, shoe_no, round_no\)/i)
   assert.match(rpc, /on conflict \(source, table_id, shoe_no, round_no, strategy_version\)/i)
-  assert.equal((rpc.match(/on conflict[\s\S]*?do nothing/gi) ?? []).length, 2)
-  assert.doesNotMatch(rpc, /do update/i)
+  assert.equal((rpc.match(/on conflict[\s\S]*?do update/gi) ?? []).length, 2)
+  assert.match(rpc, /to_jsonb\(daily_roadmap_events\)[\s\S]*?to_jsonb\(excluded\)/i)
+  assert.match(rpc, /to_jsonb\(daily_roadmap_events\)[\s\S]*?-\s*'opened_at'/i)
+  assert.match(rpc, /to_jsonb\(daily_prediction_results\)[\s\S]*?to_jsonb\(excluded\)/i)
+  assert.match(rpc, /get diagnostics roadmap_written = row_count/i)
+  assert.match(rpc, /get diagnostics prediction_written = row_count/i)
+  assert.match(rpc, /conflicting existing roadmap settlement/i)
+  assert.match(rpc, /conflicting existing prediction settlement/i)
   assert.match(rpc, /raise exception 'settlement identity mismatch'/i)
-  assert.match(rpc, /select\s+exists[\s\S]*daily_roadmap_events/i)
-  assert.match(rpc, /select\s+exists[\s\S]*daily_prediction_results/i)
   assert.match(rpc, /if\s+not\s+roadmap_durable\s+or\s+not\s+prediction_durable/i)
   assert.doesNotMatch(rpc, /return\s+jsonb_build_object\('persisted',\s*true\)\s*;/i)
+})
+
+test('v098 configured writer refuses persistence until the active strategy is verified', async () => {
+  const requests = []
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.invalid', serviceKey: 'fixture-key', retryAttempts: 1,
+    requireVerifiedStrategy: true,
+    fetchImpl: async (url) => {
+      requests.push(String(url))
+      return { ok: true, status: 200, text: async () => JSON.stringify({ persisted: true, roadmapDurable: true, predictionDurable: true }) }
+    },
+  })
+
+  await assert.rejects(
+    client.persistRound(completed, table, buildLivePrediction(table)),
+    /active[_ ]strategy[_ ]not[_ ]verified/i,
+  )
+  assert.deepEqual(requests, [])
 })
 
 test('v098 persistence failure retries the identical pending snapshot without recomputing it', async () => {
@@ -125,5 +147,26 @@ test('v098 RPC persists the complete immutable pre-result feature snapshot witho
     assert.deepEqual(rpcBody.p_prediction.prediction_features[key], pending.predictionFeatures[key])
   }
   assert.deepEqual(rpcBody.p_prediction.probabilities, pending.probabilities)
+})
+
+test('v098 writer bounds completed-round memory and rebuilds an evicted payload instead of retaining it forever', async () => {
+  const bodies = []
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.invalid', serviceKey: 'fixture-key', retryAttempts: 1, maxCompletedRoundKeys: 1,
+    fetchImpl: async (_url, options) => {
+      bodies.push(JSON.parse(options.body))
+      return { ok: true, status: 200, text: async () => JSON.stringify({ persisted: true, roadmapDurable: true, predictionDurable: true }) }
+    },
+  })
+  const secondTable = { ...table, round: 21 }
+  const secondCompleted = { ...completed, round: 22 }
+  const original = buildLivePrediction(table)
+
+  await client.persistRound(completed, table, original)
+  await client.persistRound(secondCompleted, secondTable, buildLivePrediction(secondTable))
+  await client.persistRound(completed, table, { ...original, confidence: original.confidence + 1 })
+
+  assert.equal(bodies.length, 3)
+  assert.equal(bodies[2].p_prediction.confidence, original.confidence + 1)
 })
 

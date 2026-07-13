@@ -101,6 +101,15 @@ test('v098 stable report excludes every saved row for a contradictory settlement
   ])
 })
 
+test('v098 stable report never counts a legacy strategy row', () => {
+  const legacy = { ...structuredClone(rows[0]), strategy_version: 'v096_legacy' }
+
+  const report = buildStableReportFromRows([legacy])
+
+  assert.equal(report.total.rounds, 0)
+  assert.deepEqual(report.invalidRows, [{ index: 0, reason: 'unapproved_strategy' }])
+})
+
 test('v098 saved-row report formats without requiring a live predictor session status', () => {
   const text = formatReportText(buildStableReportFromRows(rows))
 

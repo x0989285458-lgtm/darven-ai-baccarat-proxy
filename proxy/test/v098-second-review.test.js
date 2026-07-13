@@ -48,9 +48,86 @@ test('v098 non-ready or degraded active strategy makes health 503 and suppresses
   }
 })
 
+test('v098 production fails closed when the strategy service is unconfigured', async () => {
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    memberAuthRequired: false,
+    ingestKey: 'configured',
+    supabaseClient: { configured: false, getRuntimeStatus: () => ({ ready: false, degraded: false }) },
+  })
+  app.state.setTables([table])
+
+  const health = await app.inject({ url: '/health', headers: { 'x-forwarded-proto': 'https' } })
+  const tables = JSON.parse((await app.inject({ url: '/api/tables', headers: { 'x-forwarded-proto': 'https' } })).body)
+
+  assert.equal(health.statusCode, 503)
+  assert.equal(tables[0].prediction, null)
+})
+
+test('v098 startup verifies the active strategy before accepting live tables', async () => {
+  let ready = false
+  let ensureCalls = 0
+  const supabaseClient = {
+    configured: true,
+    getRuntimeStatus: () => ({ ready, degraded: false, reason: ready ? null : 'active_strategy_not_verified' }),
+    ensureInitialStrategy: async () => {
+      ensureCalls += 1
+      ready = true
+    },
+  }
+  const app = createApp({ autoConnect: false, port: 0, requireVerifiedStrategy: true, supabaseClient })
+
+  await app.start()
+  try {
+    app.state.setTables([table])
+    const tables = JSON.parse((await app.inject({ url: '/api/tables' })).body)
+
+    assert.equal(ensureCalls, 1)
+    assert.ok(tables[0].prediction)
+  } finally {
+    await app.stop()
+  }
+})
+
+test('v098 explicit live empty tables never resurrect a cached cloud prediction', async () => {
+  const stale = { ...table, tableId: 'BAG99', sourceUpdatedAt: new Date().toISOString() }
+  const app = createApp({
+    autoConnect: false,
+    requireVerifiedStrategy: false,
+    supabaseClient: {
+      configured: true,
+      getLatestCloudTableSnapshot: async () => ({ snapshot_at: new Date().toISOString(), tables: [stale] }),
+    },
+  })
+  app.state.setTables([table])
+  app.state.setTables([])
+
+  const tables = JSON.parse((await app.inject({ url: '/api/tables' })).body)
+
+  assert.deepEqual(tables, [])
+})
+
+test('v098 expired prediction tombstones are bounded across long-running tables', async () => {
+  let clock = 1_000_000
+  const app = createApp({ autoConnect: false, now: () => clock, predictionTtlMs: 1000, maxExpiredPredictionKeys: 1 })
+  const tableA = { ...table, tableId: 'BAG01' }
+  const tableB = { ...table, tableId: 'BAG02' }
+
+  app.state.setTables([tableA])
+  clock += 1001
+  assert.equal(JSON.parse((await app.inject({ url: '/api/tables' })).body)[0].prediction, null)
+  app.state.setTables([tableB])
+  clock += 1001
+  assert.equal(JSON.parse((await app.inject({ url: '/api/tables' })).body)[0].prediction, null)
+  app.state.setTables([tableA])
+
+  assert.ok(JSON.parse((await app.inject({ url: '/api/tables' })).body)[0].prediction)
+})
+
 test('v098 SSE sends table data when prediction TTL expires and when tables become empty', async () => {
   let clock = 1_000_000
-  const app = createApp({ autoConnect: false, port: 0, now: () => clock, predictionTtlMs: 1000 })
+  const app = createApp({ autoConnect: false, port: 0, now: () => clock, predictionTtlMs: 1000, supabaseClient: { configured: false } })
   app.state.setTables([table])
   await app.start()
   const controller = new AbortController()
@@ -84,10 +161,11 @@ test('v098 SSE revalidates member session before every push and emits 401 then c
     memberAuthRequired: true,
     licenseAdminClient: {
       validateMemberLogin: async ({ memberAccount } = {}) => ({
-        ok: authorized,
+        ok: true,
         memberAccount: memberAccount ?? 'Member001',
-        license: { id: 'license-1', status: authorized ? 'active' : 'revoked' },
+        license: { id: 'license-1', status: 'active' },
       }),
+      validateMemberSession: async () => ({ ok: authorized }),
     },
   })
   const login = JSON.parse((await app.inject({

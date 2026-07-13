@@ -16,7 +16,7 @@ import { BUILD_VERSION } from './build-version.js'
 const VERSION = BUILD_VERSION
 const SERVICE = 'Draven MT資料代理伺服器'
 
-export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 10 * 60 * 1000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient() } = {}) {
+export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 10 * 60 * 1000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient() } = {}) {
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
     CAPTURE_SOURCE: requestedCaptureSource,
@@ -38,6 +38,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const memberSessions = new Map()
   let tablesReceivedAtMs = 0
   const actionablePredictionTtlMs = Math.max(1000, Number(predictionTtlMs) || 120000)
+  const expiredPredictionKeyLimit = Math.max(1, Number(maxExpiredPredictionKeys) || 10000)
   const resolvedMemberSessionTtlMs = Math.min(10 * 60 * 1000, Math.max(60000, Number(memberSessionTtlMs) || 10 * 60 * 1000))
   const adminSessionTtlMs = Math.max(60000, Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000) || 30 * 60 * 1000)
   const state = createProxyState({
@@ -54,7 +55,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       if (!precomputedPrediction) return
       if (now() - Number(precomputedPrediction.createdAtMs ?? 0) > actionablePredictionTtlMs) {
         pendingPredictions.delete(pendingKey)
-        expiredPredictionKeys.add(pendingKey)
+        rememberExpiredPredictionKey(pendingKey)
         return
       }
       if (settlingPredictionKeys.has(pendingKey)) return
@@ -279,7 +280,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       const credentials = parseJsonBody(rawBody)
       const result = await licenseAdminClient.validateMemberLogin?.(credentials)
       if (!result?.ok) return result
-      return { ...result, ...issueMemberSession(result, credentials) }
+      return { ...result, ...issueMemberSession(result) }
     })
     if (method === 'POST' && pathname === '/api/online-license/agent-login') return adminWrite(async (payload) => {
       const result = await licenseAdminClient.validateAgentLogin?.(payload)
@@ -328,7 +329,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     return { token, expiresAt }
   }
 
-  function issueMemberSession(loginResult = {}, credentials = {}) {
+  function issueMemberSession(loginResult = {}) {
     const expiresAtMs = now() + resolvedMemberSessionTtlMs
     const memberSessionToken = crypto.randomBytes(32).toString('base64url')
     for (const [token, session] of memberSessions) {
@@ -336,8 +337,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
     memberSessions.set(memberSessionToken, {
       memberAccount: loginResult.memberAccount,
-      verificationPassword: credentials.verificationPassword,
-      authorizationVersion: loginResult.license?.updated_at ?? loginResult.license?.updatedAt ?? loginResult.license?.id ?? null,
+      licenseId: loginResult.license?.id ?? null,
+      authorizationVersion: loginResult.license?.updated_at ?? loginResult.license?.updatedAt ?? null,
       expiresAtMs,
     })
     return { memberSessionToken, sessionExpiresAt: new Date(expiresAtMs).toISOString() }
@@ -352,15 +353,15 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       return false
     }
     try {
-      const validation = typeof licenseAdminClient.validateMemberSession === 'function'
-        ? await licenseAdminClient.validateMemberSession({
-          memberAccount: session.memberAccount,
-          authorizationVersion: session.authorizationVersion,
-        })
-        : await licenseAdminClient.validateMemberLogin?.({
-          memberAccount: session.memberAccount,
-          verificationPassword: session.verificationPassword,
-        })
+      if (typeof licenseAdminClient.validateMemberSession !== 'function') {
+        memberSessions.delete(String(token))
+        return false
+      }
+      const validation = await licenseAdminClient.validateMemberSession({
+        memberAccount: session.memberAccount,
+        licenseId: session.licenseId,
+        authorizationVersion: session.authorizationVersion,
+      })
       if (!validation?.ok) {
         memberSessions.delete(String(token))
         return false
@@ -463,6 +464,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       const actionable = tablesReceivedAtMs > 0 && now() - tablesReceivedAtMs <= actionablePredictionTtlMs
       return localTables.map((table) => withLivePrediction(table, actionable))
     }
+    if (tablesReceivedAtMs > 0) return []
     const cloudSnapshot = await readLatestCloudSnapshot({ requireFresh: true })
     return (cloudSnapshot?.tables ?? []).map((table) => withLivePrediction(table))
   }
@@ -476,7 +478,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     const existing = pendingPredictions.get(key)
     if (existing && isPendingPredictionExpired(existing)) {
       pendingPredictions.delete(key)
-      expiredPredictionKeys.add(key)
+      rememberExpiredPredictionKey(key)
       return null
     }
     if (!pendingPredictions.has(key)) pendingPredictions.set(key, deepFreeze(structuredClone(generated)))
@@ -490,7 +492,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       const existing = pendingPredictions.get(key)
       if (existing && isPendingPredictionExpired(existing)) {
         pendingPredictions.delete(key)
-        expiredPredictionKeys.add(key)
+        rememberExpiredPredictionKey(key)
       }
     }
     return { ...table, buildVersion: BUILD_VERSION, prediction: pending ? structuredClone(pending) : null }
@@ -500,9 +502,22 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     return now() - Number(prediction?.createdAtMs ?? 0) > actionablePredictionTtlMs
   }
 
+  function rememberExpiredPredictionKey(key) {
+    expiredPredictionKeys.delete(key)
+    expiredPredictionKeys.add(key)
+    while (expiredPredictionKeys.size > expiredPredictionKeyLimit) {
+      expiredPredictionKeys.delete(expiredPredictionKeys.values().next().value)
+    }
+  }
+
   function buildServiceHealth() {
     const runtimeStatus = typeof supabaseClient?.getRuntimeStatus === 'function' ? supabaseClient.getRuntimeStatus() : null
-    const runtimeUnavailable = supabaseClient?.configured === true && runtimeStatus != null && (runtimeStatus.ready !== true || runtimeStatus.degraded === true)
+    const runtimeUnavailable = requireVerifiedStrategy && (
+      supabaseClient?.configured !== true
+      || runtimeStatus == null
+      || runtimeStatus.ready !== true
+      || runtimeStatus.degraded === true
+    )
     const missingIngestKey = !ingestKey && (production || deployConfig.deployMode === 'cloud')
     const stateStatus = state.snapshot().status
     const stateDegraded = stateStatus.health === 'degraded'
@@ -517,8 +532,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
 
   function isPredictionRuntimeReady() {
     if (!requireVerifiedStrategy) return true
-    if (supabaseClient?.configured !== true) return true
-    if (typeof supabaseClient?.getRuntimeStatus !== 'function') return true
+    if (supabaseClient?.configured !== true) return false
+    if (typeof supabaseClient?.getRuntimeStatus !== 'function') return false
     const runtimeStatus = supabaseClient.getRuntimeStatus()
     return runtimeStatus?.ready === true && runtimeStatus?.degraded !== true
   }
@@ -692,7 +707,14 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   return {
     state,
     server,
-    start() {
+    async start() {
+      if (requireVerifiedStrategy && supabaseClient?.configured === true && typeof supabaseClient.ensureInitialStrategy === 'function') {
+        try {
+          await supabaseClient.ensureInitialStrategy()
+        } catch (error) {
+          state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+        }
+      }
       if (shouldAutoConnect) {
         if (captureSource === 'cloud_browser' && cloudBrowserUrl) cloudCaptureClient.start()
         else if (captureUrl) chromeClient.start()

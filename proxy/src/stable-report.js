@@ -1,6 +1,7 @@
 import { createShoeTracker, scoreCardShoeInfluence } from './card-shoe.js'
 import {
   ALL_MT_EQUAL_MAIN_WEIGHTS,
+  ALL_MT_EQUAL_STRATEGY_VERSION,
   SIDE_PREDICTION_THRESHOLDS as FORMAL_SIDE_PREDICTION_THRESHOLDS,
   buildLivePrediction,
 } from './supabase-writer.js'
@@ -35,6 +36,7 @@ export function buildStableReportFromRows(rows = []) {
   const fingerprintsByKey = new Map()
 
   for (const row of sourceRows) {
+    if (String(row?.strategy_version ?? '').trim() !== ALL_MT_EQUAL_STRATEGY_VERSION) continue
     const identity = normalizeSavedRowIdentity(row)
     const actions = exactSavedFlags(row?.prediction_features?.side_actions)
     const hits = exactSavedFlags(row?.prediction_features?.side_hits)
@@ -47,6 +49,10 @@ export function buildStableReportFromRows(rows = []) {
   const conflictingKeys = new Set([...fingerprintsByKey].filter(([, fingerprints]) => fingerprints.size > 1).map(([key]) => key))
 
   for (const [index, row] of sourceRows.entries()) {
+    if (String(row?.strategy_version ?? '').trim() !== ALL_MT_EQUAL_STRATEGY_VERSION) {
+      invalidRows.push({ index, reason: 'unapproved_strategy' })
+      continue
+    }
     const identity = normalizeSavedRowIdentity(row)
     if (!identity) {
       invalidRows.push({ index, reason: 'missing_identity' })
@@ -114,7 +120,7 @@ export function buildStableReportFromRows(rows = []) {
 }
 
 function savedSettlementKey(identity) {
-  return `${identity.source}:${identity.tableId}:${identity.shoe}:${identity.round}:${identity.strategyVersion}`
+  return `${identity.source}:${identity.tableId}:${identity.shoe}:${identity.round}`
 }
 
 function normalizeSavedRowIdentity(row = {}) {

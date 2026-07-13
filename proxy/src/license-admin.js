@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import pg from 'pg'
+import { ALL_MT_EQUAL_STRATEGY_VERSION } from './supabase-writer.js'
 
 export function createLicenseAdminClient({ dbConnectionString, pool = null } = {}) {
   const resolvedConnectionString = dbConnectionString ?? process.env.SUPABASE_DB_CONNECTION_STRING
@@ -237,6 +238,22 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     return { ok, memberAccount, license, error: ok ? undefined : (license?.status === 'suspended' ? '驗證碼已暫停' : '會員帳號或驗證碼錯誤') }
   }
 
+  async function validateMemberSession({ memberAccount, licenseId, authorizationVersion = null } = {}) {
+    if (!configured || !memberAccount || !licenseId) return { ok: false }
+    const result = await db.query(
+      `select l.id, l.member_account, l.status, l.expires_on, l.updated_at
+       from public.licenses l
+       where l.id = $1 and l.member_account = $2
+       limit 1`,
+      [licenseId, memberAccount],
+    )
+    const license = result.rows[0] ?? null
+    const sameVersion = authorizationVersion == null
+      || (license?.updated_at != null && new Date(license.updated_at).getTime() === new Date(authorizationVersion).getTime())
+    const ok = Boolean(license && sameVersion && license.status === 'active' && dateOnly(license.expires_on) >= todayIso())
+    return { ok, memberAccount, license }
+  }
+
   async function validateAgentLogin({ agentAccount } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
     if (await isMaintenanceMode() && !isSuperAdmin(agentAccount)) return { ok: false, maintenanceMode: true, error: '系統維護中，僅超級管理員可登入' }
@@ -254,11 +271,11 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     if (!configured) return { todayRoundCount: 0, tableStats: [], dailyReports: [] }
     const todayCount = await db.query(`select count(distinct table_id || ':' || shoe_no || ':' || round_no)::int as rounds
       from public.daily_prediction_results
-      where created_at >= date_trunc('day', now())`)
+      where created_at >= date_trunc('day', now()) and strategy_version = $1`, [ALL_MT_EQUAL_STRATEGY_VERSION])
     const tableRows = await db.query(`with scoped as (
         select table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, prediction_features
         from public.daily_prediction_results
-        where created_at >= date_trunc('day', now())
+        where created_at >= date_trunc('day', now()) and strategy_version = $1
       ), validated as (
         select *,
           jsonb_typeof(prediction_features->'side_actions') = 'object'
@@ -318,11 +335,11 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
           coalesce(side.side_hits,0)::int as side_hits,
           coalesce(side.side_actions_available, false) as side_actions_available
         from scoped s left join side on side.table_id=s.table_id
-        group by s.table_id, side.side_actions, side.side_hits, side.side_actions_available`)
+        group by s.table_id, side.side_actions, side.side_hits, side.side_actions_available`, [ALL_MT_EQUAL_STRATEGY_VERSION])
     const reportRows = await db.query(`with scoped as (
         select created_at::date as day, table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, prediction_features
         from public.daily_prediction_results
-        where created_at >= (current_date - interval '7 days') and created_at < current_date
+        where created_at >= (current_date - interval '7 days') and created_at < current_date and strategy_version = $1
       ), validated as (
         select *,
           jsonb_typeof(prediction_features->'side_actions') = 'object'
@@ -378,7 +395,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
           case when not side_actions_available then 'unavailable' when dragon_total>0 then round((dragon_hits::numeric/dragon_total)*100,1)::text || '%' else '-' end as dragon_hit_rate,
           case when not side_actions_available then 'unavailable' when pair_total>0 then round((pair_hits::numeric/pair_total)*100,1)::text || '%' else '-' end as pair_hit_rate,
           case when not side_actions_available then 'unavailable' when six_total>0 then round((six_hits::numeric/six_total)*100,1)::text || '%' else '-' end as six_hit_rate
-        from grouped order by day desc limit 7`)
+        from grouped order by day desc limit 7`, [ALL_MT_EQUAL_STRATEGY_VERSION])
     const rowsByTable = new Map(tableRows.rows.map((row) => [row.table_id, row]))
     const order = ['BAG01','BAG02','BAG03','BAG04','BAG05','BAG06','BAG07','BAG08','BAG09']
     return {
@@ -494,7 +511,7 @@ async function dbQueryAgentRole(code) {
   }
 }
 
-  return { configured, getStatus, bootstrap, createAgent, deleteAgents, createLicense, setLicenseStatus, extendLicense, deleteLicense, validateMemberLogin, validateAgentLogin, getCloudDataStatus, getDailyAnalytics }
+  return { configured, getStatus, bootstrap, createAgent, deleteAgents, createLicense, setLicenseStatus, extendLicense, deleteLicense, validateMemberLogin, validateMemberSession, validateAgentLogin, getCloudDataStatus, getDailyAnalytics }
 }
 
 

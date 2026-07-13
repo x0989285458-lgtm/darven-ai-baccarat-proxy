@@ -15,6 +15,8 @@ as $$
 declare
   roadmap_durable boolean := false;
   prediction_durable boolean := false;
+  roadmap_written integer := 0;
+  prediction_written integer := 0;
 begin
   if nullif(p_roadmap->>'source', '') is null
      or nullif(p_roadmap->>'table_id', '') is null
@@ -49,7 +51,14 @@ begin
     coalesce((p_roadmap->>'player_natural')::boolean, false), coalesce((p_roadmap->>'banker_natural')::boolean, false),
     coalesce(p_roadmap->'remaining_rank_counts', '{}'::jsonb), coalesce(p_roadmap->'remaining_point_counts', '{}'::jsonb)
   )
-  on conflict (source, table_id, shoe_no, round_no) do nothing;
+  on conflict (source, table_id, shoe_no, round_no) do update
+    set source = excluded.source
+    where (to_jsonb(daily_roadmap_events) - 'id' - 'opened_at' - 'created_at' - 'updated_at')
+      = (to_jsonb(excluded) - 'id' - 'opened_at' - 'created_at' - 'updated_at');
+  get diagnostics roadmap_written = row_count;
+  if roadmap_written <> 1 then
+    raise exception 'conflicting existing roadmap settlement';
+  end if;
 
   insert into public.daily_prediction_results (
     source, table_id, shoe_no, round_no, strategy_version,
@@ -63,7 +72,14 @@ begin
     coalesce(p_prediction->'short_run_adjustment', '{}'::jsonb), coalesce(p_prediction->'prediction_features', '{}'::jsonb),
     coalesce(p_prediction->'probabilities', '{}'::jsonb), nullif(p_prediction->>'resolved_at', '')::timestamptz
   )
-  on conflict (source, table_id, shoe_no, round_no, strategy_version) do nothing;
+  on conflict (source, table_id, shoe_no, round_no, strategy_version) do update
+    set source = excluded.source
+    where (to_jsonb(daily_prediction_results) - 'id' - 'created_at' - 'updated_at')
+      = (to_jsonb(excluded) - 'id' - 'created_at' - 'updated_at');
+  get diagnostics prediction_written = row_count;
+  if prediction_written <> 1 then
+    raise exception 'conflicting existing prediction settlement';
+  end if;
 
   select exists (
     select 1 from public.daily_roadmap_events

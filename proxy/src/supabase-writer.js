@@ -1386,6 +1386,8 @@ export function createSupabaseIngestionClient({
   fetchImpl = globalThis.fetch,
   retryAttempts = 3,
   retryDelayMs = 250,
+  requireVerifiedStrategy = process.env.NODE_ENV === 'production',
+  maxCompletedRoundKeys = 10000,
 } = {}) {
   const configured = Boolean(url && serviceKey && fetchImpl)
   const completedRoundKeys = new Set()
@@ -1393,6 +1395,7 @@ export function createSupabaseIngestionClient({
   const preparedRoundWrites = new Map()
   let runtimeStatus = { ready: false, degraded: false, reason: 'active_strategy_not_verified', activeStrategyVersion: null }
   let writeQueue = Promise.resolve()
+  const completedRoundKeyLimit = Math.max(1, Number(maxCompletedRoundKeys) || 10000)
 
   async function postRest(path, body, conflict, { requireRepresentation = false, requireObject = false } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase backend key is not configured' }
@@ -1495,6 +1498,7 @@ export function createSupabaseIngestionClient({
     },
     async persistRound(round, table, precomputedPrediction = null) {
       if (runtimeStatus.degraded) throw new Error(runtimeStatus.reason)
+      if (requireVerifiedStrategy && runtimeStatus.ready !== true) throw new Error('active strategy not verified')
       const target = validatePredictionTarget(precomputedPrediction, round)
       if (!target) throw new Error('prediction target mismatch')
       const preparationKey = `${target.tableId}:${target.shoe}:${target.round}:${precomputedPrediction.strategyVersion}`
@@ -1509,11 +1513,17 @@ export function createSupabaseIngestionClient({
       }
       const { event, prediction, compactEvent, compactPrediction } = prepared
       const roundKey = buildRoundDedupeKey(compactEvent, compactPrediction)
-      if (completedRoundKeys.has(roundKey)) return { skipped: true, reason: 'duplicate_round', event, prediction, compactEvent, compactPrediction }
+      if (completedRoundKeys.has(roundKey)) {
+        preparedRoundWrites.delete(preparationKey)
+        return { skipped: true, reason: 'duplicate_round', event, prediction, compactEvent, compactPrediction }
+      }
       if (inFlightRoundWrites.has(roundKey)) return inFlightRoundWrites.get(roundKey)
 
       const writePromise = enqueueWrite(async () => {
-        if (completedRoundKeys.has(roundKey)) return { skipped: true, reason: 'duplicate_round', event, prediction, compactEvent, compactPrediction }
+        if (completedRoundKeys.has(roundKey)) {
+          preparedRoundWrites.delete(preparationKey)
+          return { skipped: true, reason: 'duplicate_round', event, prediction, compactEvent, compactPrediction }
+        }
         const acknowledgement = await postRest('rpc/persist_v098_settled_round', {
           p_roadmap: compactEvent,
           p_prediction: compactPrediction,
@@ -1522,6 +1532,10 @@ export function createSupabaseIngestionClient({
           throw new Error('durable settlement acknowledgement failed')
         }
         completedRoundKeys.add(roundKey)
+        while (completedRoundKeys.size > completedRoundKeyLimit) {
+          completedRoundKeys.delete(completedRoundKeys.values().next().value)
+        }
+        preparedRoundWrites.delete(preparationKey)
         return { event, prediction, compactEvent, compactPrediction }
       }).finally(() => {
         inFlightRoundWrites.delete(roundKey)

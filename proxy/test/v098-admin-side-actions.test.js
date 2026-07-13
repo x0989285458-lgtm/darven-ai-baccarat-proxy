@@ -4,9 +4,11 @@ import { createLicenseAdminClient } from '../src/license-admin.js'
 
 test('v098 admin requires complete boolean side_actions and side_hits before reporting availability', async () => {
   const queries = []
+  const parameters = []
   const pool = {
-    async query(sql) {
+    async query(sql, params = []) {
       queries.push(String(sql))
+      parameters.push(params)
       if (queries.length === 1) return { rows: [{ rounds: 1 }] }
       if (queries.length === 2) {
         return { rows: [{ table_id: 'BAG01', rounds: 1, main_total: 1, main_hits: 1, side_actions: 0, side_hits: 0, side_actions_available: false }] }
@@ -36,4 +38,10 @@ test('v098 admin requires complete boolean side_actions and side_hits before rep
     assert.match(sql, new RegExp(`side_hits'->>'${key}'[\\s\\S]*in \\('true','false'\\)`, 'i'))
   }
   assert.match(sql, /jsonb_object_length\(prediction_features->'side_hits'\)\s*=\s*6/i)
+  assert.equal((sql.match(/strategy_version\s*=\s*\$1/gi) ?? []).length, 3)
+  assert.deepEqual(parameters, [
+    ['v097_副預測命中校準與門檻降5版'],
+    ['v097_副預測命中校準與門檻降5版'],
+    ['v097_副預測命中校準與門檻降5版'],
+  ])
 })

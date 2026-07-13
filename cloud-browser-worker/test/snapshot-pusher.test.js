@@ -113,7 +113,7 @@ test('pusher does not forward the worker key to an HTTP redirect target', async 
   assert.ok(JSON.parse(await readFile(queuePath, 'utf8')).entries[0].snapshot)
 })
 
-test('pusher baselines retained rounds then sends only newly completed rounds across restarts', async (t) => {
+test('pusher durably sends every previously unacknowledged retained round, then only new rounds across restarts', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
@@ -130,7 +130,7 @@ test('pusher baselines retained rounds then sends only newly completed rounds ac
 
   const first = create(async () => snapshots.shift())
   assert.equal(await first.tick(), true)
-  assert.deepEqual(sent[0].snapshot.rounds, [], 'retained history is a baseline, not a new completion')
+  assert.deepEqual(sent[0].snapshot.rounds.map((item) => item.round), [1, 2], 'first observation is unacknowledged and must be delivered')
   assert.equal(await first.tick(), true)
   assert.deepEqual(sent[1].snapshot.rounds.map((item) => item.round), [3])
 
@@ -508,7 +508,7 @@ test('restored FIFO head is not appended again when queue persisted before its o
   await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
 })
 
-test('baseline is persisted as observed state and is never mislabeled as proxy acknowledgement', async (t) => {
+test('first observation becomes acknowledged only after the proxy explicitly accepts its round key', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
@@ -521,7 +521,7 @@ test('baseline is persisted as observed state and is never mislabeled as proxy a
   assert.equal(await pusher.tick(), true)
   const cursor = JSON.parse(await readFile(`${queuePath}.cursor.json`, 'utf8'))
   assert.deepEqual(cursor.observedRoundKeys, ['BAG01:8:1'])
-  assert.deepEqual(cursor.acknowledgedRoundKeys, [])
+  assert.deepEqual(cursor.acknowledgedRoundKeys, ['BAG01:8:1'])
 })
 
 test('acknowledged sequence high-water survives restart and clock rollback', async (t) => {

@@ -179,6 +179,7 @@ test('v098 member revocation invalidates an existing opaque session on the next 
     validateMemberLogin: async ({ memberAccount }) => active
       ? { ok: true, memberAccount, license: { id: 'license-row-1', status: 'active', expires_on: '2099-01-01' } }
       : { ok: false, memberAccount, license: { id: 'license-row-1', status: 'suspended', expires_on: '2099-01-01' } },
+    validateMemberSession: async () => ({ ok: active }),
   }
   const app = createApp({ autoConnect: false, memberAuthRequired: true, licenseAdminClient })
   const login = await app.inject({
@@ -301,7 +302,7 @@ test('v098 production and cloud ingest without a key returns 503 and reports deg
 
 test('v098 active strategy runtimeStatus is exposed by health and status and degrades health fail-closed', async () => {
   const runtimeStatus = { ready: false, degraded: true, reason: 'active strategy verification failed', activeStrategyVersion: null }
-  const app = createApp({ autoConnect: false, supabaseClient: { configured: true, getRuntimeStatus: () => runtimeStatus } })
+  const app = createApp({ autoConnect: false, requireVerifiedStrategy: true, supabaseClient: { configured: true, getRuntimeStatus: () => runtimeStatus } })
 
   const healthResponse = await app.inject({ url: '/health' })
   const statusResponse = await app.inject({ url: '/api/status' })
