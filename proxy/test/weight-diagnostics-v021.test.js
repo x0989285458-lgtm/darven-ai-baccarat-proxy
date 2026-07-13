@@ -64,7 +64,7 @@ test('v021 prediction exposes weight ablation and confidence calibration diagnos
   assert.equal(typeof prediction.confidenceCalibration.finalConfidence, 'number')
 })
 
-test('v021 stable report stores per-table diagnostics and version 023', () => {
+test('v098 stable report stores only immutable prediction identity diagnostics', () => {
   const session = createStableReportSession({ startedAt: '2026-01-01T00:00:00.000Z' })
   session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [bankerBiasedTable()] }, 't0')
   session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [bankerBiasedTable({ round: 1, lastRound: { tableId: 'BAG08', shoe: 1, round: 1, winner: 1 } })] }, 't1')
@@ -72,7 +72,5 @@ test('v021 stable report stores per-table diagnostics and version 023', () => {
   const report = session.getReport('2026-01-01T00:10:00.000Z')
 
   assert.equal(report.version, '037')
-  assert.ok(report.tables[0].predictionDiagnostics)
-  assert.ok(report.tables[0].predictionDiagnostics.weightAblation)
-  assert.ok(report.tables[0].predictionDiagnostics.confidenceCalibration)
+  assert.deepEqual(Object.keys(report.tables[0].predictionDiagnostics).sort(), ['predictionTiming', 'strategyVersion'])
 })

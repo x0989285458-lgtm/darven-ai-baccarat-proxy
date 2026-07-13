@@ -101,6 +101,9 @@ test('v039 client writes cloud capture data to Supabase REST tables', async () =
     serviceKey: 'sb_secret_test_key',
     fetchImpl: async (url, init) => {
       requests.push({ url: String(url), init, body: JSON.parse(init.body) })
+      if (String(url).includes('/cloud_table_snapshots')) {
+        return { ok: true, status: 201, text: async () => '[{"id":"snapshot-fixture"}]' }
+      }
       return { ok: true, status: 201, text: async () => '' }
     },
   })

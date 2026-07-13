@@ -44,7 +44,7 @@ test('v073 side prediction removes weak correlation fields and uses A-K remainin
 test('v073 prediction row records new strategy and preserves requested prediction outputs only', () => {
   const row = buildPredictionResultRow(
     {
-      tableId: 'BAG05', shoe: 15396, round: 1, winner: 2,
+      tableId: 'BAG05', shoe: 15396, round: 2, winner: 2,
       rawResult: [26,40,43,20,0,0,-1,-1,4,8],
       cardShoe: {
         remainingRankCounts: { A: 31, '2': 32, '3': 30, '4': 29, '5': 28, '6': 27, '7': 26, '8': 25, '9': 24, '10': 23, J: 22, Q: 21, K: 20 },
@@ -70,7 +70,7 @@ test('v073 newly weighted main features produce non-neutral scores instead of me
       },
     },
     {
-      tableId: 'BAG73', shoe: 15396, round: 22,
+      tableId: 'BAG73', shoe: 15396, round: 21,
       bankerCount: 60, playerCount: 40, tieCount: 0,
       recentHitRate: 0.72, recentPredictionCount: 30,
       lastRound: {

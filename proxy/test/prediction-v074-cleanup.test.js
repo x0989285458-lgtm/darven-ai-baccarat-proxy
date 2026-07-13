@@ -57,7 +57,7 @@ test('v074 prediction row records Chinese strategy and keeps derived point/rank 
       },
     },
     {
-      tableId: 'BAG74', shoe: 16001, round: 9,
+      tableId: 'BAG74', shoe: 16001, round: 8,
       bankerCount: 12, playerCount: 8, tieCount: 1,
       recentHitRate: 0.65, recentPredictionCount: 30,
       beadPlateRaw: '01020202', bigRoadRaw: 'BBPBBP', bigEyeRaw: '111222', smallRoadRaw: '121212', cockroachRaw: '212121',

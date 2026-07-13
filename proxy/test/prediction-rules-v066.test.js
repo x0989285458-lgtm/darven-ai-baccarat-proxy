@@ -22,7 +22,7 @@ test('v071 dragon bonus predictions are actionable only for matching main side a
 
   const tiePush = buildPredictionResultRow(
     { tableId: 'BAG66', shoe: 1, round: 3, rawResult: [1, 9, 2, 10, 0, 0, -1, -1, 9, 9], winner: 'tie' },
-    { tableId: 'BAG66', bankerCount: 90, playerCount: 10, tieCount: 0, beadPlateRaw: '02#02#02#02#02#02', bigRoadRaw: 'B#B#B#B#B#B' },
+    { tableId: 'BAG66', shoe: 1, round: 2, bankerCount: 90, playerCount: 10, tieCount: 0, beadPlateRaw: '02#02#02#02#02#02', bigRoadRaw: 'B#B#B#B#B#B' },
   )
 
   assert.equal(tiePush.prediction_features.side_actual_results.bankerDragon, false)

@@ -32,7 +32,7 @@ test('v077 prediction features expose Chinese-requested roadmap details and 0-K 
       },
     },
     {
-      tableId: 'BAG77', shoe: 77, round: 18,
+      tableId: 'BAG77', shoe: 77, round: 17,
       bankerCount: 9, playerCount: 7, tieCount: 1,
       beadPlateRaw: '020102010201#020102010202#020202',
       bigRoadRaw: '0201010201020201020202',

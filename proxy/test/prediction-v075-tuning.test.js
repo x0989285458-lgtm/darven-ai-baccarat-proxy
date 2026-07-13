@@ -72,7 +72,7 @@ test('v075 prediction row records new Chinese version and thresholds remain acti
         remainingRankCounts: { A: 31, '2': 30, '3': 29, '4': 28, '5': 27, '6': 40, '7': 32, '8': 33, '9': 34, '10': 35, J: 36, Q: 37, K: 38 },
       },
     },
-    { tableId: 'BAG75', shoe: 17001, round: 12, bankerCount: 12, playerCount: 8, tieCount: 1, beadPlateRaw: '01020202', bigRoadRaw: 'BBPBBP' },
+    { tableId: 'BAG75', shoe: 17001, round: 11, bankerCount: 12, playerCount: 8, tieCount: 1, beadPlateRaw: '01020202', bigRoadRaw: 'BBPBBP' },
   )
   assert.equal(row.strategy_version, 'v097_副預測命中校準與門檻降5版')
   assert.deepEqual(row.short_run_adjustment.sideActionRateTargets, {

@@ -72,8 +72,9 @@ test('v091 persistRound posts compact DB rows while full row builders retain com
   assert.ok(fullPrediction.prediction_features.side_prediction_rank_inputs.tie)
 
   await client.persistRound(round, table, pendingPrediction)
-  const eventBody = requests.find((request) => request.url.includes('/daily_roadmap_events')).body
-  const predictionBody = requests.find((request) => request.url.includes('/daily_prediction_results')).body
+  const atomicBody = requests.find((request) => request.url.includes('/rpc/persist_v098_settled_round')).body
+  const eventBody = atomicBody.p_roadmap
+  const predictionBody = atomicBody.p_prediction
 
   assert.deepEqual(eventBody, buildCompactRoadmapEventDbRow(fullEvent))
   assert.equal(eventBody.raw_event.tableSnapshot, undefined)
@@ -214,7 +215,7 @@ test('v092 Supabase writer serializes retries and skips duplicate actual rounds 
       await new Promise((resolve) => setTimeout(resolve, 2))
       requests.push({ url: String(url), body: JSON.parse(init.body) })
       activeRequests -= 1
-      if (failOnce && String(url).includes('/daily_roadmap_events')) {
+      if (failOnce && String(url).includes('/rpc/persist_v098_settled_round')) {
         failOnce = false
         return { ok: false, status: 503, text: async () => 'temporary unavailable' }
       }
@@ -229,6 +230,6 @@ test('v092 Supabase writer serializes retries and skips duplicate actual rounds 
   ])
 
   assert.equal(maxActiveRequests, 1)
-  assert.equal(requests.filter((request) => request.url.includes('/daily_roadmap_events')).length, 2)
-  assert.equal(requests.filter((request) => request.url.includes('/daily_prediction_results')).length, 1)
+  assert.equal(requests.filter((request) => request.url.includes('/rpc/persist_v098_settled_round')).length, 2)
+  assert.deepEqual(requests[1].body, requests[0].body)
 })

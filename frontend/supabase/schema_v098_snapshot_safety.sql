@@ -1,21 +1,111 @@
 -- v098: bound cloud snapshot write frequency and retain only the latest 24 hours.
 -- Apply with service/admin privileges after schema_v039_cloud_capture.sql.
 
+-- One function call is one PostgreSQL transaction. If either insert raises,
+-- PostgreSQL rolls both inserts back and PostgREST returns a failed RPC.
+create or replace function public.persist_v098_settled_round(
+  p_roadmap jsonb,
+  p_prediction jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if nullif(p_roadmap->>'source', '') is null
+     or nullif(p_roadmap->>'table_id', '') is null
+     or nullif(p_roadmap->>'shoe_no', '') is null
+     or nullif(p_roadmap->>'round_no', '') is null
+     or p_roadmap->>'source' is distinct from p_prediction->>'source'
+     or p_roadmap->>'table_id' is distinct from p_prediction->>'table_id'
+     or p_roadmap->>'shoe_no' is distinct from p_prediction->>'shoe_no'
+     or p_roadmap->>'round_no' is distinct from p_prediction->>'round_no' then
+    raise exception 'settlement identity mismatch';
+  end if;
+
+  insert into public.daily_roadmap_events (
+    source, table_id, shoe_no, round_no, main_result,
+    banker_points, player_points, banker_pair, player_pair, super_six,
+    banker_dragon, player_dragon, bead_code, raw_event,
+    player_card_codes, banker_card_codes, player_card_points, banker_card_points,
+    player_card_ranks, banker_card_ranks, player_card_faces, banker_card_faces,
+    player_drew, banker_drew, player_natural, banker_natural,
+    remaining_rank_counts, remaining_point_counts
+  ) values (
+    p_roadmap->>'source', p_roadmap->>'table_id', p_roadmap->>'shoe_no', (p_roadmap->>'round_no')::integer, p_roadmap->>'main_result',
+    nullif(p_roadmap->>'banker_points', '')::integer, nullif(p_roadmap->>'player_points', '')::integer,
+    coalesce((p_roadmap->>'banker_pair')::boolean, false), coalesce((p_roadmap->>'player_pair')::boolean, false), coalesce((p_roadmap->>'super_six')::boolean, false),
+    coalesce((p_roadmap->>'banker_dragon')::boolean, false), coalesce((p_roadmap->>'player_dragon')::boolean, false),
+    p_roadmap->>'bead_code', coalesce(p_roadmap->'raw_event', '{}'::jsonb),
+    coalesce(p_roadmap->'player_card_codes', '[]'::jsonb), coalesce(p_roadmap->'banker_card_codes', '[]'::jsonb),
+    coalesce(p_roadmap->'player_card_points', '[]'::jsonb), coalesce(p_roadmap->'banker_card_points', '[]'::jsonb),
+    coalesce(p_roadmap->'player_card_ranks', '[]'::jsonb), coalesce(p_roadmap->'banker_card_ranks', '[]'::jsonb),
+    coalesce(p_roadmap->'player_card_faces', '[]'::jsonb), coalesce(p_roadmap->'banker_card_faces', '[]'::jsonb),
+    coalesce((p_roadmap->>'player_drew')::boolean, false), coalesce((p_roadmap->>'banker_drew')::boolean, false),
+    coalesce((p_roadmap->>'player_natural')::boolean, false), coalesce((p_roadmap->>'banker_natural')::boolean, false),
+    coalesce(p_roadmap->'remaining_rank_counts', '{}'::jsonb), coalesce(p_roadmap->'remaining_point_counts', '{}'::jsonb)
+  )
+  on conflict (source, table_id, shoe_no, round_no) do nothing;
+
+  insert into public.daily_prediction_results (
+    source, table_id, shoe_no, round_no, strategy_version,
+    predicted_result, confidence, actual_result, is_hit,
+    table_recent_hit_rate, table_recent_prediction_count, short_run_adjustment,
+    prediction_features, probabilities, resolved_at
+  ) values (
+    p_prediction->>'source', p_prediction->>'table_id', p_prediction->>'shoe_no', (p_prediction->>'round_no')::integer, p_prediction->>'strategy_version',
+    p_prediction->>'predicted_result', (p_prediction->>'confidence')::integer, p_prediction->>'actual_result', (p_prediction->>'is_hit')::boolean,
+    nullif(p_prediction->>'table_recent_hit_rate', '')::numeric, nullif(p_prediction->>'table_recent_prediction_count', '')::integer,
+    coalesce(p_prediction->'short_run_adjustment', '{}'::jsonb), coalesce(p_prediction->'prediction_features', '{}'::jsonb),
+    coalesce(p_prediction->'probabilities', '{}'::jsonb), nullif(p_prediction->>'resolved_at', '')::timestamptz
+  )
+  on conflict (source, table_id, shoe_no, round_no, strategy_version) do nothing;
+
+  return jsonb_build_object('persisted', true);
+end;
+$$;
+
+revoke all on function public.persist_v098_settled_round(jsonb, jsonb) from public, anon, authenticated;
+grant execute on function public.persist_v098_settled_round(jsonb, jsonb) to service_role;
+
 create or replace function public.limit_cloud_table_snapshot_writes()
 returns trigger
 language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  previous_snapshot public.cloud_table_snapshots%rowtype;
+  has_round_or_shoe_change boolean := false;
+  has_connection_transition boolean := false;
 begin
   perform pg_advisory_xact_lock(hashtext(coalesce(new.session_id, '')));
-  if exists (
-    select 1
-    from public.cloud_table_snapshots
-    where session_id is not distinct from new.session_id
-      and snapshot_at > now() - interval '5 seconds'
-  ) then
-    return null;
+  select * into previous_snapshot
+  from public.cloud_table_snapshots
+  where session_id is not distinct from new.session_id
+  order by snapshot_at desc
+  limit 1;
+
+  if previous_snapshot.id is not null
+     and previous_snapshot.snapshot_at > now() - interval '30 seconds' then
+    has_connection_transition :=
+      new.metadata->'connectionState' is distinct from previous_snapshot.metadata->'connectionState';
+
+    select exists (
+      select 1
+      from jsonb_array_elements(coalesce(new.table_summary, '[]'::jsonb)) next_table
+      left join jsonb_array_elements(coalesce(previous_snapshot.table_summary, '[]'::jsonb)) prior_table
+        on prior_table->>'tableId' = next_table->>'tableId'
+      where prior_table is null
+         or next_table->>'shoe' is distinct from prior_table->>'shoe'
+         or coalesce(nullif(next_table->>'round', '')::integer, 0)
+            > coalesce(nullif(prior_table->>'round', '')::integer, 0)
+    ) into has_round_or_shoe_change;
+
+    if not has_connection_transition and not has_round_or_shoe_change then
+      return null;
+    end if;
   end if;
   return new;
 end;

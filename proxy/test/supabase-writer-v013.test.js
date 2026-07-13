@@ -19,6 +19,8 @@ const baseRound = {
 
 const bankerLeaningTable = {
   tableId: 'BAG13',
+  shoe: 913,
+  round: 17,
   bankerCount: 20,
   playerCount: 10,
   tieCount: 0,
@@ -68,6 +70,8 @@ test('v050 low-performing table keeps banker/player prediction and records all-M
 test('v098 revealed winner never changes an already-created neutral pre-result prediction', () => {
   const neutralTable = {
     tableId: 'BAG13',
+    shoe: 913,
+    round: 17,
     bankerCount: 10,
     playerCount: 10,
     tieCount: 0,
@@ -128,8 +132,8 @@ test('v067 prediction rows persist high-hit main and side weights plus captured 
     roomId: '29',
     dealerName: '毛毛',
     totalPlayers: 906,
-    shoe: 14092,
-    round: 21,
+    shoe: 913,
+    round: 17,
     bankerPairCount: 1,
     playerPairCount: 4,
     state: 0,
@@ -179,7 +183,9 @@ test('v063 dragon bonus prediction is single-side only and skips close two-sided
     winner: 'banker',
     rawResult: [1, 2, 14, 15, 0, 0, -1, -1, 9, 3],
   }, {
-    tableId: 'BAG10',
+    tableId: 'BAG13',
+    shoe: 913,
+    round: 17,
     bankerCount: 10,
     playerCount: 10,
     tieCount: 0,

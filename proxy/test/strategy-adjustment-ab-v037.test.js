@@ -22,7 +22,7 @@ function snapshot(table) {
   return { status: { connected: true, authenticated: true, tableCount: 9 }, tables: [table] }
 }
 
-test('v037 report aggregates strategy adjustment AB hit rates across evaluated rounds', () => {
+test('v098 stable report does not run legacy strategy adjustment modes after outcomes', () => {
   const session = createStableReportSession({ startedAt: '2026-01-01T00:00:00.000Z' })
 
   session.recordSnapshot(snapshot(makeTable({ round: 0, lastRound: null })), 't0')
@@ -39,13 +39,13 @@ test('v037 report aggregates strategy adjustment AB hit rates across evaluated r
   assert.deepEqual(report.strategyAdjustmentSummary, {
     totalEvaluated: 6,
     byMode: {
-      normal: { evaluated: 3, hits: 0, misses: 3, hitRate: 0 },
+      normal: { evaluated: 6, hits: 0, misses: 6, hitRate: 0 },
       weakTableDeweight: { evaluated: 0, hits: 0, misses: 0, hitRate: 0 },
-      reverseCorrection: { evaluated: 3, hits: 0, misses: 3, hitRate: 0 },
+      reverseCorrection: { evaluated: 0, hits: 0, misses: 0, hitRate: 0 },
       strongTableBoost: { evaluated: 0, hits: 0, misses: 0, hitRate: 0 },
     },
   })
-  assert.equal(report.tables[0].strategyAdjustment.mode, 'reverse-correction')
+  assert.equal(report.tables[0].strategyAdjustment, undefined)
   assert.equal(report.tables[0].lastConfidence, 48)
 
   const text = formatReportText(report)

@@ -104,6 +104,9 @@ test('v012 Supabase client posts strategy, roadmap event and prediction result w
     serviceKey: 'sb_secret_test_key',
     fetchImpl: async (url, init) => {
       requests.push({ url: String(url), init })
+      if (init.method === 'GET') {
+        return { ok: true, json: async () => [{ version: buildLivePrediction(table).strategyVersion, status: 'active' }], text: async () => '' }
+      }
       return { ok: true, status: 201, text: async () => '' }
     },
   })
@@ -113,7 +116,7 @@ test('v012 Supabase client posts strategy, roadmap event and prediction result w
 
   assert.equal(requests.length, 3)
   assert.equal(requests[0].url.includes('/rest/v1/ai_strategy_versions'), true)
-  assert.equal(requests[1].url.includes('/rest/v1/daily_roadmap_events'), true)
-  assert.equal(requests[2].url.includes('/rest/v1/daily_prediction_results'), true)
-  assert.equal(requests[1].init.headers.Authorization, 'Bearer sb_secret_test_key')
+  assert.equal(requests[1].url.includes('/rest/v1/ai_strategy_versions'), true)
+  assert.equal(requests[2].url.includes('/rest/v1/rpc/persist_v098_settled_round'), true)
+  assert.equal(requests[2].init.headers.Authorization, 'Bearer sb_secret_test_key')
 })

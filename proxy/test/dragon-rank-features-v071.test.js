@@ -26,7 +26,7 @@ test('v071 side prediction features include A-K remaining-card counts for every 
       shoeProgressRatio: 0.0313,
     },
   }
-  const row = buildPredictionResultRow(round, { tableId: 'BAG05', shoe: 15396, round: 1, beadPlateRaw: '0202', bankerCount: 1, playerCount: 0, tieCount: 0 })
+  const row = buildPredictionResultRow(round, { tableId: 'BAG05', shoe: 15396, round: 0, beadPlateRaw: '0202', bankerCount: 1, playerCount: 0, tieCount: 0 })
   const rankCounts = row.prediction_features.side_card_rank_features.remainingRankCounts
   assert.equal(rankCounts.A, 31)
   assert.equal(rankCounts.K, 20)

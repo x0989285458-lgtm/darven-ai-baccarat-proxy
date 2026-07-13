@@ -1,10 +1,24 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { buildLivePrediction, createSupabaseIngestionClient } from '../src/supabase-writer.js'
 import { createApp } from '../src/server.js'
 
 const table = { tableId: 'BAG01', shoe: 88, round: 20, bankerCount: 10, playerCount: 9 }
 const completed = { tableId: 'BAG01', shoe: 88, round: 21, winner: 'banker', rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9] }
+
+test('v098 settlement RPC inserts both required rows in one database transaction', () => {
+  const sql = readFileSync(new URL('../../frontend/supabase/schema_v098_snapshot_safety.sql', import.meta.url), 'utf8')
+  const rpc = sql.match(/create or replace function public\.persist_v098_settled_round[\s\S]*?\$\$;/i)?.[0] ?? ''
+
+  assert.match(rpc, /insert into public\.daily_roadmap_events/i)
+  assert.match(rpc, /insert into public\.daily_prediction_results/i)
+  assert.match(rpc, /on conflict \(source, table_id, shoe_no, round_no\)/i)
+  assert.match(rpc, /on conflict \(source, table_id, shoe_no, round_no, strategy_version\)/i)
+  assert.equal((rpc.match(/on conflict[\s\S]*?do nothing/gi) ?? []).length, 2)
+  assert.doesNotMatch(rpc, /do update/i)
+  assert.match(rpc, /raise exception 'settlement identity mismatch'/i)
+})
 
 test('v098 persistence failure retries the identical pending snapshot without recomputing it', async () => {
   const attempts = []
@@ -48,9 +62,9 @@ test('v098 Supabase writer does not acknowledge or write either row for a mismat
   assert.deepEqual(requests, [])
 })
 
-test('v098 Supabase writer retries both idempotent rows after prediction persistence fails', async () => {
+test('v098 Supabase writer atomically persists both settlement rows through one RPC and retries the identical payload', async () => {
   const requests = []
-  let predictionFailures = 1
+  let transactionFailures = 1
   const client = createSupabaseIngestionClient({
     url: 'https://example.invalid',
     serviceKey: 'fixture-key',
@@ -58,24 +72,23 @@ test('v098 Supabase writer retries both idempotent rows after prediction persist
     fetchImpl: async (url, options) => {
       const path = new URL(url).pathname
       requests.push({ path, body: JSON.parse(options.body) })
-      if (path.endsWith('/daily_prediction_results') && predictionFailures-- > 0) {
+      if (path.endsWith('/rpc/persist_v098_settled_round') && transactionFailures-- > 0) {
         return { ok: false, status: 500, text: async () => 'fixture failure' }
       }
-      return { ok: true, status: 201, text: async () => '' }
+      return { ok: true, status: 200, text: async () => JSON.stringify({ persisted: true }) }
     },
   })
   const pending = buildLivePrediction(table)
 
-  await assert.rejects(client.persistRound(completed, table, pending), /daily_prediction_results failed/)
+  await assert.rejects(client.persistRound(completed, table, pending), /persist_v098_settled_round failed/)
   const result = await client.persistRound(completed, table, pending)
 
   assert.equal(result.prediction.prediction_features.prediction_timing, 'pre_result_context')
   assert.deepEqual(requests.map(({ path }) => path), [
-    '/rest/v1/daily_roadmap_events',
-    '/rest/v1/daily_prediction_results',
-    '/rest/v1/daily_roadmap_events',
-    '/rest/v1/daily_prediction_results',
+    '/rest/v1/rpc/persist_v098_settled_round',
+    '/rest/v1/rpc/persist_v098_settled_round',
   ])
-  assert.deepEqual(requests[3].body, requests[1].body)
+  assert.deepEqual(requests[1].body, requests[0].body)
+  assert.deepEqual(Object.keys(requests[0].body).sort(), ['p_prediction', 'p_roadmap'])
 })
 

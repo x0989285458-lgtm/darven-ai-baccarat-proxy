@@ -46,7 +46,7 @@ test('v019 evaluates five-road weights plus global stats without producing a dis
   assert.ok(prediction.confidence >= 30 && prediction.confidence <= 70)
 })
 
-test('v019 stable report exposes only main/side hit rates in formatted report while retaining internal weights in JSON', () => {
+test('v098 stable report exposes saved hit rates without attaching the legacy report predictor', () => {
   const session = createStableReportSession({ startedAt: '2026-01-01T00:00:00.000Z', globalStats: { banker: 188, player: 164, tie: 30 } })
   session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [makeTable()] }, 't1')
   session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [makeTable({ round: 1, lastRound: { tableId: 'BAG01', shoe: 1, round: 1, winner: 2 } })] }, 't2')
@@ -54,7 +54,8 @@ test('v019 stable report exposes only main/side hit rates in formatted report wh
   assert.equal(report.version, '037')
   assert.equal(report.total.hits, 1)
   assert.equal(report.tables[0].predictionWeights.shoeRoad, 0.30)
-  assert.equal(report.tables[0].patterns.longDragon.side, '莊')
+  assert.deepEqual(report.tables[0].patterns.longDragon, { side: null, length: 0 })
+  assert.deepEqual(Object.keys(report.tables[0].predictionDiagnostics).sort(), ['predictionTiming', 'strategyVersion'])
   assert.equal(report.displayOnly.main, '主副預測命中率')
   assert.equal(report.displayOnly.hideSourceWeightHitRates, true)
 })

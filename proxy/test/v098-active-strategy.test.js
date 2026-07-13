@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { buildDefaultEqualStrategy, buildFormalActiveStrategy, buildShortRunAdjustedStrategy } from '../src/supabase-writer.js'
+import { buildDefaultEqualStrategy, buildFormalActiveStrategy, buildLivePrediction, buildShortRunAdjustedStrategy, createSupabaseIngestionClient } from '../src/supabase-writer.js'
 
 test('v098 keeps every legacy initializer archived and only v097 formally active', () => {
   assert.deepEqual([
@@ -20,3 +20,41 @@ test('v098 migration archives all non-v097 active rows and enforces one active s
   assert.match(sql, /update\s+public\.ai_strategy_versions[\s\S]*status\s*=\s*'archived'[\s\S]*status\s*=\s*'active'[\s\S]*version\s*<>\s*'v097_副預測命中校準與門檻降5版'/i)
   assert.match(sql, /create\s+unique\s+index[\s\S]*on\s+public\.ai_strategy_versions[\s\S]*where\s*\(status\s*=\s*'active'\)/i)
 })
+
+test('v098 runtime read-back accepts exactly one active v097 strategy', async () => {
+  const expected = buildFormalActiveStrategy().version
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.invalid', serviceKey: 'fixture-key', retryAttempts: 1,
+    fetchImpl: async (url) => String(url).includes('status=eq.active')
+      ? { ok: true, json: async () => [{ version: expected, status: 'active' }], text: async () => '' }
+      : { ok: true, status: 201, text: async () => '' },
+  })
+
+  assert.deepEqual(await client.ensureInitialStrategy(), { ok: true, activeStrategyVersion: expected })
+  assert.deepEqual(client.getRuntimeStatus(), { ready: true, degraded: false, reason: null, activeStrategyVersion: expected })
+})
+
+for (const [name, activeRows] of [
+  ['zero active', []],
+  ['multiple active', [{ version: buildFormalActiveStrategy().version }, { version: 'legacy' }]],
+  ['wrong active version', [{ version: 'legacy' }]],
+]) {
+  test(`v098 runtime fails closed for ${name}`, async () => {
+    const requests = []
+    const client = createSupabaseIngestionClient({
+      url: 'https://example.invalid', serviceKey: 'fixture-key', retryAttempts: 1,
+      fetchImpl: async (url) => {
+        requests.push(String(url))
+        return String(url).includes('status=eq.active')
+          ? { ok: true, json: async () => activeRows, text: async () => '' }
+          : { ok: true, status: 201, text: async () => '' }
+      },
+    })
+
+    await assert.rejects(client.ensureInitialStrategy(), /active strategy verification failed/)
+    assert.equal(client.getRuntimeStatus().degraded, true)
+    const table = { tableId: 'BAG01', shoe: 8, round: 1 }
+    await assert.rejects(client.persistRound({ tableId: 'BAG01', shoe: 8, round: 2, winner: 'banker' }, table, buildLivePrediction(table)), /active strategy verification failed/)
+    assert.equal(requests.some((url) => url.includes('/rpc/persist_v098_settled_round')), false)
+  })
+}

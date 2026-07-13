@@ -36,7 +36,7 @@ test('v067 prediction row records high-hit weight strategy version and keeps ban
     { tableId: 'BAG67', shoe: 7, round: 8, rawResult: [1, 1, 2, 2], winner: 'player' },
     {
       tableId: 'BAG67', displayName: 'MT百家樂第67桌', tableType: 'BAC', roomId: 'R67', dealerName: 'T', totalPlayers: 30,
-      state: 0, orderState: 1, sourceUpdatedAt: '2026-07-05T00:00:00Z', shoe: 7, round: 8,
+      state: 0, orderState: 1, sourceUpdatedAt: '2026-07-05T00:00:00Z', shoe: 7, round: 7,
       bankerCount: 20, playerCount: 40, tieCount: 1, bankerPairCount: 1, playerPairCount: 8,
       beadPlateRaw: '020202020202', bigRoadRaw: 'P#P#P#P#P', bigEyeRaw: '222222', smallRoadRaw: '222222', cockroachRaw: '222222',
       nextBankerRaw: 'weak', nextPlayerRaw: '2222222222',

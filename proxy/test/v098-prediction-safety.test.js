@@ -271,7 +271,7 @@ test('v098 health and status expose one shared build version', async () => {
 test('v098 snapshot migration enforces write rate limit and retention cleanup', () => {
   const sql = readFileSync(new URL('../../frontend/supabase/schema_v098_snapshot_safety.sql', import.meta.url), 'utf8')
   assert.match(sql, /cloud_table_snapshots/i)
-  assert.match(sql, /5 seconds/i)
+  assert.match(sql, /30 seconds/i)
   assert.match(sql, /delete from public\.cloud_table_snapshots/i)
   assert.match(sql, /interval '24 hours'/i)
 })

@@ -26,6 +26,151 @@ export const LEGACY_REPORT_MAIN_WEIGHTS = {
 
 export const FORMAL_MAIN_PREDICTION_WEIGHTS = ALL_MT_EQUAL_MAIN_WEIGHTS
 export const MAIN_PREDICTION_WEIGHTS = LEGACY_REPORT_MAIN_WEIGHTS
+const SAVED_SIDE_KEYS = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
+
+export function buildStableReportFromRows(rows = []) {
+  const tables = new Map()
+  const invalidRows = []
+  const sourceRows = Array.isArray(rows) ? rows : []
+  const fingerprintsByKey = new Map()
+
+  for (const row of sourceRows) {
+    const identity = normalizeSavedRowIdentity(row)
+    const actions = exactSavedFlags(row?.prediction_features?.side_actions)
+    const hits = exactSavedFlags(row?.prediction_features?.side_hits)
+    if (!identity || !actions || !hits) continue
+    const key = savedSettlementKey(identity)
+    const fingerprints = fingerprintsByKey.get(key) ?? new Set()
+    fingerprints.add(JSON.stringify([row.predicted_result, row.actual_result, row.is_hit, actions, hits]))
+    fingerprintsByKey.set(key, fingerprints)
+  }
+  const conflictingKeys = new Set([...fingerprintsByKey].filter(([, fingerprints]) => fingerprints.size > 1).map(([key]) => key))
+
+  for (const [index, row] of sourceRows.entries()) {
+    const identity = normalizeSavedRowIdentity(row)
+    if (!identity) {
+      invalidRows.push({ index, reason: 'missing_identity' })
+      continue
+    }
+    const actions = exactSavedFlags(row?.prediction_features?.side_actions)
+    if (!actions) {
+      invalidRows.push({ index, reason: 'missing_or_invalid_side_actions' })
+      continue
+    }
+    const hits = exactSavedFlags(row?.prediction_features?.side_hits)
+    if (!hits) {
+      invalidRows.push({ index, reason: 'missing_or_invalid_side_hits' })
+      continue
+    }
+    const key = savedSettlementKey(identity)
+    if (conflictingKeys.has(key)) {
+      invalidRows.push({ index, reason: 'duplicate_or_conflicting_row' })
+      continue
+    }
+    const table = tables.get(identity.tableId) ?? createSavedRowAggregate(identity.tableId)
+    if (table.roundKeys.has(key)) {
+      invalidRows.push({ index, reason: 'duplicate_or_conflicting_row' })
+      continue
+    }
+    tables.set(identity.tableId, table)
+    table.roundKeys.add(key)
+    table.rounds += 1
+    if (row.actual_result === 'tie') table.pushes += 1
+    else if (row.actual_result === 'banker' || row.actual_result === 'player') {
+      table.mainEvaluated += 1
+      if (row.is_hit === true) table.hits += 1
+      else table.misses += 1
+    }
+    for (const sideKey of SAVED_SIDE_KEYS) {
+      if (!actions[sideKey]) continue
+      table.side[sideKey].actions += 1
+      table.sideActions += 1
+      if (hits[sideKey]) {
+        table.side[sideKey].hits += 1
+        table.sideHits += 1
+      }
+    }
+  }
+
+  const reportTables = [...tables.values()]
+    .sort((a, b) => a.tableId.localeCompare(b.tableId))
+    .map((table) => finalizeSavedRowAggregate(table, true))
+  const total = reportTables.reduce((sum, table) => {
+    sum.rounds += table.rounds
+    sum.hits += table.hits
+    sum.misses += table.misses
+    sum.pushes += table.pushes
+    sum.mainEvaluated += table.mainEvaluated
+    sum.sideActions += table.sideActions
+    sum.sideHits += table.sideHits
+    for (const key of SAVED_SIDE_KEYS) {
+      sum.side[key].actions += table.side[key].actions
+      sum.side[key].hits += table.side[key].hits
+    }
+    return sum
+  }, createSavedRowAggregate(null))
+
+  return { version: '098-row-contract', invalidRows, tables: reportTables, total: finalizeSavedRowAggregate(total, false) }
+}
+
+function savedSettlementKey(identity) {
+  return `${identity.source}:${identity.tableId}:${identity.shoe}:${identity.round}:${identity.strategyVersion}`
+}
+
+function normalizeSavedRowIdentity(row = {}) {
+  const source = String(row.source ?? '').trim()
+  const tableId = String(row.table_id ?? '').trim()
+  const shoe = String(row.shoe_no ?? '').trim()
+  const strategyVersion = String(row.strategy_version ?? '').trim()
+  const round = Number(row.round_no)
+  if (!source || !tableId || !shoe || !strategyVersion || !Number.isInteger(round) || round < 1) return null
+  if (!['banker', 'player'].includes(row.predicted_result)) return null
+  if (!['banker', 'player', 'tie'].includes(row.actual_result)) return null
+  return { source, tableId, shoe, round, strategyVersion }
+}
+
+function exactSavedFlags(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const keys = Object.keys(value).sort()
+  if (keys.length !== SAVED_SIDE_KEYS.length || !SAVED_SIDE_KEYS.every((key) => keys.includes(key))) return null
+  if (!SAVED_SIDE_KEYS.every((key) => typeof value[key] === 'boolean')) return null
+  return Object.fromEntries(SAVED_SIDE_KEYS.map((key) => [key, value[key]]))
+}
+
+function createSavedRowAggregate(tableId) {
+  return {
+    tableId,
+    roundKeys: new Set(),
+    rounds: 0,
+    hits: 0,
+    misses: 0,
+    pushes: 0,
+    mainEvaluated: 0,
+    sideActions: 0,
+    sideHits: 0,
+    side: Object.fromEntries(SAVED_SIDE_KEYS.map((key) => [key, { actions: 0, hits: 0 }])),
+  }
+}
+
+function finalizeSavedRowAggregate(value, includeTableId) {
+  const side = Object.fromEntries(SAVED_SIDE_KEYS.map((key) => {
+    const item = value.side[key]
+    return [key, { ...item, hitRate: item.actions ? percent(item.hits, item.actions) : null }]
+  }))
+  return {
+    ...(includeTableId ? { tableId: value.tableId } : {}),
+    rounds: value.rounds,
+    hits: value.hits,
+    misses: value.misses,
+    pushes: value.pushes,
+    mainEvaluated: value.mainEvaluated,
+    hitRate: value.mainEvaluated ? percent(value.hits, value.mainEvaluated) : null,
+    sideActions: value.sideActions,
+    sideHits: value.sideHits,
+    sideHitRate: value.sideActions ? percent(value.sideHits, value.sideActions) : null,
+    side,
+  }
+}
 
 export function createStableReportSession({ targetTableCount = 9, startedAt = new Date().toISOString(), labelOrder = DEFAULT_LABELS, globalStats = null } = {}) {
   const tables = new Map()
@@ -148,10 +293,7 @@ export function createStableReportSession({ targetTableCount = 9, startedAt = ne
             item.pendingPrediction = null
           }
         }
-        const nextPending = {
-          ...buildLivePrediction(table),
-          reportPrediction: predictMainOutcome(table, rollingGlobalStats, item.tablePerformance),
-        }
+        const nextPending = buildLivePrediction(table)
         const currentPending = item.pendingPrediction
         if (!currentPending
           || String(currentPending.targetShoe ?? '') !== String(nextPending.targetShoe ?? '')
@@ -537,7 +679,8 @@ function scoreMainPrediction(prediction, winner, confidence = 100) {
 }
 
 function recordSideLearning(item, predictions, actuals, mainPrediction, savedActions = null) {
-  const actions = savedActions ?? buildSideActions(predictions, mainPrediction)
+  const actions = exactSavedFlags(savedActions)
+  if (!actions) return
   for (const key of Object.keys(SIDE_PREDICTION_THRESHOLDS)) {
     const probability = predictions[key] ?? 0
     const actionable = actions[key]

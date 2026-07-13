@@ -256,11 +256,23 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
       from public.daily_prediction_results
       where created_at >= date_trunc('day', now())`)
     const tableRows = await db.query(`with scoped as (
-        select table_id, predicted_result, actual_result, is_hit, prediction_features
+        select table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, prediction_features
         from public.daily_prediction_results
         where created_at >= date_trunc('day', now())
+      ), validated as (
+        select *,
+          jsonb_typeof(prediction_features->'side_actions') = 'object'
+          and (prediction_features->'side_actions' ? 'tie')
+          and (prediction_features->'side_actions' ? 'superSix')
+          and (prediction_features->'side_actions' ? 'bankerPair')
+          and (prediction_features->'side_actions' ? 'playerPair')
+          and (prediction_features->'side_actions' ? 'bankerDragon')
+          and (prediction_features->'side_actions' ? 'playerDragon')
+          and jsonb_object_length(prediction_features->'side_actions') = 6 as side_actions_available
+        from scoped
       ), side as (
         select table_id,
+          bool_and(side_actions_available) as side_actions_available,
           sum(
             case when (prediction_features->'side_actions'->>'tie')::boolean is true then 1 else 0 end +
             case when (prediction_features->'side_actions'->>'superSix')::boolean is true then 1 else 0 end +
@@ -277,20 +289,34 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
             case when (prediction_features->'side_actions'->>'bankerDragon')::boolean is true and (prediction_features->'side_hits'->>'bankerDragon')::boolean is true then 1 else 0 end +
             case when (prediction_features->'side_actions'->>'playerDragon')::boolean is true and (prediction_features->'side_hits'->>'playerDragon')::boolean is true then 1 else 0 end
           )::int as side_hits
-        from scoped group by table_id
+        from validated group by table_id
       ) select s.table_id,
+          count(distinct s.table_id || ':' || s.shoe_no || ':' || s.round_no)::int as rounds,
           count(*) filter (where s.predicted_result in ('banker','player') and s.actual_result is not null)::int as main_total,
           count(*) filter (where s.predicted_result in ('banker','player') and s.is_hit is true)::int as main_hits,
           coalesce(side.side_actions,0)::int as side_actions,
-          coalesce(side.side_hits,0)::int as side_hits
+          coalesce(side.side_hits,0)::int as side_hits,
+          coalesce(side.side_actions_available, false) as side_actions_available
         from scoped s left join side on side.table_id=s.table_id
-        group by s.table_id, side.side_actions, side.side_hits`)
+        group by s.table_id, side.side_actions, side.side_hits, side.side_actions_available`)
     const reportRows = await db.query(`with scoped as (
         select created_at::date as day, table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, prediction_features
         from public.daily_prediction_results
         where created_at >= (current_date - interval '7 days') and created_at < current_date
+      ), validated as (
+        select *,
+          jsonb_typeof(prediction_features->'side_actions') = 'object'
+          and (prediction_features->'side_actions' ? 'tie')
+          and (prediction_features->'side_actions' ? 'superSix')
+          and (prediction_features->'side_actions' ? 'bankerPair')
+          and (prediction_features->'side_actions' ? 'playerPair')
+          and (prediction_features->'side_actions' ? 'bankerDragon')
+          and (prediction_features->'side_actions' ? 'playerDragon')
+          and jsonb_object_length(prediction_features->'side_actions') = 6 as side_actions_available
+        from scoped
       ), grouped as (
         select day,
+          bool_and(side_actions_available) as side_actions_available,
           count(distinct table_id || ':' || shoe_no || ':' || round_no)::int as rounds,
           count(*) filter (where predicted_result='banker')::int as banker_total,
           count(*) filter (where predicted_result='banker' and actual_result='banker')::int as banker_hits,
@@ -304,14 +330,14 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
           sum(case when (prediction_features->'side_actions'->>'bankerPair')::boolean is true and (prediction_features->'side_hits'->>'bankerPair')::boolean is true then 1 else 0 end + case when (prediction_features->'side_actions'->>'playerPair')::boolean is true and (prediction_features->'side_hits'->>'playerPair')::boolean is true then 1 else 0 end)::int as pair_hits,
           sum(case when (prediction_features->'side_actions'->>'superSix')::boolean is true then 1 else 0 end)::int as six_total,
           sum(case when (prediction_features->'side_actions'->>'superSix')::boolean is true and (prediction_features->'side_hits'->>'superSix')::boolean is true then 1 else 0 end)::int as six_hits
-        from scoped group by day
-      ) select to_char(day, 'YYYY-MM-DD') as date, rounds,
+        from validated group by day
+      ) select to_char(day, 'YYYY-MM-DD') as date, rounds, side_actions_available,
           case when banker_total>0 then round((banker_hits::numeric/banker_total)*100,1)::text || '%' else '-' end as banker_hit_rate,
           case when player_total>0 then round((player_hits::numeric/player_total)*100,1)::text || '%' else '-' end as player_hit_rate,
-          case when tie_total>0 then round((tie_hits::numeric/tie_total)*100,1)::text || '%' else '-' end as tie_hit_rate,
-          case when dragon_total>0 then round((dragon_hits::numeric/dragon_total)*100,1)::text || '%' else '-' end as dragon_hit_rate,
-          case when pair_total>0 then round((pair_hits::numeric/pair_total)*100,1)::text || '%' else '-' end as pair_hit_rate,
-          case when six_total>0 then round((six_hits::numeric/six_total)*100,1)::text || '%' else '-' end as six_hit_rate
+          case when not side_actions_available then 'unavailable' when tie_total>0 then round((tie_hits::numeric/tie_total)*100,1)::text || '%' else '-' end as tie_hit_rate,
+          case when not side_actions_available then 'unavailable' when dragon_total>0 then round((dragon_hits::numeric/dragon_total)*100,1)::text || '%' else '-' end as dragon_hit_rate,
+          case when not side_actions_available then 'unavailable' when pair_total>0 then round((pair_hits::numeric/pair_total)*100,1)::text || '%' else '-' end as pair_hit_rate,
+          case when not side_actions_available then 'unavailable' when six_total>0 then round((six_hits::numeric/six_total)*100,1)::text || '%' else '-' end as six_hit_rate
         from grouped order by day desc limit 7`)
     const rowsByTable = new Map(tableRows.rows.map((row) => [row.table_id, row]))
     const order = ['BAG01','BAG02','BAG03','BAG04','BAG05','BAG06','BAG07','BAG08','BAG09']
@@ -319,7 +345,8 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
       todayRoundCount: Number(todayCount.rows[0]?.rounds ?? 0),
       tableStats: order.map((tableId) => {
         const row = rowsByTable.get(tableId) ?? (tableId === 'BAG04' ? rowsByTable.get('BAG3A') ?? rowsByTable.get('BAG03A') : null) ?? {}
-        return { tableId, tableName: tableLabel(tableId), rounds: 0, mainHitRate: pctText(Number(row.main_hits ?? 0), Number(row.main_total ?? 0)), sideHitRate: pctText(Number(row.side_hits ?? 0), Number(row.side_actions ?? 0)) }
+        const sideActionsAvailable = row.side_actions_available === true
+        return { tableId, tableName: tableLabel(tableId), rounds: Number(row.rounds ?? 0), mainHitRate: pctText(Number(row.main_hits ?? 0), Number(row.main_total ?? 0)), sideHitRate: sideActionsAvailable ? pctText(Number(row.side_hits ?? 0), Number(row.side_actions ?? 0)) : 'unavailable', sideActionsAvailable }
       }),
       dailyReports: reportRows.rows,
     }
@@ -437,8 +464,17 @@ function countDistinctRounds(rows) {
 function pctText(hits, total) { return total ? `${((hits / total) * 100).toFixed(1)}%` : '-' }
 function sideAction(features, key) { return features?.side_actions?.[key] === true }
 function sideHit(features, key) { return features?.side_hits?.[key] === true }
-const SIDE_THRESHOLDS = { tie:45, superSix:45, bankerPair:30, playerPair:30, bankerDragon:40, playerDragon:40 }
+const SAVED_SIDE_ACTION_KEYS = ['tie','superSix','bankerPair','playerPair','bankerDragon','playerDragon']
+function hasCompleteSavedSideActions(features = {}) {
+  const actions = features.side_actions
+  return actions && typeof actions === 'object' && !Array.isArray(actions)
+    && Object.keys(actions).length === SAVED_SIDE_ACTION_KEYS.length
+    && SAVED_SIDE_ACTION_KEYS.every((key) => typeof actions[key] === 'boolean')
+}
 function sideActionStats(rows, keys) {
+  if (rows.some((row) => !hasCompleteSavedSideActions(row.prediction_features))) {
+    return { actions: 0, hits: 0, rate: 'unavailable', available: false }
+  }
   let actions = 0, hits = 0
   for (const r of rows) {
     const f = r.prediction_features ?? {}
@@ -451,7 +487,7 @@ function sideActionStats(rows, keys) {
       if (dragonKey && keys.includes(dragonKey) && sideAction(f, dragonKey)) { actions += 1; if (sideHit(f, dragonKey)) hits += 1 }
     }
   }
-  return { actions, hits, rate: pctText(hits, actions) }
+  return { actions, hits, rate: pctText(hits, actions), available: true }
 }
 function tableLabel(tableId) {
   const map = { BAG01:'1桌', BAG02:'2桌', BAG03:'3桌', BAG04:'4桌', BAG05:'5桌', BAG06:'6桌', BAG07:'7桌', BAG08:'8桌', BAG09:'9桌' }
@@ -465,7 +501,7 @@ function buildTableStats(rows) {
     const mainTotal = mainRows.length
     const mainHits = mainRows.filter((r) => r.is_hit === true).length
     const side = sideActionStats(list, ['tie','superSix','bankerPair','playerPair','bankerDragon','playerDragon'])
-    return { tableId, tableName: tableLabel(tableId), rounds: countDistinctRounds(list), mainHitRate: pctText(mainHits, mainTotal), sideHitRate: side.rate }
+    return { tableId, tableName: tableLabel(tableId), rounds: countDistinctRounds(list), mainHitRate: pctText(mainHits, mainTotal), sideHitRate: side.rate, sideActionsAvailable: side.available }
   })
 }
 function buildDailyReports(rows) {
@@ -484,6 +520,7 @@ function buildDailyReports(rows) {
     return {
       date,
       rounds: countDistinctRounds(list),
+      side_actions_available: list.every((row) => hasCompleteSavedSideActions(row.prediction_features)),
       banker_hit_rate: category('banker'),
       player_hit_rate: category('player'),
       tie_hit_rate: category('tie'),

@@ -1259,7 +1259,13 @@ export function buildCloudTableSnapshotRow({ sessionId = null, tables = [], stat
     tables: safeTables,
     table_summary: safeTables.map((table) => compactTableSnapshot(table)),
     snapshot_at: new Date().toISOString(),
-    metadata,
+    metadata: {
+      ...metadata,
+      connectionState: {
+        connected: status.connected === true,
+        authenticated: status.authenticated === true,
+      },
+    },
   }
 }
 
@@ -1398,9 +1404,10 @@ export function createSupabaseIngestionClient({
   const completedRoundKeys = new Set()
   const inFlightRoundWrites = new Map()
   const preparedRoundWrites = new Map()
+  let runtimeStatus = { ready: false, degraded: false, reason: 'active_strategy_not_verified', activeStrategyVersion: null }
   let writeQueue = Promise.resolve()
 
-  async function postRest(path, body, conflict) {
+  async function postRest(path, body, conflict, { requireRepresentation = false } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase backend key is not configured' }
     const endpoint = new URL(`/rest/v1/${path}`, url)
     if (conflict) endpoint.searchParams.set('on_conflict', conflict)
@@ -1411,11 +1418,18 @@ export function createSupabaseIngestionClient({
           ['api' + 'key']: serviceKey,
           ['Author' + 'ization']: ['Bearer', serviceKey].join(' '),
           'Content-Type': 'application/json',
-          Prefer: 'resolution=merge-duplicates,return=minimal',
+          Prefer: `resolution=merge-duplicates,return=${requireRepresentation ? 'representation' : 'minimal'}`,
         },
         body: JSON.stringify(body),
       })
-      if (!response.ok) throw new Error(`Supabase ${path} failed: ${response.status} ${await response.text()}`)
+      const responseText = await response.text()
+      if (!response.ok) throw new Error(`Supabase ${path} failed: ${response.status} ${responseText}`)
+      if (requireRepresentation) {
+        let rows
+        try { rows = JSON.parse(responseText) } catch { rows = null }
+        if (!Array.isArray(rows) || rows.length !== 1) throw new Error(`Supabase ${path} snapshot write was suppressed`)
+        return { ok: true, status: response.status, row: rows[0] }
+      }
       return { ok: true, status: response.status }
     })
   }
@@ -1460,9 +1474,24 @@ export function createSupabaseIngestionClient({
   return {
     configured,
     async ensureInitialStrategy() {
-      return postRest('ai_strategy_versions', buildFormalActiveStrategy(), 'version')
+      try {
+        await postRest('ai_strategy_versions', buildFormalActiveStrategy(), 'version')
+        const activeRows = await getRest('ai_strategy_versions', { select: 'version,status', status: 'eq.active' })
+        if (!Array.isArray(activeRows) || activeRows.length !== 1 || activeRows[0]?.version !== ALL_MT_EQUAL_STRATEGY_VERSION) {
+          throw new Error('active strategy verification failed')
+        }
+        runtimeStatus = { ready: true, degraded: false, reason: null, activeStrategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION }
+        return { ok: true, activeStrategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION }
+      } catch (error) {
+        runtimeStatus = { ready: false, degraded: true, reason: 'active strategy verification failed', activeStrategyVersion: null }
+        throw new Error('active strategy verification failed', { cause: error })
+      }
+    },
+    getRuntimeStatus() {
+      return { ...runtimeStatus }
     },
     async persistRound(round, table, precomputedPrediction = null) {
+      if (runtimeStatus.degraded) throw new Error(runtimeStatus.reason)
       const target = validatePredictionTarget(precomputedPrediction, round)
       if (!target) throw new Error('prediction target mismatch')
       const preparationKey = `${target.tableId}:${target.shoe}:${target.round}:${precomputedPrediction.strategyVersion}`
@@ -1482,8 +1511,10 @@ export function createSupabaseIngestionClient({
 
       const writePromise = enqueueWrite(async () => {
         if (completedRoundKeys.has(roundKey)) return { skipped: true, reason: 'duplicate_round', event, prediction, compactEvent, compactPrediction }
-        await postRest('daily_roadmap_events', compactEvent, 'source,table_id,shoe_no,round_no')
-        await postRest('daily_prediction_results', compactPrediction, 'source,table_id,shoe_no,round_no,strategy_version')
+        await postRest('rpc/persist_v098_settled_round', {
+          p_roadmap: compactEvent,
+          p_prediction: compactPrediction,
+        })
         completedRoundKeys.add(roundKey)
         return { event, prediction, compactEvent, compactPrediction }
       }).finally(() => {
@@ -1504,7 +1535,7 @@ export function createSupabaseIngestionClient({
     },
     async writeCloudTableSnapshot(payload) {
       const row = buildCloudTableSnapshotRow(payload)
-      await enqueueWrite(() => postRest('cloud_table_snapshots', row))
+      await enqueueWrite(() => postRest('cloud_table_snapshots', row, null, { requireRepresentation: true }))
       return { ok: true, row }
     },
     async getLatestCloudTableSnapshot() {

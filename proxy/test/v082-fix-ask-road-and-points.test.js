@@ -8,7 +8,7 @@ test('v082 five-road ask-road compares road content instead of equal payload len
   const row = buildPredictionResultRow(
     { tableId: 'BAG82', shoe: 82, round: 12, winner: 'banker', rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 3, 6] },
     {
-      tableId: 'BAG82', shoe: 82, round: 12, bankerCount: 8, playerCount: 8, tieCount: 1,
+      tableId: 'BAG82', shoe: 82, round: 11, bankerCount: 8, playerCount: 8, tieCount: 1,
       beadPlateRaw: '0201020102', bigRoadRaw: 'BPBPB',
       nextBankerRaw: {
         bead_plate: '0202020202',
