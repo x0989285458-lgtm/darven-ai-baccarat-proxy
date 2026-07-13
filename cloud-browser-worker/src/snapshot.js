@@ -1,6 +1,25 @@
+import { BUILD_VERSION } from './runtime-config.js'
+
 const BANKER_VALUES = new Set(['2', 'b', 'banker', 'bank', '庄', '莊', 'zhuang'])
 const PLAYER_VALUES = new Set(['1', 'p', 'player', 'play', '闲', '閒', 'xian'])
 const TIE_VALUES = new Set(['3', 't', 'tie', 'draw', '和'])
+
+export function annotateRoundPayload(text, sourceEventId) {
+  try {
+    const payload = JSON.parse(String(text))
+    if (Array.isArray(payload)) {
+      return JSON.stringify(payload.map((item, index) => (
+        item && typeof item === 'object' && !Array.isArray(item)
+          ? { ...item, __captureEventId: `${sourceEventId}:${index}` }
+          : item
+      )))
+    }
+    if (!payload || typeof payload !== 'object') return text
+    return JSON.stringify({ ...payload, __captureEventId: String(sourceEventId) })
+  } catch {
+    return text
+  }
+}
 
 export function normalizeWinner(value, rawResult = null) {
   if (value != null) {
@@ -71,6 +90,7 @@ export function extractSnapshotFromPayloads(payloads = [], { sessionId = 'darven
 
   return {
     connected: true,
+    buildVersion: BUILD_VERSION,
     authenticated: tables.length > 0 || rounds.length > 0,
     sessionId,
     snapshotAt: now,
@@ -96,6 +116,8 @@ function normalizeRound(payload = {}) {
   const rawResult = Array.isArray(round.result) ? round.result : Array.isArray(round.rawResult) ? round.rawResult : null
   const tableId = firstValue(round, ['tableId', 'table_id', 'tableID', 'id', 'gameTableId'])
   const winner = normalizeWinner(firstValue(round, ['winner', 'win', 'main_result', 'mainResult']) ?? (Array.isArray(round.result) ? null : round.result), rawResult)
+  const sourceEventId = firstValue(payload, ['sourceEventId', 'eventId', 'event_id', '__captureEventId'])
+    ?? firstValue(round, ['sourceEventId', 'eventId', 'event_id', '__captureEventId'])
   return {
     tableId: tableId == null ? null : String(tableId),
     shoe: toNullableNumber(firstValue(round, ['shoe', 'current_shoe', 'shoeNo', 'shoe_no'])),
@@ -105,6 +127,7 @@ function normalizeRound(payload = {}) {
     bankerPoint: rawResult && rawResult.length > 9 ? toNullableNumber(rawResult[9]) : toNullableNumber(firstValue(round, ['bankerPoint', 'banker_point'])),
     rawResult: rawResult ?? payload,
     sourceAction: getActionName(payload.action) || payload.event || round.action || null,
+    ...(sourceEventId == null ? {} : { sourceEventId: String(sourceEventId) }),
   }
 }
 

@@ -1,11 +1,26 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  annotateRoundPayload,
   normalizeWinner,
   normalizeTable,
   extractSnapshotFromPayloads,
   redactUrlSecrets,
 } from '../src/snapshot.js'
+
+test('annotates a captured JSON round with a stable event id', () => {
+  assert.equal(
+    annotateRoundPayload('{"action":"show_poker","body":{"table_id":"BAG01","round":1}}', 'capture-1:2'),
+    '{"action":"show_poker","body":{"table_id":"BAG01","round":1},"__captureEventId":"capture-1:2"}',
+  )
+})
+
+test('annotates every object in a captured JSON round array with a distinct event id', () => {
+  assert.equal(
+    annotateRoundPayload('[{"table_id":"BAG01","round":1},{"table_id":"BAG02","round":1}]', 'capture-1:2'),
+    '[{"table_id":"BAG01","round":1,"__captureEventId":"capture-1:2:0"},{"table_id":"BAG02","round":1,"__captureEventId":"capture-1:2:1"}]',
+  )
+})
 
 test('normalizes common banker/player/tie winner values for backend round contract', () => {
   assert.equal(normalizeWinner('B'), 'banker')
@@ -82,6 +97,7 @@ test('extracts tables and rounds recursively from websocket/localStorage payload
   ], { sessionId: 'test-session', now: '2026-06-30T00:00:00.000Z' })
 
   assert.equal(snapshot.connected, true)
+  assert.equal(snapshot.buildVersion, 'v098')
   assert.equal(snapshot.authenticated, true)
   assert.equal(snapshot.sessionId, 'test-session')
   assert.equal(snapshot.tables.length, 1)

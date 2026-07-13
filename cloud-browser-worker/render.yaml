@@ -8,6 +8,14 @@ services:
     envVars:
       - key: MT_LOGIN_URL
         sync: false
+      - key: WORKER_ADMIN_KEY
+        sync: false
+      - key: INGEST_KEY
+        sync: false
+      - key: PUSH_TARGET_URL
+        sync: false
+      - key: NODE_ENV
+        value: production
       - key: HEADLESS
         value: "true"
       - key: SNAPSHOT_PATH

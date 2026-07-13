@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 
-export function isWorkerAdminAuthorized(req, configuredKey = process.env.WORKER_ADMIN_KEY, { allowQuery = true } = {}) {
+export function isWorkerAdminAuthorized(req, configuredKey = process.env.WORKER_ADMIN_KEY, { allowQuery = false } = {}) {
   if (!configuredKey) return true
   const url = new URL(req.url ?? '/', `http://${req.headers?.host ?? 'localhost'}`)
   const headerKey = req.headers?.['x-worker-admin-key']

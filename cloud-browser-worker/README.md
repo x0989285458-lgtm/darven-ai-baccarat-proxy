@@ -1,4 +1,4 @@
-# Darven Cloud Browser Worker v047
+# Darven Cloud Browser Worker v098
 
 Render 上的雲端瀏覽器抓牌 worker。它會打開 `MT_LOGIN_URL`，攔截頁面 JSON / WebSocket / localStorage 內容，整理成 proxy 需要的 `/snapshot` 格式。
 
@@ -24,6 +24,10 @@ darven-cloud-browser-worker
 
 ```env
 MT_LOGIN_URL=https://gsa.ofalive99.net/?token=你的MT_TOKEN&lang=zhtw
+NODE_ENV=production
+WORKER_ADMIN_KEY=在平台設定
+INGEST_KEY=在平台設定
+PUSH_TARGET_URL=https://darven-ai-baccarat-proxy.onrender.com/api/cloud-ingest/snapshot
 HEADLESS=true
 SNAPSHOT_PATH=/snapshot
 INITIAL_SETTLE_MS=5000
@@ -44,7 +48,7 @@ https://darven-cloud-browser-worker.onrender.com
 
 ```text
 https://darven-cloud-browser-worker.onrender.com/health
-https://darven-cloud-browser-worker.onrender.com/snapshot
+curl -H "x-worker-admin-key: $WORKER_ADMIN_KEY" https://darven-cloud-browser-worker.onrender.com/snapshot
 ```
 
 `snapshot` 應回傳：
@@ -79,11 +83,15 @@ npm install
 npm test
 PORT=8798 npm start
 curl http://127.0.0.1:8798/health
-curl http://127.0.0.1:8798/snapshot
+curl -H "x-worker-admin-key: $WORKER_ADMIN_KEY" http://127.0.0.1:8798/snapshot
 ```
 
 ## 注意
 
 - `MT_LOGIN_URL` 含 token，不要貼到公開 GitHub、截圖、群組。
+- production 缺少 `WORKER_ADMIN_KEY`、`INGEST_KEY` 或 `PUSH_TARGET_URL` 時會拒絕啟動。
+- `/snapshot` 與 `/reload` 只接受 `x-worker-admin-key` header，不接受 query token。
+- 主動推送只傳送 cursor 尚未確認的新 completed rounds；未收到 2xx 前，完整 envelope 會保留在 queue 並於重啟後優先重送。
+- VM 部署、回滾與驗證依 `deploy/vm/RUNBOOK.md`，不在開發流程直接部署。
 - 這版不改前端 UI。
 - 這版只新增 worker；原 proxy 已經支援 `CLOUD_BROWSER_URL`。

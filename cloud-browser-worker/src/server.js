@@ -1,11 +1,12 @@
 import http from 'node:http'
 import { chromium } from 'playwright'
 import { isWorkerAdminAuthorized } from './admin-auth.js'
-import { extractSnapshotFromPayloads, redactUrlSecrets } from './snapshot.js'
+import { annotateRoundPayload, extractSnapshotFromPayloads, redactUrlSecrets } from './snapshot.js'
 import { createSnapshotPusher } from './snapshot-pusher.js'
+import { BUILD_VERSION, captureSessionId, publicBuildInfo, validateProductionConfig } from './runtime-config.js'
 
 const SERVICE = 'darven-cloud-browser-worker'
-const VERSION = '0.48.0'
+validateProductionConfig(process.env)
 const PORT = Number(process.env.PORT ?? 8787)
 const MT_LOGIN_URL = process.env.MT_LOGIN_URL ?? ''
 const SNAPSHOT_PATH = process.env.SNAPSHOT_PATH ?? '/snapshot'
@@ -13,17 +14,20 @@ const PAGE_TIMEOUT_MS = Number(process.env.PAGE_TIMEOUT_MS ?? 45000)
 const SNAPSHOT_TIMEOUT_MS = Number(process.env.SNAPSHOT_TIMEOUT_MS ?? PAGE_TIMEOUT_MS)
 const MAX_CAPTURED_PAYLOADS = Number(process.env.MAX_CAPTURED_PAYLOADS ?? 250)
 const MAX_CAPTURED_ROUND_PAYLOADS = Number(process.env.MAX_CAPTURED_ROUND_PAYLOADS ?? 500)
+const BASE_SESSION_ID = process.env.SESSION_ID ?? 'darven-cloud-browser'
 
 const capturedPayloads = []
 const capturedRoundPayloads = []
 let browserPromise = null
 let pagePromise = null
+let pageGeneration = 0
+let capturedRoundSequence = 0
 let lastSnapshot = null
 let lastError = null
 
 const snapshotPusher = createSnapshotPusher({
   targetUrl: process.env.PUSH_TARGET_URL,
-  key: process.env.PUSH_KEY || process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY,
+  key: process.env.INGEST_KEY,
   getSnapshot,
   intervalMs: Number(process.env.PUSH_INTERVAL_MS ?? 5000),
   queuePath: process.env.PUSH_QUEUE_PATH ?? './data/latest-snapshot.json',
@@ -36,7 +40,8 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, {
         ok: true,
         service: SERVICE,
-        version: VERSION,
+        version: BUILD_VERSION,
+        ...publicBuildInfo(),
         configured: Boolean(MT_LOGIN_URL),
         loginUrl: MT_LOGIN_URL ? redactUrlSecrets(MT_LOGIN_URL) : null,
         lastError,
@@ -44,7 +49,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && url.pathname === SNAPSHOT_PATH) {
-      if (!isWorkerAdminAuthorized(req)) return sendJson(res, 401, { ok: false, error: 'unauthorized' })
+      if (!isWorkerAdminAuthorized(req, process.env.WORKER_ADMIN_KEY, { allowQuery: false })) return sendJson(res, 401, { ok: false, error: 'unauthorized' })
       const snapshot = await getSnapshot()
       return sendJson(res, 200, snapshot)
     }
@@ -68,7 +73,7 @@ const server = http.createServer(async (req, res) => {
 })
 
 server.listen(PORT, () => {
-  console.log(`${SERVICE} v${VERSION} listening on :${PORT}`)
+  console.log(`${SERVICE} ${BUILD_VERSION} listening on :${PORT}`)
   snapshotPusher.start()
 })
 
@@ -82,7 +87,7 @@ async function getSnapshot() {
     const browserPayload = await withTimeout(collectBrowserPayload(page), SNAPSHOT_TIMEOUT_MS, 'MT page snapshot timed out')
     const payloads = [...capturedPayloads, ...capturedRoundPayloads, browserPayload]
     const snapshot = extractSnapshotFromPayloads(payloads, {
-      sessionId: process.env.SESSION_ID ?? 'darven-cloud-browser',
+      sessionId: captureSessionId(BASE_SESSION_ID, pageGeneration),
       now: new Date().toISOString(),
       url: MT_LOGIN_URL,
     })
@@ -113,6 +118,7 @@ async function ensurePage() {
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
       locale: 'zh-TW',
     })
+    pageGeneration += 1
     attachCaptureHooks(page)
     await page.goto(MT_LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: PAGE_TIMEOUT_MS })
     await page.waitForTimeout(Number(process.env.INITIAL_SETTLE_MS ?? 5000))
@@ -186,7 +192,9 @@ function rememberPayload(payload) {
   capturedPayloads.push(text)
   while (capturedPayloads.length > MAX_CAPTURED_PAYLOADS) capturedPayloads.shift()
   if (isRoundPayload(text)) {
-    capturedRoundPayloads.push(text)
+    capturedRoundSequence += 1
+    const sourceEventId = `${captureSessionId(BASE_SESSION_ID, pageGeneration)}:${capturedRoundSequence}`
+    capturedRoundPayloads.push(annotateRoundPayload(text, sourceEventId))
     while (capturedRoundPayloads.length > MAX_CAPTURED_ROUND_PAYLOADS) capturedRoundPayloads.shift()
   }
 }
@@ -210,8 +218,9 @@ async function closePage() {
 function buildErrorSnapshot(errorMessage) {
   return {
     connected: false,
+    buildVersion: BUILD_VERSION,
     authenticated: false,
-    sessionId: process.env.SESSION_ID ?? 'darven-cloud-browser',
+    sessionId: captureSessionId(BASE_SESSION_ID, pageGeneration),
     snapshotAt: new Date().toISOString(),
     tables: [],
     rounds: [],
