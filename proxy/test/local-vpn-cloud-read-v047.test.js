@@ -9,7 +9,7 @@ test('v047 cloud proxy reads latest Supabase cloud snapshot when in-memory table
       session_id: 'local-vpn-capture',
       capture_source: 'local_chrome',
       table_count: 1,
-      tables: [{ tableId: 'BAG01', displayName: 'MT百家樂第1桌', round: 8 }],
+      tables: [{ tableId: 'BAG01', displayName: 'MT百家樂第1桌', shoe: 88, round: 8 }],
       snapshot_at: '2026-06-30T00:00:00.000Z',
     }),
     getLatestCloudCaptureStatus: async () => ({

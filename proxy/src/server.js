@@ -83,6 +83,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   async function handle(method, url, rawBody = '', headers = {}) {
     const requestUrl = new URL(url, 'http://127.0.0.1')
     const pathname = requestUrl.pathname
+    if (production && String(headers['x-forwarded-proto'] ?? '').toLowerCase() !== 'https') {
+      return jsonResponse(426, { ok: false, error: 'HTTPS is required' }, frontendOrigin)
+    }
     if (method === 'OPTIONS') return jsonResponse(204, {}, frontendOrigin)
     if (!['GET', 'POST'].includes(method)) return jsonResponse(405, { error: 'Method Not Allowed' }, frontendOrigin)
 
@@ -98,23 +101,23 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
 
     if (pathname === '/health') {
-      return jsonResponse(200, { ok: true, service: SERVICE, version: VERSION, deployMode: deployConfig.deployMode }, frontendOrigin)
+      return jsonResponse(200, { ok: true, service: SERVICE, version: VERSION, buildVersion: BUILD_VERSION, deployMode: deployConfig.deployMode }, frontendOrigin)
     }
     if (pathname === '/api/status') {
       const status = state.snapshot().status
       await persistCloudStateSnapshot(status)
       const cloudStatus = await readCloudSnapshotStatus()
       const nextStatus = { ...state.snapshot().status, ...cloudStatus }
-      return jsonResponse(200, { ...nextStatus, version: VERSION, deployMode: deployConfig.deployMode, statusText: cloudStatus?.statusText ?? describeCaptureStatus(nextStatus) }, frontendOrigin)
+      return jsonResponse(200, { ...nextStatus, version: VERSION, buildVersion: BUILD_VERSION, deployMode: deployConfig.deployMode, statusText: cloudStatus?.statusText ?? describeCaptureStatus(nextStatus) }, frontendOrigin)
     }
     if (pathname === '/api/tables') {
       if (hasSensitiveAuthQuery(requestUrl)) return jsonResponse(400, { ok: false, error: 'session token is not allowed in query' }, frontendOrigin)
-      if (!isMemberSessionAuthorized(headers)) return jsonResponse(401, { ok: false, error: 'member session is required' }, frontendOrigin)
+      if (!await isMemberSessionAuthorized(headers)) return jsonResponse(401, { ok: false, error: 'member session is required' }, frontendOrigin)
       return jsonResponse(200, await readBestTables(), frontendOrigin)
     }
     if (pathname === '/api/snapshot') {
       if (hasSensitiveAuthQuery(requestUrl)) return jsonResponse(400, { ok: false, error: 'session token is not allowed in query' }, frontendOrigin)
-      if (!isMemberSessionAuthorized(headers)) return jsonResponse(401, { ok: false, error: 'member session is required' }, frontendOrigin)
+      if (!await isMemberSessionAuthorized(headers)) return jsonResponse(401, { ok: false, error: 'member session is required' }, frontendOrigin)
       return jsonResponse(200, state.snapshot(), frontendOrigin)
     }
     if (method === 'POST' && pathname === '/api/cloud-ingest/snapshot') {
@@ -125,15 +128,39 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         validateIngestEnvelope(envelope, now())
         const sessionId = String(envelope.snapshot.sessionId ?? envelope.snapshot.session_id ?? 'cloud-browser')
         const previous = ingestSequences.get(sessionId)
-        if (previous != null && envelope.sequence <= previous) {
-          return jsonResponse(200, { ok: true, duplicate: true, sequence: envelope.sequence }, frontendOrigin)
+        if (previous != null && envelope.sequence <= previous.sequence) {
+          return jsonResponse(200, { ...previous.ack, duplicate: true, sequence: envelope.sequence }, frontendOrigin)
         }
         const parsed = parseCloudCapturePayload(envelope.snapshot)
-        await applyCloudCapturePayload({ parsed, state, writer: supabaseClient })
-        ingestSequences.set(sessionId, envelope.sequence)
-        return jsonResponse(200, { ok: true, duplicate: false, sequence: envelope.sequence, tableCount: parsed.tables.length }, frontendOrigin)
+        try {
+          assertDurableIngestWriter(supabaseClient, parsed.rounds.length)
+          await applyCloudCapturePayload({ parsed, state, writer: supabaseClient })
+        } catch (error) {
+          const durableError = new Error(error?.message ?? String(error))
+          durableError.statusCode = 503
+          durableError.durableFailure = true
+          throw durableError
+        }
+        const ack = {
+          ok: true,
+          accepted: true,
+          duplicate: false,
+          sessionId,
+          sequence: envelope.sequence,
+          acceptedRoundKeys: parsed.rounds.map(buildAcceptedRoundKey),
+        }
+        ingestSequences.set(sessionId, { sequence: envelope.sequence, ack })
+        state.setStatus({ health: 'ok', reason: null, expectedProtocolVersion: 'v098', receivedProtocolVersion: 'v098' })
+        return jsonResponse(200, ack, frontendOrigin)
       } catch (error) {
-        return jsonResponse(error?.statusCode ?? 400, { ok: false, error: error?.message ?? String(error) }, frontendOrigin)
+        if (error?.versionMismatch) {
+          state.setStatus({ health: 'degraded', reason: 'version_mismatch', expectedProtocolVersion: 'v098', receivedProtocolVersion: error.receivedProtocolVersion ?? null })
+        }
+        return jsonResponse(error?.statusCode ?? 400, {
+          ok: false,
+          ...(error?.durableFailure ? { accepted: false } : {}),
+          error: error?.versionMismatch ? 'version_mismatch' : error?.message ?? String(error),
+        }, frontendOrigin)
       }
     }
     if (pathname === '/api/cloud-capture/status') {
@@ -225,9 +252,10 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       }
     }
     if (method === 'POST' && pathname === '/api/online-license/member-login') return adminWrite(async () => {
-      const result = await licenseAdminClient.validateMemberLogin?.(parseJsonBody(rawBody))
+      const credentials = parseJsonBody(rawBody)
+      const result = await licenseAdminClient.validateMemberLogin?.(credentials)
       if (!result?.ok) return result
-      return { ...result, ...issueMemberSession(result) }
+      return { ...result, ...issueMemberSession(result, credentials) }
     })
     if (method === 'POST' && pathname === '/api/online-license/agent-login') return adminWrite(async (payload) => {
       const result = await licenseAdminClient.validateAgentLogin?.(payload)
@@ -261,6 +289,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       return null
     }
     const provided = headers['x-control-token']
+      ?? extractBearerToken(headers.authorization)
     if (safeEqual(provided, controlToken)) return null
     void recordOperationalEvent({ component: 'control_api', kind: 'unauthorized', statusCode: 401, message: 'control token is required' })
     return jsonResponse(401, { ok: false, error: 'control token is required' }, frontendOrigin)
@@ -275,7 +304,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     return { token, expiresAt }
   }
 
-  function issueMemberSession(loginResult = {}) {
+  function issueMemberSession(loginResult = {}, credentials = {}) {
     const expiresAtMs = now() + resolvedMemberSessionTtlMs
     const memberSessionToken = crypto.randomBytes(32).toString('base64url')
     for (const [token, session] of memberSessions) {
@@ -283,20 +312,40 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
     memberSessions.set(memberSessionToken, {
       memberAccount: loginResult.memberAccount,
+      verificationPassword: credentials.verificationPassword,
+      authorizationVersion: loginResult.license?.updated_at ?? loginResult.license?.updatedAt ?? loginResult.license?.id ?? null,
       expiresAtMs,
     })
     return { memberSessionToken, sessionExpiresAt: new Date(expiresAtMs).toISOString() }
   }
 
-  function isMemberSessionAuthorized(headers = {}) {
+  async function isMemberSessionAuthorized(headers = {}) {
     if (!memberAuthRequired) return true
-    const token = headers.authorization?.replace(/^Bearer\s+/i, '')
+    const token = extractBearerToken(headers.authorization)
     const session = token ? memberSessions.get(String(token)) : null
     if (!session || session.expiresAtMs <= now()) {
       if (token) memberSessions.delete(String(token))
       return false
     }
-    return Boolean(session.memberAccount)
+    try {
+      const validation = typeof licenseAdminClient.validateMemberSession === 'function'
+        ? await licenseAdminClient.validateMemberSession({
+          memberAccount: session.memberAccount,
+          authorizationVersion: session.authorizationVersion,
+        })
+        : await licenseAdminClient.validateMemberLogin?.({
+          memberAccount: session.memberAccount,
+          verificationPassword: session.verificationPassword,
+        })
+      if (!validation?.ok) {
+        memberSessions.delete(String(token))
+        return false
+      }
+      return true
+    } catch {
+      memberSessions.delete(String(token))
+      return false
+    }
   }
 
   function requireAdminSession(payload = {}, requestUrl, headers = {}) {
@@ -396,13 +445,15 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
 
   function savePendingPrediction(table) {
     const generated = { ...buildLivePrediction(table), createdAtMs: now() }
+    if (!isValidPendingPrediction(generated)) return null
     const key = predictionTargetKey(generated.targetTableId, generated.targetShoe, generated.targetRound)
-    if (!pendingPredictions.has(key)) pendingPredictions.set(key, structuredClone(generated))
+    if (!pendingPredictions.has(key)) pendingPredictions.set(key, deepFreeze(structuredClone(generated)))
     return pendingPredictions.get(key)
   }
 
   function withLivePrediction(table, actionable = true) {
-    return { ...table, prediction: actionable ? structuredClone(savePendingPrediction(table)) : null }
+    const pending = actionable ? savePendingPrediction(table) : null
+    return { ...table, prediction: pending ? structuredClone(pending) : null }
   }
 
 
@@ -472,7 +523,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         res.end(result.body)
         return
       }
-      if (!isMemberSessionAuthorized(req.headers)) {
+      if (!await isMemberSessionAuthorized(req.headers)) {
         const result = jsonResponse(401, { ok: false, error: 'member session is required' }, frontendOrigin)
         res.writeHead(result.statusCode, result.headers)
         res.end(result.body)
@@ -626,8 +677,39 @@ function safeEqual(provided, expected) {
   return crypto.timingSafeEqual(left, right)
 }
 
+function extractBearerToken(value) {
+  const match = /^Bearer\s+(\S+)$/i.exec(String(value ?? '').trim())
+  return match?.[1] ?? null
+}
+
 function predictionTargetKey(tableId, shoe, round) {
   return `${String(tableId ?? '')}:${String(shoe ?? '')}:${Number(round ?? 0)}`
+}
+
+const SIDE_PREDICTION_KEYS = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
+
+function isValidPendingPrediction(prediction = {}) {
+  if (!String(prediction.targetTableId ?? '').trim()) return false
+  if (!String(prediction.targetShoe ?? '').trim()) return false
+  if (!Number.isSafeInteger(Number(prediction.targetRound)) || Number(prediction.targetRound) < 1) return false
+  if (!hasExactKeys(prediction.sidePredictions, SIDE_PREDICTION_KEYS)) return false
+  if (!hasExactKeys(prediction.sideActions, SIDE_PREDICTION_KEYS)) return false
+  if (!SIDE_PREDICTION_KEYS.every((key) => Number.isFinite(prediction.sidePredictions[key]))) return false
+  if (!SIDE_PREDICTION_KEYS.every((key) => typeof prediction.sideActions[key] === 'boolean')) return false
+  return true
+}
+
+function hasExactKeys(value, expectedKeys) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const actual = Object.keys(value).sort()
+  const expected = [...expectedKeys].sort()
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index])
+}
+
+function deepFreeze(value) {
+  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value
+  for (const child of Object.values(value)) deepFreeze(child)
+  return Object.freeze(value)
 }
 
 function hasSensitiveAuthQuery(requestUrl) {
@@ -644,6 +726,13 @@ function parseJsonBody(rawBody) {
 
 function validateIngestEnvelope(envelope, currentTime) {
   if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) throw new Error('invalid payload')
+  if (envelope.protocolVersion !== 'v098') {
+    const error = new Error('version_mismatch')
+    error.statusCode = 409
+    error.versionMismatch = true
+    error.receivedProtocolVersion = envelope.protocolVersion
+    throw error
+  }
   const timestamp = Number(envelope.timestamp)
   if (!Number.isFinite(timestamp) || Math.abs(Number(currentTime) - timestamp) > 5 * 60 * 1000) {
     const error = new Error('timestamp outside allowed window')
@@ -660,6 +749,31 @@ function validateIngestEnvelope(envelope, currentTime) {
     if (table.tableId == null && table.table_id == null && table.id == null) throw new Error('each table requires tableId')
   }
   if (snapshot.rounds != null && !Array.isArray(snapshot.rounds)) throw new Error('rounds must be an array')
+  for (const round of snapshot.rounds ?? []) validateIngestRound(round)
+}
+
+function validateIngestRound(round) {
+  if (!round || typeof round !== 'object' || Array.isArray(round)) throw new Error('each round must be an object')
+  if (!String(round.tableId ?? '').trim()) throw new Error('each round requires tableId')
+  if (!String(round.shoe ?? '').trim()) throw new Error('each round requires shoe')
+  if (!Number.isSafeInteger(Number(round.round)) || Number(round.round) < 1) throw new Error('each round requires a positive integer round')
+  if (!['banker', 'player', 'tie'].includes(round.winner)) throw new Error('each round requires a valid winner')
+  if (!Array.isArray(round.rawResult) || round.rawResult.length !== 10 || round.rawResult.some((value) => !Number.isFinite(Number(value)))) {
+    throw new Error('each round requires a ten-value rawResult')
+  }
+}
+
+function buildAcceptedRoundKey(round = {}) {
+  return `${String(round.tableId).trim()}:${String(round.shoe).trim()}:${Number(round.round)}`
+}
+
+function assertDurableIngestWriter(writer, roundCount) {
+  if (!writer?.configured || typeof writer.writeCloudTableSnapshot !== 'function') {
+    throw new Error('durable snapshot writer is not configured')
+  }
+  if (roundCount > 0 && typeof writer.writeCloudRoundEvent !== 'function') {
+    throw new Error('durable round writer is not configured')
+  }
 }
 
 export function readRequestBody(req, maxBytes = 1024 * 1024) {

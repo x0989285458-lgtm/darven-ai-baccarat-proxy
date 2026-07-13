@@ -7,6 +7,7 @@ const key = 'test-ingest-key'
 
 function body(overrides = {}) {
   return JSON.stringify({
+    protocolVersion: 'v098',
     timestamp: now,
     sequence: 1,
     snapshot: {

@@ -1,11 +1,12 @@
 import { createShoeTracker } from './card-shoe.js'
+import { BUILD_VERSION } from './build-version.js'
 
 export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotRounds = true } = {}) {
   const shoeTracker = createShoeTracker({ deckCount: 8 })
   const state = {
     status: {
       service: 'Draven MT資料代理伺服器',
-      version: '042',
+      version: BUILD_VERSION,
       connected: false,
       lastMessageAt: null,
       reconnectCount: 0,

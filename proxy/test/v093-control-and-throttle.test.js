@@ -76,6 +76,6 @@ test('v093 control endpoints reject non-allowed Origin when configured', async (
 
 test('v098 production control endpoints fail closed when no control key is configured', async () => {
   const app = createApp({ autoConnect: false, production: true, deployMode: 'cloud', controlToken: '', cloudBrowserUrl: 'https://worker.example/snapshot' })
-  const response = await app.inject({ method: 'POST', url: '/api/cloud-capture/start' })
+  const response = await app.inject({ method: 'POST', url: '/api/cloud-capture/start', headers: { 'x-forwarded-proto': 'https' } })
   assert.equal(response.statusCode, 503)
 })
