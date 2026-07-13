@@ -37,7 +37,7 @@ export type BackendSideActions = Record<SidePredictionKey, boolean>
 export type BackendPrediction = { source?: string; strategyVersion: string; predictedResult: 'banker' | 'player'; recommendation?: string; confidence: number; probabilities?: { banker?: number; player?: number; tie?: number }; scoreTotals?: { banker?: number; player?: number }; sidePredictions?: BackendSidePredictions; sideActions?: BackendSideActions }
 
 type Status = { state: 'connecting' | 'connected' | 'error' | 'disconnected'; message: string }
-type LiveClientOptions = { onTables: (tables: LiveTable[]) => void; onStatus: (status: Status) => void }
+type LiveClientOptions = { memberSessionToken?: string; onTables: (tables: LiveTable[]) => void; onStatus: (status: Status) => void }
 
 type ProxyTable = {
   tableId?: string
@@ -77,16 +77,18 @@ export class LiveRoadClient {
   private streamWatchdog?: number
   private lastStreamAt = 0
   private stopped = true
-  private lastGoodTables: LiveTable[] = []
-  private consecutiveFailures = 0
 
   constructor(private readonly options: LiveClientOptions) {}
 
   connect() {
     this.disconnect(false)
     this.stopped = false
-    this.consecutiveFailures = 0
     this.options.onStatus({ state: 'connecting', message: '正在建立即時同步…' })
+    if (this.options.memberSessionToken) {
+      void this.poll()
+      this.timer = window.setInterval(() => void this.poll(), pollIntervalMs)
+      return
+    }
     this.connectStream()
     this.streamWatchdog = window.setInterval(() => {
       if (this.stopped) return
@@ -118,11 +120,7 @@ export class LiveRoadClient {
         this.lastStreamAt = Date.now()
         const payload = JSON.parse((event as MessageEvent).data)
         const tables = normalizeProxyTables(Array.isArray(payload?.tables) ? payload.tables : [])
-        if (!tables.length) return
-        this.lastGoodTables = tables
-        this.consecutiveFailures = 0
-        this.options.onTables(tables)
-        this.options.onStatus(buildTableStatus(tables, `即時同步中（${tables.length}桌）`))
+        this.publishTables(tables, `即時同步中（${tables.length}桌）`)
       })
       this.stream.addEventListener('heartbeat', () => { this.lastStreamAt = Date.now() })
       this.stream.onerror = () => {
@@ -138,39 +136,45 @@ export class LiveRoadClient {
   private async poll() {
     if (this.stopped) return
     try {
-      const response = await fetch(`${proxyApiUrl}/api/tables`, { cache: 'no-store' })
+      const headers = this.options.memberSessionToken ? { Authorization: `Bearer ${this.options.memberSessionToken}` } : undefined
+      const statusPromise = this.options.memberSessionToken ? readProxyStatus(this.options.memberSessionToken) : Promise.resolve<Status | null>(null)
+      const [response, proxyStatus] = await Promise.all([
+        fetch(`${proxyApiUrl}/api/tables`, { cache: 'no-store', headers }),
+        statusPromise,
+      ])
       if (!response.ok) throw new Error(`proxy ${response.status}`)
       const payload = await response.json()
       const tables = normalizeProxyTables(Array.isArray(payload) ? payload : [])
-      if (tables.length) {
-        this.lastGoodTables = tables
-        this.consecutiveFailures = 0
-        this.options.onTables(tables)
-        this.options.onStatus(buildTableStatus(tables, `雲端資料已連線（${tables.length}桌）`))
+      if (proxyStatus && /stale|過期/i.test(proxyStatus.message)) {
+        this.options.onTables([])
+        this.options.onStatus(proxyStatus)
         return
       }
-      this.consecutiveFailures += 1
-      if (this.lastGoodTables.length) {
-        this.options.onTables(this.lastGoodTables)
-        this.options.onStatus({ state: 'connected', message: `保留上一筆雲端資料（${this.lastGoodTables.length}桌）` })
-        return
-      }
-      this.options.onStatus(await readProxyStatus())
+      if (this.publishTables(tables, `雲端資料已連線（${tables.length}桌）`)) return
+      this.options.onStatus(proxyStatus ?? await readProxyStatus())
     } catch {
-      this.consecutiveFailures += 1
-      if (this.lastGoodTables.length && this.consecutiveFailures < 5) {
-        this.options.onTables(this.lastGoodTables)
-        this.options.onStatus({ state: 'connected', message: `雲端短暫延遲，保留上一筆資料（${this.lastGoodTables.length}桌）` })
-        return
-      }
+      this.options.onTables([])
       this.options.onStatus({ state: 'error', message: '雲端代理暫時無法讀取資料' })
     }
   }
+
+  private publishTables(tables: LiveTable[], liveMessage: string) {
+    const freshTables = tables.filter((table) => !isLiveTableStale(table))
+    if (freshTables.length !== tables.length || !freshTables.length) {
+      this.options.onTables([])
+      this.options.onStatus({ state: 'error', message: '桌況時間無效或資料過期，已停止出手' })
+      return false
+    }
+    this.options.onTables(freshTables)
+    this.options.onStatus({ state: 'connected', message: liveMessage })
+    return true
+  }
 }
 
-async function readProxyStatus(): Promise<Status> {
+async function readProxyStatus(memberSessionToken?: string): Promise<Status> {
   try {
-    const response = await fetch(`${proxyApiUrl}/api/status`, { cache: 'no-store' })
+    const headers = memberSessionToken ? { Authorization: `Bearer ${memberSessionToken}` } : undefined
+    const response = await fetch(`${proxyApiUrl}/api/status`, { cache: 'no-store', headers })
     if (!response.ok) return { state: 'error', message: `proxy狀態讀取失敗 (${response.status})` }
     const status = await response.json()
     if (typeof status.statusText === 'string' && status.statusText) {
@@ -188,16 +192,10 @@ async function readProxyStatus(): Promise<Status> {
 }
 
 export function isLiveTableStale(table: Pick<LiveTable, 'sourceUpdatedAt'> | { sourceUpdatedAt?: string | null }, now = Date.now(), maxAgeMs = liveTableMaxAgeMs) {
-  if (!table.sourceUpdatedAt) return false
+  if (!table.sourceUpdatedAt) return true
   const timestamp = Date.parse(table.sourceUpdatedAt)
-  if (!Number.isFinite(timestamp)) return false
+  if (!Number.isFinite(timestamp)) return true
   return now - timestamp > Math.max(1000, Number(maxAgeMs) || 120000)
-}
-
-function buildTableStatus(tables: LiveTable[], liveMessage: string): Status {
-  const staleCount = tables.filter((table) => isLiveTableStale(table)).length
-  if (staleCount > 0) return { state: 'connecting', message: `桌況資料可能不是即時（${staleCount}桌過期），等待Worker更新` }
-  return { state: 'connected', message: liveMessage }
 }
 
 function normalizeProxyTables(tables: ProxyTable[]): LiveTable[] {

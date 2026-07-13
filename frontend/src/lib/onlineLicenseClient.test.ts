@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { agentLogin, createOnlineLicense, deleteOnlineLicense, extendOnlineLicense, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus } from './onlineLicenseClient'
+import { agentLogin, createOnlineLicense, deleteOnlineLicense, extendOnlineLicense, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, validateMemberSession } from './onlineLicenseClient'
 
 describe('onlineLicenseClient v030', () => {
   it('posts member login using memberAccount and verificationPassword', async () => {
@@ -10,6 +10,18 @@ describe('onlineLicenseClient v030', () => {
     expect((fetchImpl as any).mock.calls[0][1]).toEqual(expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ memberAccount: 'User001', verificationPassword: 'DVAI1788_001' }),
+    }))
+  })
+
+  it('validates the short-lived member session through the backend bearer token flow', async () => {
+    const fetchImpl = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, sessionExpiresAt: '2026-07-13T20:30:00.000Z' }) })) as unknown as typeof fetch
+    const result = await validateMemberSession('member-session-1', fetchImpl)
+
+    expect(result.ok).toBe(true)
+    expect(String((fetchImpl as any).mock.calls[0][0])).toContain('/api/online-license/member-session')
+    expect((fetchImpl as any).mock.calls[0][1]).toEqual(expect.objectContaining({
+      method: 'POST',
+      headers: expect.objectContaining({ Authorization: 'Bearer member-session-1' }),
     }))
   })
 

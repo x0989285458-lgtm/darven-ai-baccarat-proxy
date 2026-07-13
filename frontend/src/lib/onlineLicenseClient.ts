@@ -18,6 +18,21 @@ export async function memberLogin(payload: { memberAccount: string; verification
   return postJson('/api/online-license/member-login', payload, fetchImpl)
 }
 
+export async function validateMemberSession(memberSessionToken: string, fetchImpl = fetch): Promise<{ ok: boolean; sessionExpiresAt?: string; error?: string }> {
+  if (!memberSessionToken) return { ok: false, error: '缺少會員 Session' }
+  try {
+    const response = await fetchImpl(`${proxyUrl}/api/online-license/member-session`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${memberSessionToken}` },
+    })
+    const body = typeof response.json === 'function' ? await response.json().catch(() => ({})) : {}
+    if (!response.ok || !body.ok) return { ok: false, error: body.error ?? '會員 Session 無效' }
+    return { ok: true, sessionExpiresAt: body.sessionExpiresAt }
+  } catch {
+    return { ok: false, error: '會員 Session 驗證失敗' }
+  }
+}
+
 export async function agentLogin(payload: { agentAccount: string; turnstileToken?: string }, fetchImpl = fetch) {
   return postJson('/api/online-license/agent-login', payload, fetchImpl)
 }

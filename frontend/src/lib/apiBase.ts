@@ -8,7 +8,10 @@ export function resolveDravenApiBaseUrl(env: DravenApiEnv = import.meta.env): st
   const localUrl = env.VITE_DRAVEN_LOCAL_API_URL ?? legacyLocalUrl ?? DEFAULT_LOCAL_API_URL
   const cloudUrl = env.VITE_DRAVEN_CLOUD_API_URL
 
-  if (mode === 'cloud' && cloudUrl) return stripTrailingSlash(cloudUrl)
+  if (mode === 'cloud') {
+    if (!cloudUrl?.trim()) throw new Error('Cloud API 設定錯誤：缺少 VITE_DRAVEN_CLOUD_API_URL')
+    return stripTrailingSlash(cloudUrl)
+  }
   return stripTrailingSlash(localUrl)
 }
 

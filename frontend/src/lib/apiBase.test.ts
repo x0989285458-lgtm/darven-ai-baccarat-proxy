@@ -14,6 +14,10 @@ describe('v038 cloud/local API base resolver', () => {
     })).toBe('https://api.darvenai.example')
   })
 
+  it('fails closed when cloud mode has no backend URL', () => {
+    expect(() => resolveDravenApiBaseUrl({ VITE_DRAVEN_API_MODE: 'cloud' })).toThrow('VITE_DRAVEN_CLOUD_API_URL')
+  })
+
   it('keeps legacy VITE_DRAVEN_PROXY_API_URL as local compatibility', () => {
     expect(resolveDravenApiBaseUrl({
       VITE_DRAVEN_PROXY_API_URL: 'http://127.0.0.1:8788/',

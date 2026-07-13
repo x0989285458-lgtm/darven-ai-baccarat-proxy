@@ -70,7 +70,7 @@ describe('LiveRoadClient v032 status messages', () => {
           sidePredictions: { tie: 11, superSix: 22, bankerPair: 33, playerPair: 44, bankerDragon: 55, playerDragon: 66 },
           sideActions: { tie: false, superSix: false, bankerPair: false, playerPair: false, bankerDragon: true, playerDragon: false },
         },
-        dealerName: '小旻', totalPlayers: 123, roomId: '29', state: 0, orderState: 1, sourceUpdatedAt: '2026-07-05T00:00:00.000Z',
+        dealerName: '小旻', totalPlayers: 123, roomId: '29', state: 0, orderState: 1, sourceUpdatedAt: new Date().toISOString(),
       }]) })
     }))
 
@@ -86,7 +86,7 @@ describe('LiveRoadClient v032 status messages', () => {
     expect(received[0].dealerName).toBe('小旻')
     expect(received[0].totalPlayers).toBe(123)
     expect(received[0].roomId).toBe('29')
-    expect(received[0].sourceUpdatedAt).toBe('2026-07-05T00:00:00.000Z')
+    expect(Date.parse(received[0].sourceUpdatedAt)).toBeGreaterThan(0)
     expect(received[0].prediction).toEqual({
       strategyVersion: 'v096_副預測權重與信心校準版', predictedResult: 'banker', confidence: 57,
       sidePredictions: { tie: 11, superSix: 22, bankerPair: 33, playerPair: 44, bankerDragon: 55, playerDragon: 66 },
@@ -98,7 +98,54 @@ describe('LiveRoadClient v032 status messages', () => {
     const now = Date.parse('2026-07-11T10:00:00.000Z')
     expect(isLiveTableStale({ sourceUpdatedAt: '2026-07-11T09:59:20.000Z' }, now, 60000)).toBe(false)
     expect(isLiveTableStale({ sourceUpdatedAt: '2026-07-11T09:58:00.000Z' }, now, 60000)).toBe(true)
-    expect(isLiveTableStale({ sourceUpdatedAt: null }, now, 60000)).toBe(false)
+    expect(isLiveTableStale({ sourceUpdatedAt: null }, now, 60000)).toBe(true)
+    expect(isLiveTableStale({ sourceUpdatedAt: 'not-a-date' }, now, 60000)).toBe(true)
+  })
+
+  it('fails closed and clears prior tables when a later response has no valid fresh rows', async () => {
+    vi.useFakeTimers()
+    const received: any[][] = []
+    let tableCalls = 0
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1 }) })
+      tableCalls += 1
+      const rows = tableCalls === 1 ? [{
+        tableId: 'BAG01', displayName: 'MT百家樂第1桌', tableType: 'BAC', round: 1,
+        beadPlateRaw: '0102', bigRoadRaw: '0102', sourceUpdatedAt: new Date().toISOString(),
+      }] : []
+      expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer member-session-1')
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(rows) })
+    }))
+
+    const client = new LiveRoadClient({ memberSessionToken: 'member-session-1', onTables: (tables) => received.push(tables), onStatus: vi.fn() })
+    client.connect()
+    await vi.advanceTimersByTimeAsync(5001)
+    await vi.advanceTimersByTimeAsync(5001)
+    client.disconnect(false)
+
+    expect(received[0]).toHaveLength(1)
+    expect(received.at(-1)).toEqual([])
+  })
+
+  it('fails closed when backend status reports stale despite fresh table timestamps', async () => {
+    vi.useFakeTimers()
+    const received: any[][] = []
+    const statuses: Array<{ state: string; message: string }> = []
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, statusText: '雲端資料 stale，等待Worker更新' }) })
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([{
+        tableId: 'BAG01', displayName: 'MT百家樂第1桌', tableType: 'BAC', round: 1,
+        beadPlateRaw: '0102', bigRoadRaw: '0102', sourceUpdatedAt: new Date().toISOString(),
+      }]) })
+    }))
+
+    const client = new LiveRoadClient({ memberSessionToken: 'member-session-1', onTables: (tables) => received.push(tables), onStatus: (status) => statuses.push(status) })
+    client.connect()
+    await vi.advanceTimersByTimeAsync(1)
+    client.disconnect(false)
+
+    expect(received.at(-1)).toEqual([])
+    expect(statuses.at(-1)?.message).toMatch(/stale|過期/i)
   })
 
   it('v093 throttles backup polling while SSE heartbeat is fresh', async () => {

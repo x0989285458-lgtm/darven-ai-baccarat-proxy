@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { mockTables } from './data/mockTables'
 import { LiveRoadClient, isLiveTableStale, type BackendSideActions, type BackendSidePredictions, type LiveTable, type SidePredictionKey } from './lib/liveClient'
-import { calculateMainOutcomeProbabilities, parseBigRoad, type MainOutcome, type Prediction } from './lib/roadParser'
+import { parseBigRoad, type MainOutcome, type Prediction } from './lib/roadParser'
 import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from './lib/supabaseClient'
 import { checkOnlineCoreStatus, getOnlineMemoryCenter, getOnlineStrategyAnalysis, updateOnlineAppSetting, type OnlineCoreStatus, type OnlineMemoryCenter, type OnlineStrategyAnalysis } from './lib/onlineCoreClient'
-import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents, deleteOnlineLicense, extendOnlineLicense, getCloudDataStatus, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
+import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents, deleteOnlineLicense, extendOnlineLicense, getCloudDataStatus, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, validateMemberSession, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
 
 const SUPER_ADMIN = 'dv1788'
+const CURRENT_STRATEGY_VERSION = 'v097_副預測命中校準與門檻降5版'
+const MEMBER_SESSION_TOKEN_KEY = 'darven-member-session-token'
+const MEMBER_SESSION_EXPIRES_KEY = 'darven-member-session-expires-at'
 const label = { Banker: '莊', Player: '閒', Tie: '和' }
 const tableDisplayOrder = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
 type BackendScoreTotals = NonNullable<NonNullable<LiveTable['prediction']>['scoreTotals']>
@@ -25,7 +28,7 @@ function backendPredictionFromTable(table?: LiveTable | null): Prediction | null
   if (!recommendation || !Number.isFinite(confidence)) return null
   return {
     recommendation,
-    confidence: Math.max(30, Math.min(70, Math.round(confidence))),
+    confidence,
     risk: 'Medium',
     reason: '後端已計算該局方向與信心值，前端僅顯示。',
     scoreTotals: normalizeBackendScoreTotals(livePrediction?.scoreTotals),
@@ -49,7 +52,7 @@ function normalizeBackendRecommendation(value: unknown): MainOutcome | null {
 function backendSidePredictionsFromTable(table?: LiveTable | null): BackendSidePredictions | null {
   const value = table?.prediction?.sidePredictions
   if (!value || !sidePredictionKeys.every((key) => Number.isFinite(Number(value[key])))) return null
-  return Object.fromEntries(sidePredictionKeys.map((key) => [key, Math.max(0, Math.min(100, Math.round(Number(value[key]))))])) as BackendSidePredictions
+  return Object.fromEntries(sidePredictionKeys.map((key) => [key, Number(value[key])])) as BackendSidePredictions
 }
 
 function backendSideActionsFromTable(table?: LiveTable | null): BackendSideActions | null {
@@ -58,25 +61,37 @@ function backendSideActionsFromTable(table?: LiveTable | null): BackendSideActio
   return Object.fromEntries(sidePredictionKeys.map((key) => [key, value[key]])) as BackendSideActions
 }
 
+function backendOutcomeProbabilitiesFromTable(table?: LiveTable | null) {
+  const value = table?.prediction?.probabilities
+  const banker = Number(value?.banker)
+  const player = Number(value?.player)
+  const tie = Number(value?.tie)
+  if (![banker, player, tie].every(Number.isFinite)) return null
+  return { banker, player, tie }
+}
+
+function clearMemberSession() {
+  window.sessionStorage.removeItem(MEMBER_SESSION_TOKEN_KEY)
+  window.sessionStorage.removeItem(MEMBER_SESSION_EXPIRES_KEY)
+  window.sessionStorage.removeItem('darven-member-login')
+}
+
 export default function App() {
   const path = window.location.pathname
-  const memberLoggedIn = window.sessionStorage.getItem('darven-member-login') === 'yes'
+  const memberSessionToken = window.sessionStorage.getItem(MEMBER_SESSION_TOKEN_KEY) ?? ''
+  const [memberSessionState, setMemberSessionState] = useState<'checking' | 'valid' | 'invalid'>(() => (path === '/' || path === '') && memberSessionToken ? 'checking' : 'invalid')
+  const memberLoggedIn = memberSessionState === 'valid'
   const adminLoggedIn = Boolean(window.sessionStorage.getItem('darven-admin-account') && window.sessionStorage.getItem('darven-admin-session-token'))
   const [tables, setTables] = useState<LiveTable[]>([])
-  const [stableSelected, setStableSelected] = useState<LiveTable | null>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [status, setStatus] = useState({ state: 'disconnected', message: '等待雲端資料來源' })
   const [supabaseStatus, setSupabaseStatus] = useState({ state: isSupabaseConfigured ? 'connecting' : 'error', message: isSupabaseConfigured ? 'Supabase 檢查中' : 'Supabase 未設定' })
   const [onlineCoreStatus, setOnlineCoreStatus] = useState<OnlineCoreStatus>({ state: 'connecting', message: '記憶中心檢查中' })
-  const [updatedAt, setUpdatedAt] = useState(new Date())
   const client = useRef<LiveRoadClient | null>(null)
   const visibleTables = useMemo(() => tables.slice(0, 9), [tables])
   const selectedSafeIndex = Math.min(selectedIndex, Math.max(visibleTables.length - 1, 0))
   const selected = visibleTables[selectedSafeIndex] ?? tables[0]
-  useEffect(() => {
-    if (isCompleteTableUpdate(selected)) setStableSelected(selected)
-  }, [selected])
-  const displaySelected = stableSelected ?? selected
+  const displaySelected = selected
   const staleNotice = useMemo(() => {
     const staleTables = visibleTables.filter((table) => isLiveTableStale(table)).length
     if (staleTables > 0) return `資料過期：${staleTables}桌桌況資料可能不是即時`
@@ -88,11 +103,37 @@ export default function App() {
   const prediction = useMemo(() => backendPredictionFromTable(displaySelected), [displaySelected])
   const bonusPredictions = useMemo(() => backendSidePredictionsFromTable(displaySelected), [displaySelected])
   const sideActions = useMemo(() => backendSideActionsFromTable(displaySelected), [displaySelected])
-  const outcomePredictions = useMemo(() => prediction
-    ? calculateMainOutcomeProbabilities(prediction, bonusPredictions?.tie ?? 0)
-    : { player: 0, tie: 0, banker: 0 }, [prediction, bonusPredictions])
+  const outcomePredictions = useMemo(() => backendOutcomeProbabilitiesFromTable(displaySelected), [displaySelected])
+  const strategyIsCurrent = displaySelected?.prediction?.strategyVersion === CURRENT_STRATEGY_VERSION
+  const predictionsActionable = strategyIsCurrent && !staleNotice
 
   useEffect(() => () => client.current?.disconnect(false), [])
+  useEffect(() => {
+    if (path !== '/' && path !== '') return
+    if (!memberSessionToken) { setMemberSessionState('invalid'); return }
+    let active = true
+    const verify = async () => {
+      const expiresAt = window.sessionStorage.getItem(MEMBER_SESSION_EXPIRES_KEY)
+      if (expiresAt && (!Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now())) {
+        clearMemberSession()
+        if (active) setMemberSessionState('invalid')
+        return
+      }
+      const result = await validateMemberSession(memberSessionToken)
+      if (!active) return
+      if (!result.ok) {
+        clearMemberSession()
+        setMemberSessionState('invalid')
+        client.current?.disconnect(false)
+        return
+      }
+      if (result.sessionExpiresAt) window.sessionStorage.setItem(MEMBER_SESSION_EXPIRES_KEY, result.sessionExpiresAt)
+      setMemberSessionState('valid')
+    }
+    void verify()
+    const timer = window.setInterval(verify, 60000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [path, memberSessionToken])
   useEffect(() => {
     if (path === '/login' || path === '/admin-login' || path === '/後台登入') return
     if ((path === '/' || path === '') && !memberLoggedIn) return
@@ -115,12 +156,10 @@ export default function App() {
   const start = () => {
     client.current?.disconnect(false)
     client.current = new LiveRoadClient({
+      memberSessionToken,
       onTables: (next) => {
-        if (next.length) {
-          setTables(next)
-          setSelectedIndex((currentIndex) => Math.min(currentIndex, Math.max(next.slice(0, 9).length - 1, 0)))
-          setUpdatedAt(new Date())
-        }
+        setTables(next)
+        setSelectedIndex((currentIndex) => Math.min(currentIndex, Math.max(next.slice(0, 9).length - 1, 0)))
       },
       onStatus: setStatus,
     })
@@ -147,6 +186,7 @@ export default function App() {
     return <AdminApp tables={visibleTables} supabaseStatus={supabaseStatus} onlineCoreStatus={onlineCoreStatus} />
   }
 
+  if ((path === '/' || path === '') && memberSessionState === 'checking') return <SessionChecking />
   if ((path === '/' || path === '') && !memberLoggedIn) return <LoginApp />
 
   if (!displaySelected) return <WaitingForCloudData status={status} supabaseStatus={supabaseStatus} />
@@ -179,17 +219,19 @@ export default function App() {
         </div>
         <section className="prediction-card" aria-label="AI預測結果">
           <div className="prediction-row side-prediction-row" aria-label="副項目預測機率">
-            <PredictionMetric title="閒龍寶" value={bonusPredictions?.playerDragon ?? null} tone="Player" active={sideActions?.playerDragon ?? false} />
-            <PredictionMetric title="閒對" value={bonusPredictions?.playerPair ?? null} tone="Player" active={sideActions?.playerPair ?? false} />
-            <PredictionMetric title="超六" value={bonusPredictions?.superSix ?? null} tone="Tie" active={sideActions?.superSix ?? false} />
-            <PredictionMetric title="莊對" value={bonusPredictions?.bankerPair ?? null} tone="Banker" active={sideActions?.bankerPair ?? false} />
-            <PredictionMetric title="莊龍寶" value={bonusPredictions?.bankerDragon ?? null} tone="Banker" active={sideActions?.bankerDragon ?? false} />
+            <PredictionMetric title="閒龍寶" value={bonusPredictions?.playerDragon ?? null} tone="Player" active={predictionsActionable && (sideActions?.playerDragon ?? false)} />
+            <PredictionMetric title="閒對" value={bonusPredictions?.playerPair ?? null} tone="Player" active={predictionsActionable && (sideActions?.playerPair ?? false)} />
+            <PredictionMetric title="和局" value={bonusPredictions?.tie ?? null} tone="Tie" active={predictionsActionable && (sideActions?.tie ?? false)} />
+            <PredictionMetric title="超六" value={bonusPredictions?.superSix ?? null} tone="Tie" active={predictionsActionable && (sideActions?.superSix ?? false)} />
+            <PredictionMetric title="莊對" value={bonusPredictions?.bankerPair ?? null} tone="Banker" active={predictionsActionable && (sideActions?.bankerPair ?? false)} />
+            <PredictionMetric title="莊龍寶" value={bonusPredictions?.bankerDragon ?? null} tone="Banker" active={predictionsActionable && (sideActions?.bankerDragon ?? false)} />
           </div>
+          {!strategyIsCurrent && displaySelected?.prediction ? <strong className="status stale">策略版本不符，已停止出手</strong> : null}
           {prediction ? <>
             <div className="prediction-row main-probability-row" aria-label="莊閒預測機率">
-              <PredictionMetric title="閒" value={outcomePredictions.player} tone="Player" active={prediction.recommendation === 'Player'} />
-              <PredictionMetric title="和" value={outcomePredictions.tie} tone="Tie" active={label[prediction.recommendation] === '和'} />
-              <PredictionMetric title="莊" value={outcomePredictions.banker} tone="Banker" active={prediction.recommendation === 'Banker'} />
+              <PredictionMetric title="閒" value={outcomePredictions?.player ?? null} tone="Player" active={predictionsActionable && prediction.recommendation === 'Player'} />
+              <PredictionMetric title="和" value={outcomePredictions?.tie ?? null} tone="Tie" active={false} />
+              <PredictionMetric title="莊" value={outcomePredictions?.banker ?? null} tone="Banker" active={predictionsActionable && prediction.recommendation === 'Banker'} />
             </div>
             <h2 className="ai-prediction-line">AI預測:<span className={prediction.recommendation}>{label[prediction.recommendation]}</span></h2>
             <strong className="ai-confidence-line">AI信心值:{prediction.confidence}%</strong>
@@ -211,7 +253,7 @@ export default function App() {
 function enforceMaintenanceLogout(status: OnlineCoreStatus, path: string, liveClient: LiveRoadClient | null) {
   if (!status.maintenanceMode) return
   if (path === '/' || path === '') {
-    window.sessionStorage.removeItem('darven-member-login')
+    clearMemberSession()
     liveClient?.disconnect(false)
     if (window.location.pathname !== '/login') window.location.assign('/login')
     return
@@ -228,6 +270,10 @@ function enforceMaintenanceLogout(status: OnlineCoreStatus, path: string, liveCl
       if (window.location.pathname !== '/admin-login') window.location.assign('/admin-login')
     }
   }
+}
+
+function SessionChecking() {
+  return <main className="login-shell"><section className="login-card" aria-label="會員Session驗證中"><h1>瑞文AI百家預測</h1><strong>會員 Session 驗證中</strong></section></main>
 }
 
 function WaitingForCloudData({ status, supabaseStatus }: { status: { state: string; message: string }; supabaseStatus: { state: string; message: string } }) {
@@ -260,7 +306,13 @@ function LoginApp() {
         setLoginMessage(result.error || '登入失敗，請確認會員帳號與驗證密碼')
         return
       }
-      window.sessionStorage.setItem('darven-member-login', 'yes')
+      if (!result.memberSessionToken || !result.sessionExpiresAt) {
+        setLoginMessage('登入失敗：後端未提供會員 Session')
+        return
+      }
+      window.sessionStorage.setItem(MEMBER_SESSION_TOKEN_KEY, result.memberSessionToken)
+      window.sessionStorage.setItem(MEMBER_SESSION_EXPIRES_KEY, result.sessionExpiresAt)
+      window.sessionStorage.removeItem('darven-member-login')
       setLoginMessage('登入成功，正在進入前台')
       window.location.assign('/')
     } catch {
@@ -696,7 +748,7 @@ function useInactivityLogout(mode: 'admin' | 'member' | null) {
         if (window.location.pathname === '/admin') window.location.assign('/admin-login')
         return
       }
-      window.sessionStorage.removeItem('darven-member-login')
+      clearMemberSession()
       if (window.location.pathname === '/' || window.location.pathname === '') window.location.assign('/login')
     }
     const reset = () => {
@@ -710,14 +762,6 @@ function useInactivityLogout(mode: 'admin' | 'member' | null) {
       ;['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'].forEach((event) => window.removeEventListener(event, reset))
     }
   }, [mode])
-}
-
-function isCompleteTableUpdate(table?: LiveTable) {
-  const trend = table?.trend
-  if (!trend) return false
-  const round = Number(trend.current_round ?? 0)
-  const road = String(trend.bead_plate2 ?? '') || String(trend.big2 ?? '')
-  return round > 0 && road.length > 0
 }
 
 function normalizeRole(role?: string | null) {

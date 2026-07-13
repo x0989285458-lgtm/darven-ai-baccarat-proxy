@@ -13,4 +13,13 @@ describe('supabaseClient v032 proxy-first status', () => {
     expect(String((fetchImpl as any).mock.calls[0][0])).toContain('/api/online-license/status')
     expect((fetchImpl as any).mock.calls[0][1]).toEqual({ cache: 'no-store' })
   })
+
+  it('fails through the backend without attempting a direct Supabase fallback', async () => {
+    const fetchImpl = vi.fn(() => Promise.resolve({ ok: false, status: 503 })) as unknown as typeof fetch
+    const result = await checkSupabaseConnection(fetchImpl)
+
+    expect(result).toEqual({ ok: false, message: '授權後端連線失敗 (503)' })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(String((fetchImpl as any).mock.calls[0][0])).toContain('/api/online-license/status')
+  })
 })
