@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createProxyState } from '../src/state-store.js'
-import { buildPredictionResultRow } from '../src/supabase-writer.js'
+import { buildPredictionResultRow } from './helpers/prediction-result.js'
 import { createApp } from '../src/server.js'
 
 test('v048 infers new rounds from table snapshot deltas and keeps previous table as prediction context', async () => {

@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildPredictionResultRow, deriveBaccaratRoundFacts, buildSideActions } from '../src/supabase-writer.js'
+import { deriveBaccaratRoundFacts, buildSideActions } from '../src/supabase-writer.js'
+import { buildPredictionResultRow } from './helpers/prediction-result.js'
 
 test('v066 super six is actionable only when the main prediction is banker', () => {
   const playerMainActions = buildSideActions({ tie: 0, superSix: 95, bankerPair: 0, playerPair: 0, bankerDragon: 0, playerDragon: 0 }, 'player')

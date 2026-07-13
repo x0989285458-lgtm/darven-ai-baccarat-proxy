@@ -9,6 +9,8 @@ import {
 function playerBiasedTable(overrides = {}) {
   return {
     tableId: 'BAG02',
+    shoe: 1,
+    round: 0,
     displayName: 'MT百家樂第2桌',
     bankerCount: 10,
     playerCount: 28,
@@ -47,9 +49,10 @@ test('v020 caps very low hit-rate tables faster even before the long window fill
 
 test('v020 stable report exposes reverse/deweight status and version 023', () => {
   const session = createStableReportSession({ startedAt: '2026-01-01T00:00:00.000Z' })
-  session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [playerBiasedTable({ lastRound: { tableId: 'BAG02', shoe: 1, round: 1, winner: 2 } })] }, 't1')
-  session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [playerBiasedTable({ lastRound: { tableId: 'BAG02', shoe: 1, round: 2, winner: 2 } })] }, 't2')
-  session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [playerBiasedTable({ lastRound: { tableId: 'BAG02', shoe: 1, round: 3, winner: 2 } })] }, 't3')
+  session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [playerBiasedTable()] }, 't0')
+  session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [playerBiasedTable({ round: 1, lastRound: { tableId: 'BAG02', shoe: 1, round: 1, winner: 2 } })] }, 't1')
+  session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [playerBiasedTable({ round: 2, lastRound: { tableId: 'BAG02', shoe: 1, round: 2, winner: 2 } })] }, 't2')
+  session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [playerBiasedTable({ round: 3, lastRound: { tableId: 'BAG02', shoe: 1, round: 3, winner: 2 } })] }, 't3')
   const report = session.getReport('2026-01-01T00:10:00.000Z')
 
   assert.equal(report.version, '037')

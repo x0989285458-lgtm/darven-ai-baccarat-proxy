@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import {
   buildCompactPredictionResultDbRow,
   buildCompactRoadmapEventDbRow,
+  buildLivePrediction,
   buildPredictionResultRow,
   buildRoadmapEventRow,
   createSupabaseIngestionClient,
@@ -62,14 +63,15 @@ test('v091 persistRound posts compact DB rows while full row builders retain com
   })
 
   const fullEvent = buildRoadmapEventRow(round, table)
-  const fullPrediction = buildPredictionResultRow(round, table)
+  const pendingPrediction = buildLivePrediction({ ...table, shoe: round.shoe, round: round.round - 1 })
+  const fullPrediction = buildPredictionResultRow(round, table, pendingPrediction)
   assert.ok(fullEvent.raw_event.tableSnapshot)
   assert.ok(fullEvent.road_features.beadPlateRaw)
   assert.ok(fullPrediction.prediction_features.road_features.beadPlateRaw)
   assert.ok(fullPrediction.prediction_features.side_weights.tie)
   assert.ok(fullPrediction.prediction_features.side_prediction_rank_inputs.tie)
 
-  await client.persistRound(round, table)
+  await client.persistRound(round, table, pendingPrediction)
   const eventBody = requests.find((request) => request.url.includes('/daily_roadmap_events')).body
   const predictionBody = requests.find((request) => request.url.includes('/daily_prediction_results')).body
 
@@ -221,9 +223,9 @@ test('v092 Supabase writer serializes retries and skips duplicate actual rounds 
   })
 
   await Promise.all([
-    client.persistRound(round, table),
-    client.persistRound({ ...round }, { ...table }),
-    client.persistRound({ ...round, rawResult: [...round.rawResult] }, { ...table }),
+    client.persistRound(round, table, buildLivePrediction({ ...table, shoe: round.shoe, round: round.round - 1 })),
+    client.persistRound({ ...round }, { ...table }, buildLivePrediction({ ...table, shoe: round.shoe, round: round.round - 1 })),
+    client.persistRound({ ...round, rawResult: [...round.rawResult] }, { ...table }, buildLivePrediction({ ...table, shoe: round.shoe, round: round.round - 1 })),
   ])
 
   assert.equal(maxActiveRequests, 1)

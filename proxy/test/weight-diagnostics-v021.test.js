@@ -9,6 +9,8 @@ import {
 function bankerBiasedTable(overrides = {}) {
   return {
     tableId: 'BAG08',
+    shoe: 1,
+    round: 0,
     displayName: 'MT百家樂第8桌',
     bankerCount: 30,
     playerCount: 10,
@@ -64,8 +66,9 @@ test('v021 prediction exposes weight ablation and confidence calibration diagnos
 
 test('v021 stable report stores per-table diagnostics and version 023', () => {
   const session = createStableReportSession({ startedAt: '2026-01-01T00:00:00.000Z' })
-  session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [bankerBiasedTable({ lastRound: { tableId: 'BAG08', shoe: 1, round: 1, winner: 1 } })] }, 't1')
-  session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [bankerBiasedTable({ lastRound: { tableId: 'BAG08', shoe: 1, round: 2, winner: 2 } })] }, 't2')
+  session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [bankerBiasedTable()] }, 't0')
+  session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [bankerBiasedTable({ round: 1, lastRound: { tableId: 'BAG08', shoe: 1, round: 1, winner: 1 } })] }, 't1')
+  session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [bankerBiasedTable({ round: 2, lastRound: { tableId: 'BAG08', shoe: 1, round: 2, winner: 2 } })] }, 't2')
   const report = session.getReport('2026-01-01T00:10:00.000Z')
 
   assert.equal(report.version, '037')

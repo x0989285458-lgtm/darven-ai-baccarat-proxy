@@ -18,6 +18,7 @@ test('strict real-card mode persists only show_poker rounds with actual card cod
   })
 
   try {
+    app.state.setTables([{ tableId: 'BAG01', shoe: 1, round: 0 }])
     app.state.upsertRoundEvent({
       tableId: 'BAG01',
       shoe: 1,
@@ -29,6 +30,7 @@ test('strict real-card mode persists only show_poker rounds with actual card cod
     await setImmediate()
     assert.equal(persisted.length, 0)
 
+    app.state.setTables([{ tableId: 'BAG01', shoe: 1, round: 1 }])
     app.state.upsertRoundEvent({
       tableId: 'BAG01',
       shoe: 1,

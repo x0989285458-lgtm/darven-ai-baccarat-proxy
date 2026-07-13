@@ -4,8 +4,8 @@ import {
   SIDE_WEIGHT_KEYS,
   SIDE_PREDICTION_WEIGHT_PROFILES,
   SIDE_PREDICTION_ACTION_RATE_TARGETS,
-  buildPredictionResultRow,
 } from '../src/supabase-writer.js'
+import { buildPredictionResultRow } from './helpers/prediction-result.js'
 
 const sideKeys = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
 

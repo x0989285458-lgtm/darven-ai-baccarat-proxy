@@ -49,7 +49,7 @@ test('v027 server exposes online license status and bootstrap endpoints', async 
   const app = createApp({ autoConnect: false, licenseAdminClient })
   const login = await app.inject({ method: 'POST', url: '/api/online-license/agent-login', body: JSON.stringify({ agentAccount: 'dv1788' }) })
   const token = JSON.parse(login.body).adminSessionToken
-  const status = await app.inject({ method: 'GET', url: `/api/online-license/status?adminSessionToken=${encodeURIComponent(token)}` })
+  const status = await app.inject({ method: 'GET', url: '/api/online-license/status', headers: { authorization: `Bearer ${token}` } })
   const unauthBootstrap = await app.inject({ method: 'POST', url: '/api/online-license/bootstrap', body: JSON.stringify({ username: 'Dv1788', password: 'safe-pass', planName: '正式月卡', durationDays: 30 }) })
   const bootstrap = await app.inject({ method: 'POST', url: '/api/online-license/bootstrap', body: JSON.stringify({ username: 'Dv1788', password: 'safe-pass', planName: '正式月卡', durationDays: 30, adminSessionToken: token }) })
   assert.equal(status.statusCode, 200)

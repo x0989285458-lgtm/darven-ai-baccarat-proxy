@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildPredictionResultRow, buildSideActions, SIDE_PREDICTION_THRESHOLDS } from '../src/supabase-writer.js'
+import { buildSideActions, SIDE_PREDICTION_THRESHOLDS } from '../src/supabase-writer.js'
+import { buildPredictionResultRow } from './helpers/prediction-result.js'
 
 test('v071 banker/player dragon side actions are enabled and gated by matching main prediction', () => {
   assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerDragon < 101, true)

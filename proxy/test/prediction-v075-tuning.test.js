@@ -6,8 +6,8 @@ import {
   SIDE_PREDICTION_THRESHOLDS,
   SIDE_PREDICTION_WEIGHT_PROFILES,
   SIDE_WEIGHT_KEYS,
-  buildPredictionResultRow,
 } from '../src/supabase-writer.js'
+import { buildPredictionResultRow } from './helpers/prediction-result.js'
 
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 const rankKeys = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']

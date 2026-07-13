@@ -256,7 +256,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
       from public.daily_prediction_results
       where created_at >= date_trunc('day', now())`)
     const tableRows = await db.query(`with scoped as (
-        select table_id, actual_result, is_hit, prediction_features
+        select table_id, predicted_result, actual_result, is_hit, prediction_features
         from public.daily_prediction_results
         where created_at >= date_trunc('day', now())
       ), side as (
@@ -279,8 +279,8 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
           )::int as side_hits
         from scoped group by table_id
       ) select s.table_id,
-          count(*) filter (where s.actual_result is not null)::int as main_total,
-          count(*) filter (where s.is_hit is true)::int as main_hits,
+          count(*) filter (where s.predicted_result in ('banker','player') and s.actual_result is not null)::int as main_total,
+          count(*) filter (where s.predicted_result in ('banker','player') and s.is_hit is true)::int as main_hits,
           coalesce(side.side_actions,0)::int as side_actions,
           coalesce(side.side_hits,0)::int as side_hits
         from scoped s left join side on side.table_id=s.table_id
@@ -296,10 +296,10 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
           count(*) filter (where predicted_result='banker' and actual_result='banker')::int as banker_hits,
           count(*) filter (where predicted_result='player')::int as player_total,
           count(*) filter (where predicted_result='player' and actual_result='player')::int as player_hits,
-          count(*) filter (where predicted_result='tie')::int as tie_total,
-          count(*) filter (where predicted_result='tie' and actual_result='tie')::int as tie_hits,
-          sum(case when (prediction_features->'side_actions'->>'bankerDragon')::boolean is true then 1 else 0 end + case when (prediction_features->'side_actions'->>'playerDragon')::boolean is true then 1 else 0 end)::int as dragon_total,
-          sum(case when (prediction_features->'side_actions'->>'bankerDragon')::boolean is true and (prediction_features->'side_hits'->>'bankerDragon')::boolean is true then 1 else 0 end + case when (prediction_features->'side_actions'->>'playerDragon')::boolean is true and (prediction_features->'side_hits'->>'playerDragon')::boolean is true then 1 else 0 end)::int as dragon_hits,
+          sum(case when (prediction_features->'side_actions'->>'tie')::boolean is true then 1 else 0 end)::int as tie_total,
+          sum(case when (prediction_features->'side_actions'->>'tie')::boolean is true and (prediction_features->'side_hits'->>'tie')::boolean is true then 1 else 0 end)::int as tie_hits,
+          sum(case when predicted_result='banker' and (prediction_features->'side_actions'->>'bankerDragon')::boolean is true then 1 when predicted_result='player' and (prediction_features->'side_actions'->>'playerDragon')::boolean is true then 1 else 0 end)::int as dragon_total,
+          sum(case when predicted_result='banker' and (prediction_features->'side_actions'->>'bankerDragon')::boolean is true and (prediction_features->'side_hits'->>'bankerDragon')::boolean is true then 1 when predicted_result='player' and (prediction_features->'side_actions'->>'playerDragon')::boolean is true and (prediction_features->'side_hits'->>'playerDragon')::boolean is true then 1 else 0 end)::int as dragon_hits,
           sum(case when (prediction_features->'side_actions'->>'bankerPair')::boolean is true then 1 else 0 end + case when (prediction_features->'side_actions'->>'playerPair')::boolean is true then 1 else 0 end)::int as pair_total,
           sum(case when (prediction_features->'side_actions'->>'bankerPair')::boolean is true and (prediction_features->'side_hits'->>'bankerPair')::boolean is true then 1 else 0 end + case when (prediction_features->'side_actions'->>'playerPair')::boolean is true and (prediction_features->'side_hits'->>'playerPair')::boolean is true then 1 else 0 end)::int as pair_hits,
           sum(case when (prediction_features->'side_actions'->>'superSix')::boolean is true then 1 else 0 end)::int as six_total,
@@ -435,7 +435,7 @@ function countDistinctRounds(rows) {
   return new Set(rows.map((r) => `${r.table_id}:${r.shoe_no}:${r.round_no}`)).size
 }
 function pctText(hits, total) { return total ? `${((hits / total) * 100).toFixed(1)}%` : '-' }
-function sideScore(features, key) { return Number(features?.side_predictions?.[key] ?? 0) || 0 }
+function sideAction(features, key) { return features?.side_actions?.[key] === true }
 function sideHit(features, key) { return features?.side_hits?.[key] === true }
 const SIDE_THRESHOLDS = { tie:45, superSix:45, bankerPair:30, playerPair:30, bankerDragon:40, playerDragon:40 }
 function sideActionStats(rows, keys) {
@@ -444,13 +444,11 @@ function sideActionStats(rows, keys) {
     const f = r.prediction_features ?? {}
     for (const key of keys) {
       if (key === 'bankerDragon' || key === 'playerDragon') continue
-      if (sideScore(f, key) >= SIDE_THRESHOLDS[key]) { actions += 1; if (sideHit(f, key)) hits += 1 }
+      if (sideAction(f, key)) { actions += 1; if (sideHit(f, key)) hits += 1 }
     }
     if (keys.includes('bankerDragon') || keys.includes('playerDragon')) {
-      const bankerDragon = Math.round(sideScore(f, 'bankerDragon'))
-      const playerDragon = Math.round(sideScore(f, 'playerDragon'))
-      if (bankerDragon >= SIDE_THRESHOLDS.bankerDragon) { actions += 1; if (sideHit(f, 'bankerDragon')) hits += 1 }
-      if (playerDragon >= SIDE_THRESHOLDS.playerDragon) { actions += 1; if (sideHit(f, 'playerDragon')) hits += 1 }
+      const dragonKey = r.predicted_result === 'banker' ? 'bankerDragon' : r.predicted_result === 'player' ? 'playerDragon' : null
+      if (dragonKey && keys.includes(dragonKey) && sideAction(f, dragonKey)) { actions += 1; if (sideHit(f, dragonKey)) hits += 1 }
     }
   }
   return { actions, hits, rate: pctText(hits, actions) }
@@ -463,8 +461,9 @@ function buildTableStats(rows) {
   const order = ['BAG01','BAG02','BAG03','BAG04','BAG05','BAG06','BAG07','BAG08','BAG09']
   return order.map((tableId) => {
     const list = rows.filter((r) => r.table_id === tableId || (tableId === 'BAG04' && r.table_id === 'BAG03A'))
-    const mainTotal = list.filter((r) => r.actual_result).length
-    const mainHits = list.filter((r) => r.is_hit === true).length
+    const mainRows = list.filter((r) => ['banker', 'player'].includes(r.predicted_result) && r.actual_result)
+    const mainTotal = mainRows.length
+    const mainHits = mainRows.filter((r) => r.is_hit === true).length
     const side = sideActionStats(list, ['tie','superSix','bankerPair','playerPair','bankerDragon','playerDragon'])
     return { tableId, tableName: tableLabel(tableId), rounds: countDistinctRounds(list), mainHitRate: pctText(mainHits, mainTotal), sideHitRate: side.rate }
   })
@@ -478,6 +477,7 @@ function buildDailyReports(rows) {
   }
   return [...groups.entries()].sort((a,b)=>b[0].localeCompare(a[0])).slice(0,7).map(([date, list]) => {
     const category = (name) => {
+      if (name === 'tie') return sideActionStats(list, ['tie']).rate
       const rows = list.filter((r) => r.predicted_result === name)
       return pctText(rows.filter((r) => r.actual_result === name).length, rows.length)
     }

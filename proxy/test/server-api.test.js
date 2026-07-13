@@ -9,7 +9,7 @@ test('HTTP API exposes health, status, tables and latest snapshot', async () => 
 
   const health = await app.inject({ method: 'GET', url: '/health' })
   assert.equal(health.statusCode, 200)
-  assert.deepEqual(JSON.parse(health.body), { ok: true, service: 'Draven MT資料代理伺服器', version: '097', deployMode: 'local' })
+  assert.deepEqual(JSON.parse(health.body), { ok: true, service: 'Draven MT資料代理伺服器', version: '098', deployMode: 'local' })
 
   const status = await app.inject({ method: 'GET', url: '/api/status' })
   assert.equal(status.statusCode, 200)

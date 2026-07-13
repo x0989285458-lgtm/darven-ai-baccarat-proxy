@@ -1,4 +1,9 @@
 import { createShoeTracker, scoreCardShoeInfluence } from './card-shoe.js'
+import {
+  ALL_MT_EQUAL_MAIN_WEIGHTS,
+  SIDE_PREDICTION_THRESHOLDS as FORMAL_SIDE_PREDICTION_THRESHOLDS,
+  buildLivePrediction,
+} from './supabase-writer.js'
 
 const DEFAULT_LABELS = ['1', '2', '3', '3A', '5', '6', '7', '8', '9']
 const WINNER_LABELS = new Map([
@@ -6,18 +11,11 @@ const WINNER_LABELS = new Map([
   ['player', '閒'], ['banker', '莊'], ['tie', '和'], ['閒', '閒'], ['莊', '莊'], ['和', '和'],
 ])
 
-export const SIDE_PREDICTION_THRESHOLDS = {
-  tie: 42,
-  superSix: 60,
-  bankerPair: 48,
-  playerPair: 50,
-  bankerDragon: 48,
-  playerDragon: 52,
-}
+export const SIDE_PREDICTION_THRESHOLDS = FORMAL_SIDE_PREDICTION_THRESHOLDS
 
 export const MAIN_ACTION_CONFIDENCE_THRESHOLD = 30
 
-export const MAIN_PREDICTION_WEIGHTS = {
+export const LEGACY_REPORT_MAIN_WEIGHTS = {
   shoeRoad: 0.30,
   askRoad: 0.18,
   recentTrend: 0.17,
@@ -25,6 +23,9 @@ export const MAIN_PREDICTION_WEIGHTS = {
   auxiliaryRoads: 0.12,
   beadRoad: 0.10,
 }
+
+export const FORMAL_MAIN_PREDICTION_WEIGHTS = ALL_MT_EQUAL_MAIN_WEIGHTS
+export const MAIN_PREDICTION_WEIGHTS = LEGACY_REPORT_MAIN_WEIGHTS
 
 export function createStableReportSession({ targetTableCount = 9, startedAt = new Date().toISOString(), labelOrder = DEFAULT_LABELS, globalStats = null } = {}) {
   const tables = new Map()
@@ -54,7 +55,7 @@ export function createStableReportSession({ targetTableCount = 9, startedAt = ne
         lastPrediction: null,
         lastConfidence: null,
         lastPointText: null,
-        predictionWeights: MAIN_PREDICTION_WEIGHTS,
+        predictionWeights: { ...FORMAL_MAIN_PREDICTION_WEIGHTS, ...LEGACY_REPORT_MAIN_WEIGHTS },
         sourceScores: {},
         patterns: detectRoadTrends([]),
         performanceTracker: createTablePerformanceTracker(),
@@ -66,8 +67,6 @@ export function createStableReportSession({ targetTableCount = 9, startedAt = ne
     const item = tables.get(key)
     item.displayName = table.displayName || item.displayName
     item.tablePerformance = item.performanceTracker.summary()
-    item.pendingPrediction = predictMainOutcome(table, rollingGlobalStats, item.tablePerformance)
-    item.pendingSidePredictions = predictSideOutcomes(table)
     return item
   }
 
@@ -98,49 +97,67 @@ export function createStableReportSession({ targetTableCount = 9, startedAt = ne
       sourceTables.forEach((table, index) => {
         const item = ensureTable(table, index)
         const round = normalizeRound(table.lastRound)
-        if (!round) return
-        const roundKey = `${round.tableId ?? item.tableId}:${round.shoe ?? ''}:${round.round ?? ''}:${round.winner ?? ''}`
-        if (roundKey === item.lastRoundKey) return
+        if (round) {
+          const roundKey = `${round.tableId ?? item.tableId}:${round.shoe ?? ''}:${round.round ?? ''}:${round.winner ?? ''}`
+          const pending = item.pendingPrediction
+          const matchesPending = pending
+            && String(pending.targetTableId) === String(round.tableId ?? item.tableId)
+            && String(pending.targetShoe ?? '') === String(round.shoe ?? '')
+            && Number(pending.targetRound) === Number(round.round)
+          if (roundKey !== item.lastRoundKey && matchesPending) {
+            shoeTracker.recordRound(round)
+            const winner = normalizeWinner(round.winner)
+            const predictionMain = pending.predictedResult === 'banker' ? '莊' : '閒'
+            const actualSide = actualSideOutcomes(winner, round)
+            item.rounds += 1
+            item.lastRoundKey = roundKey
+            item.lastWinner = winner
+            item.lastPrediction = predictionMain
+            item.lastConfidence = pending.confidence
+            item.lastPointText = formatPointText(round)
+            item.lastSidePredictions = structuredClone(pending.sidePredictions)
+            item.lastSideActions = structuredClone(pending.sideActions)
+            const reportPrediction = pending.reportPrediction
+            item.predictionWeights = reportPrediction?.weights ?? { ...FORMAL_MAIN_PREDICTION_WEIGHTS, ...LEGACY_REPORT_MAIN_WEIGHTS }
+            item.sourceScores = reportPrediction?.sourceScores ?? pending.scoreTotals ?? {}
+            item.patterns = reportPrediction?.patterns ?? item.patterns
+            item.cardShoeFeatures = reportPrediction?.cardShoeFeatures ?? item.cardShoeFeatures
+            item.strategyAdjustment = reportPrediction?.strategyAdjustment ?? item.strategyAdjustment
+            item.predictionDiagnostics = reportPrediction ? {
+              sourceScores: reportPrediction.sourceScores,
+              weightAblation: reportPrediction.weightAblation,
+              confidenceCalibration: reportPrediction.confidenceCalibration,
+              strategyAdjustment: reportPrediction.strategyAdjustment,
+              patterns: reportPrediction.patterns,
+              cardShoeFeatures: reportPrediction.cardShoeFeatures,
+              predictionTiming: 'pre_result_context',
+              strategyVersion: pending.strategyVersion,
+            } : { predictionTiming: 'pre_result_context', strategyVersion: pending.strategyVersion }
 
-        const shoeState = shoeTracker.recordRound(round)
-        const tablePerformance = item.performanceTracker.summary()
-        const prediction = predictMainOutcome({ ...table, lastRound: round, shoeState }, rollingGlobalStats, tablePerformance)
-        const sidePredictions = predictSideOutcomes({ ...table, lastRound: round, shoeState })
-        const winner = normalizeWinner(round.winner)
-        const actualSide = actualSideOutcomes(winner, round)
-        item.rounds += 1
-        item.lastRoundKey = roundKey
-        item.lastWinner = winner
-        item.lastPrediction = prediction.main
-        item.lastConfidence = prediction.confidence
-        item.lastPointText = formatPointText(round)
-        item.predictionWeights = prediction.weights
-        item.sourceScores = prediction.sourceScores
-        item.patterns = prediction.patterns
-        item.cardShoeFeatures = prediction.cardShoeFeatures
-        item.tablePerformance = prediction.tablePerformance
-        item.strategyAdjustment = prediction.strategyAdjustment
-        item.predictionDiagnostics = {
-          sourceScores: prediction.sourceScores,
-          weightAblation: prediction.weightAblation,
-          confidenceCalibration: prediction.confidenceCalibration,
-          strategyAdjustment: prediction.strategyAdjustment,
-          patterns: prediction.patterns,
-          cardShoeFeatures: prediction.cardShoeFeatures,
+            const score = scoreMainPrediction(predictionMain, winner, pending.confidence)
+            if (score.push) item.pushes += 1
+            if (score.evaluated) {
+              item.mainEvaluated += 1
+              if (score.hit) item.hits += 1
+              else item.misses += 1
+              recordStrategyAdjustmentResult(item.strategyAdjustmentStats, reportPrediction?.strategyAdjustment?.mode, score)
+              item.performanceTracker.record({ prediction: predictionMain, winner })
+              item.tablePerformance = item.performanceTracker.summary()
+            }
+            recordSideLearning(item, pending.sidePredictions, actualSide, predictionMain, pending.sideActions)
+            item.pendingPrediction = null
+          }
         }
-
-        const score = scoreMainPrediction(prediction.main, winner, prediction.confidence)
-        if (score.push) item.pushes += 1
-        if (score.evaluated) {
-          item.mainEvaluated += 1
-          if (score.hit) item.hits += 1
-          else item.misses += 1
-          recordStrategyAdjustmentResult(item.strategyAdjustmentStats, prediction.strategyAdjustment?.mode, score)
-          item.performanceTracker.record({ prediction: prediction.main, winner })
-          item.tablePerformance = item.performanceTracker.summary()
+        const nextPending = {
+          ...buildLivePrediction(table),
+          reportPrediction: predictMainOutcome(table, rollingGlobalStats, item.tablePerformance),
         }
-
-        recordSideLearning(item, sidePredictions, actualSide, prediction.main)
+        const currentPending = item.pendingPrediction
+        if (!currentPending
+          || String(currentPending.targetShoe ?? '') !== String(nextPending.targetShoe ?? '')
+          || Number(currentPending.targetRound) !== Number(nextPending.targetRound)) {
+          item.pendingPrediction = structuredClone(nextPending)
+        }
       })
     },
 
@@ -173,6 +190,8 @@ export function createStableReportSession({ targetTableCount = 9, startedAt = ne
           lastWinner: table.lastWinner,
           lastPrediction: table.lastPrediction,
           lastConfidence: table.lastConfidence,
+          lastSidePredictions: table.lastSidePredictions,
+          lastSideActions: table.lastSideActions,
           lastPointText: table.lastPointText,
         }))
       const totals = reportTables.reduce((acc, table) => {
@@ -195,7 +214,8 @@ export function createStableReportSession({ targetTableCount = 9, startedAt = ne
         lastSnapshotAt,
         targetTableCount,
         sidePredictionThresholds: SIDE_PREDICTION_THRESHOLDS,
-        mainPredictionWeights: MAIN_PREDICTION_WEIGHTS,
+        mainPredictionWeights: FORMAL_MAIN_PREDICTION_WEIGHTS,
+        legacyMainPredictionWeights: LEGACY_REPORT_MAIN_WEIGHTS,
         displayOnly: { main: '主副預測命中率', hideSourceWeightHitRates: true },
         status: {
           connected: lastStatus.connected === true,
@@ -278,20 +298,20 @@ export function evaluateFiveRoadPrediction(table = {}, { globalStats = null, tab
     auxiliaryRoads,
     beadRoad: directionalScore(bead),
   }
-  const totalScore = combineWeightedScores(sourceScores, MAIN_PREDICTION_WEIGHTS)
+  const totalScore = combineWeightedScores(sourceScores, LEGACY_REPORT_MAIN_WEIGHTS)
   const rawMain = totalScore.banker >= totalScore.player ? '莊' : '閒'
   const strategyAdjustment = buildV036StrategyAdjustment(rawMain, performance, totalScore)
   const main = strategyAdjustment.adjustedMain
   const difference = Math.abs(totalScore.banker - totalScore.player)
-  const rawConfidence = difference < 1e-9 ? 30 : calculateConservativeMainConfidence(sourceScores, MAIN_PREDICTION_WEIGHTS)
+  const rawConfidence = difference < 1e-9 ? 30 : calculateConservativeMainConfidence(sourceScores, LEGACY_REPORT_MAIN_WEIGHTS)
   const confidenceCalibration = calibrateConfidenceForTablePerformance(rawConfidence, performance, strategyAdjustment)
   const confidence = confidenceCalibration.finalConfidence
   return {
     main,
     confidence,
-    weights: MAIN_PREDICTION_WEIGHTS,
+    weights: LEGACY_REPORT_MAIN_WEIGHTS,
     sourceScores,
-    weightAblation: buildWeightAblation(sourceScores, MAIN_PREDICTION_WEIGHTS, totalScore),
+    weightAblation: buildWeightAblation(sourceScores, LEGACY_REPORT_MAIN_WEIGHTS, totalScore),
     confidenceCalibration,
     strategyAdjustment,
     cardShoeFeatures: cardShoe.features,
@@ -516,8 +536,8 @@ function scoreMainPrediction(prediction, winner, confidence = 100) {
   return { evaluated: true, hit: prediction === winner, push: false }
 }
 
-function recordSideLearning(item, predictions, actuals, mainPrediction) {
-  const actions = buildSideActions(predictions, mainPrediction)
+function recordSideLearning(item, predictions, actuals, mainPrediction, savedActions = null) {
+  const actions = savedActions ?? buildSideActions(predictions, mainPrediction)
   for (const key of Object.keys(SIDE_PREDICTION_THRESHOLDS)) {
     const probability = predictions[key] ?? 0
     const actionable = actions[key]

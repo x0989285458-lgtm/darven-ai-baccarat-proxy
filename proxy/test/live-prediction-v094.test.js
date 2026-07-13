@@ -35,7 +35,7 @@ test('v094 live prediction is computed without a revealed round result', () => {
 
 test('v094 settlement persists the pre-result backend direction and confidence', () => {
   const table = { tableId: 'BAG03', shoe: 9, round: 20, bankerCount: 8, playerCount: 12, tieCount: 1, beadPlateRaw: '0102010201' }
-  const precomputed = { source: 'backend', predictedResult: 'player', confidence: 57, scoreTotals: { banker: 20, player: 80 } }
+  const precomputed = { ...buildLivePrediction(table), predictedResult: 'player', confidence: 57, scoreTotals: { banker: 20, player: 80 } }
   const row = buildPredictionResultRow({ tableId: 'BAG03', shoe: 9, round: 21, winner: 'banker', rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9] }, table, precomputed)
   assert.equal(row.predicted_result, 'player')
   assert.equal(row.confidence, 57)

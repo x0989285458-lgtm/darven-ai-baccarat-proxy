@@ -9,6 +9,8 @@ import {
 function makeTable(overrides = {}) {
   return {
     tableId: 'BAG01',
+    shoe: 1,
+    round: 0,
     displayName: 'MT百家樂第1桌',
     bankerCount: 20,
     playerCount: 18,
@@ -36,8 +38,9 @@ test('v019 table performance tracker keeps banker/player prediction but lowers c
 
 test('v019 stable report continuously verifies each table hit rate while still outputting banker/player prediction', () => {
   const session = createStableReportSession({ startedAt: '2026-01-01T00:00:00.000Z' })
-  session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [makeTable({ lastRound: { tableId: 'BAG01', shoe: 1, round: 1, winner: 1 } })] }, 't1')
-  session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [makeTable({ lastRound: { tableId: 'BAG01', shoe: 1, round: 2, winner: 2 } })] }, 't2')
+  session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [makeTable()] }, 't0')
+  session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [makeTable({ round: 1, lastRound: { tableId: 'BAG01', shoe: 1, round: 1, winner: 1 } })] }, 't1')
+  session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [makeTable({ round: 2, lastRound: { tableId: 'BAG01', shoe: 1, round: 2, winner: 2 } })] }, 't2')
   const report = session.getReport('2026-01-01T00:10:00.000Z')
   assert.equal(report.version, '037')
   assert.equal(report.tables[0].mainEvaluated, 2)

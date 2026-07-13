@@ -5,6 +5,8 @@ import { createStableReportSession, detectRoadTrends, evaluateFiveRoadPrediction
 function makeTable(overrides = {}) {
   return {
     tableId: 'BAG01',
+    shoe: 1,
+    round: 0,
     displayName: 'MT百家樂第1桌',
     bankerCount: 12,
     playerCount: 8,
@@ -15,7 +17,7 @@ function makeTable(overrides = {}) {
     bigRoadRaw: '0102,0202,0302,#0101,#0102,0202',
     nextBankerRaw: '111',
     nextPlayerRaw: '222',
-    lastRound: { tableId: 'BAG01', shoe: 1, round: 1, winner: 2 },
+    lastRound: null,
     ...overrides,
   }
 }
@@ -47,6 +49,7 @@ test('v019 evaluates five-road weights plus global stats without producing a dis
 test('v019 stable report exposes only main/side hit rates in formatted report while retaining internal weights in JSON', () => {
   const session = createStableReportSession({ startedAt: '2026-01-01T00:00:00.000Z', globalStats: { banker: 188, player: 164, tie: 30 } })
   session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [makeTable()] }, 't1')
+  session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [makeTable({ round: 1, lastRound: { tableId: 'BAG01', shoe: 1, round: 1, winner: 2 } })] }, 't2')
   const report = session.getReport('2026-01-01T00:10:00.000Z')
   assert.equal(report.version, '037')
   assert.equal(report.total.hits, 1)

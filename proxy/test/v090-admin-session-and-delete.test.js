@@ -47,7 +47,7 @@ test('v090 admin writes require session token and backend overwrites adminAccoun
   ])
 })
 
-test('v090 status accepts adminSessionToken and scopes by token account', async () => {
+test('v098 status accepts admin bearer session and scopes by token account', async () => {
   const calls = []
   const licenseAdminClient = {
     configured: true,
@@ -63,7 +63,7 @@ test('v090 status accepts adminSessionToken and scopes by token account', async 
   const login = await app.inject({ method: 'POST', url: '/api/online-license/agent-login', body: JSON.stringify({ agentAccount: 'A001' }) })
   const token = JSON.parse(login.body).adminSessionToken
 
-  const status = await app.inject({ method: 'GET', url: `/api/online-license/status?adminAccount=dv1788&adminSessionToken=${encodeURIComponent(token)}` })
+  const status = await app.inject({ method: 'GET', url: '/api/online-license/status?adminAccount=dv1788', headers: { authorization: `Bearer ${token}` } })
   assert.equal(status.statusCode, 200)
   assert.deepEqual(calls, [['status', 'A001']])
 })

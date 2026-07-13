@@ -2,11 +2,12 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   buildDefaultEqualStrategy,
+  buildLivePrediction,
   buildRoadmapEventRow,
-  buildPredictionResultRow,
   createSupabaseIngestionClient,
   deriveBaccaratRoundFacts,
 } from '../src/supabase-writer.js'
+import { buildPredictionResultRow } from './helpers/prediction-result.js'
 
 const round = {
   tableId: 'BAG03',
@@ -19,6 +20,8 @@ const round = {
 
 const table = {
   tableId: 'BAG03',
+  shoe: 912,
+  round: 42,
   displayName: 'MT百家樂第3桌',
   tableType: 'BAC',
   beadPlateRaw: '01#12#33',
@@ -106,7 +109,7 @@ test('v012 Supabase client posts strategy, roadmap event and prediction result w
   })
 
   await client.ensureInitialStrategy()
-  await client.persistRound(round, table)
+  await client.persistRound(round, table, buildLivePrediction(table))
 
   assert.equal(requests.length, 3)
   assert.equal(requests[0].url.includes('/rest/v1/ai_strategy_versions'), true)

@@ -231,27 +231,27 @@ export function buildRoadmapEventRow(round = {}, table = {}) {
 }
 
 export function buildPredictionResultRow(round = {}, table = {}, precomputedPrediction = null) {
+  const target = validatePredictionTarget(precomputedPrediction, round)
+  if (!target) return null
   const facts = deriveBaccaratRoundFacts(round)
   const probabilities = calculateInitialProbabilities(table)
   const tablePerformance = buildTablePerformanceFeature(table)
   const calculatedPrediction = calculateAllMtEqualMainPrediction({ round, table, facts, probabilities, tablePerformance })
-  const hasPrecomputedPrediction = precomputedPrediction?.source === 'backend'
-    && ['banker', 'player'].includes(precomputedPrediction?.predictedResult)
-    && Number.isFinite(Number(precomputedPrediction?.confidence))
-  const allMtPrediction = hasPrecomputedPrediction ? {
+  const allMtPrediction = {
     predictedResult: precomputedPrediction.predictedResult,
     confidence: Math.max(30, Math.min(70, Math.round(Number(precomputedPrediction.confidence)))),
-    scores: precomputedPrediction.scoreTotals ?? calculatedPrediction.scores,
-  } : calculatedPrediction
+    scores: precomputedPrediction.scoreSources ?? calculatedPrediction.scores,
+  }
   const predicted_result = allMtPrediction.predictedResult
-  const sidePredictions = buildSidePredictions(table, round)
+  const sidePredictions = structuredClone(precomputedPrediction.sidePredictions)
+  const sideActions = structuredClone(precomputedPrediction.sideActions)
   const sideActualResults = buildSideActualResults(round, facts)
   return {
     source: SOURCE,
-    table_id: String(round.tableId ?? table.tableId ?? ''),
-    shoe_no: round.shoe == null ? null : String(round.shoe),
-    round_no: Number(round.round ?? 0),
-    strategy_version: ALL_MT_EQUAL_STRATEGY_VERSION,
+    table_id: target.tableId,
+    shoe_no: target.shoe,
+    round_no: target.round,
+    strategy_version: precomputedPrediction.strategyVersion,
     predicted_result,
     confidence: allMtPrediction.confidence,
     actual_result: facts.winner,
@@ -267,7 +267,7 @@ export function buildPredictionResultRow(round = {}, table = {}, precomputedPred
       baseProbabilities: probabilities,
     },
     prediction_features: {
-      prediction_timing: hasPrecomputedPrediction ? 'pre_result_context' : 'legacy_resolved_context',
+      prediction_timing: 'pre_result_context',
       mt_context: buildMtContextFeatures(table),
       derived_main_features: buildDerivedMainFeatures(round, table, facts, probabilities, tablePerformance),
       unified_main_scores: allMtPrediction.scores,
@@ -287,9 +287,9 @@ export function buildPredictionResultRow(round = {}, table = {}, precomputedPred
       side_weights: Object.fromEntries(Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES).map(([key, profile]) => [key, { ...profile }])),
         side_tuning: Object.fromEntries(Object.entries(SIDE_PREDICTION_ACTION_RATE_TARGETS).map(([key, targetActionRate]) => [key, { targetActionRate, targetHitRate: SIDE_PREDICTION_TARGET_HIT_RATE }])),
       side_predictions: sidePredictions,
-      side_actions: buildSideActions(sidePredictions, predicted_result),
+      side_actions: sideActions,
       side_actual_results: sideActualResults,
-      side_hits: buildSideHits(sidePredictions, sideActualResults, predicted_result),
+      side_hits: buildSideHitsFromActions(sideActions, sideActualResults),
       side_results: {
         superSix: facts.superSix,
         bankerDragon: facts.bankerDragon,
@@ -514,6 +514,8 @@ export function buildLivePrediction(table = {}) {
     tableId: table.tableId,
     shoe: table.shoe,
     round: Number(table.round ?? 0) + 1,
+    lastRound: table.lastRound ?? null,
+    cardShoe: table.cardShoe ?? null,
   }
   const prediction = calculateAllMtEqualMainPrediction({
     round: nextRound,
@@ -527,10 +529,14 @@ export function buildLivePrediction(table = {}) {
   return {
     source: 'backend',
     strategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION,
+    targetTableId: String(table.tableId ?? ''),
+    targetShoe: table.shoe == null ? null : String(table.shoe),
+    targetRound: nextRound.round,
     predictedResult: prediction.predictedResult,
     confidence: prediction.confidence,
     probabilities,
     scoreTotals: prediction.total,
+    scoreSources: prediction.scores,
     sidePredictions,
     sideActions,
   }
@@ -1181,6 +1187,10 @@ function buildSideActualResults(round = {}, facts = {}) {
 
 function buildSideHits(predictions = {}, actual = {}, mainPrediction = null) {
   const actions = buildSideActions(predictions, mainPrediction)
+  return buildSideHitsFromActions(actions, actual)
+}
+
+function buildSideHitsFromActions(actions = {}, actual = {}) {
   return Object.fromEntries(Object.keys(SIDE_PREDICTION_THRESHOLDS).map((key) => [key, Boolean(actions[key]) && Boolean(actual[key])]))
 }
 
@@ -1387,6 +1397,7 @@ export function createSupabaseIngestionClient({
   const configured = Boolean(url && serviceKey && fetchImpl)
   const completedRoundKeys = new Set()
   const inFlightRoundWrites = new Map()
+  const preparedRoundWrites = new Map()
   let writeQueue = Promise.resolve()
 
   async function postRest(path, body, conflict) {
@@ -1452,10 +1463,19 @@ export function createSupabaseIngestionClient({
       return postRest('ai_strategy_versions', buildFormalActiveStrategy(), 'version')
     },
     async persistRound(round, table, precomputedPrediction = null) {
-      const event = buildRoadmapEventRow(round, table)
-      const prediction = buildPredictionResultRow(round, table, precomputedPrediction)
-      const compactEvent = buildCompactRoadmapEventDbRow(event)
-      const compactPrediction = buildCompactPredictionResultDbRow(prediction)
+      const target = validatePredictionTarget(precomputedPrediction, round)
+      if (!target) throw new Error('prediction target mismatch')
+      const preparationKey = `${target.tableId}:${target.shoe}:${target.round}:${precomputedPrediction.strategyVersion}`
+      let prepared = preparedRoundWrites.get(preparationKey)
+      if (!prepared) {
+        const event = buildRoadmapEventRow(round, table)
+        const prediction = buildPredictionResultRow(round, table, precomputedPrediction)
+        const compactEvent = buildCompactRoadmapEventDbRow(event)
+        const compactPrediction = buildCompactPredictionResultDbRow(prediction)
+        prepared = { event, prediction, compactEvent, compactPrediction }
+        preparedRoundWrites.set(preparationKey, prepared)
+      }
+      const { event, prediction, compactEvent, compactPrediction } = prepared
       const roundKey = buildRoundDedupeKey(compactEvent, compactPrediction)
       if (completedRoundKeys.has(roundKey)) return { skipped: true, reason: 'duplicate_round', event, prediction, compactEvent, compactPrediction }
       if (inFlightRoundWrites.has(roundKey)) return inFlightRoundWrites.get(roundKey)
@@ -1528,6 +1548,40 @@ function cardPointOrNull(code) {
 function sameRank(a, b) {
   if (!a || !b) return false
   return (((Number(a) - 1) % 13) + 1) === (((Number(b) - 1) % 13) + 1)
+}
+
+function isMatchingPendingPrediction(pending, round = {}) {
+  return validatePredictionTarget(pending, round) != null
+}
+
+function validatePredictionTarget(pending, round = {}) {
+  const targetTableId = normalizeRequiredIdentity(pending?.targetTableId)
+  const targetShoe = normalizeRequiredIdentity(pending?.targetShoe)
+  const completedTableId = normalizeRequiredIdentity(round?.tableId)
+  const completedShoe = normalizeRequiredIdentity(round?.shoe)
+  const targetRound = normalizeRequiredRound(pending?.targetRound)
+  const completedRound = normalizeRequiredRound(round?.round)
+  if (!targetTableId || !targetShoe || !completedTableId || !completedShoe || targetRound == null || completedRound == null) return null
+  if (targetTableId !== completedTableId || targetShoe !== completedShoe || targetRound !== completedRound) return null
+  if (pending?.source !== 'backend'
+    || !['banker', 'player'].includes(pending.predictedResult)
+    || !Number.isFinite(Number(pending.confidence))
+    || !pending.sidePredictions || typeof pending.sidePredictions !== 'object'
+    || !pending.sideActions || typeof pending.sideActions !== 'object'
+    || typeof pending.strategyVersion !== 'string') return null
+  return { tableId: targetTableId, shoe: targetShoe, round: targetRound }
+}
+
+function normalizeRequiredIdentity(value) {
+  if (value == null) return null
+  const normalized = String(value).trim()
+  return normalized || null
+}
+
+function normalizeRequiredRound(value) {
+  if (value == null || value === '') return null
+  const normalized = Number(value)
+  return Number.isSafeInteger(normalized) && normalized > 0 ? normalized : null
 }
 
 function buildRoundDedupeKey(event = {}, prediction = {}) {

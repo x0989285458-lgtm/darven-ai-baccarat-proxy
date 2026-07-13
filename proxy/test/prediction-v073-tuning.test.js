@@ -5,8 +5,8 @@ import {
   SIDE_PREDICTION_THRESHOLDS,
   SIDE_PREDICTION_WEIGHT_PROFILES,
   SIDE_WEIGHT_KEYS,
-  buildPredictionResultRow,
 } from '../src/supabase-writer.js'
+import { buildPredictionResultRow } from './helpers/prediction-result.js'
 
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 
@@ -73,12 +73,19 @@ test('v073 newly weighted main features produce non-neutral scores instead of me
       tableId: 'BAG73', shoe: 15396, round: 22,
       bankerCount: 60, playerCount: 40, tieCount: 0,
       recentHitRate: 0.72, recentPredictionCount: 30,
+      lastRound: {
+        cardShoe: {
+          remainingPointCounts: { '0': 12, '1': 12, '2': 10, '3': 10, '4': 8, '5': 8, '6': 30, '7': 31, '8': 32, '9': 33 },
+          remainingRankCounts: { A: 20, '2': 20, '3': 20, '4': 20, '5': 20, '6': 30, '7': 31, '8': 32, '9': 33, '10': 20, J: 20, Q: 20, K: 20 },
+        },
+      },
       beadPlateRaw: '0202020202', bigRoadRaw: 'BBBBBB', bigEyeRaw: '111111', smallRoadRaw: '111111', cockroachRaw: '111111',
       nextBankerRaw: '1111111111', nextPlayerRaw: '222',
     },
   )
   const scores = row.prediction_features.unified_main_scores
-  for (const key of ['card_points', 'shoe_remaining_points', 'direction_calibration', 'historical_backtest', 'pattern_tags']) {
+  assert.deepEqual(scores.card_points, { banker: 0.5, player: 0.5 }, 'unrevealed card points must stay neutral')
+  for (const key of ['shoe_remaining_points', 'direction_calibration', 'historical_backtest', 'pattern_tags']) {
     assert.notDeepEqual(scores[key], { banker: 0.5, player: 0.5 }, `${key} should actively affect scoring`)
   }
 })

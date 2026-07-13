@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildPredictionResultRow, buildRoadmapEventRow } from '../src/supabase-writer.js'
+import { buildRoadmapEventRow } from '../src/supabase-writer.js'
+import { buildPredictionResultRow } from './helpers/prediction-result.js'
 import { createProxyState } from '../src/state-store.js'
 
 test('v082 five-road ask-road compares road content instead of equal payload length', () => {

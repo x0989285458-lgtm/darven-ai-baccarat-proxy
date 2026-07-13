@@ -6,8 +6,8 @@ import {
   ALL_MT_EQUAL_MAIN_WEIGHTS,
   ALL_MT_EQUAL_SIDE_WEIGHTS,
   buildShortRunAdjustedStrategy,
-  buildPredictionResultRow,
 } from '../src/supabase-writer.js'
+import { buildPredictionResultRow } from './helpers/prediction-result.js'
 
 const baseRound = {
   tableId: 'BAG13',
@@ -65,7 +65,7 @@ test('v050 low-performing table keeps banker/player prediction and records all-M
   assert.equal(prediction.short_run_adjustment.rule, 'v097_副預測命中校準與門檻降5版')
 })
 
-test('v062 equal banker/player main scores use tie-breakers instead of defaulting to banker', () => {
+test('v098 revealed winner never changes an already-created neutral pre-result prediction', () => {
   const neutralTable = {
     tableId: 'BAG13',
     bankerCount: 10,
@@ -82,10 +82,14 @@ test('v062 equal banker/player main scores use tie-breakers instead of defaultin
   const afterBanker = buildPredictionResultRow({ ...baseRound, rawResult: null, winner: 'banker' }, neutralTable)
   const afterPlayer = buildPredictionResultRow({ ...baseRound, rawResult: null, winner: 'player' }, neutralTable)
 
-  assert.equal(afterBanker.predicted_result, 'player')
-  assert.equal(afterPlayer.predicted_result, 'banker')
-  assert.equal(afterBanker.confidence, 41)
-  assert.equal(afterPlayer.confidence, 41)
+  assert.deepEqual(
+    { result: afterBanker.predicted_result, confidence: afterBanker.confidence },
+    { result: 'player', confidence: 41 },
+  )
+  assert.deepEqual(
+    { result: afterPlayer.predicted_result, confidence: afterPlayer.confidence },
+    { result: 'player', confidence: 41 },
+  )
 })
 
 test('v067 main and side strategy uses high-hit weighted features', () => {

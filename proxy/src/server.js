@@ -11,11 +11,12 @@ import { createOnlineCoreClient } from './online-core.js'
 import { createLicenseAdminClient } from './license-admin.js'
 import { chooseCaptureSource, describeCaptureStatus } from './capture-source.js'
 import { buildOperationalEvent, toStatusEvent } from './event-layer.js'
+import { BUILD_VERSION } from './build-version.js'
 
-const VERSION = '097'
+const VERSION = BUILD_VERSION
 const SERVICE = 'Draven MT資料代理伺服器'
 
-export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, now = Date.now, fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient() } = {}) {
+export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), production = process.env.NODE_ENV === 'production', memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 10 * 60 * 1000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient() } = {}) {
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
     CAPTURE_SOURCE: requestedCaptureSource,
@@ -30,19 +31,39 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const strictRealCardRounds = process.env.REQUIRE_REAL_CARD_ROUNDS !== 'false'
   const adminSessions = new Map()
   const ingestSequences = new Map()
+  const pendingPredictions = new Map()
+  const settlingPredictionKeys = new Set()
+  const memberSessions = new Map()
+  let tablesReceivedAtMs = 0
+  const actionablePredictionTtlMs = Math.max(1000, Number(predictionTtlMs) || 120000)
+  const resolvedMemberSessionTtlMs = Math.min(10 * 60 * 1000, Math.max(60000, Number(memberSessionTtlMs) || 10 * 60 * 1000))
   const adminSessionTtlMs = Math.max(60000, Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000) || 30 * 60 * 1000)
   const state = createProxyState({
     inferSnapshotRounds: !strictRealCardRounds,
+    onTablesUpdated: (tables) => {
+      tablesReceivedAtMs = now()
+      for (const table of tables) savePendingPrediction(table)
+    },
     onRoundEvent: async (round, table) => {
       if (!supabaseClient?.configured && !supabaseClient?.persistRound) return
       if (strictRealCardRounds && !hasRealCardCodes(round)) return
+      const pendingKey = predictionTargetKey(round.tableId ?? table.tableId, round.shoe, round.round)
+      const precomputedPrediction = pendingPredictions.get(pendingKey)
+      if (!precomputedPrediction) return
+      if (now() - Number(precomputedPrediction.createdAtMs ?? 0) > actionablePredictionTtlMs) {
+        return
+      }
+      if (settlingPredictionKeys.has(pendingKey)) return
+      settlingPredictionKeys.add(pendingKey)
       try {
         await supabaseClient.ensureInitialStrategy?.()
-        const precomputedPrediction = buildLivePrediction(table)
         await supabaseClient.persistRound?.(round, table, precomputedPrediction)
+        pendingPredictions.delete(pendingKey)
         state.setStatus({ persistenceStatus: 'ok', persistenceError: null })
       } catch (error) {
         state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+      } finally {
+        settlingPredictionKeys.delete(pendingKey)
       }
     },
   })
@@ -84,12 +105,16 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       await persistCloudStateSnapshot(status)
       const cloudStatus = await readCloudSnapshotStatus()
       const nextStatus = { ...state.snapshot().status, ...cloudStatus }
-      return jsonResponse(200, { ...nextStatus, deployMode: deployConfig.deployMode, statusText: cloudStatus?.statusText ?? describeCaptureStatus(nextStatus) }, frontendOrigin)
+      return jsonResponse(200, { ...nextStatus, version: VERSION, deployMode: deployConfig.deployMode, statusText: cloudStatus?.statusText ?? describeCaptureStatus(nextStatus) }, frontendOrigin)
     }
     if (pathname === '/api/tables') {
+      if (hasSensitiveAuthQuery(requestUrl)) return jsonResponse(400, { ok: false, error: 'session token is not allowed in query' }, frontendOrigin)
+      if (!isMemberSessionAuthorized(headers)) return jsonResponse(401, { ok: false, error: 'member session is required' }, frontendOrigin)
       return jsonResponse(200, await readBestTables(), frontendOrigin)
     }
     if (pathname === '/api/snapshot') {
+      if (hasSensitiveAuthQuery(requestUrl)) return jsonResponse(400, { ok: false, error: 'session token is not allowed in query' }, frontendOrigin)
+      if (!isMemberSessionAuthorized(headers)) return jsonResponse(401, { ok: false, error: 'member session is required' }, frontendOrigin)
       return jsonResponse(200, state.snapshot(), frontendOrigin)
     }
     if (method === 'POST' && pathname === '/api/cloud-ingest/snapshot') {
@@ -199,7 +224,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         return jsonResponse(error?.statusCode ?? 401, { configured: Boolean(licenseAdminClient?.configured), managers: [], agents: [], plans: [], licenses: [], error: error?.message ?? String(error) }, frontendOrigin)
       }
     }
-    if (method === 'POST' && pathname === '/api/online-license/member-login') return adminWrite(() => licenseAdminClient.validateMemberLogin?.(parseJsonBody(rawBody)))
+    if (method === 'POST' && pathname === '/api/online-license/member-login') return adminWrite(async () => {
+      const result = await licenseAdminClient.validateMemberLogin?.(parseJsonBody(rawBody))
+      if (!result?.ok) return result
+      return { ...result, ...issueMemberSession(result) }
+    })
     if (method === 'POST' && pathname === '/api/online-license/agent-login') return adminWrite(async (payload) => {
       const result = await licenseAdminClient.validateAgentLogin?.(payload)
       if (!result?.ok) return result
@@ -224,9 +253,14 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       void recordOperationalEvent({ component: 'control_api', kind: 'origin_denied', statusCode: 403, message: 'control origin is not allowed', metadata: { origin } })
       return jsonResponse(403, { ok: false, error: 'control origin is not allowed' }, frontendOrigin)
     }
-    if (!controlToken) return null
+    if (!controlToken) {
+      if (production) {
+        void recordOperationalEvent({ component: 'control_api', kind: 'missing_configuration', statusCode: 503, message: 'control token is not configured' })
+        return jsonResponse(503, { ok: false, error: 'control token is not configured' }, frontendOrigin)
+      }
+      return null
+    }
     const provided = headers['x-control-token']
-      ?? headers['authorization']?.replace(/^Bearer\s+/i, '')
     if (safeEqual(provided, controlToken)) return null
     void recordOperationalEvent({ component: 'control_api', kind: 'unauthorized', statusCode: 401, message: 'control token is required' })
     return jsonResponse(401, { ok: false, error: 'control token is required' }, frontendOrigin)
@@ -241,9 +275,32 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     return { token, expiresAt }
   }
 
+  function issueMemberSession(loginResult = {}) {
+    const expiresAtMs = now() + resolvedMemberSessionTtlMs
+    const memberSessionToken = crypto.randomBytes(32).toString('base64url')
+    for (const [token, session] of memberSessions) {
+      if (session.expiresAtMs <= now()) memberSessions.delete(token)
+    }
+    memberSessions.set(memberSessionToken, {
+      memberAccount: loginResult.memberAccount,
+      expiresAtMs,
+    })
+    return { memberSessionToken, sessionExpiresAt: new Date(expiresAtMs).toISOString() }
+  }
+
+  function isMemberSessionAuthorized(headers = {}) {
+    if (!memberAuthRequired) return true
+    const token = headers.authorization?.replace(/^Bearer\s+/i, '')
+    const session = token ? memberSessions.get(String(token)) : null
+    if (!session || session.expiresAtMs <= now()) {
+      if (token) memberSessions.delete(String(token))
+      return false
+    }
+    return Boolean(session.memberAccount)
+  }
+
   function requireAdminSession(payload = {}, requestUrl, headers = {}) {
     const token = payload.adminSessionToken
-      ?? requestUrl.searchParams.get('adminSessionToken')
       ?? headers['x-admin-session-token']
       ?? headers['authorization']?.replace(/^Bearer\s+/i, '')
     const session = token ? adminSessions.get(String(token)) : null
@@ -329,13 +386,23 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
 
   async function readBestTables() {
     const localTables = state.snapshot().tables
-    if (localTables.length > 0) return localTables.map(withLivePrediction)
+    if (localTables.length > 0) {
+      const actionable = tablesReceivedAtMs > 0 && now() - tablesReceivedAtMs <= actionablePredictionTtlMs
+      return localTables.map((table) => withLivePrediction(table, actionable))
+    }
     const cloudSnapshot = await readLatestCloudSnapshot({ requireFresh: true })
-    return (cloudSnapshot?.tables ?? []).map(withLivePrediction)
+    return (cloudSnapshot?.tables ?? []).map((table) => withLivePrediction(table))
   }
 
-  function withLivePrediction(table) {
-    return { ...table, prediction: buildLivePrediction(table) }
+  function savePendingPrediction(table) {
+    const generated = { ...buildLivePrediction(table), createdAtMs: now() }
+    const key = predictionTargetKey(generated.targetTableId, generated.targetShoe, generated.targetRound)
+    if (!pendingPredictions.has(key)) pendingPredictions.set(key, structuredClone(generated))
+    return pendingPredictions.get(key)
+  }
+
+  function withLivePrediction(table, actionable = true) {
+    return { ...table, prediction: actionable ? structuredClone(savePendingPrediction(table)) : null }
   }
 
 
@@ -399,9 +466,29 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const server = http.createServer(async (req, res) => {
     const requestUrl = new URL(req.url ?? '/', 'http://127.0.0.1')
     if ((req.method ?? 'GET') === 'GET' && requestUrl.pathname === '/api/tables/stream') {
+      if (hasSensitiveAuthQuery(requestUrl)) {
+        const result = jsonResponse(400, { ok: false, error: 'session token is not allowed in query' }, frontendOrigin)
+        res.writeHead(result.statusCode, result.headers)
+        res.end(result.body)
+        return
+      }
+      if (!isMemberSessionAuthorized(req.headers)) {
+        const result = jsonResponse(401, { ok: false, error: 'member session is required' }, frontendOrigin)
+        res.writeHead(result.statusCode, result.headers)
+        res.end(result.body)
+        return
+      }
       return streamTables(res)
     }
-    const rawBody = await readRequestBody(req)
+    let rawBody = ''
+    try {
+      rawBody = await readRequestBody(req)
+    } catch (error) {
+      const result = jsonResponse(error?.statusCode ?? 400, { ok: false, error: error?.message ?? String(error) }, frontendOrigin)
+      res.writeHead(result.statusCode, result.headers)
+      res.end(result.body, () => req.destroy())
+      return
+    }
     const result = await handle(req.method ?? 'GET', req.url ?? '/', rawBody, req.headers)
     res.writeHead(result.statusCode, result.headers)
     res.end(result.body)
@@ -472,7 +559,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       'x-accel-buffering': 'no',
       'access-control-allow-origin': frontendOrigin,
       'access-control-allow-methods': 'GET,POST,OPTIONS',
-      'access-control-allow-headers': 'Content-Type,Authorization,X-Admin-Session-Token,X-Control-Token',
+      'access-control-allow-headers': 'Content-Type,Authorization,X-Admin-Session-Token,X-Member-Session-Token,X-Control-Token',
     })
     streamClients.add(res)
     ensureStreamTimer()
@@ -539,6 +626,17 @@ function safeEqual(provided, expected) {
   return crypto.timingSafeEqual(left, right)
 }
 
+function predictionTargetKey(tableId, shoe, round) {
+  return `${String(tableId ?? '')}:${String(shoe ?? '')}:${Number(round ?? 0)}`
+}
+
+function hasSensitiveAuthQuery(requestUrl) {
+  for (const key of requestUrl.searchParams.keys()) {
+    if (/token|session|ticket|authorization/i.test(key)) return true
+  }
+  return false
+}
+
 function parseJsonBody(rawBody) {
   if (!rawBody) return {}
   return JSON.parse(rawBody)
@@ -564,11 +662,28 @@ function validateIngestEnvelope(envelope, currentTime) {
   if (snapshot.rounds != null && !Array.isArray(snapshot.rounds)) throw new Error('rounds must be an array')
 }
 
-function readRequestBody(req) {
+export function readRequestBody(req, maxBytes = 1024 * 1024) {
   return new Promise((resolve, reject) => {
     const chunks = []
-    req.on('data', (chunk) => chunks.push(chunk))
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    let size = 0
+    let settled = false
+    req.on('data', (chunk) => {
+      if (settled) return
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+      size += buffer.length
+      if (size > maxBytes) {
+        settled = true
+        req.pause?.()
+        const error = new Error('payload_too_large')
+        error.statusCode = 413
+        reject(error)
+        return
+      }
+      chunks.push(buffer)
+    })
+    req.on('end', () => {
+      if (!settled) resolve(Buffer.concat(chunks).toString('utf8'))
+    })
     req.on('error', reject)
   })
 }
@@ -580,7 +695,7 @@ function jsonResponse(statusCode, payload, frontendOrigin = '*') {
       'content-type': 'application/json; charset=utf-8',
       'access-control-allow-origin': frontendOrigin,
       'access-control-allow-methods': 'GET,POST,OPTIONS',
-      'access-control-allow-headers': 'Content-Type,Authorization,X-Admin-Session-Token,X-Control-Token,X-Worker-Key',
+      'access-control-allow-headers': 'Content-Type,Authorization,X-Admin-Session-Token,X-Member-Session-Token,X-Control-Token,X-Worker-Key',
       'cache-control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
       pragma: 'no-cache',
     },

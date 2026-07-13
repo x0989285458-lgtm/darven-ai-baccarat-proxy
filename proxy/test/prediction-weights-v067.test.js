@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { ALL_MT_EQUAL_MAIN_WEIGHTS, ALL_MT_EQUAL_SIDE_WEIGHTS, SIDE_PREDICTION_THRESHOLDS, buildPredictionResultRow } from '../src/supabase-writer.js'
+import { ALL_MT_EQUAL_MAIN_WEIGHTS, ALL_MT_EQUAL_SIDE_WEIGHTS, SIDE_PREDICTION_THRESHOLDS } from '../src/supabase-writer.js'
+import { buildPredictionResultRow } from './helpers/prediction-result.js'
 
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 

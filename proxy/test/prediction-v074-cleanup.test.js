@@ -6,8 +6,8 @@ import {
   SIDE_PREDICTION_THRESHOLDS,
   SIDE_PREDICTION_WEIGHT_PROFILES,
   SIDE_WEIGHT_KEYS,
-  buildPredictionResultRow,
 } from '../src/supabase-writer.js'
+import { buildPredictionResultRow } from './helpers/prediction-result.js'
 
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 

@@ -2,9 +2,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createApp } from '../src/server.js'
 
-test('v096 health endpoint reports version 097', async () => {
+test('v098 health endpoint reports version 098', async () => {
   const app = createApp({ autoConnect: false })
   const response = await app.inject({ url: '/health' })
   assert.equal(response.statusCode, 200)
-  assert.equal(JSON.parse(response.body).version, '097')
+  assert.equal(JSON.parse(response.body).version, '098')
 })

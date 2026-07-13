@@ -12,7 +12,7 @@ test('v012 server wires round events to Supabase ingestion client', async () => 
     },
   })
 
-  app.state.setTables([{ tableId: 'BAG03', displayName: 'MT百家樂第3桌', tableType: 'BAC', round: 42 }])
+  app.state.setTables([{ tableId: 'BAG03', displayName: 'MT百家樂第3桌', tableType: 'BAC', shoe: 912, round: 42 }])
   app.state.upsertRoundEvent({ tableId: 'BAG03', shoe: 912, round: 43, rawResult: [26, 20, 39, 23, 14, 0, -1, -1, 1, 7], winner: 2 })
   await new Promise((resolve) => setTimeout(resolve, 0))
 
