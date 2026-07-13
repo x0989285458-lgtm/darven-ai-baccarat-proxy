@@ -35,7 +35,7 @@ test('v049 short-run strategy weights sum to 1 and match required proportions', 
   const strategy = buildShortRunAdjustedStrategy()
   assert.equal(SHORT_RUN_STRATEGY_VERSION, 'v094_no_observe_confidence_30_70')
   assert.equal(strategy.version, 'v094_no_observe_confidence_30_70')
-  assert.equal(strategy.status, 'active')
+  assert.equal(strategy.status, 'archived')
   assert.deepEqual(strategy.weights, {
     bead_road: 0.15,
     big_road: 0.15,

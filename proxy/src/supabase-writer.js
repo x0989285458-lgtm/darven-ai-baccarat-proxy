@@ -117,7 +117,7 @@ export const SHORT_RUN_WEIGHTS = Object.freeze({
 export function buildDefaultEqualStrategy() {
   return {
     version: DEFAULT_STRATEGY_VERSION,
-    status: 'active',
+    status: 'archived',
     sample_count: 0,
     weights: { ...DEFAULT_EQUAL_WEIGHTS },
     metrics: {
@@ -132,7 +132,7 @@ export function buildDefaultEqualStrategy() {
 export function buildShortRunAdjustedStrategy() {
   return {
     version: SHORT_RUN_STRATEGY_VERSION,
-    status: 'active',
+    status: 'archived',
     sample_count: 0,
     weights: { ...SHORT_RUN_WEIGHTS },
     metrics: {
@@ -143,6 +143,24 @@ export function buildShortRunAdjustedStrategy() {
       description: '短測桌況加權；低表現桌保留莊/閒方向但降信心，高表現桌小幅加信心且信心限制30-70，路單與問路權重小幅提高。',
     },
     notes: 'v049 no-observe confidence calibration for live round learning: every main row remains banker/player and confidence stays 30-70.',
+  }
+}
+
+export function buildFormalActiveStrategy() {
+  return {
+    version: ALL_MT_EQUAL_STRATEGY_VERSION,
+    status: 'active',
+    sample_count: 0,
+    weights: { ...SHORT_RUN_WEIGHTS },
+    metrics: {
+      mode: 'formal_live_prediction',
+      auto_adjust: false,
+      main_weights: { ...ALL_MT_EQUAL_MAIN_WEIGHTS },
+      side_weights: Object.fromEntries(Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES).map(([key, profile]) => [key, { ...profile }])),
+      side_thresholds: { ...SIDE_PREDICTION_THRESHOLDS },
+      description: 'v097 正式主副預測；舊策略僅保留歷史，不再作為 active fallback。',
+    },
+    notes: 'Only active runtime strategy for v097 formal predictions.',
   }
 }
 
@@ -1168,8 +1186,8 @@ function buildSideHits(predictions = {}, actual = {}, mainPrediction = null) {
 
 export function buildSideActions(predictions = {}, mainPrediction = null) {
   const actions = Object.fromEntries(Object.entries(SIDE_PREDICTION_THRESHOLDS).map(([key, threshold]) => [key, Number(predictions[key] ?? 0) >= threshold]))
-  const bankerDragon = Math.round(Number(predictions.bankerDragon ?? 0))
-  const playerDragon = Math.round(Number(predictions.playerDragon ?? 0))
+  const bankerDragon = Number(predictions.bankerDragon ?? 0)
+  const playerDragon = Number(predictions.playerDragon ?? 0)
   actions.superSix = Boolean(actions.superSix) && mainPrediction === 'banker'
   actions.bankerDragon = mainPrediction === 'banker' && bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon
   actions.playerDragon = mainPrediction === 'player' && playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon
@@ -1431,7 +1449,7 @@ export function createSupabaseIngestionClient({
   return {
     configured,
     async ensureInitialStrategy() {
-      return postRest('ai_strategy_versions', buildShortRunAdjustedStrategy(), 'version')
+      return postRest('ai_strategy_versions', buildFormalActiveStrategy(), 'version')
     },
     async persistRound(round, table, precomputedPrediction = null) {
       const event = buildRoadmapEventRow(round, table)

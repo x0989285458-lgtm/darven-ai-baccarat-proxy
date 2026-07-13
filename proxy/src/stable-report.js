@@ -537,8 +537,8 @@ function recordSideLearning(item, predictions, actuals, mainPrediction) {
 
 function buildSideActions(predictions = {}, mainPrediction = null) {
   const actions = Object.fromEntries(Object.entries(SIDE_PREDICTION_THRESHOLDS).map(([key, threshold]) => [key, Number(predictions[key] ?? 0) >= threshold]))
-  const bankerDragon = Math.round(Number(predictions.bankerDragon ?? 0))
-  const playerDragon = Math.round(Number(predictions.playerDragon ?? 0))
+  const bankerDragon = Number(predictions.bankerDragon ?? 0)
+  const playerDragon = Number(predictions.playerDragon ?? 0)
   actions.superSix = Boolean(actions.superSix) && mainPrediction === '莊'
   actions.bankerDragon = mainPrediction === '莊' && bankerDragon >= SIDE_PREDICTION_THRESHOLDS.bankerDragon
   actions.playerDragon = mainPrediction === '閒' && playerDragon >= SIDE_PREDICTION_THRESHOLDS.playerDragon

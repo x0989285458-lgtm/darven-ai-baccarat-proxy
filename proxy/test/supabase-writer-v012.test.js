@@ -38,7 +38,7 @@ const table = {
 test('v012 builds equal default strategy weights for every judgement feature group', () => {
   const strategy = buildDefaultEqualStrategy()
   assert.equal(strategy.version, 'v012_equal_weight_seed')
-  assert.equal(strategy.status, 'active')
+  assert.equal(strategy.status, 'archived')
   assert.deepEqual(strategy.weights, {
     bead_road: 0.125,
     big_road: 0.125,
