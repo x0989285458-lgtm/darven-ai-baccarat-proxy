@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { mockTables } from './data/mockTables'
-import { LiveRoadClient, isLiveTableStale, type BackendSideActions, type BackendSidePredictions, type LiveTable, type SidePredictionKey } from './lib/liveClient'
+import { getBackendPredictionIssue, LiveRoadClient, isLiveTableStale, type BackendSideActions, type BackendSidePredictions, type LiveTable, type SidePredictionKey } from './lib/liveClient'
 import { parseBigRoad, type MainOutcome, type Prediction } from './lib/roadParser'
 import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from './lib/supabaseClient'
 import { checkOnlineCoreStatus, getOnlineMemoryCenter, getOnlineStrategyAnalysis, updateOnlineAppSetting, type OnlineCoreStatus, type OnlineMemoryCenter, type OnlineStrategyAnalysis } from './lib/onlineCoreClient'
 import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents, deleteOnlineLicense, extendOnlineLicense, getCloudDataStatus, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, validateMemberSession, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
 
 const SUPER_ADMIN = 'dv1788'
-const CURRENT_STRATEGY_VERSION = 'v097_副預測命中校準與門檻降5版'
 const MEMBER_SESSION_TOKEN_KEY = 'darven-member-session-token'
 const MEMBER_SESSION_EXPIRES_KEY = 'darven-member-session-expires-at'
 const label = { Banker: '莊', Player: '閒', Tie: '和' }
@@ -104,8 +103,8 @@ export default function App() {
   const bonusPredictions = useMemo(() => backendSidePredictionsFromTable(displaySelected), [displaySelected])
   const sideActions = useMemo(() => backendSideActionsFromTable(displaySelected), [displaySelected])
   const outcomePredictions = useMemo(() => backendOutcomeProbabilitiesFromTable(displaySelected), [displaySelected])
-  const strategyIsCurrent = displaySelected?.prediction?.strategyVersion === CURRENT_STRATEGY_VERSION
-  const predictionsActionable = strategyIsCurrent && !staleNotice
+  const predictionIssue = useMemo(() => getBackendPredictionIssue(displaySelected), [displaySelected])
+  const predictionsActionable = !predictionIssue && !staleNotice
 
   useEffect(() => () => client.current?.disconnect(false), [])
   useEffect(() => {
@@ -162,6 +161,10 @@ export default function App() {
         setSelectedIndex((currentIndex) => Math.min(currentIndex, Math.max(next.slice(0, 9).length - 1, 0)))
       },
       onStatus: setStatus,
+      onUnauthorized: () => {
+        clearMemberSession()
+        setMemberSessionState('invalid')
+      },
     })
     client.current.connect()
   }
@@ -226,7 +229,7 @@ export default function App() {
             <PredictionMetric title="莊對" value={bonusPredictions?.bankerPair ?? null} tone="Banker" active={predictionsActionable && (sideActions?.bankerPair ?? false)} />
             <PredictionMetric title="莊龍寶" value={bonusPredictions?.bankerDragon ?? null} tone="Banker" active={predictionsActionable && (sideActions?.bankerDragon ?? false)} />
           </div>
-          {!strategyIsCurrent && displaySelected?.prediction ? <strong className="status stale">策略版本不符，已停止出手</strong> : null}
+          {predictionIssue ? <strong className="status stale">{predictionIssue}，預測暫不可用，已停止出手</strong> : null}
           {prediction ? <>
             <div className="prediction-row main-probability-row" aria-label="莊閒預測機率">
               <PredictionMetric title="閒" value={outcomePredictions?.player ?? null} tone="Player" active={predictionsActionable && prediction.recommendation === 'Player'} />

@@ -68,9 +68,9 @@ export async function getOnlineLicenseStatus(adminAccountOrFetch?: string | { ad
     const resolvedFetch = typeof adminAccountOrFetch === 'function' ? adminAccountOrFetch : fetchImpl
     const params = new URLSearchParams()
     if (adminAccount) params.set('adminAccount', adminAccount)
-    if (adminSessionToken) params.set('adminSessionToken', adminSessionToken)
     const suffix = params.toString() ? `?${params.toString()}` : ''
-    const response = await resolvedFetch(`${proxyUrl}/api/online-license/status${suffix}`)
+    const headers = adminSessionToken ? { Authorization: `Bearer ${adminSessionToken}` } : undefined
+    const response = await resolvedFetch(`${proxyUrl}/api/online-license/status${suffix}`, { headers })
     if (!response.ok) return emptyStatus()
     const body = await response.json()
     return mapStatus(body)

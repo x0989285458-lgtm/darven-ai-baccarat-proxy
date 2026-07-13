@@ -43,6 +43,7 @@ function proxyTablesFromMocks() {
     tableId: table.id,
     displayName: `MT百家樂第${index + 1}桌`,
     tableType: table.table_type,
+    shoe: table.trend.current_shoe,
     round: table.trend.current_round,
     bankerCount: table.trend.total_round_banker,
     playerCount: table.trend.total_round_player,
@@ -52,9 +53,14 @@ function proxyTablesFromMocks() {
     beadPlateRaw: table.trend.bead_plate2,
     bigRoadRaw: table.trend.big2,
     sourceUpdatedAt: new Date().toISOString(),
+    buildVersion: '098',
     prediction: {
       source: 'backend',
       strategyVersion: 'v097_副預測命中校準與門檻降5版',
+      buildVersion: '098',
+      targetTableId: table.id,
+      targetShoe: table.trend.current_shoe,
+      targetRound: table.trend.current_round,
       predictedResult: index % 2 === 0 ? 'banker' : 'player',
       confidence: 34,
       probabilities: { banker: 12.5, player: 77.25, tie: 10.25 },
@@ -108,10 +114,11 @@ describe('AI百家預測軟體', () => {
     expect(screen.queryByLabelText('AI預測結果')).not.toBeInTheDocument()
   })
 
-  it('v032 shows actual Supabase 401 failure instead of leaving frontend/header ambiguous', async () => {
+  it('v098 clears the member session and returns to login on backend 401', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: false, status: 401 })))
     await renderApp('/', false)
-    expect(await screen.findByText('授權後端連線失敗 (401)')).toBeInTheDocument()
+    await waitFor(() => expect(window.sessionStorage.getItem('darven-member-session-token')).toBeNull())
+    expect(screen.getByRole('heading', { name: '瑞文AI百家預測' })).toBeInTheDocument()
   })
 
   it('shows the requested promo text in the top-left corner', async () => {

@@ -28,16 +28,17 @@ export type LiveTable = {
   state?: string | number | null
   orderState?: string | number | null
   sourceUpdatedAt?: string | null
+  buildVersion?: string | null
   prediction?: BackendPrediction
 }
 
 export type SidePredictionKey = 'tie' | 'superSix' | 'bankerPair' | 'playerPair' | 'bankerDragon' | 'playerDragon'
 export type BackendSidePredictions = Record<SidePredictionKey, number>
 export type BackendSideActions = Record<SidePredictionKey, boolean>
-export type BackendPrediction = { source?: string; strategyVersion: string; predictedResult: 'banker' | 'player'; recommendation?: string; confidence: number; probabilities?: { banker?: number; player?: number; tie?: number }; scoreTotals?: { banker?: number; player?: number }; sidePredictions?: BackendSidePredictions; sideActions?: BackendSideActions }
+export type BackendPrediction = { source?: string; strategyVersion: string; buildVersion?: string; targetTableId?: string | number; targetShoe?: string | number; targetRound?: number; predictedResult: 'banker' | 'player'; recommendation?: string; confidence: number; probabilities?: { banker?: number; player?: number; tie?: number }; scoreTotals?: { banker?: number; player?: number }; sidePredictions?: BackendSidePredictions; sideActions?: BackendSideActions }
 
 type Status = { state: 'connecting' | 'connected' | 'error' | 'disconnected'; message: string }
-type LiveClientOptions = { memberSessionToken?: string; onTables: (tables: LiveTable[]) => void; onStatus: (status: Status) => void }
+type LiveClientOptions = { memberSessionToken?: string; onTables: (tables: LiveTable[]) => void; onStatus: (status: Status) => void; onUnauthorized?: () => void }
 
 type ProxyTable = {
   tableId?: string
@@ -63,6 +64,7 @@ type ProxyTable = {
   state?: string | number | null
   orderState?: string | number | null
   sourceUpdatedAt?: string | null
+  buildVersion?: string | null
   prediction?: BackendPrediction
 }
 
@@ -70,6 +72,9 @@ const proxyApiUrl = dravenApiBaseUrl
 const pollIntervalMs = Number(import.meta.env.VITE_DRAVEN_PROXY_POLL_MS ?? 5000)
 const streamStaleMs = Number(import.meta.env.VITE_DRAVEN_STREAM_STALE_MS ?? 15000)
 const liveTableMaxAgeMs = Number(import.meta.env.VITE_DRAVEN_TABLE_MAX_AGE_MS ?? 120000)
+const CURRENT_STRATEGY_VERSION = 'v097_副預測命中校準與門檻降5版'
+const CURRENT_BUILD_VERSION = '098'
+const sidePredictionKeys: SidePredictionKey[] = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
 
 export class LiveRoadClient {
   private timer?: number
@@ -77,12 +82,14 @@ export class LiveRoadClient {
   private streamWatchdog?: number
   private lastStreamAt = 0
   private stopped = true
+  private authorizationLost = false
 
   constructor(private readonly options: LiveClientOptions) {}
 
   connect() {
     this.disconnect(false)
     this.stopped = false
+    this.authorizationLost = false
     this.options.onStatus({ state: 'connecting', message: '正在建立即時同步…' })
     if (this.options.memberSessionToken) {
       void this.poll()
@@ -142,10 +149,14 @@ export class LiveRoadClient {
         fetch(`${proxyApiUrl}/api/tables`, { cache: 'no-store', headers }),
         statusPromise,
       ])
+      if (response.status === 401) {
+        this.handleUnauthorized()
+        return
+      }
       if (!response.ok) throw new Error(`proxy ${response.status}`)
       const payload = await response.json()
       const tables = normalizeProxyTables(Array.isArray(payload) ? payload : [])
-      if (proxyStatus && /stale|過期/i.test(proxyStatus.message)) {
+      if (proxyStatus && /stale|過期|建置版本不符/i.test(proxyStatus.message)) {
         this.options.onTables([])
         this.options.onStatus(proxyStatus)
         return
@@ -169,6 +180,14 @@ export class LiveRoadClient {
     this.options.onStatus({ state: 'connected', message: liveMessage })
     return true
   }
+
+  private handleUnauthorized() {
+    this.options.onTables([])
+    this.options.onStatus({ state: 'error', message: '會員 Session 已失效，請重新登入' })
+    if (this.authorizationLost) return
+    this.authorizationLost = true
+    this.options.onUnauthorized?.()
+  }
 }
 
 async function readProxyStatus(memberSessionToken?: string): Promise<Status> {
@@ -177,6 +196,9 @@ async function readProxyStatus(memberSessionToken?: string): Promise<Status> {
     const response = await fetch(`${proxyApiUrl}/api/status`, { cache: 'no-store', headers })
     if (!response.ok) return { state: 'error', message: `proxy狀態讀取失敗 (${response.status})` }
     const status = await response.json()
+    if (status.buildVersion != null && String(status.buildVersion) !== CURRENT_BUILD_VERSION) {
+      return { state: 'error', message: '建置版本不符，預測暫不可用' }
+    }
     if (typeof status.statusText === 'string' && status.statusText) {
       return { state: status.connected ? 'connected' : 'connecting', message: status.statusText }
     }
@@ -196,6 +218,30 @@ export function isLiveTableStale(table: Pick<LiveTable, 'sourceUpdatedAt'> | { s
   const timestamp = Date.parse(table.sourceUpdatedAt)
   if (!Number.isFinite(timestamp)) return true
   return now - timestamp > Math.max(1000, Number(maxAgeMs) || 120000)
+}
+
+export function getBackendPredictionIssue(table?: LiveTable | null, now = Date.now()): string | null {
+  const prediction = table?.prediction
+  if (!prediction || prediction.source !== 'backend') return '後端預測暫不可用'
+  if (prediction.strategyVersion !== CURRENT_STRATEGY_VERSION) return '策略版本不符'
+  if (String(table?.buildVersion ?? prediction.buildVersion ?? '') !== CURRENT_BUILD_VERSION) return '建置版本不符'
+  if (isLiveTableStale(table ?? {}, now)) return '資料過期'
+  if (String(prediction.targetTableId ?? '') !== String(table?.table_id ?? table?.id ?? '')
+    || String(prediction.targetShoe ?? '') !== String(table?.trend.current_shoe ?? '')
+    || Number(prediction.targetRound) !== Number(table?.trend.current_round)) return '預測目標不符'
+  if (!['banker', 'player'].includes(prediction.predictedResult)
+    || !Number.isFinite(Number(prediction.confidence))
+    || !['banker', 'player', 'tie'].every((key) => Number.isFinite(Number(prediction.probabilities?.[key as 'banker' | 'player' | 'tie'])))) return '主預測資料不完整'
+  if (!hasExactKeys(prediction.sidePredictions, sidePredictionKeys) || !sidePredictionKeys.every((key) => Number.isFinite(Number(prediction.sidePredictions?.[key])))) return '副預測六項不完整'
+  if (!hasExactKeys(prediction.sideActions, sidePredictionKeys) || !sidePredictionKeys.every((key) => typeof prediction.sideActions?.[key] === 'boolean')) return '副預測六項 action 不完整'
+  return null
+}
+
+function hasExactKeys(value: unknown, keys: string[]) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const expected = [...keys].sort()
+  const actual = Object.keys(value as Record<string, unknown>).sort()
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index])
 }
 
 function normalizeProxyTables(tables: ProxyTable[]): LiveTable[] {
@@ -229,6 +275,7 @@ function normalizeProxyTables(tables: ProxyTable[]): LiveTable[] {
       state: table.state ?? null,
       orderState: table.orderState ?? null,
       sourceUpdatedAt: table.sourceUpdatedAt ?? null,
+      buildVersion: table.buildVersion ?? table.prediction?.buildVersion ?? null,
       prediction: table.prediction,
     }
   })
