@@ -10,7 +10,9 @@ function body(overrides = {}) {
     protocolVersion: 'v098',
     timestamp: now,
     sequence: 1,
+    roundKeys: [],
     snapshot: {
+      buildVersion: '098',
       connected: true,
       authenticated: true,
       sessionId: 'vm-worker',
@@ -69,7 +71,7 @@ test('valid cloud ingest updates tables and uses existing Supabase capture flow'
 test('cloud ingest rejects malformed tables and oversized payloads', async () => {
   const app = createTestApp()
   const headers = { 'x-worker-key': key }
-  const malformed = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers, body: body({ snapshot: { tables: {} } }) })
+  const malformed = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers, body: body({ snapshot: { buildVersion: '098', tables: {}, rounds: [] } }) })
   assert.equal(malformed.statusCode, 400)
   const oversized = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers, body: `${body()}${' '.repeat(1024 * 1024)}` })
   assert.equal(oversized.statusCode, 413)

@@ -45,6 +45,7 @@ export function createCloudCaptureClient({ url, state, writer = null, fetchImpl 
         throw new Error(`Cloud capture worker failed: ${response?.status ?? 'unknown'} ${text}`)
       }
       const body = await response.json()
+      if (body?.buildVersion !== '098') throw new Error('version_mismatch: worker buildVersion must be 098')
       const parsed = parseCloudCapturePayload(body)
       try {
         await applyCloudCapturePayload({ parsed, state, writer })
@@ -57,7 +58,7 @@ export function createCloudCaptureClient({ url, state, writer = null, fetchImpl 
     } catch (error) {
       const event = buildOperationalEvent({ component: 'cloud_capture', kind: 'worker_snapshot', message: error?.message ?? String(error) })
       state?.recordError?.(event.eventMessage)
-      state?.setStatus?.({ captureSource: 'cloud_browser', captureMode: 'cloud_browser', connected: false, authenticated: false, cloudReady: true, ...toStatusEvent(event) })
+      state?.setStatus?.({ captureSource: 'cloud_browser', captureMode: 'cloud_browser', connected: false, authenticated: false, cloudReady: true, health: 'degraded', reason: event.eventMessage, ...toStatusEvent(event) })
       await writer?.writeOperationalEvent?.(event).catch(() => {})
       return null
     }
@@ -94,7 +95,7 @@ async function fetchWorkerSnapshot({ url, fetchImpl, timeoutMs, requestRetries, 
     const controller = typeof AbortController === 'function' ? new AbortController() : null
     const timeout = controller ? setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs) || DEFAULT_REQUEST_TIMEOUT_MS)) : null
     try {
-      return await fetchImpl(url, { cache: 'no-store', signal: controller?.signal, headers: adminKey ? { 'x-worker-admin-key': adminKey } : undefined })
+      return await fetchImpl(url, { cache: 'no-store', redirect: 'error', signal: controller?.signal, headers: adminKey ? { 'x-worker-admin-key': adminKey } : undefined })
     } catch (error) {
       lastError = error
       if (attempt >= attempts || !isTransientWorkerError(error)) throw error

@@ -1,4 +1,5 @@
 import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
+import { BUILD_VERSION } from './build-version.js'
 
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
@@ -234,18 +235,10 @@ export function buildPredictionResultRow(round = {}, table = {}, precomputedPred
   const target = validatePredictionTarget(precomputedPrediction, round)
   if (!target) return null
   const facts = deriveBaccaratRoundFacts(round)
-  const probabilities = calculateInitialProbabilities(table)
-  const tablePerformance = buildTablePerformanceFeature(table)
-  const calculatedPrediction = calculateAllMtEqualMainPrediction({ round, table, facts, probabilities, tablePerformance })
-  const allMtPrediction = {
-    predictedResult: precomputedPrediction.predictedResult,
-    confidence: Math.max(30, Math.min(70, Math.round(Number(precomputedPrediction.confidence)))),
-    scores: precomputedPrediction.scoreSources ?? calculatedPrediction.scores,
-  }
-  const predicted_result = allMtPrediction.predictedResult
-  const sidePredictions = structuredClone(precomputedPrediction.sidePredictions)
+  const predicted_result = precomputedPrediction.predictedResult
   const sideActions = structuredClone(precomputedPrediction.sideActions)
   const sideActualResults = buildSideActualResults(round, facts)
+  const predictionFeatures = structuredClone(precomputedPrediction.predictionFeatures)
   return {
     source: SOURCE,
     table_id: target.tableId,
@@ -253,54 +246,19 @@ export function buildPredictionResultRow(round = {}, table = {}, precomputedPred
     round_no: target.round,
     strategy_version: precomputedPrediction.strategyVersion,
     predicted_result,
-    confidence: allMtPrediction.confidence,
+    confidence: precomputedPrediction.confidence,
     actual_result: facts.winner,
     is_hit: predicted_result === facts.winner,
-    table_recent_hit_rate: tablePerformance.recentHitRate,
-    table_recent_prediction_count: tablePerformance.recentPredictionCount,
-    short_run_adjustment: {
-      rule: ALL_MT_EQUAL_STRATEGY_VERSION,
-      includedMainWeightCount: Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length,
-      includedSideWeightCount: Object.keys(SIDE_WEIGHT_KEYS).length,
-      sideActionRateTargets: SIDE_PREDICTION_ACTION_RATE_TARGETS,
-      sideTargetHitRate: SIDE_PREDICTION_TARGET_HIT_RATE,
-      baseProbabilities: probabilities,
-    },
+    table_recent_hit_rate: precomputedPrediction.tableRecentHitRate,
+    table_recent_prediction_count: precomputedPrediction.tableRecentPredictionCount,
+    short_run_adjustment: structuredClone(precomputedPrediction.shortRunAdjustment),
     prediction_features: {
-      prediction_timing: 'pre_result_context',
-      mt_context: buildMtContextFeatures(table),
-      derived_main_features: buildDerivedMainFeatures(round, table, facts, probabilities, tablePerformance),
-      unified_main_scores: allMtPrediction.scores,
-      road_features: buildRoadFeatures(table),
-      card_shoe_features: scoreCardShoeInfluence({ lastRound: round, shoeState: round.cardShoe ?? null }).features,
-      side_card_rank_features: buildSideCardRankFeatures(round.cardShoe ?? null),
-      side_prediction_rank_inputs: buildSidePredictionRankInputs(round.cardShoe ?? null),
-      point_features: {
-        playerPoint: facts.playerPoint,
-        bankerPoint: facts.bankerPoint,
-        pointDiff: facts.pointDiff,
-        playerDrew: facts.playerDrew,
-        bankerDrew: facts.bankerDrew,
-        playerNatural: facts.playerNatural,
-        bankerNatural: facts.bankerNatural,
-      },
-      side_weights: Object.fromEntries(Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES).map(([key, profile]) => [key, { ...profile }])),
-        side_tuning: Object.fromEntries(Object.entries(SIDE_PREDICTION_ACTION_RATE_TARGETS).map(([key, targetActionRate]) => [key, { targetActionRate, targetHitRate: SIDE_PREDICTION_TARGET_HIT_RATE }])),
-      side_predictions: sidePredictions,
-      side_actions: sideActions,
+      ...predictionFeatures,
       side_actual_results: sideActualResults,
       side_hits: buildSideHitsFromActions(sideActions, sideActualResults),
-      side_results: {
-        superSix: facts.superSix,
-        bankerDragon: facts.bankerDragon,
-        playerDragon: facts.playerDragon,
-        bankerPair: facts.bankerPair,
-        playerPair: facts.playerPair,
-      },
-      table_performance: tablePerformance,
     },
-    probabilities,
-    feature_weights: { ...ALL_MT_EQUAL_MAIN_WEIGHTS },
+    probabilities: structuredClone(precomputedPrediction.probabilities),
+    feature_weights: structuredClone(precomputedPrediction.featureWeights),
     resolved_at: new Date().toISOString(),
   }
 }
@@ -344,8 +302,6 @@ export function buildCompactRoadmapEventDbRow(row = {}) {
 
 export function buildCompactPredictionResultDbRow(row = {}) {
   const features = row.prediction_features && typeof row.prediction_features === 'object' ? row.prediction_features : {}
-  const derived = features.derived_main_features && typeof features.derived_main_features === 'object' ? features.derived_main_features : {}
-  const mt = features.mt_context && typeof features.mt_context === 'object' ? features.mt_context : {}
   return {
     source: row.source,
     table_id: row.table_id,
@@ -366,17 +322,7 @@ export function buildCompactPredictionResultDbRow(row = {}) {
       sideTargetHitRate: row.short_run_adjustment?.sideTargetHitRate ?? null,
       baseProbabilities: row.short_run_adjustment?.baseProbabilities ?? row.probabilities ?? null,
     },
-    prediction_features: {
-      prediction_timing: features.prediction_timing ?? null,
-      side_actions: features.side_actions ?? {},
-      side_hits: features.side_hits ?? {},
-      side_predictions: features.side_predictions ?? {},
-      side_actual_results: features.side_actual_results ?? {},
-      side_results: features.side_results ?? {},
-      point_features: features.point_features ?? {},
-      table_performance: features.table_performance ?? {},
-      feature_summary: compactPredictionFeatureSummary({ row, derived, mt }),
-    },
+    prediction_features: structuredClone(features),
     probabilities: row.probabilities,
     resolved_at: row.resolved_at,
   }
@@ -526,8 +472,35 @@ export function buildLivePrediction(table = {}) {
   })
   const sidePredictions = buildSidePredictions(table, nextRound)
   const sideActions = buildSideActions(sidePredictions, prediction.predictedResult)
+  const preResultFacts = deriveBaccaratRoundFacts(table.lastRound ?? {})
+  const predictionFeatures = {
+    prediction_timing: 'pre_result_context',
+    mt_context: buildMtContextFeatures(table),
+    derived_main_features: buildDerivedMainFeatures(nextRound, table, preResultFacts, probabilities, tablePerformance),
+    unified_main_scores: structuredClone(prediction.scores),
+    road_features: buildRoadFeatures(table),
+    card_shoe_features: scoreCardShoeInfluence({ lastRound: table.lastRound ?? {}, shoeState: table.cardShoe ?? null }).features,
+    side_card_rank_features: buildSideCardRankFeatures(table.cardShoe ?? null),
+    side_prediction_rank_inputs: buildSidePredictionRankInputs(table.cardShoe ?? null),
+    point_features: {
+      playerPoint: preResultFacts.playerPoint,
+      bankerPoint: preResultFacts.bankerPoint,
+      pointDiff: preResultFacts.pointDiff,
+      playerDrew: preResultFacts.playerDrew,
+      bankerDrew: preResultFacts.bankerDrew,
+      playerNatural: preResultFacts.playerNatural,
+      bankerNatural: preResultFacts.bankerNatural,
+    },
+    side_weights: Object.fromEntries(Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES).map(([key, profile]) => [key, { ...profile }])),
+    side_tuning: Object.fromEntries(Object.entries(SIDE_PREDICTION_ACTION_RATE_TARGETS).map(([key, targetActionRate]) => [key, { targetActionRate, targetHitRate: SIDE_PREDICTION_TARGET_HIT_RATE }])),
+    side_predictions: structuredClone(sidePredictions),
+    side_actions: structuredClone(sideActions),
+    side_results: { superSix: false, bankerDragon: false, playerDragon: false, bankerPair: false, playerPair: false },
+    table_performance: structuredClone(tablePerformance),
+  }
   return {
     source: 'backend',
+    buildVersion: BUILD_VERSION,
     strategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION,
     targetTableId: String(table.tableId ?? ''),
     targetShoe: table.shoe == null ? null : String(table.shoe),
@@ -539,6 +512,18 @@ export function buildLivePrediction(table = {}) {
     scoreSources: prediction.scores,
     sidePredictions,
     sideActions,
+    tableRecentHitRate: tablePerformance.recentHitRate,
+    tableRecentPredictionCount: tablePerformance.recentPredictionCount,
+    shortRunAdjustment: {
+      rule: ALL_MT_EQUAL_STRATEGY_VERSION,
+      includedMainWeightCount: Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length,
+      includedSideWeightCount: Object.keys(SIDE_WEIGHT_KEYS).length,
+      sideActionRateTargets: structuredClone(SIDE_PREDICTION_ACTION_RATE_TARGETS),
+      sideTargetHitRate: SIDE_PREDICTION_TARGET_HIT_RATE,
+      baseProbabilities: structuredClone(probabilities),
+    },
+    predictionFeatures,
+    featureWeights: { ...ALL_MT_EQUAL_MAIN_WEIGHTS },
   }
 }
 
@@ -1176,12 +1161,12 @@ function parseBeadCells(raw = '') {
 
 function buildSideActualResults(round = {}, facts = {}) {
   return {
-    tie: Boolean(round.sideActualResults?.tie ?? facts.winner === 'tie'),
-    superSix: Boolean(round.sideActualResults?.superSix ?? facts.superSix),
-    bankerPair: Boolean(round.sideActualResults?.bankerPair ?? facts.bankerPair),
-    playerPair: Boolean(round.sideActualResults?.playerPair ?? facts.playerPair),
-    bankerDragon: Boolean(round.sideActualResults?.bankerDragon ?? facts.bankerDragon),
-    playerDragon: Boolean(round.sideActualResults?.playerDragon ?? facts.playerDragon),
+    tie: facts.winner === 'tie',
+    superSix: Boolean(facts.superSix),
+    bankerPair: Boolean(facts.bankerPair),
+    playerPair: Boolean(facts.playerPair),
+    bankerDragon: Boolean(facts.bankerDragon),
+    playerDragon: Boolean(facts.playerDragon),
   }
 }
 
@@ -1270,11 +1255,13 @@ export function buildCloudTableSnapshotRow({ sessionId = null, tables = [], stat
 }
 
 function enrichTableWithLivePrediction(table = {}) {
-  if (table.prediction?.source === 'backend' && Number.isFinite(Number(table.prediction.confidence))) return table
+  if (table.prediction?.source === 'backend' && Number.isFinite(Number(table.prediction.confidence))) {
+    return { ...table, buildVersion: BUILD_VERSION, prediction: { ...table.prediction, buildVersion: BUILD_VERSION } }
+  }
   try {
-    return { ...table, prediction: buildLivePrediction(table) }
+    return { ...table, buildVersion: BUILD_VERSION, prediction: buildLivePrediction(table) }
   } catch {
-    return table
+    return { ...table, buildVersion: BUILD_VERSION }
   }
 }
 
@@ -1407,7 +1394,7 @@ export function createSupabaseIngestionClient({
   let runtimeStatus = { ready: false, degraded: false, reason: 'active_strategy_not_verified', activeStrategyVersion: null }
   let writeQueue = Promise.resolve()
 
-  async function postRest(path, body, conflict, { requireRepresentation = false } = {}) {
+  async function postRest(path, body, conflict, { requireRepresentation = false, requireObject = false } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase backend key is not configured' }
     const endpoint = new URL(`/rest/v1/${path}`, url)
     if (conflict) endpoint.searchParams.set('on_conflict', conflict)
@@ -1429,6 +1416,12 @@ export function createSupabaseIngestionClient({
         try { rows = JSON.parse(responseText) } catch { rows = null }
         if (!Array.isArray(rows) || rows.length !== 1) throw new Error(`Supabase ${path} snapshot write was suppressed`)
         return { ok: true, status: response.status, row: rows[0] }
+      }
+      if (requireObject) {
+        let payload
+        try { payload = JSON.parse(responseText) } catch { payload = null }
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error(`Supabase ${path} returned an invalid acknowledgement`)
+        return payload
       }
       return { ok: true, status: response.status }
     })
@@ -1490,6 +1483,16 @@ export function createSupabaseIngestionClient({
     getRuntimeStatus() {
       return { ...runtimeStatus }
     },
+    async getStablePredictionRows({ since = null, limit = 10000 } = {}) {
+      const query = {
+        select: 'source,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,prediction_features,created_at',
+        order: 'created_at.asc',
+        limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
+      }
+      if (since) query.created_at = `gte.${since}`
+      const rows = await getRest('daily_prediction_results', query)
+      return Array.isArray(rows) ? rows : []
+    },
     async persistRound(round, table, precomputedPrediction = null) {
       if (runtimeStatus.degraded) throw new Error(runtimeStatus.reason)
       const target = validatePredictionTarget(precomputedPrediction, round)
@@ -1511,10 +1514,13 @@ export function createSupabaseIngestionClient({
 
       const writePromise = enqueueWrite(async () => {
         if (completedRoundKeys.has(roundKey)) return { skipped: true, reason: 'duplicate_round', event, prediction, compactEvent, compactPrediction }
-        await postRest('rpc/persist_v098_settled_round', {
+        const acknowledgement = await postRest('rpc/persist_v098_settled_round', {
           p_roadmap: compactEvent,
           p_prediction: compactPrediction,
-        })
+        }, undefined, { requireObject: true })
+        if (acknowledgement.persisted !== true || acknowledgement.roadmapDurable !== true || acknowledgement.predictionDurable !== true) {
+          throw new Error('durable settlement acknowledgement failed')
+        }
         completedRoundKeys.add(roundKey)
         return { event, prediction, compactEvent, compactPrediction }
       }).finally(() => {

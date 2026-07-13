@@ -78,7 +78,8 @@ const sidePredictionKeys: SidePredictionKey[] = ['tie', 'superSix', 'bankerPair'
 
 export class LiveRoadClient {
   private timer?: number
-  private stream?: EventSource
+  private streamAbort?: AbortController
+  private reconnectTimer?: number
   private streamWatchdog?: number
   private lastStreamAt = 0
   private stopped = true
@@ -91,12 +92,7 @@ export class LiveRoadClient {
     this.stopped = false
     this.authorizationLost = false
     this.options.onStatus({ state: 'connecting', message: '正在建立即時同步…' })
-    if (this.options.memberSessionToken) {
-      void this.poll()
-      this.timer = window.setInterval(() => void this.poll(), pollIntervalMs)
-      return
-    }
-    this.connectStream()
+    void this.connectStream()
     this.streamWatchdog = window.setInterval(() => {
       if (this.stopped) return
       if (!this.lastStreamAt || Date.now() - this.lastStreamAt > streamStaleMs) void this.poll()
@@ -107,37 +103,56 @@ export class LiveRoadClient {
     this.stopped = true
     if (this.timer) window.clearInterval(this.timer)
     if (this.streamWatchdog) window.clearInterval(this.streamWatchdog)
-    this.stream?.close()
+    if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer)
+    this.streamAbort?.abort()
     this.timer = undefined
     this.streamWatchdog = undefined
-    this.stream = undefined
+    this.reconnectTimer = undefined
+    this.streamAbort = undefined
     if (notify) this.options.onStatus({ state: 'disconnected', message: '已停止讀取雲端資料' })
   }
 
-  private connectStream() {
+  private async connectStream() {
+    this.streamAbort?.abort()
+    const controller = new AbortController()
+    this.streamAbort = controller
     try {
-      this.stream?.close()
-      this.stream = new EventSource(`${proxyApiUrl}/api/tables/stream?ts=${Date.now()}`)
-      this.stream.onopen = () => {
-        this.lastStreamAt = Date.now()
-        this.options.onStatus({ state: 'connecting', message: '即時同步已連線，等待最新桌況…' })
+      const headers = this.options.memberSessionToken ? { Authorization: `Bearer ${this.options.memberSessionToken}` } : undefined
+      const response = await fetch(`${proxyApiUrl}/api/tables/stream`, { cache: 'no-store', headers, signal: controller.signal })
+      if (response.status === 401) {
+        this.handleUnauthorized()
+        return
       }
-      this.stream.addEventListener('tables', (event) => {
+      if (!response.ok || !response.body) throw new Error(`stream ${response.status}`)
+      this.lastStreamAt = Date.now()
+      await consumeSseStream(response.body, (event, data) => {
         if (this.stopped) return
         this.lastStreamAt = Date.now()
-        const payload = JSON.parse((event as MessageEvent).data)
+        if (event === 'unauthorized') {
+          this.handleUnauthorized()
+          this.streamAbort?.abort()
+          return
+        }
+        if (event === 'heartbeat') return
+        if (event !== 'tables') return
+        const payload = JSON.parse(data)
         const tables = normalizeProxyTables(Array.isArray(payload?.tables) ? payload.tables : [])
-        this.publishTables(tables, `即時同步中（${tables.length}桌）`)
+        this.publishTables(tables, `SSE ${tables.length}`)
       })
-      this.stream.addEventListener('heartbeat', () => { this.lastStreamAt = Date.now() })
-      this.stream.onerror = () => {
-        if (this.stopped) return
-        this.options.onStatus({ state: 'connecting', message: '即時同步重連中，暫用輪詢備援…' })
-        window.setTimeout(() => { if (!this.stopped) this.connectStream() }, 2000)
-      }
+      if (!this.stopped) this.scheduleStreamReconnect()
     } catch {
-      void this.poll()
+      if (this.stopped || controller.signal.aborted) return
+      await this.poll()
+      this.scheduleStreamReconnect()
     }
+  }
+
+  private scheduleStreamReconnect() {
+    if (this.stopped || this.reconnectTimer) return
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = undefined
+      if (!this.stopped) void this.connectStream()
+    }, 2000)
   }
 
   private async poll() {
@@ -228,7 +243,7 @@ export function getBackendPredictionIssue(table?: LiveTable | null, now = Date.n
   if (isLiveTableStale(table ?? {}, now)) return '資料過期'
   if (String(prediction.targetTableId ?? '') !== String(table?.table_id ?? table?.id ?? '')
     || String(prediction.targetShoe ?? '') !== String(table?.trend.current_shoe ?? '')
-    || Number(prediction.targetRound) !== Number(table?.trend.current_round)) return '預測目標不符'
+    || Number(prediction.targetRound) !== Number(table?.trend.current_round) + 1) return '預測目標不符'
   if (!['banker', 'player'].includes(prediction.predictedResult)
     || !Number.isFinite(Number(prediction.confidence))
     || !['banker', 'player', 'tie'].every((key) => Number.isFinite(Number(prediction.probabilities?.[key as 'banker' | 'player' | 'tie'])))) return '主預測資料不完整'
@@ -242,6 +257,31 @@ function hasExactKeys(value: unknown, keys: string[]) {
   const expected = [...keys].sort()
   const actual = Object.keys(value as Record<string, unknown>).sort()
   return actual.length === expected.length && actual.every((key, index) => key === expected[index])
+}
+
+async function consumeSseStream(stream: ReadableStream<Uint8Array>, onEvent: (event: string, data: string) => void) {
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, '\n')
+      let boundary = buffer.indexOf('\n\n')
+      while (boundary >= 0) {
+        const block = buffer.slice(0, boundary)
+        buffer = buffer.slice(boundary + 2)
+        const lines = block.split('\n')
+        const event = lines.find((line) => line.startsWith('event:'))?.slice(6).trim() ?? 'message'
+        const data = lines.filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('\n')
+        if (data) onEvent(event, data)
+        boundary = buffer.indexOf('\n\n')
+      }
+      if (done) break
+    }
+  } finally {
+    reader.releaseLock()
+  }
 }
 
 function normalizeProxyTables(tables: ProxyTable[]): LiveTable[] {

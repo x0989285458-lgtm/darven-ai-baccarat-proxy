@@ -16,7 +16,7 @@ test('v041 cloud capture management endpoints expose status, tick, start, and st
       return {
         ok: true,
         status: 200,
-        json: async () => ({ connected: true, authenticated: true, sessionId: 'v041-session', tables: [{ tableId: 'BAG01' }] }),
+        json: async () => ({ buildVersion: '098', connected: true, authenticated: true, sessionId: 'v041-session', tables: [{ tableId: 'BAG01' }] }),
       }
     },
   })

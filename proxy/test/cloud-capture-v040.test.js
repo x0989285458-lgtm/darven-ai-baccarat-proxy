@@ -26,7 +26,7 @@ test('v090 cloud capture sends worker admin key header when configured', async (
     adminKey: 'worker-secret',
     fetchImpl: async (_url, init = {}) => {
       assert.equal(init.headers?.['x-worker-admin-key'], 'worker-secret')
-      return { ok: true, status: 200, json: async () => ({ connected: true, authenticated: true, tables: [] }) }
+      return { ok: true, status: 200, json: async () => ({ buildVersion: '098', connected: true, authenticated: true, tables: [] }) }
     },
   })
   await client.tick()
@@ -50,6 +50,7 @@ test('v040 cloud capture tick fetches worker, updates state, and writes Supabase
         ok: true,
         status: 200,
         json: async () => ({
+          buildVersion: '098',
           connected: true,
           authenticated: true,
           sessionId: 'cloud-session-1',
@@ -93,7 +94,7 @@ test('v052 cloud capture clears stale tables when worker loses authenticated tab
     fetchImpl: async () => ({
       ok: true,
       status: 200,
-      json: async () => ({ connected: true, authenticated: false, tables: [], errorMessage: 'MT page is open, but no table payload was detected yet.' }),
+      json: async () => ({ buildVersion: '098', connected: true, authenticated: false, tables: [], errorMessage: 'MT page is open, but no table payload was detected yet.' }),
     }),
   })
 
@@ -139,6 +140,7 @@ test('v092 cloud capture retries a transient worker snapshot failure and replace
         ok: true,
         status: 200,
         json: async () => ({
+          buildVersion: '098',
           connected: true,
           authenticated: true,
           sessionId: 'worker-recovered',

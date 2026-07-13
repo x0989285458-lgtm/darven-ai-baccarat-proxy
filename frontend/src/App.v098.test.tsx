@@ -21,7 +21,7 @@ function table(overrides: Record<string, unknown> = {}) {
       buildVersion: '098',
       targetTableId: 'BAG01',
       targetShoe: '123',
-      targetRound: 18,
+      targetRound: 19,
       predictedResult: 'banker',
       confidence: 61,
       probabilities: { banker: 61, player: 30, tie: 9 },

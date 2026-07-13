@@ -1,5 +1,4 @@
 import path from 'node:path'
-import { createHash } from 'node:crypto'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 
 export function createSnapshotPusher({
@@ -22,47 +21,25 @@ export function createSnapshotPusher({
   let lastSequence = 0
   let active = false
   let restored = false
-  let queueInvalid = false
-  let pendingEnvelope = null
-  const acknowledgedRoundKeys = new Set()
-  const missingShoeRoundShoes = new Map()
+  let stateInvalid = false
+  let queue = []
   let cursorInitialized = false
+  const observedRoundKeys = new Set()
+  const acknowledgedRoundKeys = new Set()
 
   async function tick() {
-    if (!targetUrl || !key || typeof getSnapshot !== 'function' || active) return false
+    if (!targetUrl || !key || typeof getSnapshot !== 'function' || active || stateInvalid) return false
     active = true
     try {
       await restoreState()
-      if (queueInvalid) return false
+      if (stateInvalid) return false
       const timestamp = Number(now())
-      if (timestamp < nextAttemptAt) return false
+      await collectSnapshot(timestamp)
+      if (timestamp < nextAttemptAt || queue.length === 0) return false
 
-      if (!pendingEnvelope) {
-        const snapshot = await getSnapshot()
-        const rounds = Array.isArray(snapshot?.rounds) ? snapshot.rounds : []
-        const roundKeys = rounds.map((round) => roundKey(round, snapshot, missingShoeRoundShoes))
-        if (!cursorInitialized) {
-          for (const key of roundKeys) if (key) acknowledgedRoundKeys.add(key)
-          cursorInitialized = true
-        }
-        trimCursor()
-        await saveCursor()
-        const sequence = Math.max(lastSequence + 1, timestamp)
-        lastSequence = sequence
-        const pendingIndexes = roundKeys.map((_key, index) => index).filter((index) => roundKeys[index] && !acknowledgedRoundKeys.has(roundKeys[index]))
-        const pendingRoundKeys = pendingIndexes.map((index) => roundKeys[index])
-        const pendingRounds = pendingIndexes.map((index) => normalizeRoundForEnvelope(rounds[index], roundKeys[index]))
-        pendingEnvelope = {
-          protocolVersion: 'v098',
-          sessionId: String(snapshot?.sessionId ?? ''),
-          timestamp,
-          sequence,
-          roundKeys: pendingRoundKeys,
-          snapshot: { ...snapshot, rounds: pendingRounds },
-        }
-        await saveJson(queuePath, pendingEnvelope)
-      }
-
+      const envelope = { ...queue[0], timestamp }
+      queue[0] = envelope
+      await saveQueue()
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), requestTimeoutMs)
       try {
@@ -70,18 +47,18 @@ export function createSnapshotPusher({
           method: 'POST',
           redirect: 'error',
           headers: { 'content-type': 'application/json', 'x-worker-key': key },
-          body: JSON.stringify(pendingEnvelope),
+          body: JSON.stringify(envelope),
           signal: controller.signal,
         })
-        const acknowledgement = await readAcknowledgement(response, pendingEnvelope)
+        const acknowledgement = await readAcknowledgement(response, envelope)
         if (!acknowledgement) throw new Error(`push failed with invalid acknowledgement (${response?.status ?? 'unknown'})`)
-        for (const key of acknowledgement.acceptedRoundKeys) acknowledgedRoundKeys.add(key)
+        for (const roundKey of acknowledgement.acceptedRoundKeys) acknowledgedRoundKeys.add(roundKey)
+        queue.shift()
         trimCursor()
+        await saveQueue()
         await saveCursor()
         failures = 0
         nextAttemptAt = 0
-        await rm(queuePath, { force: true })
-        pendingEnvelope = null
         return true
       } catch {
         failures += 1
@@ -90,8 +67,147 @@ export function createSnapshotPusher({
       } finally {
         clearTimeout(timeout)
       }
+    } catch (error) {
+      stateInvalid = true
+      throw error
     } finally {
       active = false
+    }
+  }
+
+  async function collectSnapshot(timestamp) {
+    const snapshot = await getSnapshot()
+    const rounds = Array.isArray(snapshot?.rounds) ? snapshot.rounds : []
+    const candidates = rounds
+      .map((round) => ({ round, key: roundKey(round) }))
+      .filter((candidate) => candidate.key)
+
+    if (!cursorInitialized) {
+      for (const candidate of candidates) observedRoundKeys.add(candidate.key)
+      cursorInitialized = true
+      trimCursor()
+      await saveCursor()
+      if (queue.length === 0) {
+        queue.push(createEnvelope(snapshot, [], [], timestamp))
+        await saveQueue()
+      }
+      return
+    }
+
+    const queuedRoundKeys = new Set(queue.flatMap((entry) => entry.roundKeys))
+    const pending = candidates.filter(({ key: roundKeyValue }) => (
+      !observedRoundKeys.has(roundKeyValue)
+      && !acknowledgedRoundKeys.has(roundKeyValue)
+      && !queuedRoundKeys.has(roundKeyValue)
+    ))
+    for (const candidate of candidates) observedRoundKeys.add(candidate.key)
+    trimCursor()
+
+    if (pending.length > 0) {
+      queue.push(createEnvelope(
+        snapshot,
+        pending.map(({ round }, index) => normalizeRoundForEnvelope(round, pending[index].key)),
+        pending.map(({ key: roundKeyValue }) => roundKeyValue),
+        timestamp,
+      ))
+      await saveQueue()
+    }
+    await saveCursor()
+    if (pending.length === 0 && queue.length === 0) {
+      queue.push(createEnvelope(snapshot, [], [], timestamp))
+      await saveQueue()
+    }
+  }
+
+  function createEnvelope(snapshot, rounds, roundKeys, timestamp) {
+    const sequence = Math.max(lastSequence + 1, timestamp)
+    lastSequence = sequence
+    return {
+      protocolVersion: 'v098',
+      sessionId: String(snapshot?.sessionId ?? ''),
+      timestamp,
+      captureTimestamp: timestamp,
+      sequence,
+      roundKeys,
+      snapshot: { ...snapshot, rounds },
+    }
+  }
+
+  async function restoreState() {
+    if (restored) return
+    restored = true
+    try {
+      const queued = await readStateFile(queuePath, 'queue')
+      if (queued) {
+        try {
+          const entries = Array.isArray(queued.entries) ? queued.entries : [queued]
+          queue = entries.map(normalizeQueuedEnvelope)
+          for (const entry of queue) lastSequence = Math.max(lastSequence, entry.sequence)
+        } catch (error) {
+          await quarantineState(queuePath, 'queue', error)
+        }
+      }
+      const cursor = await readStateFile(cursorPath, 'cursor')
+      if (cursor) {
+        try {
+          if (typeof cursor.initialized !== 'boolean'
+            || !Array.isArray(cursor.observedRoundKeys ?? [])
+            || !Array.isArray(cursor.acknowledgedRoundKeys ?? [])
+            || (cursor.lastSequence != null && !Number.isSafeInteger(cursor.lastSequence))) throw new Error('invalid cursor state')
+          cursorInitialized = cursor.initialized
+          lastSequence = Math.max(lastSequence, Number(cursor.lastSequence ?? 0))
+          for (const roundKeyValue of cursor.observedRoundKeys ?? cursor.acknowledgedRoundKeys ?? []) observedRoundKeys.add(String(roundKeyValue))
+          for (const roundKeyValue of cursor.acknowledgedRoundKeys ?? []) acknowledgedRoundKeys.add(String(roundKeyValue))
+        } catch (error) {
+          await quarantineState(cursorPath, 'cursor', error)
+        }
+      }
+      trimCursor()
+    } catch (error) {
+      stateInvalid = true
+      throw error
+    }
+  }
+
+  async function readStateFile(filePath, label) {
+    let text
+    try {
+      text = await readFile(filePath, 'utf8')
+    } catch (error) {
+      if (error?.code === 'ENOENT') return null
+      throw error
+    }
+    try {
+      const value = JSON.parse(text)
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`invalid ${label} state`)
+      return value
+    } catch (error) {
+      await quarantineState(filePath, label, error)
+    }
+  }
+
+  async function quarantineState(filePath, label, error) {
+    const quarantinePath = `${filePath}.corrupt-${Number(now())}`
+    await rename(filePath, quarantinePath)
+    throw new Error(`corrupt ${label} state quarantined at ${quarantinePath}`, { cause: error })
+  }
+
+  function normalizeQueuedEnvelope(envelope) {
+    if (!envelope?.snapshot || !Number.isSafeInteger(envelope.sequence)) throw new Error('corrupt queue state: invalid envelope')
+    const snapshot = envelope.snapshot
+    const rounds = Array.isArray(snapshot.rounds) ? snapshot.rounds : []
+    const keys = rounds.map((round) => roundKey(round))
+    if (keys.some((roundKeyValue) => !roundKeyValue)) throw new Error('corrupt queue state: completed round has no durable key')
+    const captureTimestamp = Number(envelope.captureTimestamp ?? envelope.timestamp)
+    return {
+      ...envelope,
+      protocolVersion: 'v098',
+      sessionId: String(envelope.sessionId ?? snapshot.sessionId ?? ''),
+      timestamp: Number(envelope.timestamp),
+      captureTimestamp,
+      sequence: Number(envelope.sequence),
+      roundKeys: keys,
+      snapshot: { ...snapshot, rounds: rounds.map((round, index) => normalizeRoundForEnvelope(round, keys[index])) },
     }
   }
 
@@ -102,63 +218,34 @@ export function createSnapshotPusher({
     await rename(temporary, filePath)
   }
 
-  async function restoreState() {
-    if (restored) return
-    restored = true
-    try {
-      const queued = JSON.parse(await readFile(queuePath, 'utf8'))
-      if (queued && typeof queued === 'object' && queued.snapshot) pendingEnvelope = queued
-      if (Number.isSafeInteger(queued?.sequence)) lastSequence = queued.sequence
-    } catch {}
-    try {
-      const cursor = JSON.parse(await readFile(cursorPath, 'utf8'))
-      cursorInitialized = cursor?.initialized === true
-      for (const key of cursor?.acknowledgedRoundKeys ?? []) acknowledgedRoundKeys.add(String(key))
-      for (const [key, shoe] of cursor?.missingShoeRoundShoes ?? []) missingShoeRoundShoes.set(String(key), String(shoe))
-      trimCursor()
-    } catch {}
-    if (pendingEnvelope) {
-      const snapshot = pendingEnvelope.snapshot ?? {}
-      const rounds = Array.isArray(snapshot.rounds) ? snapshot.rounds : []
-      const keys = rounds.map((round) => roundKey(round, snapshot, missingShoeRoundShoes)).filter(Boolean)
-      if (keys.length !== rounds.length) {
-        queueInvalid = true
-      } else {
-        pendingEnvelope = {
-          ...pendingEnvelope,
-          protocolVersion: 'v098',
-          sessionId: String(pendingEnvelope.sessionId ?? snapshot.sessionId ?? ''),
-          roundKeys: keys,
-          snapshot: { ...snapshot, rounds: rounds.map((round, index) => normalizeRoundForEnvelope(round, keys[index])) },
-        }
-        await saveJson(queuePath, pendingEnvelope)
-      }
+  async function saveQueue() {
+    if (queue.length === 0) {
+      await rm(queuePath, { force: true })
+      return
     }
+    await saveJson(queuePath, { version: 2, entries: queue })
   }
 
   async function saveCursor() {
     await saveJson(cursorPath, {
-      version: 1,
+      version: 2,
       initialized: cursorInitialized,
+      lastSequence,
+      observedRoundKeys: [...observedRoundKeys],
       acknowledgedRoundKeys: [...acknowledgedRoundKeys],
-      missingShoeRoundShoes: [...missingShoeRoundShoes],
     })
   }
 
   function trimCursor() {
     const limit = Math.max(1, Number(maxCursorEntries) || 10000)
-    while (acknowledgedRoundKeys.size > limit) {
-      acknowledgedRoundKeys.delete(acknowledgedRoundKeys.values().next().value)
-    }
-    while (missingShoeRoundShoes.size > limit) {
-      missingShoeRoundShoes.delete(missingShoeRoundShoes.keys().next().value)
-    }
+    while (observedRoundKeys.size > limit) observedRoundKeys.delete(observedRoundKeys.values().next().value)
+    while (acknowledgedRoundKeys.size > limit) acknowledgedRoundKeys.delete(acknowledgedRoundKeys.values().next().value)
   }
 
   function start() {
-    if (timer || !targetUrl || !key) return
-    void tick()
-    timer = setInterval(() => { void tick() }, Math.max(1000, Number(intervalMs) || 5000))
+    if (timer || !targetUrl || !key || stateInvalid) return
+    void tick().catch(() => stop())
+    timer = setInterval(() => { void tick().catch(() => stop()) }, Math.max(1000, Number(intervalMs) || 5000))
     timer.unref?.()
   }
 
@@ -170,34 +257,10 @@ export function createSnapshotPusher({
   return { tick, start, stop, isRunning: () => Boolean(timer) }
 }
 
-function roundKey(round = {}, snapshot = {}, missingShoeRoundShoes = new Map()) {
+function roundKey(round = {}) {
   const tableId = canonicalTableId(round.tableId)
-  const table = (snapshot.tables ?? []).find((item) => canonicalTableId(item?.tableId) === tableId)
-  if (round.shoe != null && round.shoe !== '') return `${tableId}:${round.shoe}:${round.round ?? ''}`
-
-  const eventFingerprint = createHash('sha256')
-    .update(stableStringify({
-      sourceEventId: round.sourceEventId ?? null,
-      sourceAction: round.sourceAction ?? null,
-      rawResult: round.rawResult ?? null,
-      winner: round.winner ?? null,
-      playerPoint: round.playerPoint ?? null,
-      bankerPoint: round.bankerPoint ?? null,
-    }))
-    .digest('hex')
-  if (table?.shoe != null && table.shoe !== '') {
-    const hasEventIdentity = round.sourceEventId != null
-      || round.sourceAction != null
-      || round.rawResult != null
-      || round.playerPoint != null
-      || round.bankerPoint != null
-    if (!hasEventIdentity) return `${tableId}:${table.shoe}:${round.round ?? ''}`
-    const eventIdentity = round.sourceEventId ?? `${snapshot.sessionId ?? ''}:${eventFingerprint}`
-    const identityKey = `${tableId}:${round.round ?? ''}:${eventIdentity}`
-    if (!missingShoeRoundShoes.has(identityKey)) missingShoeRoundShoes.set(identityKey, String(table.shoe))
-    return `${tableId}:${missingShoeRoundShoes.get(identityKey)}:${round.round ?? ''}`
-  }
-  return null
+  if (!tableId || round.shoe == null || round.shoe === '' || round.round == null || round.round === '') return null
+  return `${tableId}:${round.shoe}:${round.round}`
 }
 
 function canonicalTableId(tableId) {
@@ -208,20 +271,8 @@ function canonicalTableId(tableId) {
 }
 
 function normalizeRoundForEnvelope(round = {}, key = '') {
-  const [tableId, shoe] = String(key).split(':')
-  return {
-    ...round,
-    tableId: tableId || canonicalTableId(round.tableId),
-    shoe: round.shoe == null || round.shoe === '' ? shoe : round.shoe,
-  }
-}
-
-function stableStringify(value) {
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`
-  }
-  return JSON.stringify(value)
+  const [tableId] = String(key).split(':')
+  return { ...round, tableId: tableId || canonicalTableId(round.tableId) }
 }
 
 async function readAcknowledgement(response, envelope) {
@@ -235,6 +286,6 @@ async function readAcknowledgement(response, envelope) {
     || String(body?.sessionId ?? '') !== String(envelope?.sessionId ?? '')
     || Number(body?.sequence) !== Number(envelope?.sequence)
     || acceptedKeys.length !== expectedKeys.length
-    || acceptedKeys.some((key, index) => key !== expectedKeys[index])) return null
+    || acceptedKeys.some((roundKeyValue, index) => roundKeyValue !== expectedKeys[index])) return null
   return { acceptedRoundKeys: acceptedKeys }
 }

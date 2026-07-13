@@ -23,6 +23,16 @@ test('v098 snapshot row persists the connection state needed by the SQL exceptio
   assert.deepEqual(row.metadata.connectionState, { connected: true, authenticated: false })
 })
 
+test('v098 durable cloud snapshot stamps buildVersion 098 on every table and prediction', () => {
+  const row = buildCloudTableSnapshotRow({
+    sessionId: 'session-1',
+    tables: [{ tableId: 'BAG01', shoe: 8, round: 20 }],
+  })
+
+  assert.equal(row.tables[0].buildVersion, '098')
+  assert.equal(row.tables[0].prediction.buildVersion, '098')
+})
+
 test('v098 writer treats a trigger-suppressed snapshot return as unavailable instead of success', async () => {
   const client = createSupabaseIngestionClient({
     url: 'https://example.invalid', serviceKey: 'fixture-key', retryAttempts: 1,

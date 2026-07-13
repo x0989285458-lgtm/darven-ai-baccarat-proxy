@@ -56,7 +56,7 @@ test('v071 live snapshot shoe and round are not overwritten by older lastRound s
 
 test('v048 prediction result row stores main and side prediction/actual learning payload', () => {
   const row = buildPredictionResultRow(
-    { tableId: 'BAG01', shoe: 10, round: 21, winner: 'banker', sideActualResults: { bankerPair: true, playerPair: false, tie: false } },
+    { tableId: 'BAG01', shoe: 10, round: 21, winner: 'banker', rawResult: [1, 9, 2, 22, -1, -1, -1, -1, 3, 8] },
     { tableId: 'BAG01', shoe: 10, round: 20, bankerCount: 10, playerCount: 9, tieCount: 1, bankerPairCount: 2, playerPairCount: 1, beadPlateRaw: '0102', bigRoadRaw: '0701' },
   )
 

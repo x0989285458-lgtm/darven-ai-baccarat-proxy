@@ -85,7 +85,7 @@ export function extractSnapshotFromPayloads(payloads = [], { sessionId = 'darven
   const rounds = dedupeRounds(
     roundCandidates
       .map((round) => normalizeRound(round))
-      .filter((round) => round.tableId && round.round != null && round.winner),
+      .filter((round) => round.tableId && round.shoe != null && round.round != null && round.winner),
   )
 
   return {
@@ -113,7 +113,8 @@ export function redactUrlSecrets(input = '') {
 
 function normalizeRound(payload = {}) {
   const round = extractRoundBody(payload)
-  const rawResult = Array.isArray(round.result) ? round.result : Array.isArray(round.rawResult) ? round.rawResult : null
+  const cards = firstArray(round, ['cards', 'cardList', 'card_list'])
+  const rawResult = Array.isArray(round.result) ? round.result : Array.isArray(round.rawResult) ? round.rawResult : cards
   const tableId = firstValue(round, ['tableId', 'table_id', 'tableID', 'id', 'gameTableId'])
   const winner = normalizeWinner(firstValue(round, ['winner', 'win', 'main_result', 'mainResult']) ?? (Array.isArray(round.result) ? null : round.result), rawResult)
   const sourceEventId = firstValue(payload, ['sourceEventId', 'eventId', 'event_id', '__captureEventId'])
@@ -126,6 +127,7 @@ function normalizeRound(payload = {}) {
     playerPoint: rawResult && rawResult.length > 8 ? toNullableNumber(rawResult[8]) : toNullableNumber(firstValue(round, ['playerPoint', 'player_point'])),
     bankerPoint: rawResult && rawResult.length > 9 ? toNullableNumber(rawResult[9]) : toNullableNumber(firstValue(round, ['bankerPoint', 'banker_point'])),
     rawResult: rawResult ?? payload,
+    ...(cards ? { cards } : {}),
     sourceAction: getActionName(payload.action) || payload.event || round.action || null,
     ...(sourceEventId == null ? {} : { sourceEventId: String(sourceEventId) }),
   }
@@ -133,6 +135,7 @@ function normalizeRound(payload = {}) {
 
 function extractRoundBody(value = {}) {
   const action = getActionName(value.action)
+  if (value.previous?.round && typeof value.previous.round === 'object') return value.previous.round
   if (value.round && typeof value.round === 'object') return value.round
   if (value.body && typeof value.body === 'object' && isMtRoundAction(action)) return value.body
   if (value.msg && typeof value.msg === 'object' && isMtRoundAction(action)) return value.msg
@@ -178,7 +181,7 @@ function collectCandidates(value, output, seen = new WeakSet(), sourceIndex = 0)
   if (isTableLike(value)) output.tableCandidates.push({ ...value, __sourceIndex: sourceIndex })
   if (isRoundLike(value)) output.roundCandidates.push(value)
 
-  for (const key of ['tables', 'tableList', 'rooms', 'games', 'list', 'data', 'result', 'msg', 'body', 'payload', 'payloads', 'arr', 'snapshot', 'round', 'roundResult']) {
+  for (const key of ['tables', 'tableList', 'rooms', 'games', 'list', 'data', 'result', 'msg', 'body', 'payload', 'payloads', 'arr', 'snapshot', 'previous', 'round', 'roundResult']) {
     if (value[key] != null) collectCandidates(value[key], output, seen, sourceIndex)
   }
 }
@@ -297,8 +300,8 @@ function tableSortKey(tableId) {
 function isRoundLike(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const round = extractRoundBody(value)
-  const rawResult = Array.isArray(round.result) || Array.isArray(round.rawResult)
-  const rawResultValue = Array.isArray(round.result) ? round.result : Array.isArray(round.rawResult) ? round.rawResult : null
+  const rawResultValue = Array.isArray(round.result) ? round.result : Array.isArray(round.rawResult) ? round.rawResult : firstArray(round, ['cards', 'cardList', 'card_list'])
+  const rawResult = Array.isArray(rawResultValue)
   const winnerValue = firstValue(round, ['winner', 'win', 'main_result', 'mainResult']) ?? (Array.isArray(round.result) ? null : round.result)
   return firstValue(round, ['tableId', 'table_id', 'tableID', 'id', 'gameTableId']) != null
     && firstValue(round, ['round', 'round_no', 'roundNo', 'current_round', 'gameNo']) != null
@@ -320,6 +323,13 @@ function parseMaybeJson(value) {
 function firstValue(object, keys) {
   for (const key of keys) {
     if (object?.[key] !== undefined && object?.[key] !== null && object?.[key] !== '') return object[key]
+  }
+  return null
+}
+
+function firstArray(object, keys) {
+  for (const key of keys) {
+    if (Array.isArray(object?.[key])) return object[key]
   }
   return null
 }

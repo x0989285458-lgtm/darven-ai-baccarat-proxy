@@ -268,7 +268,27 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
           and (prediction_features->'side_actions' ? 'playerPair')
           and (prediction_features->'side_actions' ? 'bankerDragon')
           and (prediction_features->'side_actions' ? 'playerDragon')
-          and jsonb_object_length(prediction_features->'side_actions') = 6 as side_actions_available
+          and jsonb_object_length(prediction_features->'side_actions') = 6
+          and (prediction_features->'side_actions'->>'tie') in ('true','false')
+          and (prediction_features->'side_actions'->>'superSix') in ('true','false')
+          and (prediction_features->'side_actions'->>'bankerPair') in ('true','false')
+          and (prediction_features->'side_actions'->>'playerPair') in ('true','false')
+          and (prediction_features->'side_actions'->>'bankerDragon') in ('true','false')
+          and (prediction_features->'side_actions'->>'playerDragon') in ('true','false')
+          and jsonb_typeof(prediction_features->'side_hits') = 'object'
+          and (prediction_features->'side_hits' ? 'tie')
+          and (prediction_features->'side_hits' ? 'superSix')
+          and (prediction_features->'side_hits' ? 'bankerPair')
+          and (prediction_features->'side_hits' ? 'playerPair')
+          and (prediction_features->'side_hits' ? 'bankerDragon')
+          and (prediction_features->'side_hits' ? 'playerDragon')
+          and jsonb_object_length(prediction_features->'side_hits') = 6
+          and (prediction_features->'side_hits'->>'tie') in ('true','false')
+          and (prediction_features->'side_hits'->>'superSix') in ('true','false')
+          and (prediction_features->'side_hits'->>'bankerPair') in ('true','false')
+          and (prediction_features->'side_hits'->>'playerPair') in ('true','false')
+          and (prediction_features->'side_hits'->>'bankerDragon') in ('true','false')
+          and (prediction_features->'side_hits'->>'playerDragon') in ('true','false') as side_actions_available
         from scoped
       ), side as (
         select table_id,
@@ -312,7 +332,27 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
           and (prediction_features->'side_actions' ? 'playerPair')
           and (prediction_features->'side_actions' ? 'bankerDragon')
           and (prediction_features->'side_actions' ? 'playerDragon')
-          and jsonb_object_length(prediction_features->'side_actions') = 6 as side_actions_available
+          and jsonb_object_length(prediction_features->'side_actions') = 6
+          and (prediction_features->'side_actions'->>'tie') in ('true','false')
+          and (prediction_features->'side_actions'->>'superSix') in ('true','false')
+          and (prediction_features->'side_actions'->>'bankerPair') in ('true','false')
+          and (prediction_features->'side_actions'->>'playerPair') in ('true','false')
+          and (prediction_features->'side_actions'->>'bankerDragon') in ('true','false')
+          and (prediction_features->'side_actions'->>'playerDragon') in ('true','false')
+          and jsonb_typeof(prediction_features->'side_hits') = 'object'
+          and (prediction_features->'side_hits' ? 'tie')
+          and (prediction_features->'side_hits' ? 'superSix')
+          and (prediction_features->'side_hits' ? 'bankerPair')
+          and (prediction_features->'side_hits' ? 'playerPair')
+          and (prediction_features->'side_hits' ? 'bankerDragon')
+          and (prediction_features->'side_hits' ? 'playerDragon')
+          and jsonb_object_length(prediction_features->'side_hits') = 6
+          and (prediction_features->'side_hits'->>'tie') in ('true','false')
+          and (prediction_features->'side_hits'->>'superSix') in ('true','false')
+          and (prediction_features->'side_hits'->>'bankerPair') in ('true','false')
+          and (prediction_features->'side_hits'->>'playerPair') in ('true','false')
+          and (prediction_features->'side_hits'->>'bankerDragon') in ('true','false')
+          and (prediction_features->'side_hits'->>'playerDragon') in ('true','false') as side_actions_available
         from scoped
       ), grouped as (
         select day,
@@ -467,9 +507,13 @@ function sideHit(features, key) { return features?.side_hits?.[key] === true }
 const SAVED_SIDE_ACTION_KEYS = ['tie','superSix','bankerPair','playerPair','bankerDragon','playerDragon']
 function hasCompleteSavedSideActions(features = {}) {
   const actions = features.side_actions
+  const hits = features.side_hits
   return actions && typeof actions === 'object' && !Array.isArray(actions)
     && Object.keys(actions).length === SAVED_SIDE_ACTION_KEYS.length
     && SAVED_SIDE_ACTION_KEYS.every((key) => typeof actions[key] === 'boolean')
+    && hits && typeof hits === 'object' && !Array.isArray(hits)
+    && Object.keys(hits).length === SAVED_SIDE_ACTION_KEYS.length
+    && SAVED_SIDE_ACTION_KEYS.every((key) => typeof hits[key] === 'boolean')
 }
 function sideActionStats(rows, keys) {
   if (rows.some((row) => !hasCompleteSavedSideActions(row.prediction_features))) {

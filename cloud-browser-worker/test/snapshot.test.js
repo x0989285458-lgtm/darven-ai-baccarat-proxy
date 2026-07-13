@@ -97,7 +97,7 @@ test('extracts tables and rounds recursively from websocket/localStorage payload
   ], { sessionId: 'test-session', now: '2026-06-30T00:00:00.000Z' })
 
   assert.equal(snapshot.connected, true)
-  assert.equal(snapshot.buildVersion, 'v098')
+  assert.equal(snapshot.buildVersion, '098')
   assert.equal(snapshot.authenticated, true)
   assert.equal(snapshot.sessionId, 'test-session')
   assert.equal(snapshot.tables.length, 1)
@@ -135,6 +135,36 @@ test('extracts MT show_poker round result with banker/player points for Super Si
   assert.equal(snapshot.rounds[0].playerPoint, 4)
   assert.equal(snapshot.rounds[0].bankerPoint, 6)
   assert.deepEqual(snapshot.rounds[0].rawResult, [11, 25, 7, 19, -1, -1, -1, -1, 4, 6])
+})
+
+test('prefers explicit previous.round and preserves its table shoe round and cards', () => {
+  const cards = [11, 25, 7, 19, -1, -1, -1, -1, 4, 6]
+  const snapshot = extractSnapshotFromPayloads([{
+    table_id: 'BAG01',
+    shoe: 9,
+    round: 1,
+    previous: {
+      round: { table_id: 'BAG01', shoe: 8, round: 44, winner: 2, cards },
+    },
+  }])
+
+  assert.equal(snapshot.rounds.length, 1)
+  assert.equal(snapshot.rounds[0].tableId, 'BAG01')
+  assert.equal(snapshot.rounds[0].shoe, 8)
+  assert.equal(snapshot.rounds[0].round, 44)
+  assert.deepEqual(snapshot.rounds[0].cards, cards)
+  assert.deepEqual(snapshot.rounds[0].rawResult, cards)
+})
+
+test('fails closed when the completed round itself has no shoe', () => {
+  const snapshot = extractSnapshotFromPayloads([{
+    tables: [{ tableId: 'BAG01', shoe: 9, round: 4, name: '1' }],
+    previous: {
+      round: { table_id: 'BAG01', round: 3, winner: 2, cards: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6] },
+    },
+  }])
+
+  assert.deepEqual(snapshot.rounds, [])
 })
 
 test('v092 dedupes completed rounds by keeping the real MT card array over stale summary', () => {

@@ -1,6 +1,6 @@
-export const BUILD_VERSION = 'v098'
+export const BUILD_VERSION = '098'
 
-const REQUIRED_PRODUCTION_SETTINGS = ['WORKER_ADMIN_KEY', 'INGEST_KEY', 'PUSH_TARGET_URL']
+const REQUIRED_PRODUCTION_SETTINGS = ['WORKER_ADMIN_KEY', 'INGEST_KEY', 'PUSH_TARGET_URL', 'MT_LOGIN_URL']
 
 export function validateProductionConfig(env = process.env) {
   if (env.NODE_ENV !== 'production') return
@@ -17,6 +17,27 @@ export function validateProductionConfig(env = process.env) {
   if (pushTarget.protocol !== 'https:') {
     throw new Error('Production PUSH_TARGET_URL must use HTTPS')
   }
+  let loginUrl
+  try {
+    loginUrl = new URL(String(env.MT_LOGIN_URL))
+  } catch {
+    throw new Error('Production MT_LOGIN_URL must be a valid HTTPS URL')
+  }
+  if (loginUrl.protocol !== 'https:') {
+    throw new Error('Production MT_LOGIN_URL must use HTTPS')
+  }
+}
+
+export function assertMtFinalUrl(configuredUrl, finalUrl) {
+  const configured = new URL(String(configuredUrl))
+  const final = new URL(String(finalUrl))
+  if (final.protocol !== 'https:') throw new Error('MT final URL must use HTTPS')
+  if (final.origin !== configured.origin) throw new Error('MT final URL origin does not match configured origin')
+}
+
+export function assertMtNavigationResponse(response) {
+  const redirectedFrom = response?.request?.()?.redirectedFrom?.()
+  if (redirectedFrom) throw new Error('MT navigation redirect is not allowed')
 }
 
 export function publicBuildInfo() {

@@ -34,7 +34,15 @@ test('v078 prediction row exposes side remaining-rank total and no main remainin
         cardsRemainingTotal: 430,
       },
     },
-    { tableId: 'BAG78', shoe: 78, round: 17, bankerCount: 9, playerCount: 7, tieCount: 1, beadPlateRaw: '020102010201#020102010202#020202', bigRoadRaw: '0201010201020201020202' },
+    {
+      tableId: 'BAG78', shoe: 78, round: 17, bankerCount: 9, playerCount: 7, tieCount: 1,
+      beadPlateRaw: '020102010201#020102010202#020202', bigRoadRaw: '0201010201020201020202',
+      cardShoe: {
+        remainingPointCounts: { '0': 128, '1': 31, '2': 30, '3': 29, '4': 28, '5': 27, '6': 40, '7': 32, '8': 33, '9': 34 },
+        remainingRankCounts: { A: 31, '2': 30, '3': 29, '4': 28, '5': 27, '6': 40, '7': 32, '8': 33, '9': 34, '10': 35, J: 36, Q: 37, K: 38 },
+        cardsRemainingTotal: 430,
+      },
+    },
   )
   assert.equal(row.strategy_version, 'v097_副預測命中校準與門檻降5版')
   assert.equal(Object.hasOwn(row.prediction_features.unified_main_scores, 'remaining_zero_to_k_total'), false)

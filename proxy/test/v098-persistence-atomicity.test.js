@@ -18,6 +18,10 @@ test('v098 settlement RPC inserts both required rows in one database transaction
   assert.equal((rpc.match(/on conflict[\s\S]*?do nothing/gi) ?? []).length, 2)
   assert.doesNotMatch(rpc, /do update/i)
   assert.match(rpc, /raise exception 'settlement identity mismatch'/i)
+  assert.match(rpc, /select\s+exists[\s\S]*daily_roadmap_events/i)
+  assert.match(rpc, /select\s+exists[\s\S]*daily_prediction_results/i)
+  assert.match(rpc, /if\s+not\s+roadmap_durable\s+or\s+not\s+prediction_durable/i)
+  assert.doesNotMatch(rpc, /return\s+jsonb_build_object\('persisted',\s*true\)\s*;/i)
 })
 
 test('v098 persistence failure retries the identical pending snapshot without recomputing it', async () => {
@@ -75,7 +79,7 @@ test('v098 Supabase writer atomically persists both settlement rows through one 
       if (path.endsWith('/rpc/persist_v098_settled_round') && transactionFailures-- > 0) {
         return { ok: false, status: 500, text: async () => 'fixture failure' }
       }
-      return { ok: true, status: 200, text: async () => JSON.stringify({ persisted: true }) }
+      return { ok: true, status: 200, text: async () => JSON.stringify({ persisted: true, roadmapDurable: true, predictionDurable: true }) }
     },
   })
   const pending = buildLivePrediction(table)
@@ -90,5 +94,36 @@ test('v098 Supabase writer atomically persists both settlement rows through one 
   ])
   assert.deepEqual(requests[1].body, requests[0].body)
   assert.deepEqual(Object.keys(requests[0].body).sort(), ['p_prediction', 'p_roadmap'])
+})
+
+test('v098 Supabase writer rejects an RPC acknowledgement unless both rows are confirmed durable', async () => {
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.invalid', serviceKey: 'fixture-key', retryAttempts: 1,
+    fetchImpl: async () => ({
+      ok: true, status: 200,
+      text: async () => JSON.stringify({ persisted: true, roadmapDurable: true, predictionDurable: false }),
+    }),
+  })
+
+  await assert.rejects(client.persistRound(completed, table, buildLivePrediction(table)), /durable settlement acknowledgement/i)
+})
+
+test('v098 RPC persists the complete immutable pre-result feature snapshot without compact recomputation', async () => {
+  let rpcBody
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.invalid', serviceKey: 'fixture-key', retryAttempts: 1,
+    fetchImpl: async (_url, options) => {
+      rpcBody = JSON.parse(options.body)
+      return { ok: true, status: 200, text: async () => JSON.stringify({ persisted: true, roadmapDurable: true, predictionDurable: true }) }
+    },
+  })
+  const pending = buildLivePrediction({ ...table, beadPlateRaw: '0102', cardShoe: { remainingRankCounts: { A: 31 } } })
+
+  await client.persistRound(completed, table, pending)
+
+  for (const key of ['mt_context', 'derived_main_features', 'unified_main_scores', 'road_features', 'card_shoe_features', 'side_card_rank_features', 'side_prediction_rank_inputs']) {
+    assert.deepEqual(rpcBody.p_prediction.prediction_features[key], pending.predictionFeatures[key])
+  }
+  assert.deepEqual(rpcBody.p_prediction.probabilities, pending.probabilities)
 })
 

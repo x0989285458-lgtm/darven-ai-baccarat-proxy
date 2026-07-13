@@ -394,6 +394,7 @@ export function parseDurationMs(value = '10m') {
 }
 
 export function formatReportText(report) {
+  if (report?.version === '098-row-contract') return formatSavedRowsReportText(report)
   const lines = []
   lines.push(`## ${report.title}`)
   lines.push('')
@@ -413,6 +414,24 @@ export function formatReportText(report) {
   for (const table of report.tables) {
     const perf = table.tablePerformance ? `${table.tablePerformance.hitRate}%/${table.tablePerformance.tier}` : '-'
     lines.push(`| ${table.displayName} | ${table.rounds} | ${table.hits} | ${table.misses} | ${table.pushes} | ${table.hitRate}% | ${perf} | ${table.sideLearningSamples} | ${table.sideActions} | ${table.sideHits} | ${table.lastPrediction ?? '-'}(${table.lastConfidence ?? '-'}%)→${table.lastWinner ?? '-'} ${table.lastPointText ?? ''} |`)
+  }
+  return lines.join('\n')
+}
+
+function formatSavedRowsReportText(report) {
+  const rate = (value) => value == null ? '-' : `${value}%`
+  const lines = [
+    '## v098 已保存預測結算報表',
+    '',
+    `主預測命中率：${rate(report.total.hitRate)}（命中 ${report.total.hits} / 未中 ${report.total.misses} / 和局不計 ${report.total.pushes} / 主統計 ${report.total.mainEvaluated} / 總局 ${report.total.rounds}）`,
+    `副預測出手命中率：${rate(report.total.sideHitRate)}（出手 ${report.total.sideActions} / 命中 ${report.total.sideHits}）`,
+    `無效列：${report.invalidRows.length}`,
+    '',
+    '| 桌台 | 局數 | 主命中 | 主未中 | 和局不計 | 主命中率 | 副出手 | 副命中 | 副命中率 |',
+    '|---|---:|---:|---:|---:|---:|---:|---:|---:|',
+  ]
+  for (const table of report.tables) {
+    lines.push(`| ${table.tableId} | ${table.rounds} | ${table.hits} | ${table.misses} | ${table.pushes} | ${rate(table.hitRate)} | ${table.sideActions} | ${table.sideHits} | ${rate(table.sideHitRate)} |`)
   }
   return lines.join('\n')
 }

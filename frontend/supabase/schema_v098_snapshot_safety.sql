@@ -12,6 +12,9 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  roadmap_durable boolean := false;
+  prediction_durable boolean := false;
 begin
   if nullif(p_roadmap->>'source', '') is null
      or nullif(p_roadmap->>'table_id', '') is null
@@ -62,7 +65,32 @@ begin
   )
   on conflict (source, table_id, shoe_no, round_no, strategy_version) do nothing;
 
-  return jsonb_build_object('persisted', true);
+  select exists (
+    select 1 from public.daily_roadmap_events
+    where source = p_roadmap->>'source'
+      and table_id = p_roadmap->>'table_id'
+      and shoe_no = p_roadmap->>'shoe_no'
+      and round_no = (p_roadmap->>'round_no')::integer
+  ) into roadmap_durable;
+
+  select exists (
+    select 1 from public.daily_prediction_results
+    where source = p_prediction->>'source'
+      and table_id = p_prediction->>'table_id'
+      and shoe_no = p_prediction->>'shoe_no'
+      and round_no = (p_prediction->>'round_no')::integer
+      and strategy_version = p_prediction->>'strategy_version'
+  ) into prediction_durable;
+
+  if not roadmap_durable or not prediction_durable then
+    raise exception 'settlement durability verification failed';
+  end if;
+
+  return jsonb_build_object(
+    'persisted', roadmap_durable and prediction_durable,
+    'roadmapDurable', roadmap_durable,
+    'predictionDurable', prediction_durable
+  );
 end;
 $$;
 

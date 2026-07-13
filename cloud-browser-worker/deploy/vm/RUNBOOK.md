@@ -36,7 +36,7 @@ docker compose up -d
 cd "$(git rev-parse --show-toplevel)/cloud-browser-worker/deploy/vm"
 set -a; . ./worker.env; set +a
 curl --fail --silent http://127.0.0.1:8787/health |
-  node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const x=JSON.parse(s);if(!x.ok||x.buildVersion!=='v098')process.exit(1);console.log(x.buildVersion)})"
+  node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const x=JSON.parse(s);if(!x.ok||x.buildVersion!=='098')process.exit(1);console.log(x.buildVersion)})"
 test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
   -H "x-worker-admin-key: $WORKER_ADMIN_KEY" http://127.0.0.1:8787/snapshot)" = 200
 test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
@@ -45,7 +45,7 @@ docker compose restart cloud-browser-worker
 docker compose ps --status running cloud-browser-worker
 ```
 
-重啟後確認 `/health` 仍為 `v098`，並從 Render/Supabase 的非敏感監控確認只新增 completed rounds；不得用正式資料做寫入測試或清除 queue/cursor volume。
+重啟後確認 `/health` 的 `buildVersion` 仍為 `098`，並從 Render/Supabase 的非敏感監控確認只新增 completed rounds；不得用正式資料做寫入測試或清除 queue/cursor volume。
 
 ## 回滾
 

@@ -60,7 +60,7 @@ function proxyTablesFromMocks() {
       buildVersion: '098',
       targetTableId: table.id,
       targetShoe: table.trend.current_shoe,
-      targetRound: table.trend.current_round,
+      targetRound: Number(table.trend.current_round ?? 0) + 1,
       predictedResult: index % 2 === 0 ? 'banker' : 'player',
       confidence: 34,
       probabilities: { banker: 12.5, player: 77.25, tie: 10.25 },

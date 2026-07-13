@@ -11,7 +11,9 @@ function ingestEnvelope(overrides = {}) {
     protocolVersion: 'v098',
     timestamp: NOW,
     sequence: 7,
+    roundKeys: ['BAG01:88:21'],
     snapshot: {
+      buildVersion: '098',
       sessionId: 'worker-session-opaque',
       connected: true,
       authenticated: true,
@@ -59,6 +61,41 @@ test('v098 ingest rejects a missing or mismatched protocol version and marks sta
   assert.equal(status.buildVersion, '098')
   assert.equal(status.health, 'degraded')
   assert.equal(status.reason, 'version_mismatch')
+})
+
+test('v098 ingest fails closed when the worker snapshot build version is not 098', async () => {
+  const app = createApp({ autoConnect: false, ingestKey: 'ingest-test-key', now: () => NOW, supabaseClient: durableWriter() })
+
+  const response = await ingest(app, ingestEnvelope({
+    snapshot: { ...ingestEnvelope().snapshot, buildVersion: '097' },
+  }))
+
+  assert.equal(response.statusCode, 409)
+  assert.equal(JSON.parse(response.body).error, 'version_mismatch')
+  assert.equal(app.state.snapshot().status.health, 'degraded')
+})
+
+test('v098 ingest validates exact roundKeys before writes and ACKs only the validated keys', async () => {
+  let writes = 0
+  const app = createApp({
+    autoConnect: false,
+    ingestKey: 'ingest-test-key',
+    now: () => NOW,
+    supabaseClient: durableWriter({
+      writeCloudTableSnapshot: async () => { writes += 1 },
+      writeCloudRoundEvent: async () => { writes += 1 },
+    }),
+  })
+
+  for (const roundKeys of [undefined, [], ['BAG01:88:22'], ['BAG01:88:21', 'BAG01:88:21']]) {
+    const response = await ingest(app, ingestEnvelope({ roundKeys }))
+    assert.equal(response.statusCode, 400)
+    assert.match(JSON.parse(response.body).error, /roundKeys/)
+  }
+  assert.equal(writes, 0)
+
+  const accepted = JSON.parse((await ingest(app)).body)
+  assert.deepEqual(accepted.acceptedRoundKeys, ['BAG01:88:21'])
 })
 
 test('v098 ingest validates completed-round schema before any durable write', async () => {
@@ -229,6 +266,52 @@ test('v098 internal state and public endpoints share build version 098', async (
   assert.equal(health.buildVersion, '098')
   assert.equal(status.buildVersion, '098')
   assert.equal(snapshot.status.version, '098')
+})
+
+test('v098 every public table and prediction carries buildVersion 098 and targets current round plus one', async () => {
+  const app = createApp({ autoConnect: false })
+  app.state.setTables([{ tableId: 'BAG01', shoe: 88, round: 20, sourceUpdatedAt: new Date().toISOString() }])
+
+  const tables = JSON.parse((await app.inject({ url: '/api/tables' })).body)
+
+  assert.equal(tables[0].buildVersion, '098')
+  assert.equal(tables[0].prediction.buildVersion, '098')
+  assert.equal(tables[0].prediction.targetRound, 21)
+
+  const snapshot = JSON.parse((await app.inject({ url: '/api/snapshot' })).body)
+  assert.equal(snapshot.tables[0].buildVersion, '098')
+  assert.equal(snapshot.tables[0].prediction.buildVersion, '098')
+})
+
+test('v098 production and cloud ingest without a key returns 503 and reports degraded health', async () => {
+  for (const options of [{ production: true }, { deployMode: 'cloud' }]) {
+    const app = createApp({ autoConnect: false, ingestKey: '', memberAuthRequired: false, ...options })
+    const headers = options.production ? { 'x-forwarded-proto': 'https' } : {}
+
+    const ingestResponse = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers, body: JSON.stringify(ingestEnvelope()) })
+    const healthResponse = await app.inject({ url: '/health', headers })
+    const health = JSON.parse(healthResponse.body)
+
+    assert.equal(ingestResponse.statusCode, 503)
+    assert.equal(healthResponse.statusCode, 503)
+    assert.equal(health.health, 'degraded')
+    assert.equal(health.reason, 'ingest_key_missing')
+  }
+})
+
+test('v098 active strategy runtimeStatus is exposed by health and status and degrades health fail-closed', async () => {
+  const runtimeStatus = { ready: false, degraded: true, reason: 'active strategy verification failed', activeStrategyVersion: null }
+  const app = createApp({ autoConnect: false, supabaseClient: { configured: true, getRuntimeStatus: () => runtimeStatus } })
+
+  const healthResponse = await app.inject({ url: '/health' })
+  const statusResponse = await app.inject({ url: '/api/status' })
+  const health = JSON.parse(healthResponse.body)
+  const status = JSON.parse(statusResponse.body)
+
+  assert.equal(healthResponse.statusCode, 503)
+  assert.deepEqual(health.runtimeStatus, runtimeStatus)
+  assert.deepEqual(status.runtimeStatus, runtimeStatus)
+  assert.equal(status.health, 'degraded')
 })
 
 test('v098 security upgrade pins PM2 7.0.3', () => {

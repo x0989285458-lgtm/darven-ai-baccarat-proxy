@@ -107,7 +107,9 @@ test('v012 Supabase client posts strategy, roadmap event and prediction result w
       if (init.method === 'GET') {
         return { ok: true, json: async () => [{ version: buildLivePrediction(table).strategyVersion, status: 'active' }], text: async () => '' }
       }
-      return { ok: true, status: 201, text: async () => '' }
+      return String(url).includes('/rpc/persist_v098_settled_round')
+        ? { ok: true, status: 200, text: async () => JSON.stringify({ persisted: true, roadmapDurable: true, predictionDurable: true }) }
+        : { ok: true, status: 201, text: async () => '' }
     },
   })
 

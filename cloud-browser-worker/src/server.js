@@ -3,7 +3,8 @@ import { chromium } from 'playwright'
 import { isWorkerAdminAuthorized } from './admin-auth.js'
 import { annotateRoundPayload, extractSnapshotFromPayloads, redactUrlSecrets } from './snapshot.js'
 import { createSnapshotPusher } from './snapshot-pusher.js'
-import { BUILD_VERSION, captureSessionId, publicBuildInfo, validateProductionConfig } from './runtime-config.js'
+import { assertMtFinalUrl, assertMtNavigationResponse, BUILD_VERSION, captureSessionId, publicBuildInfo, validateProductionConfig } from './runtime-config.js'
+import { createFixedWindowRateLimiter } from './server-policy.js'
 
 const SERVICE = 'darven-cloud-browser-worker'
 validateProductionConfig(process.env)
@@ -24,6 +25,7 @@ let pageGeneration = 0
 let capturedRoundSequence = 0
 let lastSnapshot = null
 let lastError = null
+const snapshotRateLimiter = createFixedWindowRateLimiter({ limit: 12, windowMs: 60000 })
 
 const snapshotPusher = createSnapshotPusher({
   targetUrl: process.env.PUSH_TARGET_URL,
@@ -50,6 +52,8 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === SNAPSHOT_PATH) {
       if (!isWorkerAdminAuthorized(req, process.env.WORKER_ADMIN_KEY, { allowQuery: false })) return sendJson(res, 401, { ok: false, error: 'unauthorized' })
+      const rate = snapshotRateLimiter.check(req.socket?.remoteAddress)
+      if (!rate.allowed) return sendJson(res, 429, { ok: false, error: 'rate_limited' }, { 'retry-after': String(rate.retryAfter) })
       const snapshot = await getSnapshot()
       return sendJson(res, 200, snapshot)
     }
@@ -84,6 +88,7 @@ async function getSnapshot() {
 
   try {
     const page = await withTimeout(ensurePage(), SNAPSHOT_TIMEOUT_MS, 'MT page startup timed out')
+    assertMtFinalUrl(MT_LOGIN_URL, page.url())
     const browserPayload = await withTimeout(collectBrowserPayload(page), SNAPSHOT_TIMEOUT_MS, 'MT page snapshot timed out')
     const payloads = [...capturedPayloads, ...capturedRoundPayloads, browserPayload]
     const snapshot = extractSnapshotFromPayloads(payloads, {
@@ -120,8 +125,11 @@ async function ensurePage() {
     })
     pageGeneration += 1
     attachCaptureHooks(page)
-    await page.goto(MT_LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: PAGE_TIMEOUT_MS })
+    const navigationResponse = await page.goto(MT_LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: PAGE_TIMEOUT_MS })
+    assertMtNavigationResponse(navigationResponse)
+    assertMtFinalUrl(MT_LOGIN_URL, page.url())
     await page.waitForTimeout(Number(process.env.INITIAL_SETTLE_MS ?? 5000))
+    assertMtFinalUrl(MT_LOGIN_URL, page.url())
     return page
   })()
   return pagePromise
@@ -239,11 +247,12 @@ function withTimeout(promise, timeoutMs, message) {
   })
 }
 
-function sendJson(res, status, body) {
+function sendJson(res, status, body, extraHeaders = {}) {
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'cache-control': 'no-store',
     'access-control-allow-origin': '*',
+    ...extraHeaders,
   })
   res.end(JSON.stringify(body))
 }

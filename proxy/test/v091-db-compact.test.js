@@ -51,19 +51,19 @@ const table = {
   recentPredictionCount: 24,
 }
 
-test('v091 persistRound posts compact DB rows while full row builders retain complete local features', async () => {
+test('v098 persistRound compacts roadmap data but preserves the complete immutable prediction snapshot', async () => {
   const requests = []
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co',
     serviceKey: 'sb_secret_test_key',
     fetchImpl: async (url, init) => {
       requests.push({ url: String(url), body: JSON.parse(init.body) })
-      return { ok: true, status: 201, text: async () => '' }
+      return { ok: true, status: 200, text: async () => JSON.stringify({ persisted: true, roadmapDurable: true, predictionDurable: true }) }
     },
   })
 
   const fullEvent = buildRoadmapEventRow(round, table)
-  const pendingPrediction = buildLivePrediction({ ...table, shoe: round.shoe, round: round.round - 1 })
+  const pendingPrediction = buildLivePrediction({ ...table, shoe: round.shoe, round: round.round - 1, cardShoe: round.cardShoe })
   const fullPrediction = buildPredictionResultRow(round, table, pendingPrediction)
   assert.ok(fullEvent.raw_event.tableSnapshot)
   assert.ok(fullEvent.road_features.beadPlateRaw)
@@ -94,13 +94,15 @@ test('v091 persistRound posts compact DB rows while full row builders retain com
   assert.ok(predictionBody.prediction_features.side_results)
   assert.ok(predictionBody.prediction_features.point_features)
   assert.ok(predictionBody.prediction_features.table_performance)
-  assert.ok(predictionBody.prediction_features.feature_summary)
-  assert.equal(predictionBody.prediction_features.side_weights, undefined)
-  assert.equal(predictionBody.prediction_features.side_prediction_rank_inputs, undefined)
-  assert.equal(predictionBody.prediction_features.road_features, undefined)
+  assert.deepEqual(predictionBody.prediction_features.side_weights, pendingPrediction.predictionFeatures.side_weights)
+  assert.deepEqual(predictionBody.prediction_features.side_prediction_rank_inputs, pendingPrediction.predictionFeatures.side_prediction_rank_inputs)
+  assert.deepEqual(predictionBody.prediction_features.road_features, pendingPrediction.predictionFeatures.road_features)
+  assert.deepEqual(predictionBody.prediction_features.mt_context, pendingPrediction.predictionFeatures.mt_context)
+  assert.deepEqual(predictionBody.prediction_features.derived_main_features, pendingPrediction.predictionFeatures.derived_main_features)
+  assert.deepEqual(predictionBody.prediction_features.card_shoe_features, pendingPrediction.predictionFeatures.card_shoe_features)
   assert.equal(predictionBody.feature_weights, undefined)
-  assert.equal(JSON.stringify(predictionBody).includes('beadPlateRaw'), false)
-  assert.equal(JSON.stringify(predictionBody).includes('bigRoadRaw'), false)
+  assert.equal(JSON.stringify(predictionBody).includes('beadPlateRaw'), true)
+  assert.equal(JSON.stringify(predictionBody).includes('bigRoadRaw'), true)
 })
 
 test('v091 compact roadmap row never sends null for not-null JSONB remaining counts', () => {
@@ -219,14 +221,16 @@ test('v092 Supabase writer serializes retries and skips duplicate actual rounds 
         failOnce = false
         return { ok: false, status: 503, text: async () => 'temporary unavailable' }
       }
-      return { ok: true, status: 201, text: async () => '' }
+      return String(url).includes('/rpc/persist_v098_settled_round')
+        ? { ok: true, status: 200, text: async () => JSON.stringify({ persisted: true, roadmapDurable: true, predictionDurable: true }) }
+        : { ok: true, status: 201, text: async () => '' }
     },
   })
 
   await Promise.all([
-    client.persistRound(round, table, buildLivePrediction({ ...table, shoe: round.shoe, round: round.round - 1 })),
-    client.persistRound({ ...round }, { ...table }, buildLivePrediction({ ...table, shoe: round.shoe, round: round.round - 1 })),
-    client.persistRound({ ...round, rawResult: [...round.rawResult] }, { ...table }, buildLivePrediction({ ...table, shoe: round.shoe, round: round.round - 1 })),
+    client.persistRound(round, table, buildLivePrediction({ ...table, shoe: round.shoe, round: round.round - 1, cardShoe: round.cardShoe })),
+    client.persistRound({ ...round }, { ...table }, buildLivePrediction({ ...table, shoe: round.shoe, round: round.round - 1, cardShoe: round.cardShoe })),
+    client.persistRound({ ...round, rawResult: [...round.rawResult] }, { ...table }, buildLivePrediction({ ...table, shoe: round.shoe, round: round.round - 1, cardShoe: round.cardShoe })),
   ])
 
   assert.equal(maxActiveRequests, 1)

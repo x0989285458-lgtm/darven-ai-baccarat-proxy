@@ -108,6 +108,7 @@ describe('LiveRoadClient v032 status messages', () => {
     let tableCalls = 0
     vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
       if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1 }) })
+      if (url.endsWith('/api/tables/stream')) return Promise.resolve({ ok: false, status: 503, body: null })
       tableCalls += 1
       const rows = tableCalls === 1 ? [{
         tableId: 'BAG01', displayName: 'MT百家樂第1桌', tableType: 'BAC', round: 1,
@@ -150,29 +151,31 @@ describe('LiveRoadClient v032 status messages', () => {
 
   it('v093 throttles backup polling while SSE heartbeat is fresh', async () => {
     vi.useFakeTimers()
-    class FakeEventSource {
-      static instance: FakeEventSource | null = null
-      onopen: (() => void) | null = null
-      onerror: (() => void) | null = null
-      private listeners: Record<string, Array<() => void>> = {}
-      constructor() { FakeEventSource.instance = this }
-      addEventListener(name: string, handler: () => void) { this.listeners[name] = [...(this.listeners[name] ?? []), handler] }
-      close() {}
-      emit(name: string) { for (const handler of this.listeners[name] ?? []) handler() }
-    }
-    const fetchMock = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve([]) }))
+    let streamController: ReadableStreamDefaultController<Uint8Array>
+    const fetchMock = vi.fn((url: string) => {
+      if (!url.endsWith('/api/tables/stream')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) })
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        body: new ReadableStream({
+          start(controller) {
+            streamController = controller
+            controller.enqueue(new TextEncoder().encode('event: heartbeat\ndata: {}\n\n'))
+          },
+        }),
+      })
+    })
     vi.stubGlobal('fetch', fetchMock)
-    vi.stubGlobal('EventSource', FakeEventSource as any)
 
     const client = new LiveRoadClient({ onTables: vi.fn(), onStatus: vi.fn() })
     client.connect()
-    FakeEventSource.instance?.onopen?.()
     await vi.advanceTimersByTimeAsync(11000)
-    FakeEventSource.instance?.emit('heartbeat')
+    streamController!.enqueue(new TextEncoder().encode('event: heartbeat\ndata: {}\n\n'))
     await vi.advanceTimersByTimeAsync(3000)
     client.disconnect(false)
+    streamController!.close()
 
-    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining('/api/tables'), expect.anything())
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/tables'))).toHaveLength(0)
   })
 
 })

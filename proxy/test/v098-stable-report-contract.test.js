@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildStableReportFromRows } from '../src/stable-report.js'
+import { buildStableReportFromRows, formatReportText } from '../src/stable-report.js'
 
 const sideKeys = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
 const flags = (enabled = []) => Object.fromEntries(sideKeys.map((key) => [key, enabled.includes(key)]))
@@ -99,4 +99,12 @@ test('v098 stable report excludes every saved row for a contradictory settlement
     { index: 0, reason: 'duplicate_or_conflicting_row' },
     { index: 1, reason: 'duplicate_or_conflicting_row' },
   ])
+})
+
+test('v098 saved-row report formats without requiring a live predictor session status', () => {
+  const text = formatReportText(buildStableReportFromRows(rows))
+
+  assert.match(text, /098/)
+  assert.match(text, /BAG01/)
+  assert.match(text, /100%/)
 })

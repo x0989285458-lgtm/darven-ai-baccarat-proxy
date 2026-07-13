@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createLicenseAdminClient } from '../src/license-admin.js'
 
-test('v098 admin marks missing saved side_actions unavailable instead of reporting a fabricated zero rate', async () => {
+test('v098 admin requires complete boolean side_actions and side_hits before reporting availability', async () => {
   const queries = []
   const pool = {
     async query(sql) {
@@ -31,5 +31,9 @@ test('v098 admin marks missing saved side_actions unavailable instead of reporti
   assert.match(sql, /jsonb_typeof\s*\(\s*prediction_features->'side_actions'\s*\)\s*=\s*'object'/i)
   for (const key of ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']) {
     assert.match(sql, new RegExp(`side_actions'\\s*\\?\\s*'${key}'`, 'i'))
+    assert.match(sql, new RegExp(`side_hits'\\s*\\?\\s*'${key}'`, 'i'))
+    assert.match(sql, new RegExp(`side_actions'->>'${key}'[\\s\\S]*in \\('true','false'\\)`, 'i'))
+    assert.match(sql, new RegExp(`side_hits'->>'${key}'[\\s\\S]*in \\('true','false'\\)`, 'i'))
   }
+  assert.match(sql, /jsonb_object_length\(prediction_features->'side_hits'\)\s*=\s*6/i)
 })

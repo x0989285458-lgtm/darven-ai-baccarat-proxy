@@ -43,7 +43,7 @@ test('v094 Supabase write failure is recorded as write error while keeping fresh
     fetchImpl: async () => ({
       ok: true,
       status: 200,
-      json: async () => ({ connected: true, authenticated: true, tables: [{ tableId: 'BAG01', round: 7 }] }),
+      json: async () => ({ buildVersion: '098', connected: true, authenticated: true, tables: [{ tableId: 'BAG01', round: 7 }] }),
     }),
   })
 
