@@ -22,7 +22,7 @@ test('pusher preserves and retries the exact unacknowledged envelope', async (t)
       attempts += 1
       sent.push(JSON.parse(options.body))
       if (attempts === 1) throw new Error('network failed')
-      return { ok: true, status: 200, json: async () => ({ ok: true }) }
+      return acceptedResponse(options)
     },
     baseBackoffMs: 1000,
   })
@@ -62,18 +62,21 @@ test('pusher restores the queued envelope before collecting a new snapshot and o
       assert.equal(options.redirect, 'error', 'authenticated push must not follow redirects')
       sent.push(JSON.parse(options.body))
       const status = statuses.shift()
-      return { ok: status < 400, status }
+      return status === 204 ? acceptedResponse(options, status) : { status }
     },
     baseBackoffMs: 0,
   })
 
   assert.equal(await pusher.tick(), false, 'redirect is not an acknowledgement')
   assert.equal(snapshotCalls, 0)
-  assert.deepEqual(sent[0], original)
-  assert.deepEqual(JSON.parse(await readFile(queuePath, 'utf8')), original)
+  assert.equal(sent[0].protocolVersion, 'v098')
+  assert.equal(sent[0].sessionId, 'vm')
+  assert.deepEqual(sent[0].roundKeys, ['BAG01:8:9'])
+  assert.deepEqual(sent[0].snapshot, original.snapshot)
+  assert.deepEqual(JSON.parse(await readFile(queuePath, 'utf8')), sent[0])
   assert.equal(await pusher.tick(), true)
   assert.equal(snapshotCalls, 0)
-  assert.deepEqual(sent[1], original)
+  assert.deepEqual(sent[1], sent[0])
   await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
 })
 
@@ -121,7 +124,7 @@ test('pusher baselines retained rounds then sends only newly completed rounds ac
   const create = (getSnapshot) => createSnapshotPusher({
     targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
     getSnapshot,
-    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return { status: 200 } },
+    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
   })
 
   const first = create(async () => snapshots.shift())
@@ -148,7 +151,7 @@ test('pusher uses the table shoe cursor when completed rounds omit shoe', async 
     targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key',
     queuePath: path.join(dir, 'latest.json'),
     getSnapshot: async () => snapshots.shift(),
-    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return { status: 200 } },
+    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
   })
 
   assert.equal(await pusher.tick(), true)
@@ -174,7 +177,7 @@ test('pusher matches BAG1 rounds to the canonical BAG01 table shoe across rollov
     targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key',
     queuePath: path.join(dir, 'latest.json'),
     getSnapshot: async () => snapshots.shift(),
-    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return { status: 200 } },
+    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
   })
 
   assert.equal(await pusher.tick(), true)
@@ -200,7 +203,7 @@ test('pusher matches BAG1A rounds to the canonical BAG01A table shoe', async (t)
     targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key',
     queuePath: path.join(dir, 'latest.json'),
     getSnapshot: async () => snapshots.shift(),
-    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return { status: 200 } },
+    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
   })
 
   assert.equal(await pusher.tick(), true)
@@ -230,13 +233,13 @@ test('pusher does not replay a retained missing-shoe event after rollover but se
   const create = () => createSnapshotPusher({
     targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
     getSnapshot: async () => snapshots.shift(),
-    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return { status: 200 } },
+    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
   })
 
   assert.equal(await create().tick(), true)
   assert.deepEqual(sent[0].snapshot.rounds, [])
   assert.equal(await create().tick(), true, 'first-seen shoe identity survives a restart')
-  assert.deepEqual(sent[1].snapshot.rounds, [newRound])
+  assert.deepEqual(sent[1].snapshot.rounds, [{ ...newRound, shoe: '9' }])
 })
 
 test('pusher treats the same missing-shoe round number in a new capture session as new', async (t) => {
@@ -248,7 +251,7 @@ test('pusher treats the same missing-shoe round number in a new capture session 
     targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key',
     queuePath: path.join(dir, 'latest.json'),
     getSnapshot: async () => snapshots.shift(),
-    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return { status: 200 } },
+    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
   })
 
   assert.equal(await pusher.tick(), true)
@@ -259,7 +262,7 @@ test('pusher treats the same missing-shoe round number in a new capture session 
   function snapshot(sessionId) {
     return {
       sessionId,
-      tables: [{ tableId: 'BAG01', shoe: null, round: 1 }],
+      tables: [{ tableId: 'BAG01', shoe: sessionId === 'capture-1' ? 8 : 9, round: 1 }],
       rounds: [{ tableId: 'BAG01', shoe: null, round: 1, winner: 'banker', rawResult: [1, 2, 3] }],
     }
   }
@@ -281,13 +284,13 @@ test('pusher sends an identical missing-shoe event after both capture session an
     targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key',
     queuePath,
     getSnapshot: async () => snapshots.shift(),
-    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return { status: 200 } },
+    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
   })
 
   assert.equal(await create().tick(), true)
   assert.deepEqual(sent[0].snapshot.rounds, [])
   assert.equal(await create().tick(), true)
-  assert.deepEqual(sent[1].snapshot.rounds, [newEvent])
+  assert.deepEqual(sent[1].snapshot.rounds, [{ ...newEvent, shoe: '9' }])
 })
 
 test('pusher canonicalizes A-suffix table ids and never replays the retained old event after rollover', async (t) => {
@@ -304,16 +307,16 @@ test('pusher canonicalizes A-suffix table ids and never replays the retained old
   const create = () => createSnapshotPusher({
     targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
     getSnapshot: async () => snapshots.shift(),
-    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return { status: 200 } },
+    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
   })
 
   assert.equal(await create().tick(), true)
   assert.deepEqual(sent[0].snapshot.rounds, [])
   assert.equal(await create().tick(), true)
-  assert.deepEqual(sent[1].snapshot.rounds, [newEvent])
+  assert.deepEqual(sent[1].snapshot.rounds, [{ ...newEvent, tableId: 'BAG01A', shoe: '9' }])
 })
 
-test('pusher uses an event fingerprint to preserve distinct missing-shoe rounds in one session', async (t) => {
+test('pusher rejects a conflicting duplicate for the same table shoe and round key', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const sent = []
@@ -322,26 +325,26 @@ test('pusher uses an event fingerprint to preserve distinct missing-shoe rounds 
     targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key',
     queuePath: path.join(dir, 'latest.json'),
     getSnapshot: async () => snapshots.shift(),
-    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return { status: 200 } },
+    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
   })
 
   assert.equal(await pusher.tick(), true)
   assert.deepEqual(sent[0].snapshot.rounds, [])
   assert.equal(await pusher.tick(), true)
-  assert.deepEqual(sent[1].snapshot.rounds.map((item) => item.rawResult), [[4, 5, 6]])
+  assert.deepEqual(sent[1].snapshot.rounds, [])
   assert.equal(await pusher.tick(), true)
   assert.deepEqual(sent[2].snapshot.rounds, [], 'the same retained event remains acknowledged')
 
   function snapshot(rawResult) {
     return {
       sessionId: 'capture-1',
-      tables: [{ tableId: 'BAG01', shoe: null, round: 1 }],
+      tables: [{ tableId: 'BAG01', shoe: 8, round: 1 }],
       rounds: [{ tableId: 'BAG01', shoe: null, round: 1, winner: 'banker', rawResult }],
     }
   }
 })
 
-test('pusher preserves an identical missing-shoe result when its capture event id is new', async (t) => {
+test('pusher does not bypass table shoe round dedupe when only the capture event id changes', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const sent = []
@@ -350,20 +353,52 @@ test('pusher preserves an identical missing-shoe result when its capture event i
     targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key',
     queuePath: path.join(dir, 'latest.json'),
     getSnapshot: async () => snapshots.shift(),
-    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return { status: 200 } },
+    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
   })
 
   assert.equal(await pusher.tick(), true)
   assert.deepEqual(sent[0].snapshot.rounds, [])
   assert.equal(await pusher.tick(), true)
-  assert.deepEqual(sent[1].snapshot.rounds.map((item) => item.sourceEventId), ['capture-1:2'])
+  assert.deepEqual(sent[1].snapshot.rounds, [])
 
   function snapshot(sourceEventId) {
     return {
       sessionId: 'capture-1',
-      tables: [],
+      tables: [{ tableId: 'BAG01', shoe: 8, round: 1 }],
       rounds: [{ tableId: 'BAG01', shoe: null, round: 1, winner: 'banker', rawResult: [1, 2, 3], sourceEventId }],
     }
+  }
+})
+
+test('pusher keeps the durable queue until session sequence and accepted round keys exactly match', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  const snapshots = [
+    { sessionId: 'vm', tables: [{ tableId: 'BAG01', shoe: 8, round: 1 }], rounds: [round(1)] },
+    { sessionId: 'vm', tables: [{ tableId: 'BAG01', shoe: 8, round: 2 }], rounds: [round(1), round(2)] },
+  ]
+  let attempt = 0
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    getSnapshot: async () => snapshots.shift(),
+    fetchImpl: async (_url, options) => {
+      attempt += 1
+      const envelope = JSON.parse(options.body)
+      if (attempt === 2) return { status: 200, json: async () => ({ accepted: true, sessionId: envelope.sessionId, sequence: envelope.sequence, acceptedRoundKeys: ['BAG01:8:999'] }) }
+      return acceptedResponse(options)
+    },
+    baseBackoffMs: 0,
+  })
+
+  assert.equal(await pusher.tick(), true)
+  assert.equal(await pusher.tick(), false)
+  assert.deepEqual(JSON.parse(await readFile(queuePath, 'utf8')).roundKeys, ['BAG01:8:2'])
+  assert.equal(await pusher.tick(), true)
+  await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
+
+  function round(number) {
+    return { tableId: 'BAG01', shoe: 8, round: number, winner: 'banker', rawResult: [1, 2, 3, 4, -1, -1, -1, -1, 3, 7] }
   }
 })
 
@@ -376,7 +411,7 @@ test('pusher sends required headers and monotonically increasing sequence', asyn
     targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key',
     queuePath: path.join(dir, 'latest.json'), now: () => clock,
     getSnapshot: async () => ({ sessionId: 'vm', tables: [], rounds: [] }),
-    fetchImpl: async (url, options) => { requests.push({ url, options }); return { ok: true, status: 200 } },
+    fetchImpl: async (url, options) => { requests.push({ url, options }); return acceptedResponse(options) },
   })
   assert.equal(await pusher.tick(), true)
   clock += 5000
@@ -396,4 +431,19 @@ async function listen(server) {
 function serverUrl(server) {
   const address = server.address()
   return `http://127.0.0.1:${address.port}/snapshot`
+}
+
+function acceptedResponse(options, status = 200) {
+  const envelope = JSON.parse(options.body)
+  return {
+    status,
+    json: async () => ({
+      ok: true,
+      accepted: true,
+      duplicate: false,
+      sessionId: envelope.sessionId,
+      sequence: envelope.sequence,
+      acceptedRoundKeys: envelope.roundKeys ?? [],
+    }),
+  }
 }

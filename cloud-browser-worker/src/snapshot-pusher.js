@@ -22,6 +22,7 @@ export function createSnapshotPusher({
   let lastSequence = 0
   let active = false
   let restored = false
+  let queueInvalid = false
   let pendingEnvelope = null
   const acknowledgedRoundKeys = new Set()
   const missingShoeRoundShoes = new Map()
@@ -32,6 +33,7 @@ export function createSnapshotPusher({
     active = true
     try {
       await restoreState()
+      if (queueInvalid) return false
       const timestamp = Number(now())
       if (timestamp < nextAttemptAt) return false
 
@@ -40,17 +42,23 @@ export function createSnapshotPusher({
         const rounds = Array.isArray(snapshot?.rounds) ? snapshot.rounds : []
         const roundKeys = rounds.map((round) => roundKey(round, snapshot, missingShoeRoundShoes))
         if (!cursorInitialized) {
-          for (const key of roundKeys) acknowledgedRoundKeys.add(key)
+          for (const key of roundKeys) if (key) acknowledgedRoundKeys.add(key)
           cursorInitialized = true
         }
         trimCursor()
         await saveCursor()
         const sequence = Math.max(lastSequence + 1, timestamp)
         lastSequence = sequence
+        const pendingIndexes = roundKeys.map((_key, index) => index).filter((index) => roundKeys[index] && !acknowledgedRoundKeys.has(roundKeys[index]))
+        const pendingRoundKeys = pendingIndexes.map((index) => roundKeys[index])
+        const pendingRounds = pendingIndexes.map((index) => normalizeRoundForEnvelope(rounds[index], roundKeys[index]))
         pendingEnvelope = {
+          protocolVersion: 'v098',
+          sessionId: String(snapshot?.sessionId ?? ''),
           timestamp,
           sequence,
-          snapshot: { ...snapshot, rounds: rounds.filter((_round, index) => !acknowledgedRoundKeys.has(roundKeys[index])) },
+          roundKeys: pendingRoundKeys,
+          snapshot: { ...snapshot, rounds: pendingRounds },
         }
         await saveJson(queuePath, pendingEnvelope)
       }
@@ -65,10 +73,9 @@ export function createSnapshotPusher({
           body: JSON.stringify(pendingEnvelope),
           signal: controller.signal,
         })
-        if (!isAcknowledgement(response)) throw new Error(`push failed with HTTP ${response?.status ?? 'unknown'}`)
-        for (const round of pendingEnvelope.snapshot?.rounds ?? []) {
-          acknowledgedRoundKeys.add(roundKey(round, pendingEnvelope.snapshot, missingShoeRoundShoes))
-        }
+        const acknowledgement = await readAcknowledgement(response, pendingEnvelope)
+        if (!acknowledgement) throw new Error(`push failed with invalid acknowledgement (${response?.status ?? 'unknown'})`)
+        for (const key of acknowledgement.acceptedRoundKeys) acknowledgedRoundKeys.add(key)
         trimCursor()
         await saveCursor()
         failures = 0
@@ -110,6 +117,23 @@ export function createSnapshotPusher({
       for (const [key, shoe] of cursor?.missingShoeRoundShoes ?? []) missingShoeRoundShoes.set(String(key), String(shoe))
       trimCursor()
     } catch {}
+    if (pendingEnvelope) {
+      const snapshot = pendingEnvelope.snapshot ?? {}
+      const rounds = Array.isArray(snapshot.rounds) ? snapshot.rounds : []
+      const keys = rounds.map((round) => roundKey(round, snapshot, missingShoeRoundShoes)).filter(Boolean)
+      if (keys.length !== rounds.length) {
+        queueInvalid = true
+      } else {
+        pendingEnvelope = {
+          ...pendingEnvelope,
+          protocolVersion: 'v098',
+          sessionId: String(pendingEnvelope.sessionId ?? snapshot.sessionId ?? ''),
+          roundKeys: keys,
+          snapshot: { ...snapshot, rounds: rounds.map((round, index) => normalizeRoundForEnvelope(round, keys[index])) },
+        }
+        await saveJson(queuePath, pendingEnvelope)
+      }
+    }
   }
 
   async function saveCursor() {
@@ -149,7 +173,7 @@ export function createSnapshotPusher({
 function roundKey(round = {}, snapshot = {}, missingShoeRoundShoes = new Map()) {
   const tableId = canonicalTableId(round.tableId)
   const table = (snapshot.tables ?? []).find((item) => canonicalTableId(item?.tableId) === tableId)
-  if (round.shoe != null && round.shoe !== '') return `${tableId}:shoe:${round.shoe}:${round.round ?? ''}`
+  if (round.shoe != null && round.shoe !== '') return `${tableId}:${round.shoe}:${round.round ?? ''}`
 
   const eventFingerprint = createHash('sha256')
     .update(stableStringify({
@@ -167,13 +191,13 @@ function roundKey(round = {}, snapshot = {}, missingShoeRoundShoes = new Map()) 
       || round.rawResult != null
       || round.playerPoint != null
       || round.bankerPoint != null
-    if (!hasEventIdentity) return `${tableId}:shoe:${table.shoe}:${round.round ?? ''}`
+    if (!hasEventIdentity) return `${tableId}:${table.shoe}:${round.round ?? ''}`
     const eventIdentity = round.sourceEventId ?? `${snapshot.sessionId ?? ''}:${eventFingerprint}`
     const identityKey = `${tableId}:${round.round ?? ''}:${eventIdentity}`
     if (!missingShoeRoundShoes.has(identityKey)) missingShoeRoundShoes.set(identityKey, String(table.shoe))
-    return `${tableId}:shoe:${missingShoeRoundShoes.get(identityKey)}:${round.round ?? ''}`
+    return `${tableId}:${missingShoeRoundShoes.get(identityKey)}:${round.round ?? ''}`
   }
-  return `${tableId}:session:${snapshot.sessionId ?? ''}:event:${eventFingerprint}:${round.round ?? ''}`
+  return null
 }
 
 function canonicalTableId(tableId) {
@@ -181,6 +205,15 @@ function canonicalTableId(tableId) {
   const match = id.match(/^BAG(\d{1,2})(A?)$/)
   if (!match) return id
   return `BAG${match[1].padStart(2, '0')}${match[2]}`
+}
+
+function normalizeRoundForEnvelope(round = {}, key = '') {
+  const [tableId, shoe] = String(key).split(':')
+  return {
+    ...round,
+    tableId: tableId || canonicalTableId(round.tableId),
+    shoe: round.shoe == null || round.shoe === '' ? shoe : round.shoe,
+  }
 }
 
 function stableStringify(value) {
@@ -191,7 +224,17 @@ function stableStringify(value) {
   return JSON.stringify(value)
 }
 
-function isAcknowledgement(response) {
+async function readAcknowledgement(response, envelope) {
   const status = Number(response?.status)
-  return Number.isInteger(status) && status >= 200 && status < 300
+  if (!Number.isInteger(status) || status < 200 || status >= 300 || typeof response?.json !== 'function') return null
+  let body
+  try { body = await response.json() } catch { return null }
+  const expectedKeys = Array.isArray(envelope?.roundKeys) ? envelope.roundKeys.map(String) : []
+  const acceptedKeys = Array.isArray(body?.acceptedRoundKeys) ? body.acceptedRoundKeys.map(String) : []
+  if (body?.accepted !== true
+    || String(body?.sessionId ?? '') !== String(envelope?.sessionId ?? '')
+    || Number(body?.sequence) !== Number(envelope?.sequence)
+    || acceptedKeys.length !== expectedKeys.length
+    || acceptedKeys.some((key, index) => key !== expectedKeys[index])) return null
+  return { acceptedRoundKeys: acceptedKeys }
 }
