@@ -85,7 +85,14 @@ export function extractSnapshotFromPayloads(payloads = [], { sessionId = 'darven
   const rounds = dedupeRounds(
     roundCandidates
       .map((round) => normalizeRound(round))
-      .filter((round) => round.tableId && round.shoe != null && round.round != null && round.winner),
+      .filter((round) => (
+        round.tableId
+        && round.shoe != null
+        && round.round != null
+        && round.winner
+        && Array.isArray(round.rawResult)
+        && round.rawResult.length === 10
+      )),
   )
 
   return {

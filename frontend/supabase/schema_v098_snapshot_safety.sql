@@ -168,7 +168,13 @@ set search_path = public
 as $$
 begin
   delete from public.cloud_table_snapshots
-  where snapshot_at < now() - interval '24 hours';
+  where ctid in (
+    select ctid
+    from public.cloud_table_snapshots
+    where snapshot_at < now() - interval '24 hours'
+    order by snapshot_at
+    limit 500
+  );
   return null;
 end;
 $$;

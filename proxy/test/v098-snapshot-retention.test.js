@@ -12,6 +12,7 @@ test('v098 snapshot SQL applies 30-second same-session limit with only round sho
   assert.match(limiter, /connectionState/i)
   assert.match(limiter, /return null/i)
   assert.match(sql, /delete from public\.cloud_table_snapshots[\s\S]*snapshot_at < now\(\) - interval '24 hours'/i)
+  assert.match(sql, /ctid[\s\S]*select[\s\S]*snapshot_at < now\(\) - interval '24 hours'[\s\S]*limit 500/i)
 })
 
 test('v098 snapshot row persists the connection state needed by the SQL exception contract', () => {

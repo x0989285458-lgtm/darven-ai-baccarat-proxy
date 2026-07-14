@@ -93,7 +93,7 @@ test('extracts tables and rounds recursively from websocket/localStorage payload
         ],
       },
     }),
-    { event: 'roundResult', round: { table_id: 'BAG01', shoe: 7, round_no: 19, result: 'B' } },
+    { event: 'roundResult', round: { table_id: 'BAG01', shoe: 7, round_no: 19, result: 'B', rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6] } },
   ], { sessionId: 'test-session', now: '2026-06-30T00:00:00.000Z' })
 
   assert.equal(snapshot.connected, true)
@@ -108,9 +108,9 @@ test('extracts tables and rounds recursively from websocket/localStorage payload
     shoe: 7,
     round: 19,
     winner: 'banker',
-    playerPoint: null,
-    bankerPoint: null,
-    rawResult: { event: 'roundResult', round: { table_id: 'BAG01', shoe: 7, round_no: 19, result: 'B' } },
+    playerPoint: 4,
+    bankerPoint: 6,
+    rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
     sourceAction: 'roundResult',
   })
 })
@@ -135,6 +135,15 @@ test('extracts MT show_poker round result with banker/player points for Super Si
   assert.equal(snapshot.rounds[0].playerPoint, 4)
   assert.equal(snapshot.rounds[0].bankerPoint, 6)
   assert.deepEqual(snapshot.rounds[0].rawResult, [11, 25, 7, 19, -1, -1, -1, -1, 4, 6])
+})
+
+test('v098 excludes completed-round candidates without an exact ten-value rawResult', () => {
+  const snapshot = extractSnapshotFromPayloads([
+    { event: 'roundResult', round: { table_id: 'BAG01', shoe: 7, round_no: 19, result: 'B' } },
+    { event: 'roundResult', round: { table_id: 'BAG02', shoe: 8, round_no: 20, winner: 2, rawResult: [1, 2, 3] } },
+  ])
+
+  assert.deepEqual(snapshot.rounds, [])
 })
 
 test('prefers explicit previous.round and preserves its table shoe round and cards', () => {
