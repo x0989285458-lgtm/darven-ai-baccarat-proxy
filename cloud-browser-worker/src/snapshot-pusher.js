@@ -13,6 +13,7 @@ export function createSnapshotPusher({
   baseBackoffMs = 1000,
   maxBackoffMs = 60000,
   requestTimeoutMs = 15000,
+  isRoundDeliverable = () => true,
   now = Date.now,
 } = {}) {
   let timer = null
@@ -79,6 +80,7 @@ export function createSnapshotPusher({
     const snapshot = await getSnapshot()
     const rounds = Array.isArray(snapshot?.rounds) ? snapshot.rounds : []
     const candidates = rounds
+      .filter((round) => isRoundDeliverable(round))
       .map((round) => ({ round, key: roundKey(round) }))
       .filter((candidate) => candidate.key)
 

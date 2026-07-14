@@ -26,6 +26,13 @@ export function isRoundPayload(text = '') {
     && /"result"|"cards"|"cardList"|"card_list"/i.test(text)
 }
 
+export function hasRealCardCodes(round = {}) {
+  const result = Array.isArray(round.rawResult) ? round.rawResult : []
+  const playerCards = [result[0], result[2], result[4]].map(Number).filter((value) => Number.isFinite(value) && value > 0)
+  const bankerCards = [result[1], result[3], result[5]].map(Number).filter((value) => Number.isFinite(value) && value > 0)
+  return playerCards.length >= 2 && bankerCards.length >= 2
+}
+
 export function normalizeWinner(value, rawResult = null) {
   if (value != null) {
     const raw = String(value).trim()

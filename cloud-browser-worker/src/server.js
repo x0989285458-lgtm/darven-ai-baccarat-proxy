@@ -1,7 +1,7 @@
 import http from 'node:http'
 import { chromium } from 'playwright'
 import { isWorkerAdminAuthorized } from './admin-auth.js'
-import { annotateRoundPayload, extractSnapshotFromPayloads, isRoundPayload, redactUrlSecrets } from './snapshot.js'
+import { annotateRoundPayload, extractSnapshotFromPayloads, hasRealCardCodes, isRoundPayload, redactUrlSecrets } from './snapshot.js'
 import { createSnapshotPusher } from './snapshot-pusher.js'
 import { assertMtFinalUrl, assertMtNavigationResponse, BUILD_VERSION, captureSessionId, publicBuildInfo, validateProductionConfig } from './runtime-config.js'
 import { createFixedWindowRateLimiter } from './server-policy.js'
@@ -33,6 +33,7 @@ const snapshotPusher = createSnapshotPusher({
   getSnapshot,
   intervalMs: Number(process.env.PUSH_INTERVAL_MS ?? 5000),
   queuePath: process.env.PUSH_QUEUE_PATH ?? './data/latest-snapshot.json',
+  isRoundDeliverable: hasRealCardCodes,
 })
 
 const server = http.createServer(async (req, res) => {
