@@ -7,6 +7,7 @@ import { createChromeCaptureClient } from './chrome-capture.js'
 import { applyCloudCapturePayload, createCloudCaptureClient, parseCloudCapturePayload } from './cloud-capture.js'
 import { loadLocalEnv, maskToken, resolveDeployConfig } from './config.js'
 import { buildLivePrediction, createSupabaseIngestionClient } from './supabase-writer.js'
+import { createRecentTablePerformanceStore } from './recent-table-performance.js'
 import { createOnlineCoreClient } from './online-core.js'
 import { createLicenseAdminClient } from './license-admin.js'
 import { chooseCaptureSource, describeCaptureStatus } from './capture-source.js'
@@ -36,6 +37,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const expiredPredictionKeys = new Set()
   const settlingPredictionKeys = new Set()
   const memberSessions = new Map()
+  const recentTablePerformance = createRecentTablePerformanceStore({ windowSize: 18 })
+  let recentPerformanceReady = !(production && supabaseClient?.configured === true && typeof supabaseClient.getRecentPredictionRows === 'function')
   let tablesReceivedAtMs = 0
   const actionablePredictionTtlMs = Math.max(1000, Number(predictionTtlMs) || 120000)
   const expiredPredictionKeyLimit = Math.max(1, Number(maxExpiredPredictionKeys) || 10000)
@@ -62,7 +65,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       settlingPredictionKeys.add(pendingKey)
       try {
         await supabaseClient.ensureInitialStrategy?.()
-        await supabaseClient.persistRound?.(round, table, precomputedPrediction)
+        const persisted = await supabaseClient.persistRound?.(round, table, precomputedPrediction)
+        if (persisted?.prediction) recentTablePerformance.record(persisted.prediction)
         pendingPredictions.delete(pendingKey)
         state.setStatus({ persistenceStatus: 'ok', persistenceError: null })
       } catch (error) {
@@ -460,8 +464,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   }
 
   function savePendingPrediction(table) {
-    if (!isPredictionRuntimeReady()) return null
-    const generated = { ...buildLivePrediction(table), createdAtMs: now() }
+    if (!isPredictionRuntimeReady() || !recentPerformanceReady) return null
+    const tablePerformance = recentTablePerformance.summary(table?.tableId)
+    const generated = { ...buildLivePrediction({ ...table, ...tablePerformance }), createdAtMs: now() }
     if (!isValidPendingPrediction(generated)) return null
     const key = predictionTargetKey(generated.targetTableId, generated.targetShoe, generated.targetRound)
     if (expiredPredictionKeys.has(key)) return null
@@ -701,8 +706,15 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       if (requireVerifiedStrategy && supabaseClient?.configured === true && typeof supabaseClient.ensureInitialStrategy === 'function') {
         try {
           await supabaseClient.ensureInitialStrategy()
+          if (typeof supabaseClient.getRecentPredictionRows === 'function') {
+            const rows = await supabaseClient.getRecentPredictionRows({ limit: 10000 })
+            recentTablePerformance.hydrate(rows)
+            recentPerformanceReady = true
+          }
         } catch (error) {
+          recentPerformanceReady = false
           state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+          throw error
         }
       }
       if (shouldAutoConnect) {

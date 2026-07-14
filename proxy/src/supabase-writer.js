@@ -1549,6 +1549,15 @@ export function createSupabaseIngestionClient({
       const rows = await getRest('daily_prediction_results', query)
       return Array.isArray(rows) ? rows : []
     },
+    async getRecentPredictionRows({ limit = 10000 } = {}) {
+      const rows = await getRest('daily_prediction_results', {
+        select: 'table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,created_at',
+        strategy_version: 'in.(v097_副預測命中校準與門檻降5版,v098_主信心實際命中校準版)',
+        order: 'created_at.desc',
+        limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
+      })
+      return Array.isArray(rows) ? rows : []
+    },
     async persistRound(round, table, precomputedPrediction = null) {
       if (runtimeStatus.degraded) throw new Error(runtimeStatus.reason)
       if (requireVerifiedStrategy && runtimeStatus.ready !== true) throw new Error('active strategy not verified')
