@@ -8,7 +8,7 @@ describe('supabaseClient v032 proxy-first status', () => {
       return Promise.resolve({ ok: false, status: 401 })
     }) as unknown as typeof fetch
 
-    const result = await checkSupabaseConnection(fetchImpl)
+    const result = await checkSupabaseConnection(undefined, fetchImpl)
     expect(result).toEqual({ ok: true, message: '授權後端已連線' })
     expect(String((fetchImpl as any).mock.calls[0][0])).toContain('/api/online-license/status')
     expect((fetchImpl as any).mock.calls[0][1]).toEqual({ cache: 'no-store' })
@@ -16,10 +16,22 @@ describe('supabaseClient v032 proxy-first status', () => {
 
   it('fails through the backend without attempting a direct Supabase fallback', async () => {
     const fetchImpl = vi.fn(() => Promise.resolve({ ok: false, status: 503 })) as unknown as typeof fetch
-    const result = await checkSupabaseConnection(fetchImpl)
+    const result = await checkSupabaseConnection(undefined, fetchImpl)
 
     expect(result).toEqual({ ok: false, message: '授權後端連線失敗 (503)' })
     expect(fetchImpl).toHaveBeenCalledTimes(1)
     expect(String((fetchImpl as any).mock.calls[0][0])).toContain('/api/online-license/status')
+  })
+
+  it('v098 sends the opaque admin session when checking the protected license backend', async () => {
+    const fetchImpl = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ configured: true, error: null }) })) as unknown as typeof fetch
+
+    const result = await checkSupabaseConnection('opaque-admin-session', fetchImpl)
+
+    expect(result).toEqual({ ok: true, message: '授權後端已連線' })
+    expect((fetchImpl as any).mock.calls[0][1]).toEqual({
+      cache: 'no-store',
+      headers: { Authorization: 'Bearer opaque-admin-session' },
+    })
   })
 })

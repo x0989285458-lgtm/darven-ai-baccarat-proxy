@@ -138,7 +138,8 @@ export default function App() {
     if ((path === '/' || path === '') && !memberLoggedIn) return
     if (path === '/admin' && !adminLoggedIn) return
     let active = true
-    checkSupabaseConnection().then((result) => {
+    const adminSessionToken = path === '/admin' ? window.sessionStorage.getItem('darven-admin-session-token') ?? undefined : undefined
+    checkSupabaseConnection(adminSessionToken).then((result) => {
       if (!active) return
       setSupabaseStatus({ state: result.ok ? 'connected' : 'error', message: result.message })
     })
