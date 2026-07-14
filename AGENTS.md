@@ -52,7 +52,7 @@ This repo is operated by Hermes (Faker) and may delegate focused coding tasks to
 
 ## Development workflow
 
-0. Freeze the exact requested scope and acceptance criteria. One question has one owner; Codex must not duplicate an investigation already owned by Hermes. When the requested issue is verified, report and stop. A newly discovered issue requires user approval before expanding scope. If work exceeds 3–5 minutes, return a progress summary. Store verbose logs/full test output in evidence files, return only compact results, and stop/consolidate at 75% context or tool budget.
+0. Freeze the exact requested scope and acceptance criteria. One question has one owner; Codex must not duplicate an investigation already owned by Hermes. When the requested issue is verified, report and stop. A newly discovered issue requires user approval before expanding scope. Any error, timeout, blocker, or evidence conflict must be reported immediately when it appears. If otherwise healthy work exceeds 3–5 minutes, return a progress summary. Store verbose logs/full test output in evidence files, return only compact results, and stop/consolidate at 75% context or tool budget.
 1. Start by checking git status.
 2. Read relevant files before editing.
 3. Make the smallest targeted change.
