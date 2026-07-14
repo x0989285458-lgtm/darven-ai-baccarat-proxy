@@ -18,6 +18,21 @@ test('v040 parses cloud worker payload into normalized tables and status', () =>
   assert.equal(payload.rounds[0].winner, 'banker')
 })
 
+test('v098 stamps a trusted proxy receive time when MT tables omit sourceUpdatedAt', () => {
+  const receivedAt = '2026-07-14T10:30:00.000Z'
+  const payload = parseCloudCapturePayload({
+    connected: true,
+    authenticated: true,
+    tables: [
+      { tableId: 'BAG01', tableType: 'BAC', round: 12 },
+      { tableId: 'BAG02', tableType: 'BAC', round: 13, sourceUpdatedAt: '2026-07-14T10:29:59.000Z' },
+    ],
+  }, receivedAt)
+
+  assert.equal(payload.tables[0].sourceUpdatedAt, receivedAt)
+  assert.equal(payload.tables[1].sourceUpdatedAt, '2026-07-14T10:29:59.000Z')
+})
+
 test('v090 cloud capture sends worker admin key header when configured', async () => {
   const state = createFakeState()
   const client = createCloudCaptureClient({

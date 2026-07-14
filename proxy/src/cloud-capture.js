@@ -5,8 +5,9 @@ const DEFAULT_POLL_MS = 5000
 const DEFAULT_REQUEST_TIMEOUT_MS = 15000
 const DEFAULT_REQUEST_RETRIES = 2
 
-export function parseCloudCapturePayload(payload = {}) {
+export function parseCloudCapturePayload(payload = {}, receivedAt = new Date().toISOString()) {
   const tables = normalizeCloudTables(payload.tables ?? payload.snapshot?.tables ?? [])
+    .map((table) => ({ ...table, sourceUpdatedAt: table.sourceUpdatedAt ?? receivedAt }))
   const rounds = Array.isArray(payload.rounds) ? payload.rounds : payload.round ? [payload.round] : []
   const sessionId = payload.sessionId ?? payload.session_id ?? null
   return {
