@@ -253,10 +253,28 @@ function mergeTables(tables) {
   for (const table of tables) {
     const current = map.get(table.tableId)
     if (!current || shouldReplaceTable(current, table)) {
-      map.set(table.tableId, { ...current, ...table })
+      map.set(table.tableId, mergeReplacementTable(current, table))
     }
   }
   return [...map.values()].map(stripInternalTableFields).sort((a, b) => tableSortKey(a.tableId) - tableSortKey(b.tableId))
+}
+
+function mergeReplacementTable(current, next) {
+  if (!current) return next
+  const sameShoe = current.shoe != null && next.shoe != null && String(current.shoe) === String(next.shoe)
+  if (!sameShoe) return { ...current, ...next }
+
+  const merged = { ...current, ...next }
+  for (const key of ['beadPlateRaw', 'bigRoadRaw', 'bigEyeRaw', 'smallRoadRaw', 'cockroachRaw']) {
+    if (!next[key] && current[key]) merged[key] = current[key]
+  }
+  for (const key of ['nextBankerRaw', 'nextPlayerRaw']) {
+    if (next[key] == null && current[key] != null) merged[key] = current[key]
+  }
+  for (const key of ['bankerCount', 'playerCount', 'tieCount', 'bankerPairCount', 'playerPairCount']) {
+    if (Number(next.round ?? 0) > 0 && Number(next[key] ?? 0) === 0 && Number(current[key] ?? 0) > 0) merged[key] = current[key]
+  }
+  return merged
 }
 
 function shouldReplaceTable(current, next) {

@@ -37,6 +37,8 @@ test('prefers newer higher-round body snapshot over stale rich road payload for 
   assert.equal(table.bankerCount, 13)
   assert.equal(table.playerCount, 20)
   assert.equal(table.tieCount, 3)
+  assert.equal(table.beadPlateRaw, '0102#'.repeat(80), 'same-shoe summary must not erase the last complete bead plate')
+  assert.equal(table.bigRoadRaw, '0901,,,,,#'.repeat(80), 'same-shoe summary must not erase the last complete big road')
 })
 
 test('prefers later current-page body snapshot when shoe rolls over and old road payload has richer roads', () => {
@@ -69,4 +71,6 @@ test('prefers later current-page body snapshot when shoe rolls over and old road
   assert.equal(table.shoe, 3310)
   assert.equal(table.round, 1)
   assert.equal(table.bankerCount, 1)
+  assert.equal(table.beadPlateRaw, '', 'new shoe must not inherit the previous shoe bead plate')
+  assert.equal(table.bigRoadRaw, '', 'new shoe must not inherit the previous shoe big road')
 })
