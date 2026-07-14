@@ -64,7 +64,6 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       if (settlingPredictionKeys.has(pendingKey)) return
       settlingPredictionKeys.add(pendingKey)
       try {
-        await supabaseClient.ensureInitialStrategy?.()
         const persisted = await supabaseClient.persistRound?.(round, table, precomputedPrediction)
         if (persisted?.prediction) recentTablePerformance.record(persisted.prediction)
         pendingPredictions.delete(pendingKey)
