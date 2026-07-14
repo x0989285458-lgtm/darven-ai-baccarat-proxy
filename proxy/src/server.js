@@ -111,7 +111,6 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
     if (pathname === '/api/status') {
       const status = state.snapshot().status
-      await persistCloudStateSnapshot(status)
       const cloudStatus = await readCloudSnapshotStatus()
       const nextStatus = { ...state.snapshot().status, ...cloudStatus }
       const health = buildServiceHealth()
@@ -401,22 +400,6 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     const error = new Error('super admin session is required')
     error.statusCode = 403
     throw error
-  }
-
-  async function persistCloudStateSnapshot(status) {
-    if (!supabaseClient?.configured || typeof supabaseClient.writeCloudCaptureStatus !== 'function') return
-    try {
-      const snapshot = state.snapshot()
-      const sessionId = status.captureSessionId ?? `${deployConfig.deployMode}-${captureSource}`
-      await supabaseClient.writeCloudCaptureStatus({ sessionId, captureSource, status: snapshot.status })
-      if (typeof supabaseClient.writeCloudTableSnapshot === 'function') {
-        await supabaseClient.writeCloudTableSnapshot({ sessionId, tables: snapshot.tables, status: snapshot.status })
-      }
-      state.setStatus({ persistenceStatus: 'ok', persistenceError: null })
-    } catch (error) {
-      const event = await recordOperationalEvent({ component: 'supabase_writer', kind: 'persist_cloud_state', message: error?.message ?? String(error) })
-      state.setStatus({ persistenceStatus: 'error', persistenceError: event.eventMessage })
-    }
   }
 
   async function readTodayRoundCount() {

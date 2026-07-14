@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createApp } from '../src/server.js'
 
-test('v039 server persists cloud capture status and snapshots when tables change', async () => {
+test('v098 status reads are side-effect free because cloud ingest already persists changed state', async () => {
   const calls = []
   const supabaseClient = {
     configured: true,
@@ -11,11 +11,13 @@ test('v039 server persists cloud capture status and snapshots when tables change
   }
   const app = createApp({ autoConnect: false, deployMode: 'cloud', captureSource: 'cloud_browser', supabaseClient })
 
-  app.state.setStatus({ connected: true, authenticated: true })
+  app.state.setStatus({ connected: true, authenticated: true, persistenceStatus: 'ok' })
   app.state.setTables([{ tableId: 'BAG01', displayName: 'MT百家樂第1桌' }])
 
-  const status = await app.inject({ method: 'GET', url: '/api/status' })
-  assert.equal(JSON.parse(status.body).persistenceStatus, 'ok')
-  assert.deepEqual(calls.map(([kind]) => kind), ['status', 'snapshot'])
-  assert.equal(calls[1][1].tables[0].tableId, 'BAG01')
+  const first = await app.inject({ method: 'GET', url: '/api/status' })
+  const second = await app.inject({ method: 'GET', url: '/api/status' })
+
+  assert.equal(JSON.parse(first.body).persistenceStatus, 'ok')
+  assert.equal(JSON.parse(second.body).persistenceStatus, 'ok')
+  assert.deepEqual(calls, [])
 })

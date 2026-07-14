@@ -1397,7 +1397,7 @@ export function createSupabaseIngestionClient({
   let writeQueue = Promise.resolve()
   const completedRoundKeyLimit = Math.max(1, Number(maxCompletedRoundKeys) || 10000)
 
-  async function postRest(path, body, conflict, { requireRepresentation = false, requireObject = false } = {}) {
+  async function postRest(path, body, conflict, { requireRepresentation = false, requireObject = false, allowSuppressedRepresentation = false } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase backend key is not configured' }
     const endpoint = new URL(`/rest/v1/${path}`, url)
     if (conflict) endpoint.searchParams.set('on_conflict', conflict)
@@ -1417,7 +1417,10 @@ export function createSupabaseIngestionClient({
       if (requireRepresentation) {
         let rows
         try { rows = JSON.parse(responseText) } catch { rows = null }
-        if (!Array.isArray(rows) || rows.length !== 1) throw new Error(`Supabase ${path} snapshot write was suppressed`)
+        if (Array.isArray(rows) && rows.length === 0 && allowSuppressedRepresentation) {
+          return { ok: true, status: response.status, skipped: true, reason: 'snapshot_throttled' }
+        }
+        if (!Array.isArray(rows) || rows.length !== 1) throw new Error(`Supabase ${path} returned an invalid representation`)
         return { ok: true, status: response.status, row: rows[0] }
       }
       if (requireObject) {
@@ -1555,7 +1558,11 @@ export function createSupabaseIngestionClient({
     },
     async writeCloudTableSnapshot(payload) {
       const row = buildCloudTableSnapshotRow(payload)
-      await enqueueWrite(() => postRest('cloud_table_snapshots', row, null, { requireRepresentation: true }))
+      const result = await enqueueWrite(() => postRest('cloud_table_snapshots', row, null, {
+        requireRepresentation: true,
+        allowSuppressedRepresentation: true,
+      }))
+      if (result?.skipped) return result
       return { ok: true, row }
     },
     async getLatestCloudTableSnapshot() {

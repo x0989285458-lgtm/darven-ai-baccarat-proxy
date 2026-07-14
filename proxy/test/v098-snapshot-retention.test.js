@@ -34,11 +34,12 @@ test('v098 durable cloud snapshot stamps buildVersion 098 on every table and pre
   assert.equal(row.tables[0].prediction.buildVersion, '098')
 })
 
-test('v098 writer treats a trigger-suppressed snapshot return as unavailable instead of success', async () => {
+test('v098 writer treats trigger-suppressed snapshot return as an expected throttle', async () => {
   const client = createSupabaseIngestionClient({
     url: 'https://example.invalid', serviceKey: 'fixture-key', retryAttempts: 1,
     fetchImpl: async () => ({ ok: true, status: 201, text: async () => '[]' }),
   })
 
-  await assert.rejects(client.writeCloudTableSnapshot({ sessionId: 'session-1', tables: [{ tableId: 'BAG01' }] }), /snapshot write was suppressed/)
+  const result = await client.writeCloudTableSnapshot({ sessionId: 'session-1', tables: [{ tableId: 'BAG01' }] })
+  assert.deepEqual(result, { ok: true, status: 201, skipped: true, reason: 'snapshot_throttled' })
 })
