@@ -89,10 +89,10 @@ describe('AI百家預測軟體', () => {
     vi.unstubAllGlobals()
   })
 
-  it('renders the requested v010 title and centered brand order', async () => {
+  it('keeps the approved top design without the 瑞文AI版 010 subtitle', async () => {
     await renderApp()
     expect(screen.getByRole('heading', { name: 'AI百家預測軟體' })).toBeInTheDocument()
-    expect(screen.getByText('瑞文AI版 010')).toBeInTheDocument()
+    expect(screen.queryByText('瑞文AI版 010')).not.toBeInTheDocument()
   })
 
   it('shows only Supabase connection status in the header and removes live status/update time', async () => {
@@ -144,20 +144,24 @@ describe('AI百家預測軟體', () => {
     expect(within(stats).getByText('閒').closest('.stat-card')).toHaveClass('Player')
   })
 
-  it('centers the red-box prediction UI with side, main, and AI rows and puts percentages below labels', async () => {
+  it('keeps five approved side metrics on row one and 閒和莊 on row two', async () => {
     await renderApp()
     const prediction = screen.getByLabelText('AI預測結果')
     const sideRow = within(prediction).getByLabelText('副項目預測機率')
     const mainRow = within(prediction).getByLabelText('莊閒預測機率')
 
-    ;['閒龍寶', '閒對', '和局', '超六', '莊對', '莊龍寶'].forEach((label) => {
+    const sideLabels = ['閒龍寶', '閒對', '超六', '莊對', '莊龍寶']
+    expect(Array.from(sideRow.querySelectorAll('.prediction-metric span')).map((node) => node.textContent)).toEqual(sideLabels)
+    sideLabels.forEach((label) => {
       const item = within(sideRow).getByLabelText(`${label}預測`)
       expect(within(item).getByText(label)).toBeInTheDocument()
       expect(within(item).getByText(/\d+%/)).toHaveClass('probability-value')
     })
-    expect(within(sideRow).getByLabelText('和局預測')).toHaveTextContent('11%')
+    expect(within(sideRow).queryByLabelText('和局預測')).not.toBeInTheDocument()
 
-    ;['閒', '和', '莊'].forEach((label) => {
+    const mainLabels = ['閒', '和', '莊']
+    expect(Array.from(mainRow.querySelectorAll('.prediction-metric span')).map((node) => node.textContent)).toEqual(mainLabels)
+    mainLabels.forEach((label) => {
       const item = within(mainRow).getByLabelText(`${label}預測`)
       expect(within(item).getByText(label)).toBeInTheDocument()
       expect(within(item).getByText(/\d+%/)).toHaveClass('probability-value')
@@ -165,7 +169,6 @@ describe('AI百家預測軟體', () => {
 
     expect(within(prediction).getByText(/AI預測:/)).toBeInTheDocument()
     expect(within(prediction).getByText(/AI信心值:\d+%/)).toBeInTheDocument()
-    expect(within(sideRow).getByText('和局')).toBeInTheDocument()
     expect(within(mainRow).getByText('和')).toBeInTheDocument()
     expect(within(prediction).queryByText(/高|中|低/)).not.toBeInTheDocument()
     expect(within(prediction).queryByText(/風險:/)).not.toBeInTheDocument()
@@ -193,7 +196,7 @@ describe('AI百家預測軟體', () => {
   it('v096 displays backend side prediction values and actions without frontend recalculation', async () => {
     await renderApp()
     const sideRow = screen.getByLabelText('副項目預測機率')
-    expect(Array.from(sideRow.querySelectorAll('.probability-value')).map((node) => node.textContent)).toEqual(['66%', '44%', '11%', '22%', '33%', '55%'])
+    expect(Array.from(sideRow.querySelectorAll('.probability-value')).map((node) => node.textContent)).toEqual(['66%', '44%', '22%', '33%', '55%'])
     expect(Array.from(sideRow.querySelectorAll('.prediction-metric.active')).map((node) => node.textContent)).toEqual([expect.stringContaining('55%')])
   })
 
@@ -227,7 +230,7 @@ describe('AI百家預測軟體', () => {
     await renderApp()
     const sideRow = screen.getByLabelText('副項目預測機率')
     expect(sideRow.querySelectorAll('.prediction-metric.active')).toHaveLength(0)
-    expect(Array.from(sideRow.querySelectorAll('.probability-value')).map((node) => node.textContent)).toEqual(['等待', '等待', '等待', '等待', '等待', '等待'])
+    expect(Array.from(sideRow.querySelectorAll('.probability-value')).map((node) => node.textContent)).toEqual(['等待', '等待', '等待', '等待', '等待'])
   })
 
 

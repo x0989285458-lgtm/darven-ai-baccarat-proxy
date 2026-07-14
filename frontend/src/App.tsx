@@ -203,7 +203,6 @@ export default function App() {
       </div>
       <div className="brand" aria-label="主標題">
         <h1>AI百家預測軟體</h1>
-        <p className="eyebrow">瑞文AI版 010</p>
       </div>
       <div className="header-meta"><span className={`status ${supabaseStatus.state}`} title={supabaseConfig.projectRef}>{supabaseStatus.message}</span>{staleNotice ? <span className="status stale" title={staleNotice} aria-label={staleNotice}>資料過期</span> : null}</div>
     </header>
@@ -225,7 +224,6 @@ export default function App() {
           <div className="prediction-row side-prediction-row" aria-label="副項目預測機率">
             <PredictionMetric title="閒龍寶" value={bonusPredictions?.playerDragon ?? null} tone="Player" active={predictionsActionable && (sideActions?.playerDragon ?? false)} />
             <PredictionMetric title="閒對" value={bonusPredictions?.playerPair ?? null} tone="Player" active={predictionsActionable && (sideActions?.playerPair ?? false)} />
-            <PredictionMetric title="和局" value={bonusPredictions?.tie ?? null} tone="Tie" active={predictionsActionable && (sideActions?.tie ?? false)} />
             <PredictionMetric title="超六" value={bonusPredictions?.superSix ?? null} tone="Tie" active={predictionsActionable && (sideActions?.superSix ?? false)} />
             <PredictionMetric title="莊對" value={bonusPredictions?.bankerPair ?? null} tone="Banker" active={predictionsActionable && (sideActions?.bankerPair ?? false)} />
             <PredictionMetric title="莊龍寶" value={bonusPredictions?.bankerDragon ?? null} tone="Banker" active={predictionsActionable && (sideActions?.bankerDragon ?? false)} />
@@ -284,7 +282,7 @@ function WaitingForCloudData({ status, supabaseStatus }: { status: { state: stri
   return <main className="app-shell waiting-shell">
     <header className="topbar">
       <div className="promo-block" aria-label="官方資訊"><strong>免費AI百家預測軟體</strong><span>私訊官方賴@Dv1788</span></div>
-      <div className="brand" aria-label="主標題"><h1>AI百家預測軟體</h1><p className="eyebrow">瑞文AI版 010</p></div>
+      <div className="brand" aria-label="主標題"><h1>AI百家預測軟體</h1></div>
       <div className="header-meta"><span className={`status ${supabaseStatus.state}`} title={supabaseConfig.projectRef}>{supabaseStatus.message}</span></div>
     </header>
     <section className="waiting-card" aria-label="等待雲端資料">

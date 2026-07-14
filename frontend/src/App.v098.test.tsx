@@ -57,12 +57,13 @@ describe('App v098 prediction and session contract', () => {
     vi.unstubAllGlobals()
   })
 
-  it('shows all six backend side values and only backend action flags for a valid snapshot', async () => {
+  it('keeps the complete six-value backend contract while displaying the approved five side metrics', async () => {
     stubBackend(table())
     await renderMemberApp()
 
     const row = await screen.findByLabelText('副項目預測機率')
-    expect(Array.from(row.querySelectorAll('.probability-value')).map((node) => node.textContent)).toEqual(['66%', '44%', '11%', '22%', '33%', '55%'])
+    expect(Array.from(row.querySelectorAll('.probability-value')).map((node) => node.textContent)).toEqual(['66%', '44%', '22%', '33%', '55%'])
+    expect(row.querySelector('[aria-label="和局預測"]')).toBeNull()
     expect(row.querySelectorAll('.prediction-metric.active')).toHaveLength(1)
   })
 
