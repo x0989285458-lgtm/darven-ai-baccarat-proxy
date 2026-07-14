@@ -42,6 +42,20 @@ test('v098 member session token is opaque and cannot disclose authorization data
   assert.match(session.sessionExpiresAt, /T/)
 })
 
+test('v098 member session can be revalidated immediately after login without returning to login', async () => {
+  const app = createMemberApp()
+  const { memberSessionToken, sessionExpiresAt } = await login(app)
+
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/online-license/member-session',
+    headers: { authorization: `Bearer ${memberSessionToken}` },
+  })
+
+  assert.equal(response.statusCode, 200)
+  assert.deepEqual(JSON.parse(response.body), { ok: true, sessionExpiresAt })
+})
+
 test('v098 member session expiry is capped at ten minutes server-side', async () => {
   let clock = 1_000_000
   const app = createMemberApp({ now: () => clock, memberSessionTtlMs: 20 * 60 * 1000 })

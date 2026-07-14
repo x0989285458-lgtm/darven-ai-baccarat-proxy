@@ -276,6 +276,13 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         return jsonResponse(error?.statusCode ?? 401, { configured: Boolean(licenseAdminClient?.configured), managers: [], agents: [], plans: [], licenses: [], error: error?.message ?? String(error) }, frontendOrigin)
       }
     }
+    if (method === 'POST' && pathname === '/api/online-license/member-session') {
+      const token = extractBearerToken(headers.authorization)
+      const authorized = Boolean(token) && await isMemberSessionAuthorized(headers)
+      const session = token ? memberSessions.get(String(token)) : null
+      if (!authorized || !session) return jsonResponse(401, { ok: false, error: 'member session is invalid or expired' }, frontendOrigin)
+      return jsonResponse(200, { ok: true, sessionExpiresAt: new Date(session.expiresAtMs).toISOString() }, frontendOrigin)
+    }
     if (method === 'POST' && pathname === '/api/online-license/member-login') return adminWrite(async () => {
       const credentials = parseJsonBody(rawBody)
       const result = await licenseAdminClient.validateMemberLogin?.(credentials)
