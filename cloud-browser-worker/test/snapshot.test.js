@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   annotateRoundPayload,
+  isRoundPayload,
   normalizeWinner,
   normalizeTable,
   extractSnapshotFromPayloads,
@@ -20,6 +21,17 @@ test('annotates every object in a captured JSON round array with a distinct even
     annotateRoundPayload('[{"table_id":"BAG01","round":1},{"table_id":"BAG02","round":1}]', 'capture-1:2'),
     '[{"table_id":"BAG01","round":1,"__captureEventId":"capture-1:2:0"},{"table_id":"BAG02","round":1,"__captureEventId":"capture-1:2:1"}]',
   )
+})
+
+test('v098.7 retains MT summary events with exact cards in the dedicated round buffer', () => {
+  assert.equal(isRoundPayload(JSON.stringify({
+    action: { name: '/api/v1/gametype/*/game/*/room/*/table/*/summary' },
+    body: {
+      table_id: 'BAG01', shoe: 9, round: 21, winner: 2,
+      result: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
+    },
+  })), true)
+  assert.equal(isRoundPayload(JSON.stringify({ action: { name: '/summary' }, body: { table_id: 'BAG01' } })), false)
 })
 
 test('normalizes common banker/player/tie winner values for backend round contract', () => {

@@ -1,7 +1,7 @@
 import http from 'node:http'
 import { chromium } from 'playwright'
 import { isWorkerAdminAuthorized } from './admin-auth.js'
-import { annotateRoundPayload, extractSnapshotFromPayloads, redactUrlSecrets } from './snapshot.js'
+import { annotateRoundPayload, extractSnapshotFromPayloads, isRoundPayload, redactUrlSecrets } from './snapshot.js'
 import { createSnapshotPusher } from './snapshot-pusher.js'
 import { assertMtFinalUrl, assertMtNavigationResponse, BUILD_VERSION, captureSessionId, publicBuildInfo, validateProductionConfig } from './runtime-config.js'
 import { createFixedWindowRateLimiter } from './server-policy.js'
@@ -210,11 +210,6 @@ function rememberPayload(payload) {
 function resetCapturedPayloads() {
   capturedPayloads.length = 0
   capturedRoundPayloads.length = 0
-}
-
-function isRoundPayload(text = '') {
-  return /show_poker|roundResult|round_result/i.test(text)
-    && /"result"|"cards"|"cardList"|"card_list"/i.test(text)
 }
 
 async function closePage() {
