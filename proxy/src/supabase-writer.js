@@ -4,7 +4,7 @@ import { BUILD_VERSION } from './build-version.js'
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v094_no_observe_confidence_30_70'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v097_副預測命中校準與門檻降5版'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v098_主信心實際命中校準版'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -159,9 +159,9 @@ export function buildFormalActiveStrategy() {
       main_weights: { ...ALL_MT_EQUAL_MAIN_WEIGHTS },
       side_weights: Object.fromEntries(Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES).map(([key, profile]) => [key, { ...profile }])),
       side_thresholds: { ...SIDE_PREDICTION_THRESHOLDS },
-      description: 'v097 正式主副預測；舊策略僅保留歷史，不再作為 active fallback。',
+      description: 'v098 正式主副預測；主信心依已結算真牌命中率校準至30-70，舊策略僅保留歷史。',
     },
-    notes: 'Only active runtime strategy for v097 formal predictions.',
+    notes: 'Only active runtime strategy for v098 settled-hit-rate calibrated formal predictions.',
   }
 }
 
@@ -449,8 +449,9 @@ function calculateAllMtEqualMainPrediction({ round = {}, table = {}, facts = {},
   }, { banker: 0, player: 0 })
   const difference = Math.abs(total.banker - total.player)
   const predictedResult = difference < 1e-9 ? breakAllMtMainTie({ round, table, facts, probabilities }) : (total.banker > total.player ? 'banker' : 'player')
-  const confidence = difference < 1e-9 ? calibrateMainConfidenceV096(30) : calculateConservativeMainConfidence(scores, ALL_MT_EQUAL_MAIN_WEIGHTS)
-  return { predictedResult, confidence, scores, total }
+  const rawSignalConfidence = difference < 1e-9 ? 30 : calculateConservativeMainConfidence(scores, ALL_MT_EQUAL_MAIN_WEIGHTS)
+  const confidenceCalibration = calibrateMainConfidenceByHitRate(rawSignalConfidence, tablePerformance)
+  return { predictedResult, confidence: confidenceCalibration.finalConfidence, confidenceCalibration, scores, total }
 }
 
 export function buildLivePrediction(table = {}) {
@@ -497,6 +498,7 @@ export function buildLivePrediction(table = {}) {
     side_actions: structuredClone(sideActions),
     side_results: { superSix: false, bankerDragon: false, playerDragon: false, bankerPair: false, playerPair: false },
     table_performance: structuredClone(tablePerformance),
+    confidence_calibration: structuredClone(prediction.confidenceCalibration),
   }
   return {
     source: 'backend',
@@ -562,8 +564,34 @@ function calculateConservativeMainConfidence(scores = {}, weights = {}) {
   const agreement = Math.abs(agreementSum) / activeWeight
   const strength = strengthSum / activeWeight
   const combined = clampPercent((agreement * 0.7 + strength * 0.3) * 100, 0, 100) / 100
-  const rawConfidence = 30 + 40 * combined
-  return calibrateMainConfidenceV096(rawConfidence)
+  return 30 + 40 * combined
+}
+
+export function calibrateMainConfidenceByHitRate(rawSignalConfidence, tablePerformance = {}) {
+  const signal = clampPercent(Number(rawSignalConfidence), 30, 70)
+  const recentHitRate = normalizedRate(tablePerformance.recentHitRate ?? tablePerformance.recent_hit_rate)
+  const recentPredictionCount = numberOrNull(tablePerformance.recentPredictionCount ?? tablePerformance.recent_prediction_count)
+  const signalAdjustment = (signal - 50) * 0.2
+  if (recentHitRate == null || recentPredictionCount == null || recentPredictionCount < 6) {
+    return {
+      rawSignalConfidence: signal,
+      finalConfidence: Math.round(clampPercent(50 + signalAdjustment, 30, 70)),
+      reason: 'learning-neutral-shrinkage',
+      recentHitRate,
+      recentPredictionCount,
+      reliability: 0,
+    }
+  }
+  const reliability = Math.min(1, Math.max(0, recentPredictionCount / 18))
+  const empiricalCenter = 50 + (recentHitRate * 100 - 50) * reliability
+  return {
+    rawSignalConfidence: signal,
+    finalConfidence: Math.round(clampPercent(empiricalCenter + signalAdjustment, 30, 70)),
+    reason: 'settled-hit-rate-calibration',
+    recentHitRate,
+    recentPredictionCount,
+    reliability: Math.round(reliability * 1000) / 1000,
+  }
 }
 
 export function calibrateMainConfidenceV096(rawConfidence) {
@@ -1433,6 +1461,27 @@ export function createSupabaseIngestionClient({
     })
   }
 
+  async function patchRest(path, body, query = {}) {
+    if (!configured) return { skipped: true, reason: 'Supabase backend key is not configured' }
+    const endpoint = new URL(`/rest/v1/${path}`, url)
+    for (const [key, value] of Object.entries(query)) endpoint.searchParams.set(key, value)
+    return withRetry(async () => {
+      const response = await fetchImpl(endpoint, {
+        method: 'PATCH',
+        headers: {
+          ['api' + 'key']: serviceKey,
+          ['Author' + 'ization']: ['Bearer', serviceKey].join(' '),
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal',
+        },
+        body: JSON.stringify(body),
+      })
+      const responseText = await response.text()
+      if (!response.ok) throw new Error(`Supabase ${path} patch failed: ${response.status} ${responseText}`)
+      return { ok: true, status: response.status }
+    })
+  }
+
   function enqueueWrite(operation) {
     const next = writeQueue.catch(() => {}).then(operation)
     writeQueue = next.catch(() => {})
@@ -1474,6 +1523,7 @@ export function createSupabaseIngestionClient({
     configured,
     async ensureInitialStrategy() {
       try {
+        await patchRest('ai_strategy_versions', { status: 'archived' }, { status: 'eq.active', version: `neq.${ALL_MT_EQUAL_STRATEGY_VERSION}` })
         await postRest('ai_strategy_versions', buildFormalActiveStrategy(), 'version')
         const activeRows = await getRest('ai_strategy_versions', { select: 'version,status', status: 'eq.active' })
         if (!Array.isArray(activeRows) || activeRows.length !== 1 || activeRows[0]?.version !== ALL_MT_EQUAL_STRATEGY_VERSION) {

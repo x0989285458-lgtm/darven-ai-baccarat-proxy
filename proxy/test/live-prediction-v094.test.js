@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { ALL_MT_EQUAL_STRATEGY_VERSION, buildLivePrediction, buildPredictionResultRow } from '../src/supabase-writer.js'
+import { ALL_MT_EQUAL_STRATEGY_VERSION, buildLivePrediction, buildPredictionResultRow, calibrateMainConfidenceByHitRate } from '../src/supabase-writer.js'
 
 test('v094 exposes one backend live prediction with a non-fixed 30-70 confidence', () => {
   const table = {
@@ -15,7 +15,7 @@ test('v094 exposes one backend live prediction with a non-fixed 30-70 confidence
 
   const prediction = buildLivePrediction(table)
 
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v097_副預測命中校準與門檻降5版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v098_主信心實際命中校準版')
   assert.equal(prediction.strategyVersion, ALL_MT_EQUAL_STRATEGY_VERSION)
   assert.match(prediction.predictedResult, /^(banker|player)$/)
   assert.ok(prediction.confidence > 30)
@@ -41,4 +41,22 @@ test('v094 settlement persists the pre-result backend direction and confidence',
   assert.equal(row.confidence, 57)
   assert.equal(row.is_hit, false)
   assert.equal(row.prediction_features.prediction_timing, 'pre_result_context')
+})
+
+test('v098.10 calibrates confidence against settled hit rate without changing direction', () => {
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v098_主信心實際命中校準版')
+  assert.deepEqual(calibrateMainConfidenceByHitRate(30, {}), {
+    rawSignalConfidence: 30, finalConfidence: 46, reason: 'learning-neutral-shrinkage', recentHitRate: null, recentPredictionCount: null, reliability: 0,
+  })
+  assert.equal(calibrateMainConfidenceByHitRate(70, {}).finalConfidence, 54)
+  assert.equal(calibrateMainConfidenceByHitRate(30, { recentHitRate: 0.30, recentPredictionCount: 18 }).finalConfidence, 30)
+  assert.equal(calibrateMainConfidenceByHitRate(70, { recentHitRate: 0.80, recentPredictionCount: 18 }).finalConfidence, 70)
+  assert.equal(calibrateMainConfidenceByHitRate(50, { recentHitRate: 0.80, recentPredictionCount: 9 }).finalConfidence, 65)
+
+  const base = { tableId: 'BAG10', shoe: 10, round: 20, bankerCount: 12, playerCount: 8, tieCount: 1, beadPlateRaw: '0201020102' }
+  const learning = buildLivePrediction(base)
+  const calibrated = buildLivePrediction({ ...base, recentHitRate: 0.80, recentPredictionCount: 18 })
+  assert.equal(calibrated.predictedResult, learning.predictedResult)
+  assert.equal(calibrated.predictionFeatures.confidence_calibration.reason, 'settled-hit-rate-calibration')
+  assert.equal(calibrated.predictionFeatures.confidence_calibration.recentHitRate, 0.8)
 })

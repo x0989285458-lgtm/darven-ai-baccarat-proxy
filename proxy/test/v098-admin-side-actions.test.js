@@ -40,8 +40,8 @@ test('v098 admin requires complete boolean side_actions and side_hits before rep
   assert.match(sql, /jsonb_object_length\(prediction_features->'side_hits'\)\s*=\s*6/i)
   assert.equal((sql.match(/strategy_version\s*=\s*\$1/gi) ?? []).length, 3)
   assert.deepEqual(parameters, [
-    ['v097_副預測命中校準與門檻降5版'],
-    ['v097_副預測命中校準與門檻降5版'],
-    ['v097_副預測命中校準與門檻降5版'],
+    ['v098_主信心實際命中校準版'],
+    ['v098_主信心實際命中校準版'],
+    ['v098_主信心實際命中校準版'],
   ])
 })
