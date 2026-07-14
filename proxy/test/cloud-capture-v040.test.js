@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createCloudCaptureClient, parseCloudCapturePayload } from '../src/cloud-capture.js'
+import { applyCloudCapturePayload, createCloudCaptureClient, parseCloudCapturePayload } from '../src/cloud-capture.js'
 
 test('v040 parses cloud worker payload into normalized tables and status', () => {
   const payload = parseCloudCapturePayload({
@@ -83,6 +83,37 @@ test('v040 cloud capture tick fetches worker, updates state, and writes Supabase
   assert.equal(state.snapshot().tables[0].tableId, 'BAG01')
   assert.deepEqual(writes.map(([kind]) => kind), ['status', 'snapshot', 'round'])
   assert.equal(writes[2][1].round.winner, 'player')
+})
+
+test('v098 persists a backlog with bounded parallel round writes', async () => {
+  let active = 0
+  let maxActive = 0
+  let writes = 0
+  const parsed = {
+    sessionId: 'cloud-session-batch',
+    status: { connected: true, authenticated: true },
+    tables: [{ tableId: 'BAG01' }],
+    rounds: Array.from({ length: 13 }, (_, index) => ({ tableId: 'BAG01', shoe: 9, round: index + 1 })),
+  }
+  await applyCloudCapturePayload({
+    parsed,
+    state: createFakeState(),
+    writer: {
+      configured: true,
+      writeCloudCaptureStatus: async () => {},
+      writeCloudTableSnapshot: async () => {},
+      writeCloudRoundEvent: async () => {
+        active += 1
+        maxActive = Math.max(maxActive, active)
+        await new Promise((resolve) => setImmediate(resolve))
+        writes += 1
+        active -= 1
+      },
+    },
+  })
+
+  assert.equal(writes, 13)
+  assert.equal(maxActive, 5)
 })
 
 test('v040 cloud capture records worker HTTP errors without leaking secrets', async () => {

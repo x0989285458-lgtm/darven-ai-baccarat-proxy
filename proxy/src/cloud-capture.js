@@ -124,9 +124,12 @@ export async function applyCloudCapturePayload({ parsed, state, writer }) {
   const sessionId = parsed.sessionId ?? 'cloud-browser'
   await writer.writeCloudCaptureStatus?.({ sessionId, captureSource: 'cloud_browser', status: parsed.status })
   await writer.writeCloudTableSnapshot?.({ sessionId, tables: parsed.tables, status: parsed.status })
-  for (const round of parsed.rounds) {
-    const table = parsed.tables.find((item) => String(item.tableId) === String(round.tableId)) ?? { tableId: round.tableId }
-    await writer.writeCloudRoundEvent?.({ sessionId, round, table })
+  for (let offset = 0; offset < parsed.rounds.length; offset += 5) {
+    const batch = parsed.rounds.slice(offset, offset + 5)
+    await Promise.all(batch.map((round) => {
+      const table = parsed.tables.find((item) => String(item.tableId) === String(round.tableId)) ?? { tableId: round.tableId }
+      return writer.writeCloudRoundEvent?.({ sessionId, round, table })
+    }))
   }
 }
 
