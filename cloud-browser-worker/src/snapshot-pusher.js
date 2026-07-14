@@ -94,12 +94,20 @@ export function createSnapshotPusher({
     trimCursor()
 
     if (pending.length > 0) {
-      queue.push(createEnvelope(
-        snapshot,
-        pending.map(({ round }, index) => normalizeRoundForEnvelope(round, pending[index].key)),
-        pending.map(({ key: roundKeyValue }) => roundKeyValue),
-        timestamp,
-      ))
+      const pendingRounds = pending.map(({ round }, index) => normalizeRoundForEnvelope(round, pending[index].key))
+      const pendingKeys = pending.map(({ key: roundKeyValue }) => roundKeyValue)
+      const tail = queue.at(-1)
+      const mergedTail = queue.length >= 2 && tail?.sessionId === String(snapshot?.sessionId ?? '')
+        ? {
+            ...tail,
+            timestamp,
+            captureTimestamp: timestamp,
+            roundKeys: [...tail.roundKeys, ...pendingKeys],
+            snapshot: { ...snapshot, rounds: [...(tail.snapshot?.rounds ?? []), ...pendingRounds] },
+          }
+        : null
+      if (mergedTail && Buffer.byteLength(JSON.stringify(mergedTail), 'utf8') <= 768 * 1024) queue[queue.length - 1] = mergedTail
+      else queue.push(createEnvelope(snapshot, pendingRounds, pendingKeys, timestamp))
       await saveQueue()
     }
     await saveCursor()
