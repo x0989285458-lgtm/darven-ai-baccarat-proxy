@@ -1270,7 +1270,7 @@ export function buildCloudTableSnapshotRow({ sessionId = null, tables = [], stat
     capture_source: status.captureSource ?? status.captureMode ?? 'offline',
     table_count: safeTables.length,
     tables: safeTables,
-    table_summary: safeTables.map((table) => compactTableSnapshot(table)),
+    table_summary: [],
     snapshot_at: new Date().toISOString(),
     metadata: {
       ...metadata,
@@ -1416,11 +1416,16 @@ export function createSupabaseIngestionClient({
   retryDelayMs = 250,
   requireVerifiedStrategy = process.env.NODE_ENV === 'production',
   maxCompletedRoundKeys = 10000,
+  now = Date.now,
+  captureStatusHeartbeatMs = 60000,
+  snapshotHeartbeatMs = 60000,
 } = {}) {
   const configured = Boolean(url && serviceKey && fetchImpl)
   const completedRoundKeys = new Set()
   const inFlightRoundWrites = new Map()
   const preparedRoundWrites = new Map()
+  const captureStatusWrites = new Map()
+  const snapshotWrites = new Map()
   let runtimeStatus = { ready: false, degraded: false, reason: 'active_strategy_not_verified', activeStrategyVersion: null }
   let writeQueue = Promise.resolve()
   const completedRoundKeyLimit = Math.max(1, Number(maxCompletedRoundKeys) || 10000)
@@ -1607,7 +1612,19 @@ export function createSupabaseIngestionClient({
     },
     async writeCloudCaptureStatus(payload) {
       const row = buildCloudCaptureStatusRow(payload)
+      const key = String(row.session_id ?? 'default')
+      const fingerprint = JSON.stringify([
+        row.capture_source, row.deploy_mode, row.connected, row.authenticated,
+        row.table_count, row.status_text, row.error_message, row.metadata,
+      ])
+      const timestamp = Number(now())
+      const previous = captureStatusWrites.get(key)
+      const heartbeatMs = Math.max(1000, Number(captureStatusHeartbeatMs) || 60000)
+      if (previous?.fingerprint === fingerprint && timestamp - previous.writtenAt < heartbeatMs) {
+        return { skipped: true, reason: 'unchanged_before_heartbeat', row }
+      }
       await enqueueWrite(() => postRest('cloud_capture_status', row, 'session_id'))
+      captureStatusWrites.set(key, { fingerprint, writtenAt: timestamp })
       return { ok: true, row }
     },
     async writeOperationalEvent(payload) {
@@ -1617,12 +1634,18 @@ export function createSupabaseIngestionClient({
     },
     async writeCloudTableSnapshot(payload) {
       const row = buildCloudTableSnapshotRow(payload)
-      const result = await enqueueWrite(() => postRest('cloud_table_snapshots', row, null, {
-        requireRepresentation: true,
-        allowSuppressedRepresentation: true,
-      }))
+      const key = String(row.session_id ?? 'default')
+      const connectionFingerprint = JSON.stringify([row.capture_source, row.metadata?.connectionState ?? null])
+      const timestamp = Number(now())
+      const previous = snapshotWrites.get(key)
+      const heartbeatMs = Math.max(1000, Number(snapshotHeartbeatMs) || 60000)
+      if (previous?.connectionFingerprint === connectionFingerprint && timestamp - previous.writtenAt < heartbeatMs) {
+        return { skipped: true, reason: 'snapshot_before_heartbeat', row }
+      }
+      const result = await enqueueWrite(() => postRest('rpc/persist_latest_cloud_table_snapshot', { p_snapshot: row }, null, { requireObject: true }))
       if (result?.skipped) return result
-      return { ok: true, row }
+      snapshotWrites.set(key, { connectionFingerprint, writtenAt: timestamp })
+      return { ok: true, row, result }
     },
     async getLatestCloudTableSnapshot() {
       const rows = await getRest('cloud_table_snapshots', { select: '*', table_count: 'gt.0', order: 'snapshot_at.desc', limit: '1' })

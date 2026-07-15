@@ -34,12 +34,14 @@ test('v098 durable cloud snapshot stamps buildVersion 098 on every table and pre
   assert.equal(row.tables[0].prediction.buildVersion, '098')
 })
 
-test('v098 writer treats trigger-suppressed snapshot return as an expected throttle', async () => {
+test('v098.13 writer accepts the durable latest-snapshot RPC acknowledgement', async () => {
   const client = createSupabaseIngestionClient({
     url: 'https://example.invalid', serviceKey: 'fixture-key', retryAttempts: 1,
-    fetchImpl: async () => ({ ok: true, status: 201, text: async () => '[]' }),
+    fetchImpl: async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ persisted: true, inserted: false }) }),
   })
 
   const result = await client.writeCloudTableSnapshot({ sessionId: 'session-1', tables: [{ tableId: 'BAG01' }] })
-  assert.deepEqual(result, { ok: true, status: 201, skipped: true, reason: 'snapshot_throttled' })
+  assert.equal(result.ok, true)
+  assert.equal(result.result.persisted, true)
+  assert.equal(result.result.inserted, false)
 })

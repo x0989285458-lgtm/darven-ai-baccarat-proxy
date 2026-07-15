@@ -26,7 +26,7 @@ test('v039 builds cloud capture status row without leaking tokenized URL', () =>
   assert.deepEqual(row.metadata, { worker: 'browserless' })
 })
 
-test('v039 builds cloud table snapshot row with normalized table summary', () => {
+test('v098.13 builds a fallback snapshot without duplicate table summary storage', () => {
   const row = buildCloudTableSnapshotRow({
     sessionId: 'session-1',
     tables: [{ tableId: 'BAG01', displayName: 'MT百家樂第1桌', shoe: 3, round: 12 }],
@@ -37,7 +37,7 @@ test('v039 builds cloud table snapshot row with normalized table summary', () =>
   assert.equal(row.capture_source, 'cloud_browser')
   assert.equal(row.table_count, 1)
   assert.equal(row.tables[0].tableId, 'BAG01')
-  assert.equal(row.table_summary[0].round, 12)
+  assert.deepEqual(row.table_summary, [])
 })
 
 test('v094 cloud table snapshot carries backend-only live prediction confidence', () => {
@@ -62,7 +62,7 @@ test('v094 cloud table snapshot carries backend-only live prediction confidence'
   assert.match(row.tables[0].prediction.predictedResult, /^(banker|player)$/)
   assert.equal(row.tables[0].prediction.confidence >= 30, true)
   assert.equal(row.tables[0].prediction.confidence <= 70, true)
-  assert.equal(row.table_summary[0].prediction.confidence, row.tables[0].prediction.confidence)
+  assert.deepEqual(row.table_summary, [])
 })
 
 test('v039 builds cloud round, strategy report, and adjustment stats rows', () => {
@@ -101,8 +101,8 @@ test('v039 client writes cloud capture data to Supabase REST tables', async () =
     serviceKey: 'sb_secret_test_key',
     fetchImpl: async (url, init) => {
       requests.push({ url: String(url), init, body: JSON.parse(init.body) })
-      if (String(url).includes('/cloud_table_snapshots')) {
-        return { ok: true, status: 201, text: async () => '[{"id":"snapshot-fixture"}]' }
+      if (String(url).includes('/rpc/persist_latest_cloud_table_snapshot')) {
+        return { ok: true, status: 200, text: async () => JSON.stringify({ persisted: true, inserted: false }) }
       }
       return { ok: true, status: 201, text: async () => '' }
     },
@@ -116,7 +116,7 @@ test('v039 client writes cloud capture data to Supabase REST tables', async () =
 
   assert.deepEqual(requests.map((request) => new URL(request.url).pathname), [
     '/rest/v1/cloud_capture_status',
-    '/rest/v1/cloud_table_snapshots',
+    '/rest/v1/rpc/persist_latest_cloud_table_snapshot',
     '/rest/v1/cloud_table_rounds',
     '/rest/v1/cloud_strategy_reports',
     '/rest/v1/cloud_strategy_adjustment_stats',
