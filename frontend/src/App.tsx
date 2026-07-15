@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { mockTables } from './data/mockTables'
-import { getBackendPredictionIssue, LiveRoadClient, isLiveTableStale, type BackendSideActions, type BackendSidePredictions, type LiveTable, type SidePredictionKey } from './lib/liveClient'
-import { parseBigRoad, type MainOutcome, type Prediction } from './lib/roadParser'
+import { fetchTableUiHistory, getBackendPredictionIssue, LiveRoadClient, isLiveTableStale, TableUiHistoryError, type BackendSideActions, type BackendSidePredictions, type LiveTable, type SidePredictionKey, type TableUiHistory } from './lib/liveClient'
+import { type MainOutcome, type Prediction } from './lib/roadParser'
+import { buildRealCardBigRoad } from './lib/realCardRoad'
 import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from './lib/supabaseClient'
 import { checkOnlineCoreStatus, getOnlineMemoryCenter, getOnlineStrategyAnalysis, updateOnlineAppSetting, type OnlineCoreStatus, type OnlineMemoryCenter, type OnlineStrategyAnalysis } from './lib/onlineCoreClient'
 import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents, deleteOnlineLicense, extendOnlineLicense, getCloudDataStatus, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, validateMemberSession, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
@@ -9,7 +9,6 @@ import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents,
 const SUPER_ADMIN = 'dv1788'
 const MEMBER_SESSION_TOKEN_KEY = 'darven-member-session-token'
 const MEMBER_SESSION_EXPIRES_KEY = 'darven-member-session-expires-at'
-const label = { Banker: '莊', Player: '閒', Tie: '和' }
 const tableDisplayOrder = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
 const MEMBER_TABLE_IDS = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10'] as const
 const memberTableLabels: ReadonlyMap<string, string> = new Map(MEMBER_TABLE_IDS.map((tableId, index) => [tableId, ['1', '2', '3', '3A', '5', '6', '7', '8', '9', '10'][index]]))
@@ -105,21 +104,26 @@ export default function App() {
   const [tables, setTables] = useState<LiveTable[]>([])
   const [selectedTableId, setSelectedTableId] = useState<string>(MEMBER_TABLE_IDS[0])
   const [status, setStatus] = useState({ state: 'disconnected', message: '等待雲端資料來源' })
+  const [tableUiHistory, setTableUiHistory] = useState<TableUiHistory | null>(null)
   const [supabaseStatus, setSupabaseStatus] = useState({ state: isSupabaseConfigured ? 'connecting' : 'error', message: isSupabaseConfigured ? 'Supabase 檢查中' : 'Supabase 未設定' })
   const [onlineCoreStatus, setOnlineCoreStatus] = useState<OnlineCoreStatus>({ state: 'connecting', message: '記憶中心檢查中' })
   const client = useRef<LiveRoadClient | null>(null)
+  const historyRequestId = useRef(0)
   const visibleTables = useMemo(() => orderedMemberTables(tables), [tables])
   const selected = useMemo(() => selectMemberTable(tables, selectedTableId), [tables, selectedTableId])
   const selectedCanonicalId = selected ? canonicalMemberTableId(selected) : ''
   const displaySelected = selected
+  const selectedShoe = displaySelected?.trend.current_shoe
   const staleNotice = useMemo(() => {
     const staleTables = visibleTables.filter((table) => isLiveTableStale(table)).length
     if (staleTables > 0) return `資料過期：${staleTables}桌桌況資料可能不是即時`
     if (/過期|stale/i.test(status.message)) return status.message
     return ''
   }, [visibleTables, status.message])
-  const allBigRoad = useMemo(() => parseBigRoad(displaySelected?.trend.big2 ?? ''), [displaySelected])
-  const bigRoad = useMemo(() => markBigRoadTies(allBigRoad), [allBigRoad])
+  const bigRoad = useMemo(() => buildRealCardBigRoad(
+    tableUiHistory?.realCardRounds ?? [],
+    tableUiHistory?.realCardHistoryCompleteThroughRound ?? 0,
+  ), [tableUiHistory])
   const prediction = useMemo(() => backendPredictionFromTable(displaySelected), [displaySelected])
   const bonusPredictions = useMemo(() => backendSidePredictionsFromTable(displaySelected), [displaySelected])
   const sideActions = useMemo(() => backendSideActionsFromTable(displaySelected), [displaySelected])
@@ -195,6 +199,27 @@ export default function App() {
     return () => client.current?.disconnect(false)
   }, [path, memberLoggedIn])
 
+  useEffect(() => {
+    const requestId = ++historyRequestId.current
+    setTableUiHistory(null)
+    if (!memberLoggedIn || !selectedCanonicalId || selectedShoe == null || selectedShoe === '') return
+    const controller = new AbortController()
+    void fetchTableUiHistory(selectedCanonicalId, memberSessionToken, controller.signal).then((history) => {
+      if (requestId !== historyRequestId.current) return
+      if (history.tableId !== selectedCanonicalId || String(history.shoe) !== String(selectedShoe)) return
+      setTableUiHistory(history)
+    }).catch((error) => {
+      if (controller.signal.aborted || requestId !== historyRequestId.current) return
+      setTableUiHistory(null)
+      if (error instanceof TableUiHistoryError && error.status === 401) {
+        clearMemberSession()
+        client.current?.disconnect(false)
+        setMemberSessionState('invalid')
+      }
+    })
+    return () => controller.abort()
+  }, [memberLoggedIn, memberSessionToken, selectedCanonicalId, selectedShoe])
+
   useInactivityLogout(path === '/admin' && adminLoggedIn ? 'admin' : (path === '/' || path === '') && memberLoggedIn ? 'member' : null)
 
   if (path === '/login') {
@@ -217,10 +242,6 @@ export default function App() {
 
   return <main className="app-shell">
     <header className="topbar">
-      <div className="promo-block" aria-label="官方資訊">
-        <strong>免費AI百家預測軟體</strong>
-        <span>私訊官方賴@Dv1788</span>
-      </div>
       <div className="brand" aria-label="主標題">
         <h1>AI百家預測軟體</h1>
       </div>
@@ -231,7 +252,7 @@ export default function App() {
         <nav className="table-list" aria-label="桌號選擇">
           {visibleTables.map((table, index) => {
             const tableId = canonicalMemberTableId(table)
-            return <button className={`table-item ${tableId === selectedCanonicalId ? 'active' : ''}`} key={tableId} onClick={() => setSelectedTableId(tableId)}>
+            return <button className={`table-item ${tableId === selectedCanonicalId ? 'active' : ''}`} key={tableId} onClick={() => { setTableUiHistory(null); setSelectedTableId(tableId) }}>
               MT百家樂第{tableNumber(table, index)}桌 第{table.trend.current_round ?? 0}局
             </button>
           })}
@@ -252,20 +273,19 @@ export default function App() {
             <PredictionMetric title="莊龍寶" value={bonusPredictions?.bankerDragon ?? null} tone="Banker" active={predictionsActionable && (sideActions?.bankerDragon ?? false)} />
           </div>
           {predictionIssue ? <strong className="status stale">{predictionIssue}，預測暫不可用，已停止出手</strong> : null}
-          {prediction ? <>
+          {prediction ?
             <div className="prediction-row main-probability-row" aria-label="莊閒預測機率">
               <PredictionMetric title="閒" value={outcomePredictions?.player ?? null} tone="Player" active={predictionsActionable && prediction.recommendation === 'Player'} />
               <PredictionMetric title="和" value={outcomePredictions?.tie ?? null} tone="Tie" active={false} />
               <PredictionMetric title="莊" value={outcomePredictions?.banker ?? null} tone="Banker" active={predictionsActionable && prediction.recommendation === 'Banker'} />
             </div>
-            <h2 className="ai-prediction-line">AI預測:<span className={prediction.recommendation}>{label[prediction.recommendation]}</span></h2>
-            <strong className="ai-confidence-line">AI信心值:{prediction.confidence}%</strong>
-          </> : <strong className="ai-confidence-line">等待後端預測</strong>}
+          : null}
+          <PredictionHistoryTable history={tableUiHistory} />
         </section>
         <div className="roads-grid single-road">
-          <RoadCard title="大路" subtitle="紅圈＝莊　藍圈＝閒">
+          <RoadCard title="大路" subtitle={<div className="road-counts" aria-label="大路莊閒局數"><span className="Banker">莊局數：{displaySelected.trend.total_round_banker ?? 0}</span><span className="Player">閒局數：{displaySelected.trend.total_round_player ?? 0}</span></div>}>
             <div className="big-road classic-road" aria-label="傳統大路">
-              {bigRoad.map((cell) => <div style={{ gridColumn: cell.column + 1, gridRow: cell.row + 1 }} title={cell.hasTie ? `${cell.outcome} 和局` : cell.outcome} className={`big-cell ${cell.outcome} ${cell.hasTie ? 'tie-mark' : ''}`} key={`${cell.code}-${cell.column}-${cell.row}`}>{label[cell.outcome]}</div>)}
+              {bigRoad.map((cell) => <div style={{ gridColumn: cell.column + 1, gridRow: cell.row + 1 }} title={`${cell.outcome === 'banker' ? '莊' : '閒'} ${cell.point}點`} className={`big-cell ${cell.outcome === 'banker' ? 'Banker' : 'Player'} ${cell.hasTie ? 'tie-mark' : ''}`} key={`${tableUiHistory?.shoe}:${cell.round}`}><span>{cell.point}</span></div>)}
             </div>
           </RoadCard>
         </div>
@@ -304,7 +324,6 @@ function SessionChecking() {
 function WaitingForCloudData({ status, supabaseStatus }: { status: { state: string; message: string }; supabaseStatus: { state: string; message: string } }) {
   return <main className="app-shell waiting-shell">
     <header className="topbar">
-      <div className="promo-block" aria-label="官方資訊"><strong>免費AI百家預測軟體</strong><span>私訊官方賴@Dv1788</span></div>
       <div className="brand" aria-label="主標題"><h1>AI百家預測軟體</h1></div>
       <div className="header-meta"><span className={`status ${supabaseStatus.state}`} title={supabaseConfig.projectRef}>{supabaseStatus.message}</span></div>
     </header>
@@ -347,7 +366,6 @@ function LoginApp() {
   return <main className="login-shell">
     <section className="login-card" aria-label="前台登入驗證">
       <h1>瑞文AI百家預測</h1>
-      <strong>免費版請私訊官方賴@Dv1788</strong>
       <div className="login-chip">前台登入驗證</div>
       <input aria-label="會員帳號" placeholder="請輸入會員帳號" value={memberAccount} onChange={(event) => setMemberAccount(event.target.value)} />
       <input aria-label="驗證密碼" placeholder="請輸入驗證密碼" type="password" value={verificationPassword} onChange={(event) => setVerificationPassword(event.target.value)} />
@@ -835,19 +853,6 @@ function formatPercentValue(value: any) {
   return text.endsWith('%') ? text : `${text}%`
 }
 
-function markBigRoadTies(cells: ReturnType<typeof parseBigRoad>) {
-  const visible: Array<ReturnType<typeof parseBigRoad>[number] & { hasTie?: boolean }> = []
-  for (const cell of cells) {
-    if (cell.outcome === 'Tie') {
-      const last = visible.at(-1)
-      if (last) last.hasTie = true
-      continue
-    }
-    visible.push({ ...cell, hasTie: false })
-  }
-  return visible
-}
-
 function clampPlanDays(value: string | number) {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return 30
@@ -1020,4 +1025,23 @@ function formatConnectionMetric(status: { state: string; message: string }, labe
 function AdminMetric({ title, value, tone }: { title: string; value: string; tone: 'green' | 'cyan' | 'purple' | 'yellow' }) { return <article className={`admin-metric ${tone}`}><span>{title}</span><strong>{value}</strong></article> }
 function Stat({ title, value, tone, accent = false }: { title: string; value: string; tone?: 'Banker' | 'Player' | 'Tie'; accent?: boolean }) { return <article className={`stat-card result-stat centered-stat ${tone ?? ''} ${accent ? 'accent' : ''}`}><span>{title}</span><strong>{value}</strong></article> }
 function PredictionMetric({ title, value, tone, active = false }: { title: string; value: number | null; tone: 'Banker' | 'Player' | 'Tie'; active?: boolean }) { return <article className={`prediction-metric ${tone} ${active ? 'active' : ''}`} aria-label={`${title}預測`}><span>{title}</span><strong className="probability-value">{value == null ? '等待' : `${value}%`}</strong></article> }
-function RoadCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) { return <section className="road-card"><div className="card-heading"><h2>{title}</h2><span>{subtitle}</span></div>{children}</section> }
+function PredictionHistoryTable({ history }: { history: TableUiHistory | null }) {
+  const predictions = [...(history?.settledPredictions ?? [])].sort((left, right) => left.round - right.round).slice(-10)
+  const outcomeLabel = { banker: '莊', player: '閒', tie: '和' } as const
+  const shoe = String(history?.shoe ?? '')
+  return <div className="prediction-history-block">
+    <h2 className="prediction-history-title">近十局預測紀錄</h2>
+    <div className="prediction-history-scroll">
+      <table className="prediction-history" aria-label="近十局預測紀錄">
+      <tbody>
+        <tr><th scope="row">局數</th>{predictions.map((item) => <td key={`${shoe}:${item.round}:round`}>第{item.round}局</td>)}</tr>
+        <tr><th scope="row">AI預測</th>{predictions.map((item) => <td className={item.predictedResult} key={`${shoe}:${item.round}:prediction`}>{outcomeLabel[item.predictedResult]}</td>)}</tr>
+        <tr><th scope="row">實際開獎</th>{predictions.map((item) => <td className={item.actualResult} key={`${shoe}:${item.round}:actual`}>{outcomeLabel[item.actualResult]}</td>)}</tr>
+        <tr><th scope="row">結果</th>{predictions.map((item) => <td className={item.isHit ? 'hit' : 'miss'} key={`${shoe}:${item.round}:hit`}>{item.isHit ? '命中' : '未中'}</td>)}</tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+}
+
+function RoadCard({ title, subtitle, children }: { title: string; subtitle: React.ReactNode; children: React.ReactNode }) { return <section className="road-card"><div className="card-heading"><h2>{title}</h2><span>{subtitle}</span></div>{children}</section> }

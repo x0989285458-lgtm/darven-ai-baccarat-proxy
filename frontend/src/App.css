@@ -260,6 +260,8 @@ h1 {
 
 .prediction-card {
   display: grid;
+  min-width: 0;
+  overflow: hidden;
   place-items: center;
   text-align: center;
   gap: clamp(10px, 1.2vw, 16px);
@@ -322,6 +324,60 @@ h1 {
 }
 .prediction-card p { margin: 0; color: #b9cbe0; font-size: clamp(13px, 1vw, 16px); line-height: 1.55; }
 
+.prediction-history-block {
+  width: min(100%, 900px);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.prediction-history-title {
+  margin: 0 0 8px;
+  color: #76dfff;
+  font-size: clamp(14px, 1.15vw, 17px);
+  line-height: 1.2;
+  text-align: left;
+  letter-spacing: .04em;
+}
+
+.prediction-history-scroll {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.prediction-history {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  color: #eaf7ff;
+  font-size: 13px;
+}
+
+.prediction-history th,
+.prediction-history td {
+  height: 34px;
+  padding: 6px 9px;
+  border: 1px solid #244b68;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.prediction-history th {
+  width: 92px;
+  color: #76dfff;
+  background: #0b2234;
+}
+
+.prediction-history td { min-width: 64px; }
+.prediction-history td.banker { color: #ff6464; }
+.prediction-history td.player { color: #60a5fa; }
+.prediction-history td.tie,
+.prediction-history td.hit { color: #52e6a7; }
+.prediction-history td.miss { color: #ff7085; }
+
 .Banker { color: #ff6464; }
 .Player { color: #60a5fa; }
 .Tie { color: #52e6a7; }
@@ -344,6 +400,15 @@ h1 {
 }
 .card-heading h2 { margin: 0; font-size: 18px; }
 .card-heading span { color: #8fa8bf; font-size: 12px; }
+.road-counts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px 16px;
+  text-align: right;
+}
+.road-counts .Banker { color: #ff6464; }
+.road-counts .Player { color: #60a5fa; }
 
 .big-road {
   display: grid;
@@ -379,6 +444,12 @@ h1 {
   border: 2px solid currentColor;
 }
 .big-cell.Tie { border-radius: 10px; }
+.big-cell > span {
+  position: relative;
+  z-index: 2;
+  line-height: 1;
+  text-shadow: 0 0 4px #06111d, 0 0 4px #06111d;
+}
 .big-cell.tie-mark::after {
   content: '';
   position: absolute;
@@ -388,6 +459,8 @@ h1 {
   background: #26d36b;
   transform: rotate(-35deg);
   box-shadow: 0 0 8px rgba(38, 211, 107, .75);
+  z-index: 1;
+  opacity: .82;
 }
 
 @media (max-width: 980px) {
@@ -458,6 +531,7 @@ h1 {
   .prediction-metric strong { font-size: clamp(15px, 4vw, 20px); }
   .ai-prediction-line { font-size: clamp(22px, 6vw, 32px); }
   .card-heading { flex-direction: column; gap: 6px; align-items: flex-start; }
+  .road-counts { width: 100%; justify-content: flex-start; text-align: left; }
   .big-road { grid-template-rows: repeat(6, 36px); grid-auto-columns: 36px; gap: 6px; min-height: 254px; padding: 10px; }
   .big-cell { width: 36px; height: 36px; font-size: 14px; }
 }

@@ -1,5 +1,6 @@
 import { BUILD_VERSION } from './runtime-config.js'
 import { filterProductionRounds, isProductionTableId, sortProductionTables } from './table-policy.js'
+import { hasExactRealCardCodes } from '../../shared/real-card-validator.js'
 
 const BANKER_VALUES = new Set(['2', 'b', 'banker', 'bank', '庄', '莊', 'zhuang'])
 const PLAYER_VALUES = new Set(['1', 'p', 'player', 'play', '闲', '閒', 'xian'])
@@ -28,10 +29,7 @@ export function isRoundPayload(text = '') {
 }
 
 export function hasRealCardCodes(round = {}) {
-  const result = Array.isArray(round.rawResult) ? round.rawResult : []
-  const playerCards = [result[0], result[2], result[4]].map(Number).filter((value) => Number.isFinite(value) && value > 0)
-  const bankerCards = [result[1], result[3], result[5]].map(Number).filter((value) => Number.isFinite(value) && value > 0)
-  return playerCards.length >= 2 && bankerCards.length >= 2
+  return hasExactRealCardCodes(round)
 }
 
 export function normalizeWinner(value, rawResult = null) {

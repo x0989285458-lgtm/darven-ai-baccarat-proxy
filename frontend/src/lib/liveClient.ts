@@ -36,6 +36,23 @@ export type SidePredictionKey = 'tie' | 'superSix' | 'bankerPair' | 'playerPair'
 export type BackendSidePredictions = Record<SidePredictionKey, number>
 export type BackendSideActions = Record<SidePredictionKey, boolean>
 export type BackendPrediction = { source?: string; strategyVersion: string; buildVersion?: string; targetTableId?: string | number; targetShoe?: string | number; targetRound?: number; predictedResult: 'banker' | 'player'; recommendation?: string; confidence: number; probabilities?: { banker?: number; player?: number; tie?: number }; scoreTotals?: { banker?: number; player?: number }; sidePredictions?: BackendSidePredictions; sideActions?: BackendSideActions }
+export type SettledPrediction = { round: number; predictedResult: 'banker' | 'player'; actualResult: 'banker' | 'player' | 'tie'; isHit: boolean }
+export type RealCardRound = { round: number; result: 'banker' | 'player' | 'tie'; bankerPoint: number; playerPoint: number }
+export type TableUiHistory = {
+  ok: true
+  buildVersion: string
+  tableId: string
+  shoe: string | number
+  settledPredictions: SettledPrediction[]
+  realCardRounds: RealCardRound[]
+  realCardHistoryCompleteThroughRound: number
+}
+
+export class TableUiHistoryError extends Error {
+  constructor(public readonly status: number) {
+    super(`table ui-history ${status}`)
+  }
+}
 
 type Status = { state: 'connecting' | 'connected' | 'error' | 'disconnected'; message: string }
 type LiveClientOptions = { memberSessionToken?: string; onTables: (tables: LiveTable[]) => void; onStatus: (status: Status) => void; onUnauthorized?: () => void }
@@ -75,6 +92,20 @@ const liveTableMaxAgeMs = Number(import.meta.env.VITE_DRAVEN_TABLE_MAX_AGE_MS ??
 const CURRENT_STRATEGY_VERSION = 'v098_主信心實際命中校準版'
 const CURRENT_BUILD_VERSION = '098'
 const sidePredictionKeys: SidePredictionKey[] = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
+
+export async function fetchTableUiHistory(tableId: string, memberSessionToken: string, signal?: AbortSignal): Promise<TableUiHistory> {
+  const response = await fetch(`${proxyApiUrl}/api/tables/${encodeURIComponent(tableId)}/ui-history`, {
+    cache: 'no-store',
+    headers: { Authorization: `Bearer ${memberSessionToken}` },
+    signal,
+  })
+  if (!response.ok) throw new TableUiHistoryError(response.status)
+  const payload = await response.json()
+  if (!payload?.ok || !Array.isArray(payload.settledPredictions) || !Array.isArray(payload.realCardRounds)) {
+    throw new TableUiHistoryError(503)
+  }
+  return payload as TableUiHistory
+}
 
 export class LiveRoadClient {
   private timer?: number

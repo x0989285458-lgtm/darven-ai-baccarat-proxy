@@ -1,10 +1,34 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { LiveRoadClient, isLiveTableStale } from './liveClient'
+import { fetchTableUiHistory, LiveRoadClient, isLiveTableStale } from './liveClient'
 
 describe('LiveRoadClient v032 status messages', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
+  })
+
+  it('v098.18 fetches one table ui-history with bearer auth and exposes 401/503 fail-closed status', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({
+        ok: true,
+        buildVersion: '098',
+        tableId: 'BAG03A',
+        shoe: 9,
+        settledPredictions: [{ round: 1, predictedResult: 'banker', actualResult: 'tie', isHit: false }],
+        realCardRounds: [{ round: 1, result: 'tie', bankerPoint: 6, playerPoint: 6 }],
+        realCardHistoryCompleteThroughRound: 1,
+      }) })
+      .mockResolvedValueOnce({ ok: false, status: 401, json: () => Promise.resolve({}) })
+      .mockResolvedValueOnce({ ok: false, status: 503, json: () => Promise.resolve({}) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(fetchTableUiHistory('BAG03A', 'opaque-member-token')).resolves.toMatchObject({ tableId: 'BAG03A', shoe: 9 })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toMatch(/\/api\/tables\/BAG03A\/ui-history$/)
+    expect(String(url)).not.toContain('opaque-member-token')
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer opaque-member-token')
+    await expect(fetchTableUiHistory('BAG03A', 'opaque-member-token')).rejects.toMatchObject({ status: 401 })
+    await expect(fetchTableUiHistory('BAG03A', 'opaque-member-token')).rejects.toMatchObject({ status: 503 })
   })
 
   it('reports proxy running but MT not connected when status endpoint has no tables', async () => {

@@ -1,5 +1,6 @@
 import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 import { BUILD_VERSION } from './build-version.js'
+import { normalizeExactRealCardEvent } from '../../shared/real-card-validator.js'
 
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
@@ -1562,6 +1563,84 @@ export function createSupabaseIngestionClient({
         limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
       })
       return Array.isArray(rows) ? rows : []
+    },
+    async getTableUiSettledPredictions({ tableId, shoe, limit = 10 } = {}) {
+      const boundedLimit = Math.min(10, Math.max(1, Number(limit) || 10))
+      const fetchLimit = Math.min(100, boundedLimit * 10)
+      const rows = await getRest('daily_prediction_results', {
+        select: 'table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,prediction_features,created_at',
+        table_id: `eq.${tableId}`,
+        shoe_no: `eq.${shoe}`,
+        strategy_version: `eq.${ALL_MT_EQUAL_STRATEGY_VERSION}`,
+        order: 'created_at.desc',
+        limit: String(fetchLimit),
+      })
+      const validRows = (Array.isArray(rows) ? rows : [])
+        .filter((row) => (
+          String(row?.table_id ?? '') === String(tableId)
+          && String(row?.shoe_no ?? '') === String(shoe)
+          && row?.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION
+          && row?.prediction_features?.prediction_timing === 'pre_result_context'
+          && Number.isSafeInteger(Number(row?.round_no))
+          && Number(row.round_no) > 0
+          && ['banker', 'player'].includes(row?.predicted_result)
+          && ['banker', 'player', 'tie'].includes(row?.actual_result)
+          && typeof row?.is_hit === 'boolean'
+          && (row.actual_result !== 'tie' || row.is_hit === false)
+        ))
+      const byRound = new Map()
+      for (const row of validRows) {
+        const next = {
+          round: Number(row.round_no),
+          predictedResult: row.predicted_result,
+          actualResult: row.actual_result,
+          isHit: row.is_hit,
+        }
+        const existing = byRound.get(next.round)
+        if (existing && JSON.stringify(existing) !== JSON.stringify(next)) {
+          throw new Error(`conflicting settled prediction round ${next.round}`)
+        }
+        if (!existing) byRound.set(next.round, next)
+      }
+      return [...byRound.values()].slice(0, boundedLimit)
+    },
+    async getTableUiRealCardRounds({ tableId, shoe, limit = 100 } = {}) {
+      const boundedLimit = Math.min(100, Math.max(1, Number(limit) || 100))
+      const rows = await getRest('cloud_table_rounds', {
+        select: 'table_id,shoe_no,round_no,raw_event',
+        table_id: `eq.${tableId}`,
+        shoe_no: `eq.${shoe}`,
+        order: 'round_no.asc',
+        limit: String(Math.min(200, boundedLimit * 2)),
+      })
+      const byRound = new Map()
+      for (const row of Array.isArray(rows) ? rows : []) {
+        if (String(row?.table_id ?? '') !== String(tableId) || String(row?.shoe_no ?? '') !== String(shoe)) continue
+        const round = Number(row?.round_no)
+        const rawRound = Number(row?.raw_event?.round)
+        if (!Number.isSafeInteger(round) || round < 1 || rawRound !== round) continue
+        if (String(row.raw_event?.tableId ?? row.raw_event?.table_id ?? '') !== String(tableId)
+          || String(row.raw_event?.shoe ?? '') !== String(shoe)) continue
+        const normalized = normalizeExactRealCardEvent(row.raw_event)
+        if (!normalized) continue
+        const next = {
+          round,
+          result: normalized.result,
+          bankerPoint: normalized.bankerPoint,
+          playerPoint: normalized.playerPoint,
+          rawResult: normalized.rawResult,
+        }
+        const existing = byRound.get(round)
+        if (existing && JSON.stringify(existing) !== JSON.stringify(next)) throw new Error(`conflicting real-card round ${round}`)
+        byRound.set(round, next)
+      }
+      const rounds = []
+      for (let expected = 1; expected <= boundedLimit; expected += 1) {
+        const row = byRound.get(expected)
+        if (!row) break
+        rounds.push({ round: row.round, result: row.result, bankerPoint: row.bankerPoint, playerPoint: row.playerPoint })
+      }
+      return { rounds, completeThroughRound: rounds.length }
     },
     async persistRound(round, table, precomputedPrediction = null) {
       if (runtimeStatus.degraded) throw new Error(runtimeStatus.reason)

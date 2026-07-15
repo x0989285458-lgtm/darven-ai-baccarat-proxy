@@ -71,10 +71,35 @@ function proxyTablesFromMocks() {
   }))
 }
 
+function tableUiHistory(tableId = 'BAG01', shoe: string | number = 12) {
+  return {
+    ok: true,
+    buildVersion: '098',
+    tableId,
+    shoe,
+    settledPredictions: [
+      { round: 3, predictedResult: 'player', actualResult: 'tie', isHit: false },
+      { round: 2, predictedResult: 'banker', actualResult: 'banker', isHit: true },
+      { round: 1, predictedResult: 'player', actualResult: 'banker', isHit: false },
+    ],
+    realCardRounds: [
+      { round: 1, result: 'banker', bankerPoint: 6, playerPoint: 4 },
+      { round: 2, result: 'tie', bankerPoint: 6, playerPoint: 6 },
+      { round: 3, result: 'player', bankerPoint: 5, playerPoint: 7 },
+    ],
+    realCardHistoryCompleteThroughRound: 3,
+  }
+}
+
 describe('AI百家預測軟體', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, sessionExpiresAt: new Date(Date.now() + 600000).toISOString() }) })
+      if (url.includes('/ui-history')) {
+        const tableId = url.match(/\/api\/tables\/([^/]+)\/ui-history/)?.[1] ?? 'BAG01'
+        const table = proxyTablesFromMocks().find((item) => item.tableId === tableId)
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(tableUiHistory(tableId, table?.shoe ?? 0)) })
+      }
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks()) })
       if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tables: proxyTablesFromMocks(), statusText: '已抓到9桌' }) })
       if (url.includes('/api/cloud-data/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, mtAutoLoginEnabled: false, message: 'MT自動登入未啟用', tableCount: 0 }) })
@@ -121,11 +146,14 @@ describe('AI百家預測軟體', () => {
     expect(screen.getByRole('heading', { name: '瑞文AI百家預測' })).toBeInTheDocument()
   })
 
-  it('shows the requested promo text in the top-left corner', async () => {
+  it('removes the dashboard promo and every specified prediction confidence label', async () => {
     await renderApp()
-    const promo = screen.getByLabelText('官方資訊')
-    expect(within(promo).getByText('免費AI百家預測軟體')).toBeInTheDocument()
-    expect(within(promo).getByText('私訊官方賴@Dv1788')).toBeInTheDocument()
+    expect(screen.queryByLabelText('官方資訊')).not.toBeInTheDocument()
+    expect(screen.queryByText('免費AI百家預測軟體')).not.toBeInTheDocument()
+    expect(screen.queryByText('私訊官方賴@Dv1788')).not.toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('AI預測:')
+    expect(document.body.textContent).not.toContain('AI信心值')
+    expect(document.body.textContent).not.toContain('信心值')
   })
 
   it('keeps only banker tie player in the top stats row and centers/enlarges the labels', async () => {
@@ -167,16 +195,16 @@ describe('AI百家預測軟體', () => {
       expect(within(item).getByText(/\d+%/)).toHaveClass('probability-value')
     })
 
-    expect(within(prediction).getByText(/AI預測:/)).toBeInTheDocument()
-    expect(within(prediction).getByText(/AI信心值:\d+%/)).toBeInTheDocument()
+    expect(within(prediction).queryByText(/AI預測:/)).not.toBeInTheDocument()
+    expect(within(prediction).queryByText(/AI信心值/)).not.toBeInTheDocument()
     expect(within(mainRow).getByText('和')).toBeInTheDocument()
-    expect(within(prediction).queryByText(/高|中|低/)).not.toBeInTheDocument()
+    expect(within(prediction).queryByText(/^(高|中|低)$/)).not.toBeInTheDocument()
     expect(within(prediction).queryByText(/風險:/)).not.toBeInTheDocument()
     expect(within(prediction).queryByText(/最近 \d+ 局/)).not.toBeInTheDocument()
     expect(within(prediction).queryByText('近期莊閒趨勢相近，建議持續觀察。')).not.toBeInTheDocument()
   })
 
-  it('v094 displays backend prediction confidence without recalculating table state on the frontend', async () => {
+  it('v098.18 keeps backend percentages without separate prediction or confidence copy', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table, index) => ({
         ...table,
@@ -189,8 +217,46 @@ describe('AI百家預測軟體', () => {
     await renderApp()
 
     const prediction = screen.getByLabelText('AI預測結果')
-    expect(within(prediction).getByText('AI信心值:34%')).toBeInTheDocument()
-    expect(within(prediction).getByText('AI預測:')).toHaveTextContent('莊')
+    expect(within(prediction).queryByText('AI信心值:34%')).not.toBeInTheDocument()
+    expect(within(prediction).queryByText('AI預測:')).not.toBeInTheDocument()
+  })
+
+  it('v098.18 renders the current-shoe latest predictions as a fixed four-row B table', async () => {
+    await renderApp()
+    const history = await screen.findByLabelText('近十局預測紀錄')
+    expect(screen.getByText('近十局預測紀錄')).toBeVisible()
+    const rowLabels = Array.from(history.querySelectorAll('tr > th:first-child')).map((node) => node.textContent)
+    expect(rowLabels).toEqual(['局數', 'AI預測', '實際開獎', '結果'])
+    expect(within(history).getByText('第1局')).toBeInTheDocument()
+    expect(within(history).getByText('第2局')).toBeInTheDocument()
+    expect(within(history).getByText('第3局')).toBeInTheDocument()
+    expect(within(history).getAllByText('命中')).toHaveLength(1)
+    expect(within(history).getAllByText('未中')).toHaveLength(2)
+    expect(within(history).getByText('和')).toBeInTheDocument()
+  })
+
+  it('v098.18 clears old B-table rows immediately and ignores a late prior-table response', async () => {
+    let resolveBag01!: (value: Response) => void
+    const bag01History = new Promise<Response>((resolve) => { resolveBag01 = resolve })
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) })
+      if (url.includes('/api/tables/BAG01/ui-history')) return bag01History
+      if (url.includes('/api/tables/BAG02/ui-history')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
+        ...tableUiHistory('BAG02', mockTables[1].trend.current_shoe ?? 0),
+        settledPredictions: [{ round: 22, predictedResult: 'player', actualResult: 'player', isHit: true }],
+      }) })
+      if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks()) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, configured: true }) })
+    }))
+    await renderApp('/', false)
+    const buttons = await screen.findAllByRole('button', { name: /MT百家樂第.+桌 第\d+局/ })
+    fireEvent.click(buttons[1])
+    expect(screen.queryByText('第1局')).not.toBeInTheDocument()
+    expect(await screen.findByText('第22局')).toBeInTheDocument()
+    resolveBag01({ ok: true, status: 200, json: async () => ({ ...tableUiHistory('BAG01', mockTables[0].trend.current_shoe ?? 0), settledPredictions: [{ round: 99, predictedResult: 'banker', actualResult: 'banker', isHit: true }] }) } as Response)
+    await act(async () => { await Promise.resolve() })
+    expect(screen.queryByText('第99局')).not.toBeInTheDocument()
+    expect(screen.getByText('第22局')).toBeInTheDocument()
   })
 
   it('v096 displays backend side prediction values and actions without frontend recalculation', async () => {
@@ -295,15 +361,27 @@ describe('AI百家預測軟體', () => {
     expect(buttons[3]).toHaveTextContent('第3A桌 第101局')
   })
 
-  it('renders the original traditional big-road shape from big2 without standalone tie cells', async () => {
+  it('v098.18 renders the six-row big road from real cards with points, counts, and no legends', async () => {
     await renderApp()
     expect(screen.queryByText('珠盤路')).not.toBeInTheDocument()
     expect(document.querySelector('.bead-grid')).not.toBeInTheDocument()
     expect(screen.getByLabelText('傳統大路')).toBeInTheDocument()
-    expect(screen.getByText(/紅圈＝莊\s+藍圈＝閒/)).toBeInTheDocument()
+    const road = screen.getByLabelText('傳統大路')
+    await waitFor(() => {
+      expect(document.querySelectorAll('.big-cell.Banker')).toHaveLength(1)
+      expect(document.querySelectorAll('.big-cell.Player')).toHaveLength(1)
+    })
+    expect(within(road).queryByText('和')).not.toBeInTheDocument()
+    expect(screen.queryByText(/紅圈＝莊|藍圈＝閒|tie/i)).not.toBeInTheDocument()
     expect(document.querySelector('.big-cell.Tie')).not.toBeInTheDocument()
-    expect(document.querySelectorAll('.big-cell.Banker')).toHaveLength(11)
-    expect(document.querySelectorAll('.big-cell.Player')).toHaveLength(5)
+    expect(document.querySelectorAll('.big-cell.Banker')).toHaveLength(1)
+    expect(document.querySelectorAll('.big-cell.Player')).toHaveLength(1)
+    expect(within(road).getByText('6')).toBeInTheDocument()
+    expect(within(road).getByText('7')).toBeInTheDocument()
+    expect(document.querySelectorAll('.big-cell.tie-mark')).toHaveLength(1)
+    const heading = screen.getByRole('heading', { name: '大路' }).parentElement!
+    expect(within(heading).getByText(`莊局數：${mockTables[0].trend.total_round_banker}`)).toHaveClass('Banker')
+    expect(within(heading).getByText(`閒局數：${mockTables[0].trend.total_round_player}`)).toHaveClass('Player')
   })
 
   it('v046 shows a formal waiting state instead of mock tables when cloud data is empty', async () => {
@@ -345,10 +423,24 @@ describe('AI百家預測軟體', () => {
 
   it('v045 overlays a green tie slash on banker/player big-road cells when a tie appears', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/ui-history')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
+        ...tableUiHistory('BAG01', 1),
+        settledPredictions: [],
+        realCardRounds: [
+          { round: 1, result: 'tie', bankerPoint: 6, playerPoint: 6 },
+          { round: 2, result: 'tie', bankerPoint: 5, playerPoint: 5 },
+          { round: 3, result: 'banker', bankerPoint: 8, playerPoint: 4 },
+          { round: 4, result: 'tie', bankerPoint: 7, playerPoint: 7 },
+          { round: 5, result: 'tie', bankerPoint: 4, playerPoint: 4 },
+          { round: 6, result: 'player', bankerPoint: 1, playerPoint: 9 },
+        ],
+        realCardHistoryCompleteThroughRound: 6,
+      }) })
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, json: () => Promise.resolve([{
         tableId: 'BAG01',
         displayName: 'MT百家樂第1桌',
         tableType: 'baccarat',
+        shoe: 1,
         round: 8,
         bankerCount: 3,
         playerCount: 3,
@@ -360,8 +452,7 @@ describe('AI百家預測軟體', () => {
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
     }))
     await renderApp('/', false)
-    await waitFor(() => expect(screen.getByLabelText('傳統大路')).toBeInTheDocument())
-    expect(document.querySelectorAll('.big-cell.tie-mark')).toHaveLength(2)
+    await waitFor(() => expect(document.querySelectorAll('.big-cell.tie-mark')).toHaveLength(1))
     expect(document.querySelector('.big-cell.Tie')).not.toBeInTheDocument()
   })
 
@@ -658,9 +749,15 @@ describe('AI百家預測軟體', () => {
   it('v017 report-facing prediction still hides internal source-weight hit rates from UI text', async () => {
     await renderApp()
     const prediction = screen.getByLabelText('AI預測結果')
-    expect(within(prediction).getByText(/AI預測:/)).toBeInTheDocument()
-    expect(within(prediction).getByText(/AI信心值:\d+%/)).toBeInTheDocument()
+    expect(within(prediction).queryByText(/AI預測:/)).not.toBeInTheDocument()
+    expect(within(prediction).queryByText(/AI信心值/)).not.toBeInTheDocument()
     expect(within(prediction).queryByText(/珠盤路|大眼仔|小路|蟑螂|單跳|雙跳|權重/)).not.toBeInTheDocument()
+  })
+
+  it('v098.18 removes the free-version contact copy from member login', async () => {
+    await renderApp('/login', false)
+    expect(screen.getByRole('heading', { name: '瑞文AI百家預測' })).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('免費版請私訊官方賴@Dv1788')
   })
 
   it('carries ask-road proxy payloads into frontend table trends', async () => {

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { createProxyState } from './state-store.js'
 import { createMtClient } from './mt-client.js'
 import { createChromeCaptureClient } from './chrome-capture.js'
-import { applyCloudCapturePayload, createCloudCaptureClient, parseCloudCapturePayload } from './cloud-capture.js'
+import { applyCloudCapturePayload, canonicalProductionTableId, createCloudCaptureClient, parseCloudCapturePayload, PRODUCTION_TABLE_IDS } from './cloud-capture.js'
 import { loadLocalEnv, maskToken, resolveDeployConfig } from './config.js'
 import { buildLivePrediction, createSupabaseIngestionClient } from './supabase-writer.js'
 import { createRecentTablePerformanceStore } from './recent-table-performance.js'
@@ -13,6 +13,7 @@ import { createLicenseAdminClient } from './license-admin.js'
 import { chooseCaptureSource, describeCaptureStatus } from './capture-source.js'
 import { buildOperationalEvent, toStatusEvent } from './event-layer.js'
 import { BUILD_VERSION } from './build-version.js'
+import { hasExactRealCardCodes, isExactTenRawResult } from '../../shared/real-card-validator.js'
 
 const VERSION = BUILD_VERSION
 const SERVICE = 'Draven MT資料代理伺服器'
@@ -123,6 +124,43 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       if (hasSensitiveAuthQuery(requestUrl)) return jsonResponse(400, { ok: false, error: 'session token is not allowed in query' }, frontendOrigin)
       if (!await isMemberSessionAuthorized(headers)) return jsonResponse(401, { ok: false, error: 'member session is required' }, frontendOrigin)
       return jsonResponse(200, await readBestTables(), frontendOrigin)
+    }
+    const uiHistoryMatch = pathname.match(/^\/api\/tables\/([^/]+)\/ui-history$/)
+    if (uiHistoryMatch) {
+      if (hasSensitiveAuthQuery(requestUrl)) return jsonResponse(400, { ok: false, error: 'session token is not allowed in query' }, frontendOrigin)
+      if (!await isMemberSessionAuthorized(headers)) return jsonResponse(401, { ok: false, error: 'member session is required' }, frontendOrigin)
+      const tableId = canonicalProductionTableId(decodeURIComponent(uiHistoryMatch[1]))
+      if (!PRODUCTION_TABLE_IDS.includes(tableId)) return jsonResponse(404, { ok: false, error: 'table not found' }, frontendOrigin)
+      const liveTables = await readBestTables({ includePrediction: false })
+      const table = liveTables.find((candidate) => canonicalProductionTableId(candidate?.tableId ?? candidate?.table_id ?? candidate?.id) === tableId)
+      if (!table || table.shoe == null || table.shoe === '') return jsonResponse(404, { ok: false, error: 'table not found' }, frontendOrigin)
+      if (supabaseClient?.configured !== true
+        || typeof supabaseClient.getTableUiSettledPredictions !== 'function'
+        || typeof supabaseClient.getTableUiRealCardRounds !== 'function') {
+        return jsonResponse(503, { ok: false, error: 'table ui history is unavailable' }, frontendOrigin)
+      }
+      const shoe = table.shoe
+      try {
+        const [settledPredictions, realCardHistory] = await Promise.all([
+          supabaseClient.getTableUiSettledPredictions({ tableId, shoe, limit: 10 }),
+          supabaseClient.getTableUiRealCardRounds({ tableId, shoe, limit: 100 }),
+        ])
+        if (!Array.isArray(settledPredictions)
+          || !(Array.isArray(realCardHistory) || Array.isArray(realCardHistory?.rounds))) {
+          throw new Error('table ui history returned an invalid result')
+        }
+        return jsonResponse(200, {
+          ok: true,
+          buildVersion: BUILD_VERSION,
+          tableId,
+          shoe,
+          settledPredictions,
+          realCardRounds: Array.isArray(realCardHistory?.rounds) ? realCardHistory.rounds : (Array.isArray(realCardHistory) ? realCardHistory : []),
+          realCardHistoryCompleteThroughRound: Number(realCardHistory?.completeThroughRound) || 0,
+        }, frontendOrigin)
+      } catch {
+        return jsonResponse(503, { ok: false, error: 'table ui history is unavailable' }, frontendOrigin)
+      }
     }
     if (pathname === '/api/snapshot') {
       if (hasSensitiveAuthQuery(requestUrl)) return jsonResponse(400, { ok: false, error: 'session token is not allowed in query' }, frontendOrigin)
@@ -451,15 +489,15 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
   }
 
-  async function readBestTables() {
+  async function readBestTables({ includePrediction = true } = {}) {
     const localTables = state.snapshot().tables
     if (localTables.length > 0) {
       const actionable = tablesReceivedAtMs > 0 && now() - tablesReceivedAtMs <= actionablePredictionTtlMs
-      return localTables.map((table) => withLivePrediction(table, actionable))
+      return includePrediction ? localTables.map((table) => withLivePrediction(table, actionable)) : localTables
     }
     if (tablesReceivedAtMs > 0) return []
     const cloudSnapshot = await readLatestCloudSnapshot({ requireFresh: true })
-    return (cloudSnapshot?.tables ?? []).map((table) => withLivePrediction(table))
+    return includePrediction ? (cloudSnapshot?.tables ?? []).map((table) => withLivePrediction(table)) : (cloudSnapshot?.tables ?? [])
   }
 
   function savePendingPrediction(table) {
@@ -737,14 +775,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
 }
 
 function hasRealCardCodes(round = {}) {
-  const result = Array.isArray(round.rawResult) ? round.rawResult : []
-  const playerCards = [result[0], result[2], result[4]]
-    .map(Number)
-    .filter((value) => Number.isFinite(value) && value > 0)
-  const bankerCards = [result[1], result[3], result[5]]
-    .map(Number)
-    .filter((value) => Number.isFinite(value) && value > 0)
-  return playerCards.length >= 2 && bankerCards.length >= 2
+  return hasExactRealCardCodes(round)
 }
 
 function resolveAdminAccount(loginResult = {}, fallbackAccount = '') {
@@ -866,7 +897,7 @@ function validateIngestRound(round) {
   if (!String(round.shoe ?? '').trim()) throw new Error('each round requires shoe')
   if (!Number.isSafeInteger(Number(round.round)) || Number(round.round) < 1) throw new Error('each round requires a positive integer round')
   if (!['banker', 'player', 'tie'].includes(round.winner)) throw new Error('each round requires a valid winner')
-  if (!Array.isArray(round.rawResult) || round.rawResult.length !== 10 || round.rawResult.some((value) => !Number.isFinite(Number(value)))) {
+  if (!isExactTenRawResult(round.rawResult)) {
     throw new Error('each round requires a ten-value rawResult')
   }
 }

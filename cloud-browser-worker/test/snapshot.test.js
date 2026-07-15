@@ -2,12 +2,26 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   annotateRoundPayload,
+  hasRealCardCodes,
   isRoundPayload,
   normalizeWinner,
   normalizeTable,
   extractSnapshotFromPayloads,
   redactUrlSecrets,
 } from '../src/snapshot.js'
+
+test('v098.18 worker real-card gate requires exact legal integer ranges in all ten positions', () => {
+  const exact = { rawResult: [11, 25, 7, 19, 0, 0, -1, -1, 4, 6] }
+  assert.equal(hasRealCardCodes(exact), true)
+  assert.equal(hasRealCardCodes({ rawResult: [...exact.rawResult, 99] }), false)
+  assert.equal(hasRealCardCodes({ rawResult: exact.rawResult.map((value, index) => index === 9 ? 'bad' : value) }), false)
+  assert.equal(hasRealCardCodes({ rawResult: exact.rawResult.map((value, index) => index === 0 ? '11' : value) }), false)
+  assert.equal(hasRealCardCodes({ rawResult: exact.rawResult.map((value, index) => index === 1 ? 25.5 : value) }), false)
+  assert.equal(hasRealCardCodes({ rawResult: exact.rawResult.map((value, index) => index === 2 ? 53 : value) }), false)
+  assert.equal(hasRealCardCodes({ rawResult: exact.rawResult.map((value, index) => index === 4 ? -2 : value) }), false)
+  assert.equal(hasRealCardCodes({ rawResult: exact.rawResult.map((value, index) => index === 6 ? 53 : value) }), false)
+  assert.equal(hasRealCardCodes({ rawResult: exact.rawResult.map((value, index) => index === 8 ? 10 : value) }), false)
+})
 
 test('v098.17 keeps only the approved ten tables and completed rounds in production order', () => {
   const tableIds = ['BAG15', 'BAG3A', 'BAG11', 'BAG02', 'BAG13A', 'BAG01', 'BAG12', 'BAG10', 'BAG09', 'BAG08', 'BAG07', 'BAG06', 'BAG05', 'BAG13', 'BAG03']

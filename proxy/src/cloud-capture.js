@@ -137,7 +137,7 @@ export async function applyCloudCapturePayload({ parsed, state, writer }) {
   }
 }
 
-function canonicalTableId(value) {
+export function canonicalProductionTableId(value) {
   const id = String(value ?? '').trim().toUpperCase()
   const match = id.match(/^BAG(\d{1,2})(A?)$/)
   if (!match) return id
@@ -145,13 +145,13 @@ function canonicalTableId(value) {
 }
 
 function isProductionTable(value) {
-  return PRODUCTION_TABLE_ORDER.has(canonicalTableId(value))
+  return PRODUCTION_TABLE_ORDER.has(canonicalProductionTableId(value))
 }
 
 function selectProductionTables(tables = []) {
   const byId = new Map()
   for (const table of tables) {
-    const tableId = canonicalTableId(table?.tableId)
+    const tableId = canonicalProductionTableId(table?.tableId)
     if (isProductionTable(tableId) && !byId.has(tableId)) byId.set(tableId, { ...table, tableId })
   }
   return PRODUCTION_TABLE_IDS.flatMap((tableId) => byId.has(tableId) ? [byId.get(tableId)] : [])
@@ -161,7 +161,7 @@ function selectProductionRounds(rounds = []) {
   const selected = []
   const seen = new Set()
   for (const round of rounds) {
-    const tableId = canonicalTableId(round?.tableId ?? round?.table_id)
+    const tableId = canonicalProductionTableId(round?.tableId ?? round?.table_id)
     if (!isProductionTable(tableId)) continue
     const normalized = { ...round, tableId }
     const hasIdentity = round?.shoe != null && round?.shoe !== '' && round?.round != null && round?.round !== ''
