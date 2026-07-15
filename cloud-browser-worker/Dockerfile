@@ -4,10 +4,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV HEADLESS=true
 
-COPY package*.json ./
+COPY cloud-browser-worker/package*.json ./
 RUN npm ci --omit=dev || npm install --omit=dev
 
-COPY src ./src
+COPY cloud-browser-worker/src ./src
+COPY shared /shared
 
 EXPOSE 8787
 CMD ["npm", "start"]

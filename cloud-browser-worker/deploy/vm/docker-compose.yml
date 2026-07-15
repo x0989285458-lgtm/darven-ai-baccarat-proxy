@@ -1,7 +1,8 @@
 services:
   cloud-browser-worker:
     build:
-      context: ../..
+      context: ../../..
+      dockerfile: cloud-browser-worker/Dockerfile
     restart: unless-stopped
     env_file:
       - worker.env
