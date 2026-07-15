@@ -9,6 +9,28 @@ export type RealCardRoadCell = {
   hasTie: boolean
 }
 
+export type MtBigRoadCell = {
+  code: string
+  outcome: 'banker' | 'player'
+  point: number
+  row: number
+  column: number
+  hasTie: boolean
+}
+
+export function buildMtBigRoad(raw: string): MtBigRoadCell[] {
+  if (!raw) return []
+  return raw.split('#').flatMap((rawColumn, column) => (
+    rawColumn.split(',').flatMap((item, row) => {
+      const code = item.trim()
+      if (!/^\d{4}$/.test(code)) return []
+      const outcome = code[3] === '1' ? 'player' : code[3] === '2' ? 'banker' : null
+      if (!outcome) return []
+      return [{ code, outcome, point: Number(code[1]), row, column, hasTie: Number(code[0]) > 0 }]
+    })
+  ))
+}
+
 export function buildRealCardBigRoad(rounds: RealCardRound[], completeThroughRound: number): RealCardRoadCell[] {
   const completeThrough = Math.max(0, Math.floor(Number(completeThroughRound) || 0))
   const byRound = new Map<number, RealCardRound>()

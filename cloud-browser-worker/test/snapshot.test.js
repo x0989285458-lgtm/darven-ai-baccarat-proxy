@@ -27,7 +27,7 @@ test('v098.17 keeps only the approved ten tables and completed rounds in product
   const tableIds = ['BAG15', 'BAG3A', 'BAG11', 'BAG02', 'BAG13A', 'BAG01', 'BAG12', 'BAG10', 'BAG09', 'BAG08', 'BAG07', 'BAG06', 'BAG05', 'BAG13', 'BAG03']
   const snapshot = extractSnapshotFromPayloads([
     { tables: tableIds.map((tableId) => ({ tableId, tableType: 'BAC', shoe: 1, round: 1, name: tableId })) },
-    ...tableIds.map((tableId) => ({ event: 'roundResult', round: { tableId, shoe: 1, round: 1, winner: 'banker', rawResult: [1, 2, 3, 4, 0, 0, -1, -1, 4, 6] } })),
+    ...tableIds.map((tableId) => ({ action: { name: '/summary' }, body: { tableId, shoe: 1, round: 1, winner: 'banker', rawResult: [1, 2, 3, 4, 0, 0, -1, -1, 4, 6] } })),
   ])
 
   const expected = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
@@ -39,8 +39,8 @@ test('v098.17 keeps only the approved ten tables and completed rounds in product
 test('v098.17 canonicalizes alias round IDs before dedupe', () => {
   const round = { shoe: 1, round: 1, winner: 'banker', rawResult: [1, 2, 3, 4, 0, 0, -1, -1, 4, 6] }
   const snapshot = extractSnapshotFromPayloads([
-    { event: 'roundResult', round: { ...round, tableId: 'BAG3A' } },
-    { event: 'roundResult', round: { ...round, tableId: 'BAG03A' } },
+    { action: { name: '/summary' }, body: { ...round, tableId: 'BAG3A' } },
+    { action: { name: '/summary' }, body: { ...round, tableId: 'BAG03A' } },
   ])
 
   assert.deepEqual(snapshot.rounds.map((item) => `${item.tableId}:${item.shoe}:${item.round}`), ['BAG03A:1:1'])
@@ -142,7 +142,7 @@ test('extracts tables and rounds recursively from websocket/localStorage payload
         ],
       },
     }),
-    { event: 'roundResult', round: { table_id: 'BAG01', shoe: 7, round_no: 19, result: 'B', rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6] } },
+    { action: { name: '/summary' }, body: { table_id: 'BAG01', shoe: 7, round_no: 19, winner: 'B', rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6] } },
   ], { sessionId: 'test-session', now: '2026-06-30T00:00:00.000Z' })
 
   assert.equal(snapshot.connected, true)
@@ -160,14 +160,14 @@ test('extracts tables and rounds recursively from websocket/localStorage payload
     playerPoint: 4,
     bankerPoint: 6,
     rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
-    sourceAction: 'roundResult',
+    sourceAction: '/summary',
   })
 })
 
-test('extracts MT show_poker round result with banker/player points for Super Six validation', () => {
+test('extracts verified MT summary result with banker/player points for Super Six validation', () => {
   const snapshot = extractSnapshotFromPayloads([
     JSON.stringify({
-      action: { name: '/api/v1/gametype/*/game/*/room/*/table/*/show_poker' },
+      action: { name: '/api/v1/gametype/*/game/*/room/*/table/*/summary' },
       body: {
         table_id: 'BAG06',
         shoe: 15669,
@@ -198,6 +198,7 @@ test('v098 excludes completed-round candidates without an exact ten-value rawRes
 test('prefers explicit previous.round and preserves its table shoe round and cards', () => {
   const cards = [11, 25, 7, 19, -1, -1, -1, -1, 4, 6]
   const snapshot = extractSnapshotFromPayloads([{
+    action: { name: '/summary' },
     table_id: 'BAG01',
     shoe: 9,
     round: 1,
@@ -225,11 +226,31 @@ test('fails closed when the completed round itself has no shoe', () => {
   assert.deepEqual(snapshot.rounds, [])
 })
 
-test('v092 dedupes completed rounds by keeping the real MT card array over stale summary', () => {
+test('v098.19 keeps exact show_poker provisional while final summary wins the same round identity', () => {
+  const provisionalCards = [31, 51, 25, 52, 0, 0, -1, -1, 5, 0]
+  const finalCards = [11, 25, 7, 19, -1, -1, -1, -1, 4, 6]
+  const payload = (actionName, result) => JSON.stringify({
+    action: { name: `/api/v1/gametype/*/game/*/room/*/table/*/${actionName}` },
+    body: { table_id: 'BAG01', shoe: 8, round: 3, result },
+  })
+
+  const provisionalOnly = extractSnapshotFromPayloads([payload('show_poker', provisionalCards)])
+  assert.deepEqual(provisionalOnly.rounds, [])
+
+  const finalized = extractSnapshotFromPayloads([
+    payload('show_poker', provisionalCards),
+    payload('summary', finalCards),
+  ])
+  assert.equal(finalized.rounds.length, 1)
+  assert.match(finalized.rounds[0].sourceAction, /\/summary$/)
+  assert.deepEqual(finalized.rounds[0].rawResult, finalCards)
+})
+
+test('v098.19 keeps the verified final summary over a provisional same-identity candidate', () => {
   const snapshot = extractSnapshotFromPayloads([
-    { event: 'roundResult', round: { table_id: 'BAG06', shoe: 15669, round_no: 12, result: 'B' } },
+    { event: 'show_poker', round: { table_id: 'BAG06', shoe: 15669, round_no: 12, result: 'B' } },
     JSON.stringify({
-      action: { name: '/api/v1/gametype/*/game/*/room/*/table/*/show_poker' },
+      action: { name: '/api/v1/gametype/*/game/*/room/*/table/*/summary' },
       body: {
         table_id: 'BAG06',
         shoe: 15669,

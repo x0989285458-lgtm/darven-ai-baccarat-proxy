@@ -6,16 +6,17 @@ function response(rows) {
   return { ok: true, status: 200, json: async () => rows, text: async () => JSON.stringify(rows) }
 }
 
-function rawEvent(round, rawResult, winner) {
-  return { tableId: 'BAG01', shoe: 88, round, winner, rawResult }
+function rawEvent(round, rawResult, winner, sourceAction = '/api/v1/gametype/*/game/*/room/*/table/*/summary') {
+  return { tableId: 'BAG01', shoe: 88, round, winner, rawResult, sourceAction }
 }
 
 test('v098.18 settled prediction getter returns only immutable formal same-shoe rows newest first and keeps tie misses', async () => {
   let requestedUrl
   const rows = [
-    { table_id: 'BAG01', shoe_no: '88', round_no: 4, strategy_version: 'v098_主信心實際命中校準版', predicted_result: 'banker', actual_result: 'tie', is_hit: false, prediction_features: { prediction_timing: 'pre_result_context' }, created_at: '2026-07-15T04:00:00Z' },
-    { table_id: 'BAG01', shoe_no: '88', round_no: 3, strategy_version: 'v098_主信心實際命中校準版', predicted_result: 'player', actual_result: 'player', is_hit: true, prediction_features: { prediction_timing: 'pre_result_context' }, created_at: '2026-07-15T03:00:00Z' },
-    { table_id: 'BAG01', shoe_no: '88', round_no: 2, strategy_version: 'v097_副預測命中校準與門檻降5版', predicted_result: 'banker', actual_result: 'banker', is_hit: true, prediction_features: { prediction_timing: 'pre_result_context' }, created_at: '2026-07-15T02:00:00Z' },
+    { table_id: 'BAG01', shoe_no: '88', round_no: 5, strategy_version: 'v098_主信心實際命中校準版', predicted_result: 'player', actual_result: 'banker', is_hit: false, prediction_features: { prediction_timing: 'pre_result_context' }, created_at: '2026-07-15T05:00:00Z' },
+    { table_id: 'BAG01', shoe_no: '88', round_no: 4, strategy_version: 'v098_主信心實際命中校準版', predicted_result: 'banker', actual_result: 'tie', is_hit: false, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true }, created_at: '2026-07-15T04:00:00Z' },
+    { table_id: 'BAG01', shoe_no: '88', round_no: 3, strategy_version: 'v098_主信心實際命中校準版', predicted_result: 'player', actual_result: 'player', is_hit: true, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true }, created_at: '2026-07-15T03:00:00Z' },
+    { table_id: 'BAG01', shoe_no: '88', round_no: 2, strategy_version: 'v097_副預測命中校準與門檻降5版', predicted_result: 'banker', actual_result: 'banker', is_hit: true, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true }, created_at: '2026-07-15T02:00:00Z' },
     { table_id: 'BAG01', shoe_no: '88', round_no: 1, strategy_version: 'v098_主信心實際命中校準版', predicted_result: 'banker', actual_result: 'banker', is_hit: true, prediction_features: { prediction_timing: 'post_result_context' }, created_at: '2026-07-15T01:00:00Z' },
   ]
   const client = createSupabaseIngestionClient({
@@ -41,11 +42,11 @@ test('v098.18 settled prediction getter returns only immutable formal same-shoe 
 test('v098.18 settled prediction getter fetches enough rows to return ten valid latest settlements', async () => {
   const invalid = [
     { table_id: 'BAG01', shoe_no: '88', round_no: 12, strategy_version: 'v098_主信心實際命中校準版', predicted_result: 'banker', actual_result: 'banker', is_hit: true, prediction_features: { prediction_timing: 'post_result_context' }, created_at: '2026-07-15T12:00:00Z' },
-    { table_id: 'BAG01', shoe_no: '88', round_no: 11, strategy_version: 'v098_主信心實際命中校準版', predicted_result: 'player', actual_result: 'player', is_hit: null, prediction_features: { prediction_timing: 'pre_result_context' }, created_at: '2026-07-15T11:00:00Z' },
+    { table_id: 'BAG01', shoe_no: '88', round_no: 11, strategy_version: 'v098_主信心實際命中校準版', predicted_result: 'player', actual_result: 'player', is_hit: null, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true }, created_at: '2026-07-15T11:00:00Z' },
   ]
   const valid = Array.from({ length: 10 }, (_, index) => {
     const round = 10 - index
-    return { table_id: 'BAG01', shoe_no: '88', round_no: round, strategy_version: 'v098_主信心實際命中校準版', predicted_result: 'banker', actual_result: 'banker', is_hit: true, prediction_features: { prediction_timing: 'pre_result_context' }, created_at: `2026-07-15T${String(round).padStart(2, '0')}:00:00Z` }
+    return { table_id: 'BAG01', shoe_no: '88', round_no: round, strategy_version: 'v098_主信心實際命中校準版', predicted_result: 'banker', actual_result: 'banker', is_hit: true, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true }, created_at: `2026-07-15T${String(round).padStart(2, '0')}:00:00Z` }
   })
   let requestedLimit = 0
   const client = createSupabaseIngestionClient({
@@ -65,7 +66,7 @@ test('v098.18 settled prediction getter fetches enough rows to return ten valid 
 })
 
 test('v098.18 settled prediction getter dedupes identical same-round rows and rejects conflicts', async () => {
-  const base = { table_id: 'BAG01', shoe_no: '88', round_no: 7, strategy_version: 'v098_主信心實際命中校準版', predicted_result: 'banker', actual_result: 'banker', is_hit: true, prediction_features: { prediction_timing: 'pre_result_context' }, created_at: '2026-07-15T07:00:00Z' }
+  const base = { table_id: 'BAG01', shoe_no: '88', round_no: 7, strategy_version: 'v098_主信心實際命中校準版', predicted_result: 'banker', actual_result: 'banker', is_hit: true, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true }, created_at: '2026-07-15T07:00:00Z' }
   const identicalClient = createSupabaseIngestionClient({
     url: 'https://example.supabase.co',
     serviceKey: 'test-service-key',
@@ -120,6 +121,23 @@ test('v098.18 real-card getter revalidates exact10, dedupes identical rows, and 
   assert.equal(requestedUrl.searchParams.get('table_id'), 'eq.BAG01')
   assert.equal(requestedUrl.searchParams.get('shoe_no'), 'eq.88')
   assert.equal(requestedUrl.searchParams.get('order'), 'round_no.asc')
+})
+
+test('v098.19 real-card getter quarantines provisional show_poker and stops before the resulting gap', async () => {
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co',
+    serviceKey: 'test-service-key',
+    fetchImpl: async () => response([
+      { table_id: 'BAG01', shoe_no: '88', round_no: 1, raw_event: rawEvent(1, [11, 25, 7, 19, 0, 0, -1, -1, 4, 6], 'banker') },
+      { table_id: 'BAG01', shoe_no: '88', round_no: 2, raw_event: rawEvent(2, [31, 51, 25, 52, 0, 0, -1, -1, 5, 0], 'player', '/api/v1/gametype/*/game/*/room/*/table/*/show_poker') },
+      { table_id: 'BAG01', shoe_no: '88', round_no: 3, raw_event: rawEvent(3, [12, 26, 8, 20, 0, 0, -1, -1, 6, 6], 'tie') },
+    ]),
+  })
+
+  assert.deepEqual(await client.getTableUiRealCardRounds({ tableId: 'BAG01', shoe: 88, limit: 100 }), {
+    rounds: [{ round: 1, result: 'banker', bankerPoint: 6, playerPoint: 4 }],
+    completeThroughRound: 1,
+  })
 })
 
 test('v098.18 real-card getter fails closed on conflicting duplicate rounds', async () => {

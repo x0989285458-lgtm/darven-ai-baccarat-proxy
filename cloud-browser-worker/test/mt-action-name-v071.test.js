@@ -2,10 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { extractSnapshotFromPayloads } from '../src/snapshot.js'
 
-test('v071 extracts MT websocket action.name show_poker without explicit winner from card points', () => {
+test('v098.19 extracts verified MT summary action.name without explicit winner from card points', () => {
   const snapshot = extractSnapshotFromPayloads([
     JSON.stringify({
-      action: { name: '/api/v1/gametype/*/game/*/room/*/table/*/show_poker' },
+      action: { name: '/api/v1/gametype/*/game/*/room/*/table/*/summary' },
       body: { table_id: 'BAG05', shoe: 15396, round: 1, result: [26,40,43,20,0,0,-1,-1,4,8] },
       method: 'POST',
     }),

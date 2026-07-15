@@ -13,7 +13,7 @@ import { createLicenseAdminClient } from './license-admin.js'
 import { chooseCaptureSource, describeCaptureStatus } from './capture-source.js'
 import { buildOperationalEvent, toStatusEvent } from './event-layer.js'
 import { BUILD_VERSION } from './build-version.js'
-import { hasExactRealCardCodes, isExactTenRawResult } from '../../shared/real-card-validator.js'
+import { hasExactRealCardCodes, isExactTenRawResult, isVerifiedFinalRoundAction } from '../../shared/real-card-validator.js'
 
 const VERSION = BUILD_VERSION
 const SERVICE = 'Draven MT資料代理伺服器'
@@ -53,6 +53,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     },
     onRoundEvent: async (round, table) => {
       if (!supabaseClient?.configured && !supabaseClient?.persistRound) return
+      if (!isVerifiedFinalRoundAction(round?.sourceAction)) return
       if (strictRealCardRounds && !hasRealCardCodes(round)) return
       const pendingKey = predictionTargetKey(round.tableId ?? table.tableId, round.shoe, round.round)
       const precomputedPrediction = pendingPredictions.get(pendingKey)
@@ -893,6 +894,7 @@ function validateIngestEnvelope(envelope, currentTime) {
 
 function validateIngestRound(round) {
   if (!round || typeof round !== 'object' || Array.isArray(round)) throw new Error('each round must be an object')
+  if (!isVerifiedFinalRoundAction(round.sourceAction)) throw new Error('provisional show_poker or unknown action cannot be durably ingested without a verified final action')
   if (!String(round.tableId ?? '').trim()) throw new Error('each round requires tableId')
   if (!String(round.shoe ?? '').trim()) throw new Error('each round requires shoe')
   if (!Number.isSafeInteger(Number(round.round)) || Number(round.round) < 1) throw new Error('each round requires a positive integer round')

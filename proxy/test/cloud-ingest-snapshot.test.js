@@ -68,6 +68,40 @@ test('valid cloud ingest updates tables and uses existing Supabase capture flow'
   assert.deepEqual(calls.map(([name]) => name), ['status', 'tables'])
 })
 
+test('v098.19 cloud ingest rejects an exact-looking provisional show_poker before any durable write', async () => {
+  const writes = []
+  const provisional = {
+    tableId: 'BAG01', shoe: 14509, round: 7, winner: 'player',
+    playerPoint: 5, bankerPoint: 0,
+    rawResult: [31, 51, 25, 52, 0, 0, -1, -1, 5, 0],
+    sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/show_poker',
+  }
+  const app = createTestApp({
+    supabaseClient: {
+      configured: true,
+      writeCloudCaptureStatus: async () => writes.push('status'),
+      writeCloudTableSnapshot: async () => writes.push('snapshot'),
+      writeCloudRoundEvent: async () => writes.push('round'),
+    },
+  })
+  const response = await app.inject({
+    method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': key },
+    body: body({
+      roundKeys: ['BAG01:14509:7'],
+      snapshot: {
+        buildVersion: '098', connected: true, authenticated: true,
+        sessionId: 'vm-worker', snapshotAt: new Date(now).toISOString(),
+        tables: [{ tableId: 'BAG01', tableType: 'BAC', displayName: '測試桌', shoe: 14509, round: 8 }],
+        rounds: [provisional],
+      },
+    }),
+  })
+
+  assert.equal(response.statusCode, 400)
+  assert.match(JSON.parse(response.body).error, /provisional.*show_poker/i)
+  assert.deepEqual(writes, [])
+})
+
 test('cloud ingest rejects malformed tables and oversized payloads', async () => {
   const app = createTestApp()
   const headers = { 'x-worker-key': key }

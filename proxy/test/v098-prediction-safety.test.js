@@ -20,6 +20,7 @@ const table = {
 const revealedRound = {
   tableId: 'BAG01', shoe: 88, round: 21, winner: 'banker',
   rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9],
+  sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
 }
 
 test('v098 settlement preserves the complete matching pre-result prediction snapshot', () => {
@@ -179,6 +180,7 @@ test('v098 analytics trusts saved side actions, excludes ties from main rate, an
 
   const sql = queries.join('\n')
   assert.match(sql, /prediction_features->'side_actions'/)
+  assert.match(sql, /prediction_features\s*->>\s*'settlement_final'\s*=\s*'true'/i)
   assert.match(sql, /predicted_result in \('banker','player'\)/i)
   assert.match(sql, /predicted_result='banker'.*side_actions'->>'bankerDragon'/is)
   assert.match(sql, /predicted_result='player'.*side_actions'->>'playerDragon'/is)

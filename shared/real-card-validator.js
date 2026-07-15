@@ -10,6 +10,23 @@ export function hasExactRealCardCodes(round = {}) {
   return isExactTenRawResult(round?.rawResult)
 }
 
+const MT_TABLE_ACTION_PREFIX = '/api/v1/gametype/*/game/*/room/*/table/*/'
+const PROVISIONAL_ROUND_ACTIONS = new Set([
+  'show_poker', '/show_poker', `${MT_TABLE_ACTION_PREFIX}show_poker`,
+])
+const VERIFIED_FINAL_ROUND_ACTIONS = new Set([
+  'summary', '/summary', `${MT_TABLE_ACTION_PREFIX}summary`,
+  'show_win', '/show_win', `${MT_TABLE_ACTION_PREFIX}show_win`,
+])
+
+export function isProvisionalRoundAction(sourceAction) {
+  return typeof sourceAction === 'string' && PROVISIONAL_ROUND_ACTIONS.has(sourceAction)
+}
+
+export function isVerifiedFinalRoundAction(sourceAction) {
+  return typeof sourceAction === 'string' && VERIFIED_FINAL_ROUND_ACTIONS.has(sourceAction)
+}
+
 export function normalizeExactRealCardEvent(rawEvent) {
   if (!rawEvent || typeof rawEvent !== 'object' || Array.isArray(rawEvent) || !hasExactRealCardCodes(rawEvent)) return null
   const rawResult = rawEvent.rawResult.map(Number)

@@ -33,6 +33,19 @@ test('v094 live prediction is computed without a revealed round result', () => {
   assert.deepEqual(afterRevealFieldsInjected, beforeReveal)
 })
 
+test('v098.19 settlement records the verified final action so provisional history can be quarantined', () => {
+  const table = { tableId: 'BAG03', shoe: 9, round: 20, bankerCount: 8, playerCount: 12, tieCount: 1, beadPlateRaw: '0102010201' }
+  const precomputed = { ...buildLivePrediction(table), predictedResult: 'player', confidence: 57, scoreTotals: { banker: 20, player: 80 } }
+  const row = buildPredictionResultRow({
+    tableId: 'BAG03', shoe: 9, round: 21, winner: 'banker',
+    rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9],
+    sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
+  }, table, precomputed)
+
+  assert.equal(row.prediction_features.settlement_final, true)
+  assert.equal(row.prediction_features.settlement_source_action, '/api/v1/gametype/*/game/*/room/*/table/*/summary')
+})
+
 test('v094 settlement persists the pre-result backend direction and confidence', () => {
   const table = { tableId: 'BAG03', shoe: 9, round: 20, bankerCount: 8, playerCount: 12, tieCount: 1, beadPlateRaw: '0102010201' }
   const precomputed = { ...buildLivePrediction(table), predictedResult: 'player', confidence: 57, scoreTotals: { banker: 20, player: 80 } }

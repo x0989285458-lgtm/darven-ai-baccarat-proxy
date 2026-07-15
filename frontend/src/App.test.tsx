@@ -227,7 +227,7 @@ describe('AI百家預測軟體', () => {
     expect(screen.getByText('近十局預測紀錄')).toBeVisible()
     const rowLabels = Array.from(history.querySelectorAll('tr > th:first-child')).map((node) => node.textContent)
     expect(rowLabels).toEqual(['局數', 'AI預測', '實際開獎', '結果'])
-    expect(within(history).getByText('第1局')).toBeInTheDocument()
+    expect(await within(history).findByText('第1局')).toBeInTheDocument()
     expect(within(history).getByText('第2局')).toBeInTheDocument()
     expect(within(history).getByText('第3局')).toBeInTheDocument()
     expect(within(history).getAllByText('命中')).toHaveLength(1)
@@ -361,24 +361,21 @@ describe('AI百家預測軟體', () => {
     expect(buttons[3]).toHaveTextContent('第3A桌 第101局')
   })
 
-  it('v098.18 renders the six-row big road from real cards with points, counts, and no legends', async () => {
+  it('v098.19 renders the six-row big road directly from authoritative MT codes with points and no legends', async () => {
     await renderApp()
     expect(screen.queryByText('珠盤路')).not.toBeInTheDocument()
     expect(document.querySelector('.bead-grid')).not.toBeInTheDocument()
     expect(screen.getByLabelText('傳統大路')).toBeInTheDocument()
     const road = screen.getByLabelText('傳統大路')
-    await waitFor(() => {
-      expect(document.querySelectorAll('.big-cell.Banker')).toHaveLength(1)
-      expect(document.querySelectorAll('.big-cell.Player')).toHaveLength(1)
-    })
+    const mtCodes = mockTables[0].trend.big2.split('#').flatMap((column) => column.split(',').map((code) => code.trim()).filter((code) => /^\d{4}$/.test(code)))
+    await waitFor(() => expect(document.querySelectorAll('.big-cell')).toHaveLength(mtCodes.length))
     expect(within(road).queryByText('和')).not.toBeInTheDocument()
     expect(screen.queryByText(/紅圈＝莊|藍圈＝閒|tie/i)).not.toBeInTheDocument()
     expect(document.querySelector('.big-cell.Tie')).not.toBeInTheDocument()
-    expect(document.querySelectorAll('.big-cell.Banker')).toHaveLength(1)
-    expect(document.querySelectorAll('.big-cell.Player')).toHaveLength(1)
-    expect(within(road).getByText('6')).toBeInTheDocument()
-    expect(within(road).getByText('7')).toBeInTheDocument()
-    expect(document.querySelectorAll('.big-cell.tie-mark')).toHaveLength(1)
+    expect(document.querySelectorAll('.big-cell.Banker')).toHaveLength(mtCodes.filter((code) => code[3] === '2').length)
+    expect(document.querySelectorAll('.big-cell.Player')).toHaveLength(mtCodes.filter((code) => code[3] === '1').length)
+    expect(within(road).getAllByText(mtCodes[0][1]).length).toBeGreaterThan(0)
+    expect(document.querySelectorAll('.big-cell.tie-mark')).toHaveLength(mtCodes.filter((code) => Number(code[0]) > 0).length)
     const heading = screen.getByRole('heading', { name: '大路' }).parentElement!
     expect(within(heading).getByText(`莊局數：${mockTables[0].trend.total_round_banker}`)).toHaveClass('Banker')
     expect(within(heading).getByText(`閒局數：${mockTables[0].trend.total_round_player}`)).toHaveClass('Player')
@@ -446,7 +443,7 @@ describe('AI百家預測軟體', () => {
         playerCount: 3,
         tieCount: 2,
         beadPlateRaw: '0101,0303,0202,0303,0101',
-        bigRoadRaw: '0101,0303,0202,0303,0101',
+        bigRoadRaw: '1802#0901',
       }]) })
       if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ configured: true }) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })

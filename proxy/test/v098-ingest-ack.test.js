@@ -13,7 +13,7 @@ test('v098 ingest ACK follows durable writes and exactly echoes validated round 
   const envelope = { protocolVersion: 'v098', timestamp: 1_000_000, sequence: 7, roundKeys: ['BAG01:88:21'], snapshot: {
     buildVersion: '098', sessionId: 'worker-session', connected: true, authenticated: true,
     tables: [{ tableId: 'BAG01', shoe: 88, round: 21 }],
-    rounds: [{ tableId: 'BAG01', shoe: 88, round: 21, winner: 'banker', rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9] }],
+    rounds: [{ tableId: 'BAG01', shoe: 88, round: 21, winner: 'banker', rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9], sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary' }],
   } }
   const response = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': 'worker-key', 'x-forwarded-proto': 'https' }, body: JSON.stringify(envelope) })
   order.push('ack')

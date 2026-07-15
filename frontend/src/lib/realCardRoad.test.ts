@@ -1,5 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { buildRealCardBigRoad } from './realCardRoad'
+import { buildMtBigRoad, buildRealCardBigRoad } from './realCardRoad'
+
+describe('v098.19 authoritative MT big road', () => {
+  it('decodes exact MT columns, winner points, and tie slashes without rebuilding layout', () => {
+    expect(buildMtBigRoad('0901,1601#0822,0702')).toEqual([
+      { code: '0901', outcome: 'player', point: 9, row: 0, column: 0, hasTie: false },
+      { code: '1601', outcome: 'player', point: 6, row: 1, column: 0, hasTie: true },
+      { code: '0822', outcome: 'banker', point: 8, row: 0, column: 1, hasTie: false },
+      { code: '0702', outcome: 'banker', point: 7, row: 1, column: 1, hasTie: false },
+    ])
+  })
+
+  it('fails closed for malformed or non-decisive MT cells', () => {
+    expect(buildMtBigRoad('0901,bad,123#0703,12345')).toEqual([
+      { code: '0901', outcome: 'player', point: 9, row: 0, column: 0, hasTie: false },
+    ])
+  })
+})
 
 describe('v098.18 real-card big road', () => {
   it('uses six-row layout, winner points, and one tie slash only after a prior decisive round', () => {

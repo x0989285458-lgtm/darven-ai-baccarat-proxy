@@ -1,6 +1,6 @@
 import { BUILD_VERSION } from './runtime-config.js'
 import { filterProductionRounds, isProductionTableId, sortProductionTables } from './table-policy.js'
-import { hasExactRealCardCodes } from '../../shared/real-card-validator.js'
+import { hasExactRealCardCodes, isVerifiedFinalRoundAction } from '../../shared/real-card-validator.js'
 
 const BANKER_VALUES = new Set(['2', 'b', 'banker', 'bank', '庄', '莊', 'zhuang'])
 const PLAYER_VALUES = new Set(['1', 'p', 'player', 'play', '闲', '閒', 'xian'])
@@ -30,6 +30,10 @@ export function isRoundPayload(text = '') {
 
 export function hasRealCardCodes(round = {}) {
   return hasExactRealCardCodes(round)
+}
+
+export function isFinalRealCardRound(round = {}) {
+  return hasExactRealCardCodes(round) && isVerifiedFinalRoundAction(round.sourceAction)
 }
 
 export function normalizeWinner(value, rawResult = null) {
@@ -103,6 +107,7 @@ export function extractSnapshotFromPayloads(payloads = [], { sessionId = 'darven
         && round.winner
         && Array.isArray(round.rawResult)
         && round.rawResult.length === 10
+        && isFinalRealCardRound(round)
       )),
   ))
 

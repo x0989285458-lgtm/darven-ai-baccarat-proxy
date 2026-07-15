@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createSnapshotPusher } from '../src/snapshot-pusher.js'
-import { hasRealCardCodes, isRoundPayload } from '../src/snapshot.js'
+import { extractSnapshotFromPayloads, hasRealCardCodes, isRoundPayload } from '../src/snapshot.js'
 
 test('v098 durable FIFO retains a failed head while collecting the next round', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'v098-fifo-'))
@@ -51,6 +51,57 @@ test('v098.8 waits for real summary cards before observing queueing or ACKing a 
 
   function snapshot(rawResult, sourceAction) {
     return { sessionId: 'vm', tables: [{ tableId: 'BAG01', shoe: 8, round: 1 }], rounds: [{ tableId: 'BAG01', shoe: 8, round: 1, winner: 'banker', rawResult, sourceAction }] }
+  }
+})
+
+test('v098.19 only final summary queues observes and ACKs an identity first seen as exact show_poker', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'v098-final-summary-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'queue.json')
+  const cursorPath = `${queuePath}.cursor.json`
+  const provisionalCards = [31, 51, 25, 52, 0, 0, -1, -1, 5, 0]
+  const finalCards = [11, 25, 7, 19, -1, -1, -1, -1, 4, 6]
+  const showPoker = payload('show_poker', provisionalCards)
+  const summary = payload('summary', finalCards)
+  const snapshots = [extractSnapshotFromPayloads([showPoker]), extractSnapshotFromPayloads([showPoker, summary]), extractSnapshotFromPayloads([showPoker, summary])]
+  const sent = []
+  let request = 0
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://proxy.example/ingest', key: 'worker-key', queuePath, cursorPath, baseBackoffMs: 0,
+    isRoundDeliverable: hasRealCardCodes,
+    getSnapshot: async () => snapshots.shift(),
+    fetchImpl: async (_url, options) => {
+      request += 1
+      const body = JSON.parse(options.body)
+      sent.push(body)
+      if (request === 2) throw new Error('offline')
+      return { ok: true, status: 200, json: async () => ({ accepted: true, sessionId: body.sessionId, sequence: body.sequence, acceptedRoundKeys: body.roundKeys }) }
+    },
+  })
+
+  assert.equal(await pusher.tick(), true)
+  assert.deepEqual(sent[0].roundKeys, [])
+  assert.deepEqual(JSON.parse(await readFile(cursorPath, 'utf8')).observedRoundKeys, [])
+
+  assert.equal(await pusher.tick(), false)
+  const queued = JSON.parse(await readFile(queuePath, 'utf8')).entries[0]
+  assert.deepEqual(queued.roundKeys, ['BAG01:8:3'])
+  assert.match(queued.snapshot.rounds[0].sourceAction, /\/summary$/)
+  assert.deepEqual(queued.snapshot.rounds[0].rawResult, finalCards)
+  let cursor = JSON.parse(await readFile(cursorPath, 'utf8'))
+  assert.deepEqual(cursor.observedRoundKeys, ['BAG01:8:3'])
+  assert.deepEqual(cursor.acknowledgedRoundKeys, [])
+
+  assert.equal(await pusher.tick(), true)
+  assert.deepEqual(sent[2].roundKeys, ['BAG01:8:3'])
+  cursor = JSON.parse(await readFile(cursorPath, 'utf8'))
+  assert.deepEqual(cursor.acknowledgedRoundKeys, ['BAG01:8:3'])
+
+  function payload(actionName, result) {
+    return JSON.stringify({
+      action: { name: `/api/v1/gametype/*/game/*/room/*/table/*/${actionName}` },
+      body: { table_id: 'BAG01', shoe: 8, round: 3, result },
+    })
   }
 })
 

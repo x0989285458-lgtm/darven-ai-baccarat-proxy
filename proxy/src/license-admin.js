@@ -271,11 +271,13 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     if (!configured) return { todayRoundCount: 0, tableStats: [], dailyReports: [] }
     const todayCount = await db.query(`select count(distinct table_id || ':' || shoe_no || ':' || round_no)::int as rounds
       from public.daily_prediction_results
-      where created_at >= date_trunc('day', now()) and strategy_version = $1`, [ALL_MT_EQUAL_STRATEGY_VERSION])
+      where created_at >= date_trunc('day', now()) and strategy_version = $1
+        and prediction_features->>'settlement_final' = 'true'`, [ALL_MT_EQUAL_STRATEGY_VERSION])
     const tableRows = await db.query(`with scoped as (
         select table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, prediction_features
         from public.daily_prediction_results
         where created_at >= date_trunc('day', now()) and strategy_version = $1
+          and prediction_features->>'settlement_final' = 'true'
       ), validated as (
         select *,
           jsonb_typeof(prediction_features->'side_actions') = 'object'
@@ -340,6 +342,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
         select created_at::date as day, table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, prediction_features
         from public.daily_prediction_results
         where created_at >= (current_date - interval '7 days') and created_at < current_date and strategy_version = $1
+          and prediction_features->>'settlement_final' = 'true'
       ), validated as (
         select *,
           jsonb_typeof(prediction_features->'side_actions') = 'object'

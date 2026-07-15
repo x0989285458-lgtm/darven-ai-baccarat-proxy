@@ -4,7 +4,7 @@ import { createApp } from '../src/server.js'
 import { buildLivePrediction, buildPredictionResultRow } from '../src/supabase-writer.js'
 
 const table = { tableId: 'BAG01', shoe: 88, round: 20, bankerCount: 18, playerCount: 2, tieCount: 1, beadPlateRaw: '0202', bigRoadRaw: '0202' }
-const result = { tableId: 'BAG01', shoe: 88, round: 21, winner: 'banker', rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9] }
+const result = { tableId: 'BAG01', shoe: 88, round: 21, winner: 'banker', rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9], sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary' }
 
 test('v098 immutable pre-result snapshot survives settlement byte-for-byte', () => {
   const pending = buildLivePrediction(table)

@@ -18,6 +18,7 @@ const table = {
 const completed = {
   tableId: 'BAG01', shoe: 88, round: 21, winner: 'banker',
   rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9],
+  sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
 }
 
 test('v098 pending snapshot contains all pre-result probability score MT derived and card features and settlement only appends outcome fields', () => {
@@ -41,7 +42,7 @@ test('v098 pending snapshot contains all pre-result probability score MT derived
   assert.deepEqual(row.prediction_features.card_shoe_features, frozen.predictionFeatures.card_shoe_features)
   assert.deepEqual(
     Object.keys(row.prediction_features).filter((key) => !(key in frozen.predictionFeatures)).sort(),
-    ['side_actual_results', 'side_hits'],
+    ['settlement_final', 'settlement_source_action', 'side_actual_results', 'side_hits'],
   )
 })
 

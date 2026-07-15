@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { fetchTableUiHistory, getBackendPredictionIssue, LiveRoadClient, isLiveTableStale, TableUiHistoryError, type BackendSideActions, type BackendSidePredictions, type LiveTable, type SidePredictionKey, type TableUiHistory } from './lib/liveClient'
 import { type MainOutcome, type Prediction } from './lib/roadParser'
-import { buildRealCardBigRoad } from './lib/realCardRoad'
+import { buildMtBigRoad } from './lib/realCardRoad'
 import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from './lib/supabaseClient'
 import { checkOnlineCoreStatus, getOnlineMemoryCenter, getOnlineStrategyAnalysis, updateOnlineAppSetting, type OnlineCoreStatus, type OnlineMemoryCenter, type OnlineStrategyAnalysis } from './lib/onlineCoreClient'
 import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents, deleteOnlineLicense, extendOnlineLicense, getCloudDataStatus, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, validateMemberSession, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
@@ -120,10 +120,7 @@ export default function App() {
     if (/過期|stale/i.test(status.message)) return status.message
     return ''
   }, [visibleTables, status.message])
-  const bigRoad = useMemo(() => buildRealCardBigRoad(
-    tableUiHistory?.realCardRounds ?? [],
-    tableUiHistory?.realCardHistoryCompleteThroughRound ?? 0,
-  ), [tableUiHistory])
+  const bigRoad = useMemo(() => buildMtBigRoad(displaySelected?.trend.big2 ?? ''), [displaySelected?.trend.big2])
   const prediction = useMemo(() => backendPredictionFromTable(displaySelected), [displaySelected])
   const bonusPredictions = useMemo(() => backendSidePredictionsFromTable(displaySelected), [displaySelected])
   const sideActions = useMemo(() => backendSideActionsFromTable(displaySelected), [displaySelected])
@@ -285,7 +282,7 @@ export default function App() {
         <div className="roads-grid single-road">
           <RoadCard title="大路" subtitle={<div className="road-counts" aria-label="大路莊閒局數"><span className="Banker">莊局數：{displaySelected.trend.total_round_banker ?? 0}</span><span className="Player">閒局數：{displaySelected.trend.total_round_player ?? 0}</span></div>}>
             <div className="big-road classic-road" aria-label="傳統大路">
-              {bigRoad.map((cell) => <div style={{ gridColumn: cell.column + 1, gridRow: cell.row + 1 }} title={`${cell.outcome === 'banker' ? '莊' : '閒'} ${cell.point}點`} className={`big-cell ${cell.outcome === 'banker' ? 'Banker' : 'Player'} ${cell.hasTie ? 'tie-mark' : ''}`} key={`${tableUiHistory?.shoe}:${cell.round}`}><span>{cell.point}</span></div>)}
+              {bigRoad.map((cell) => <div style={{ gridColumn: cell.column + 1, gridRow: cell.row + 1 }} title={`${cell.outcome === 'banker' ? '莊' : '閒'} ${cell.point}點`} className={`big-cell ${cell.outcome === 'banker' ? 'Banker' : 'Player'} ${cell.hasTie ? 'tie-mark' : ''}`} key={`${selectedShoe}:${cell.column}:${cell.row}:${cell.code}`}><span>{cell.point}</span></div>)}
             </div>
           </RoadCard>
         </div>

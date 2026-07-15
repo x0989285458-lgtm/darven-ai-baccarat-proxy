@@ -5,7 +5,7 @@ import { buildLivePrediction, createSupabaseIngestionClient } from '../src/supab
 import { createApp } from '../src/server.js'
 
 const table = { tableId: 'BAG01', shoe: 88, round: 20, bankerCount: 10, playerCount: 9 }
-const completed = { tableId: 'BAG01', shoe: 88, round: 21, winner: 'banker', rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9] }
+const completed = { tableId: 'BAG01', shoe: 88, round: 21, winner: 'banker', rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9], sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary' }
 
 test('v098 settlement RPC accepts duplicate identities only when every immutable value matches', () => {
   const sql = readFileSync(new URL('../../frontend/supabase/schema_v098_snapshot_safety.sql', import.meta.url), 'utf8')

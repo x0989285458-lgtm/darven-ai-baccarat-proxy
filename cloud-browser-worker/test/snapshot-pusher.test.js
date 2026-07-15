@@ -31,6 +31,83 @@ test('v098.17 pusher sanitizes tables and rounds before durable queue persistenc
   }
 })
 
+test('v098.19 seeds v3 observed identities from retained verified-final v2 queue entries', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-final-cursor-migration-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  const key = 'BAG01:8:3'
+  const final = {
+    tableId: 'BAG01', shoe: 8, round: 3, winner: 'banker',
+    rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
+    sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
+  }
+  await writeFile(queuePath, JSON.stringify({ version: 2, entries: [{
+    protocolVersion: 'v098', sessionId: 'vm', timestamp: 1000, captureTimestamp: 1000,
+    sequence: 1000, roundKeys: [key], snapshot: { sessionId: 'vm', tables: [], rounds: [final] },
+  }] }))
+  await writeFile(`${queuePath}.cursor.json`, JSON.stringify({
+    version: 2, initialized: true, lastSequence: 1000,
+    observedRoundKeys: [key], acknowledgedRoundKeys: [],
+  }))
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    getSnapshot: async () => ({ sessionId: 'vm', tables: [], rounds: [] }),
+    isRoundDeliverable: (round) => String(round.sourceAction).endsWith('/summary'),
+    fetchImpl: async () => { throw new Error('network unavailable') },
+    baseBackoffMs: 0,
+    now: () => 2000,
+  })
+
+  assert.equal(await pusher.tick(), false)
+  const cursor = JSON.parse(await readFile(`${queuePath}.cursor.json`, 'utf8'))
+  assert.equal(cursor.version, 3)
+  assert.deepEqual(cursor.observedRoundKeys, [key])
+  const queued = JSON.parse(await readFile(queuePath, 'utf8'))
+  assert.deepEqual(queued.entries.flatMap((entry) => entry.roundKeys), [key])
+})
+
+test('v098.19 migrates a provisional v2 queue head and observed-only cursor so the same-identity final can ACK', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-final-migration-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  const key = 'BAG01:8:3'
+  const provisional = {
+    tableId: 'BAG01', shoe: 8, round: 3, winner: 'player',
+    rawResult: [31, 51, 25, 52, 0, 0, -1, -1, 5, 0],
+    sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/show_poker',
+  }
+  const final = {
+    tableId: 'BAG01', shoe: 8, round: 3, winner: 'banker',
+    rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
+    sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
+  }
+  await writeFile(queuePath, JSON.stringify({ version: 2, entries: [{
+    protocolVersion: 'v098', sessionId: 'vm', timestamp: 1000, captureTimestamp: 1000,
+    sequence: 1000, roundKeys: [key], snapshot: { sessionId: 'vm', tables: [], rounds: [provisional] },
+  }] }))
+  await writeFile(`${queuePath}.cursor.json`, JSON.stringify({
+    version: 2, initialized: true, lastSequence: 1000,
+    observedRoundKeys: [key], acknowledgedRoundKeys: [],
+  }))
+
+  const sent = []
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    getSnapshot: async () => ({ sessionId: 'vm', tables: [], rounds: [final] }),
+    isRoundDeliverable: (round) => String(round.sourceAction).endsWith('/summary'),
+    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
+    now: () => 2000,
+  })
+
+  assert.equal(await pusher.tick(), true)
+  assert.equal(sent.length, 1)
+  assert.deepEqual(sent[0].roundKeys, [key])
+  assert.match(sent[0].snapshot.rounds[0].sourceAction, /\/summary$/)
+  const cursor = JSON.parse(await readFile(`${queuePath}.cursor.json`, 'utf8'))
+  assert.equal(cursor.version, 3)
+  assert.deepEqual(cursor.acknowledgedRoundKeys, [key])
+})
+
 test('v098.17 pusher sanitizes legacy restored queue envelopes before replay', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
@@ -550,7 +627,7 @@ test('restored FIFO head is not appended again when queue persisted before its o
   }
   await writeFile(queuePath, JSON.stringify({ version: 2, entries: [queuedEnvelope] }))
   await writeFile(`${queuePath}.cursor.json`, JSON.stringify({
-    version: 2, initialized: true,
+    version: 3, initialized: true,
     observedRoundKeys: ['BAG01:8:1'], acknowledgedRoundKeys: [],
   }))
   const sent = []

@@ -1,6 +1,6 @@
 import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 import { BUILD_VERSION } from './build-version.js'
-import { normalizeExactRealCardEvent } from '../../shared/real-card-validator.js'
+import { isVerifiedFinalRoundAction, normalizeExactRealCardEvent } from '../../shared/real-card-validator.js'
 
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
@@ -255,6 +255,8 @@ export function buildPredictionResultRow(round = {}, table = {}, precomputedPred
     short_run_adjustment: structuredClone(precomputedPrediction.shortRunAdjustment),
     prediction_features: {
       ...predictionFeatures,
+      settlement_final: isVerifiedFinalRoundAction(round.sourceAction),
+      settlement_source_action: round.sourceAction ?? null,
       side_actual_results: sideActualResults,
       side_hits: buildSideHitsFromActions(sideActions, sideActualResults),
     },
@@ -1548,21 +1550,23 @@ export function createSupabaseIngestionClient({
     async getStablePredictionRows({ since = null, limit = 10000 } = {}) {
       const query = {
         select: 'source,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,prediction_features,created_at',
+        'prediction_features->>settlement_final': 'eq.true',
         order: 'created_at.asc',
         limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
       }
       if (since) query.created_at = `gte.${since}`
       const rows = await getRest('daily_prediction_results', query)
-      return Array.isArray(rows) ? rows : []
+      return (Array.isArray(rows) ? rows : []).filter((row) => row?.prediction_features?.settlement_final === true)
     },
     async getRecentPredictionRows({ limit = 10000 } = {}) {
       const rows = await getRest('daily_prediction_results', {
-        select: 'table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,created_at',
+        select: 'table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,prediction_features,created_at',
+        'prediction_features->>settlement_final': 'eq.true',
         strategy_version: 'in.(v097_副預測命中校準與門檻降5版,v098_主信心實際命中校準版)',
         order: 'created_at.desc',
         limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
       })
-      return Array.isArray(rows) ? rows : []
+      return (Array.isArray(rows) ? rows : []).filter((row) => row?.prediction_features?.settlement_final === true)
     },
     async getTableUiSettledPredictions({ tableId, shoe, limit = 10 } = {}) {
       const boundedLimit = Math.min(10, Math.max(1, Number(limit) || 10))
@@ -1581,6 +1585,7 @@ export function createSupabaseIngestionClient({
           && String(row?.shoe_no ?? '') === String(shoe)
           && row?.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION
           && row?.prediction_features?.prediction_timing === 'pre_result_context'
+          && row?.prediction_features?.settlement_final === true
           && Number.isSafeInteger(Number(row?.round_no))
           && Number(row.round_no) > 0
           && ['banker', 'player'].includes(row?.predicted_result)
@@ -1621,6 +1626,7 @@ export function createSupabaseIngestionClient({
         if (!Number.isSafeInteger(round) || round < 1 || rawRound !== round) continue
         if (String(row.raw_event?.tableId ?? row.raw_event?.table_id ?? '') !== String(tableId)
           || String(row.raw_event?.shoe ?? '') !== String(shoe)) continue
+        if (!isVerifiedFinalRoundAction(row.raw_event?.sourceAction)) continue
         const normalized = normalizeExactRealCardEvent(row.raw_event)
         if (!normalized) continue
         const next = {
@@ -1737,7 +1743,11 @@ export function createSupabaseIngestionClient({
     async countTodayPredictionRounds() {
       const since = new Date()
       since.setHours(0, 0, 0, 0)
-      const rows = await getRest('daily_prediction_results', { select: 'id', created_at: `gte.${since.toISOString()}` })
+      const rows = await getRest('daily_prediction_results', {
+        select: 'id',
+        created_at: `gte.${since.toISOString()}`,
+        'prediction_features->>settlement_final': 'eq.true',
+      })
       return Array.isArray(rows) ? rows.length : 0
     },
     async writeCloudRoundEvent(payload) {

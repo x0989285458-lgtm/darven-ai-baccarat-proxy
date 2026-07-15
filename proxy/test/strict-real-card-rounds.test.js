@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { setImmediate } from 'node:timers/promises'
 import { createApp } from '../src/server.js'
 
-test('strict real-card mode persists only show_poker rounds with actual card codes', async () => {
+test('v098.19 strict real-card mode persists only verified final summary cards', async () => {
   const previous = process.env.REQUIRE_REAL_CARD_ROUNDS
   process.env.REQUIRE_REAL_CARD_ROUNDS = 'true'
   const persisted = []
@@ -40,8 +40,20 @@ test('strict real-card mode persists only show_poker rounds with actual card cod
       sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/show_poker',
     })
     await setImmediate()
+    assert.equal(persisted.length, 0)
+
+    app.state.upsertRoundEvent({
+      tableId: 'BAG01',
+      shoe: 1,
+      round: 2,
+      winner: 'banker',
+      rawResult: [11, 22, 48, 34, 0, 0, -1, -1, 9, 7],
+      sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
+    })
+    await setImmediate()
     assert.equal(persisted.length, 1)
     assert.equal(persisted[0].round, 2)
+    assert.match(persisted[0].sourceAction, /\/summary$/)
   } finally {
     await app.stop().catch(() => {})
     if (previous === undefined) delete process.env.REQUIRE_REAL_CARD_ROUNDS

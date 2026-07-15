@@ -21,6 +21,7 @@ function ingestEnvelope(overrides = {}) {
       rounds: [{
         tableId: 'BAG01', shoe: '88', round: 21, winner: 'banker',
         rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9],
+        sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
       }],
     },
     ...overrides,
@@ -244,6 +245,7 @@ test('v098 pending prediction is deeply frozen before settlement and has exact s
   app.state.upsertRoundEvent({
     tableId: 'BAG01', shoe: 88, round: 21, winner: 'banker',
     rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9],
+    sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
   })
   await new Promise((resolve) => setImmediate(resolve))
 

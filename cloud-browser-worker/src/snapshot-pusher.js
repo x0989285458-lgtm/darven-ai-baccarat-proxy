@@ -138,13 +138,14 @@ export function createSnapshotPusher({
   async function restoreState() {
     if (restored) return
     restored = true
+    let migratingLegacyCursor = false
     try {
       const queued = await readStateFile(queuePath, 'queue')
       if (queued) {
         try {
           const entries = Array.isArray(queued.entries) ? queued.entries : [queued]
           const normalizedEntries = entries.map(normalizeQueuedEnvelope)
-          queue = normalizedEntries.map((item) => item.envelope)
+          queue = normalizedEntries.filter((item) => !item.drop).map((item) => item.envelope)
           queueNeedsResequence = normalizedEntries.some((item) => item.changed)
           for (const entry of queue) lastSequence = Math.max(lastSequence, entry.sequence)
         } catch (error) {
@@ -158,21 +159,32 @@ export function createSnapshotPusher({
             || !Array.isArray(cursor.observedRoundKeys ?? [])
             || !Array.isArray(cursor.acknowledgedRoundKeys ?? [])
             || (cursor.lastSequence != null && !Number.isSafeInteger(cursor.lastSequence))) throw new Error('invalid cursor state')
+          const cursorVersion = Number(cursor.version ?? 1)
+          migratingLegacyCursor = cursorVersion < 3
           cursorInitialized = cursor.initialized
           lastSequence = Math.max(lastSequence, Number(cursor.lastSequence ?? 0))
-          for (const roundKeyValue of cursor.observedRoundKeys ?? cursor.acknowledgedRoundKeys ?? []) observedRoundKeys.add(String(roundKeyValue))
+          const acknowledged = cursor.acknowledgedRoundKeys ?? []
+          const observed = cursorVersion >= 3 ? (cursor.observedRoundKeys ?? acknowledged) : acknowledged
+          for (const roundKeyValue of observed) observedRoundKeys.add(String(roundKeyValue))
           for (const roundKeyValue of cursor.acknowledgedRoundKeys ?? []) acknowledgedRoundKeys.add(String(roundKeyValue))
         } catch (error) {
           await quarantineState(cursorPath, 'cursor', error)
         }
       }
+      if (migratingLegacyCursor) {
+        for (const entry of queue) {
+          for (const roundKeyValue of entry.roundKeys ?? []) observedRoundKeys.add(String(roundKeyValue))
+        }
+      }
       trimCursor()
-      if (queueNeedsResequence && queue.length > 0) {
-        const current = Number(now())
-        if (!Number.isSafeInteger(current)) throw new Error('invalid clock while migrating queued envelopes')
-        let sequence = Math.max(lastSequence, current)
-        queue = queue.map((entry) => ({ ...entry, sequence: ++sequence }))
-        lastSequence = sequence
+      if (queueNeedsResequence) {
+        if (queue.length > 0) {
+          const current = Number(now())
+          if (!Number.isSafeInteger(current)) throw new Error('invalid clock while migrating queued envelopes')
+          let sequence = Math.max(lastSequence, current)
+          queue = queue.map((entry) => ({ ...entry, sequence: ++sequence }))
+          lastSequence = sequence
+        }
         queueNeedsResequence = false
         await saveQueue()
       }
@@ -211,7 +223,7 @@ export function createSnapshotPusher({
     const originalRounds = Array.isArray(originalSnapshot.rounds) ? originalSnapshot.rounds : []
     const originalKeys = Array.isArray(envelope.roundKeys) ? envelope.roundKeys.map(String) : originalRounds.map((round) => roundKey(round))
     const snapshot = sanitizeProductionSnapshot(originalSnapshot)
-    const rounds = Array.isArray(snapshot.rounds) ? snapshot.rounds : []
+    const rounds = (Array.isArray(snapshot.rounds) ? snapshot.rounds : []).filter((round) => isRoundDeliverable(round))
     const seenKeys = new Set()
     const keyedRounds = []
     for (const round of rounds) {
@@ -235,7 +247,7 @@ export function createSnapshotPusher({
     }
     const changed = JSON.stringify(normalizedEnvelope.snapshot) !== JSON.stringify(originalSnapshot)
       || JSON.stringify(keys) !== JSON.stringify(originalKeys)
-    return { envelope: normalizedEnvelope, changed }
+    return { envelope: normalizedEnvelope, changed, drop: originalRounds.length > 0 && keyedRounds.length === 0 }
   }
 
   async function saveJson(filePath, value) {
@@ -255,7 +267,7 @@ export function createSnapshotPusher({
 
   async function saveCursor() {
     await saveJson(cursorPath, {
-      version: 2,
+      version: 3,
       initialized: cursorInitialized,
       lastSequence,
       observedRoundKeys: [...observedRoundKeys],
