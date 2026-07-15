@@ -3,7 +3,7 @@ import { getBackendPredictionIssue, LiveRoadClient, type LiveTable } from './liv
 // @ts-expect-error Proxy is JavaScript and intentionally exercised as a real integration boundary.
 import { createApp } from '../../../proxy/src/server.js'
 
-const strategyVersion = 'v097_副預測命中校準與門檻降5版'
+const strategyVersion = 'v098_主信心實際命中校準版'
 
 function validTable(overrides: Partial<LiveTable> = {}): LiveTable {
   return {

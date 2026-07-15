@@ -1,6 +1,6 @@
 export const frontendBuildMetadata = Object.freeze({
   buildVersion: '098',
-  strategyVersion: 'v097_副預測命中校準與門檻降5版',
+  strategyVersion: 'v098_主信心實際命中校準版',
 })
 
 export function installFrontendBuildMetadata(root: HTMLElement = document.documentElement) {
