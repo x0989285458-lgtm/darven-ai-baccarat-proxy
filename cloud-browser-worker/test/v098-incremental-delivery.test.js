@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createSnapshotPusher } from '../src/snapshot-pusher.js'
-import { hasRealCardCodes } from '../src/snapshot.js'
+import { hasRealCardCodes, isRoundPayload } from '../src/snapshot.js'
 
 test('v098 durable FIFO retains a failed head while collecting the next round', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'v098-fifo-'))
@@ -52,6 +52,25 @@ test('v098.8 waits for real summary cards before observing queueing or ACKing a 
   function snapshot(rawResult, sourceAction) {
     return { sessionId: 'vm', tables: [{ tableId: 'BAG01', shoe: 8, round: 1 }], rounds: [{ tableId: 'BAG01', shoe: 8, round: 1, winner: 'banker', rawResult, sourceAction }] }
   }
+})
+
+test('v098.14 retains every recognized MT card-result action in the durable round buffer', () => {
+  for (const actionName of ['show_poker', 'summary', 'show_win', 'roundResult', 'round_result']) {
+    const payload = JSON.stringify({
+      action: { name: `/api/v1/gametype/*/game/*/room/*/table/*/${actionName}` },
+      body: { table_id: 'BAG07', shoe: 18707, round: 53, result: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6] },
+    })
+    assert.equal(isRoundPayload(payload), true, actionName)
+  }
+})
+
+test('v098.14 excludes card-shaped payloads without a recognized MT round action', () => {
+  const payload = JSON.stringify({
+    action: { name: '/api/v1/gametype/*/game/*/room/*/table/*/road_update' },
+    body: { table_id: 'BAG07', shoe: 18707, round: 53, result: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6] },
+  })
+
+  assert.equal(isRoundPayload(payload), false)
 })
 
 test('v098 coalesces unsent backlog into the tail while preserving the failed FIFO head', async (t) => {

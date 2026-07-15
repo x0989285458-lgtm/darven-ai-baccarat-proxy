@@ -22,7 +22,7 @@ export function annotateRoundPayload(text, sourceEventId) {
 }
 
 export function isRoundPayload(text = '') {
-  return /show_poker|summary|roundResult|round_result/i.test(text)
+  return isMtRoundAction(text)
     && /"result"|"cards"|"cardList"|"card_list"/i.test(text)
 }
 
