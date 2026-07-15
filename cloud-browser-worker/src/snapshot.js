@@ -1,4 +1,5 @@
 import { BUILD_VERSION } from './runtime-config.js'
+import { filterProductionRounds, isProductionTableId, sortProductionTables } from './table-policy.js'
 
 const BANKER_VALUES = new Set(['2', 'b', 'banker', 'bank', '庄', '莊', 'zhuang'])
 const PLAYER_VALUES = new Set(['1', 'p', 'player', 'play', '闲', '閒', 'xian'])
@@ -89,12 +90,12 @@ export function extractSnapshotFromPayloads(payloads = [], { sessionId = 'darven
   const roundCandidates = []
   parsedPayloads.forEach((payload, sourceIndex) => collectCandidates(payload, { tableCandidates, roundCandidates }, new WeakSet(), sourceIndex))
 
-  const tables = mergeTables(
+  const tables = sortProductionTables(mergeTables(
     tableCandidates
       .map((table, index) => ({ ...normalizeTable(table, index), __sourceIndex: table.__sourceIndex ?? 0, __sourceKind: table.__sourceKind ?? null }))
-      .filter((table) => isWantedBaccaratTable(table)),
-  )
-  const rounds = dedupeRounds(
+      .filter((table) => isWantedBaccaratTable(table) && isProductionTableId(table.tableId)),
+  ))
+  const rounds = dedupeRounds(filterProductionRounds(
     roundCandidates
       .map((round) => normalizeRound(round))
       .filter((round) => (
@@ -105,7 +106,7 @@ export function extractSnapshotFromPayloads(payloads = [], { sessionId = 'darven
         && Array.isArray(round.rawResult)
         && round.rawResult.length === 10
       )),
-  )
+  ))
 
   return {
     connected: true,

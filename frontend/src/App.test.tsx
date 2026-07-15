@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen, waitFor, within, fireEvent } from '@testing-library/react'
-import App from './App'
+import App, { selectMemberTable } from './App'
 import { mockTables } from './data/mockTables'
 import { applyAskRoadWeighting, calculateAskRoadInfluence, ALL_MT_EQUAL_MAIN_WEIGHTS, ALL_MT_EQUAL_SIDE_WEIGHTS, calculateBonusPredictions, calculateMainOutcomeProbabilities, calculatePrediction, createSidePredictionLearningRecord, detectRoadTrends, evaluateFiveRoadPrediction, getSidePredictionActions, isSidePredictionActionable, scoreMainPrediction, normalizeOutcomeFromBead, parseBigRoad, SIDE_PREDICTION_THRESHOLDS, SIDE_PREDICTION_ACTION_RATE_TARGETS, SIDE_PREDICTION_WEIGHT_PROFILES } from './lib/roadParser'
 
@@ -267,12 +267,32 @@ describe('AI百家預測軟體', () => {
     expect(within(sidebar).queryByRole('heading', { name: '連線控制' })).not.toBeInTheDocument()
     expect(within(sidebar).queryByText(/BAG/)).not.toBeInTheDocument()
 
-    const expectedLabels = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
+    const expectedLabels = ['1', '2', '3', '3A', '5', '6', '7', '8', '9', '10']
     const tableButtons = within(sidebar).getAllByRole('button', { name: /MT百家樂第.+桌 第\d+局/ })
     expect(tableButtons).toHaveLength(expectedLabels.length)
     expectedLabels.forEach((tableLabel, index) => {
       expect(tableButtons[index]).toHaveTextContent(`MT百家樂第${tableLabel}桌`)
     })
+  })
+
+  it('shows only the approved ten member tables in exact identity order', async () => {
+    const ids = ['BAG15', 'BAG03A', 'BAG11', 'BAG02', 'BAG13A', 'BAG01', 'BAG12', 'BAG10', 'BAG09', 'BAG08', 'BAG07', 'BAG06', 'BAG05', 'BAG13', 'BAG03', 'BAG03A']
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(ids.map((tableId, index) => ({
+        tableId, displayName: tableId, tableType: 'BAC', shoe: 1, round: 100 + index,
+        bankerCount: 1, playerCount: 1, tieCount: 0, beadPlateRaw: '0102', bigRoadRaw: '01#02',
+      }))) })
+      if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ configured: true }) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true }) })
+    }))
+
+    await renderApp('/', false)
+
+    const sidebar = await screen.findByLabelText('桌號與資料選擇')
+    const buttons = within(sidebar).getAllByRole('button', { name: /MT百家樂第.+桌 第\d+局/ })
+    expect(buttons).toHaveLength(10)
+    expect(buttons.map((button) => button.textContent?.match(/第(.+?)桌/)?.[1])).toEqual(['1', '2', '3', '3A', '5', '6', '7', '8', '9', '10'])
+    expect(buttons[3]).toHaveTextContent('第3A桌 第101局')
   })
 
   it('renders the original traditional big-road shape from big2 without standalone tie cells', async () => {
@@ -326,7 +346,7 @@ describe('AI百家預測軟體', () => {
   it('v045 overlays a green tie slash on banker/player big-road cells when a tie appears', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, json: () => Promise.resolve([{
-        tableId: 'tie-road',
+        tableId: 'BAG01',
         displayName: 'MT百家樂第1桌',
         tableType: 'baccarat',
         round: 8,
@@ -373,36 +393,11 @@ describe('AI百家預測軟體', () => {
     expect(refreshedButtons[0]).not.toHaveClass('active')
   })
 
-  it('keeps selected table slot even when refreshed proxy table ids change', async () => {
-    let refreshNo = 0
-    vi.mocked(fetch).mockImplementation(() => Promise.resolve({
-      ok: true,
-      status: 200,
-      json: () => {
-        refreshNo += 1
-        return Promise.resolve(mockTables.map((table, index) => ({
-          tableId: `LIVE-${refreshNo}-${index + 1}`,
-          displayName: `MT百家樂第${index + 1}桌`,
-          tableType: table.table_type,
-          round: Number(table.trend.current_round ?? 0) + 200,
-          bankerCount: table.trend.total_round_banker,
-          playerCount: table.trend.total_round_player,
-          tieCount: table.trend.total_round_tie,
-          beadPlateRaw: table.trend.bead_plate2,
-          bigRoadRaw: table.trend.big2,
-        })))
-      },
-    } as Response))
-
-    await renderApp()
-    const tableButtons = screen.getAllByRole('button', { name: /MT百家樂第.+桌 第\d+局/ })
-    fireEvent.click(tableButtons[1])
-    expect(tableButtons[1]).toHaveClass('active')
-
-    await waitFor(() => expect(screen.getByRole('button', { name: /MT百家樂第1桌 第234局/ })).toBeInTheDocument())
-    const refreshedButtons = screen.getAllByRole('button', { name: /MT百家樂第.+桌 第\d+局/ })
-    expect(refreshedButtons[1]).toHaveClass('active')
-    expect(refreshedButtons[0]).not.toHaveClass('active')
+  it('keeps the selected approved table identity when an earlier table disappears and reappears', () => {
+    const selectedTableId = 'BAG02'
+    expect(selectMemberTable(mockTables, selectedTableId)?.id).toBe('BAG02')
+    expect(selectMemberTable(mockTables.filter((table) => table.id !== 'BAG01'), selectedTableId)?.id).toBe('BAG02')
+    expect(selectMemberTable(mockTables, selectedTableId)?.id).toBe('BAG02')
   })
 
   it('ignores pair metadata when parsing bead outcomes', () => {

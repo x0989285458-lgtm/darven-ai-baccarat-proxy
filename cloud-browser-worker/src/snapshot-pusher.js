@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { sanitizeProductionSnapshot } from './table-policy.js'
 
 export function createSnapshotPusher({
   targetUrl,
@@ -24,6 +25,7 @@ export function createSnapshotPusher({
   let restored = false
   let stateInvalid = false
   let queue = []
+  let queueNeedsResequence = false
   let cursorInitialized = false
   const observedRoundKeys = new Set()
   const acknowledgedRoundKeys = new Set()
@@ -77,12 +79,12 @@ export function createSnapshotPusher({
   }
 
   async function collectSnapshot(timestamp) {
-    const snapshot = await getSnapshot()
+    const snapshot = sanitizeProductionSnapshot(await getSnapshot())
     const rounds = Array.isArray(snapshot?.rounds) ? snapshot.rounds : []
-    const candidates = rounds
+    const candidates = uniqueRoundCandidates(rounds
       .filter((round) => isRoundDeliverable(round))
       .map((round) => ({ round, key: roundKey(round) }))
-      .filter((candidate) => candidate.key)
+      .filter((candidate) => candidate.key))
 
     if (!cursorInitialized) cursorInitialized = true
 
@@ -141,7 +143,9 @@ export function createSnapshotPusher({
       if (queued) {
         try {
           const entries = Array.isArray(queued.entries) ? queued.entries : [queued]
-          queue = entries.map(normalizeQueuedEnvelope)
+          const normalizedEntries = entries.map(normalizeQueuedEnvelope)
+          queue = normalizedEntries.map((item) => item.envelope)
+          queueNeedsResequence = normalizedEntries.some((item) => item.changed)
           for (const entry of queue) lastSequence = Math.max(lastSequence, entry.sequence)
         } catch (error) {
           await quarantineState(queuePath, 'queue', error)
@@ -163,6 +167,15 @@ export function createSnapshotPusher({
         }
       }
       trimCursor()
+      if (queueNeedsResequence && queue.length > 0) {
+        const current = Number(now())
+        if (!Number.isSafeInteger(current)) throw new Error('invalid clock while migrating queued envelopes')
+        let sequence = Math.max(lastSequence, current)
+        queue = queue.map((entry) => ({ ...entry, sequence: ++sequence }))
+        lastSequence = sequence
+        queueNeedsResequence = false
+        await saveQueue()
+      }
     } catch (error) {
       stateInvalid = true
       throw error
@@ -194,12 +207,23 @@ export function createSnapshotPusher({
 
   function normalizeQueuedEnvelope(envelope) {
     if (!envelope?.snapshot || !Number.isSafeInteger(envelope.sequence)) throw new Error('corrupt queue state: invalid envelope')
-    const snapshot = envelope.snapshot
+    const originalSnapshot = envelope.snapshot
+    const originalRounds = Array.isArray(originalSnapshot.rounds) ? originalSnapshot.rounds : []
+    const originalKeys = Array.isArray(envelope.roundKeys) ? envelope.roundKeys.map(String) : originalRounds.map((round) => roundKey(round))
+    const snapshot = sanitizeProductionSnapshot(originalSnapshot)
     const rounds = Array.isArray(snapshot.rounds) ? snapshot.rounds : []
-    const keys = rounds.map((round) => roundKey(round))
-    if (keys.some((roundKeyValue) => !roundKeyValue)) throw new Error('corrupt queue state: completed round has no durable key')
+    const seenKeys = new Set()
+    const keyedRounds = []
+    for (const round of rounds) {
+      const key = roundKey(round)
+      if (!key) throw new Error('corrupt queue state: completed round has no durable key')
+      if (seenKeys.has(key)) continue
+      seenKeys.add(key)
+      keyedRounds.push({ round, key })
+    }
+    const keys = keyedRounds.map((item) => item.key)
     const captureTimestamp = Number(envelope.captureTimestamp ?? envelope.timestamp)
-    return {
+    const normalizedEnvelope = {
       ...envelope,
       protocolVersion: 'v098',
       sessionId: String(envelope.sessionId ?? snapshot.sessionId ?? ''),
@@ -207,8 +231,11 @@ export function createSnapshotPusher({
       captureTimestamp,
       sequence: Number(envelope.sequence),
       roundKeys: keys,
-      snapshot: { ...snapshot, rounds: rounds.map((round, index) => normalizeRoundForEnvelope(round, keys[index])) },
+      snapshot: { ...snapshot, rounds: keyedRounds.map(({ round, key }) => normalizeRoundForEnvelope(round, key)) },
     }
+    const changed = JSON.stringify(normalizedEnvelope.snapshot) !== JSON.stringify(originalSnapshot)
+      || JSON.stringify(keys) !== JSON.stringify(originalKeys)
+    return { envelope: normalizedEnvelope, changed }
   }
 
   async function saveJson(filePath, value) {
@@ -255,6 +282,15 @@ export function createSnapshotPusher({
   }
 
   return { tick, start, stop, isRunning: () => Boolean(timer) }
+}
+
+function uniqueRoundCandidates(candidates = []) {
+  const seen = new Set()
+  return candidates.filter((candidate) => {
+    if (seen.has(candidate.key)) return false
+    seen.add(candidate.key)
+    return true
+  })
 }
 
 function roundKey(round = {}) {

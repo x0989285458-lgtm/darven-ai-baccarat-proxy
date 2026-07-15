@@ -6,6 +6,69 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createSnapshotPusher } from '../src/snapshot-pusher.js'
 
+test('v098.17 pusher sanitizes tables and rounds before durable queue persistence', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const sent = []
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key',
+    queuePath: path.join(dir, 'latest.json'),
+    getSnapshot: async () => ({
+      sessionId: 'vm',
+      tables: [{ tableId: 'BAG11' }, { tableId: 'BAG3A' }, { tableId: 'BAG01' }],
+      rounds: [round('BAG01'), round('BAG11'), round('BAG3A')],
+    }),
+    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
+  })
+
+  assert.equal(await pusher.tick(), true)
+  assert.deepEqual(sent[0].snapshot.tables.map((table) => table.tableId), ['BAG01', 'BAG03A'])
+  assert.deepEqual(sent[0].snapshot.rounds.map((item) => item.tableId), ['BAG01', 'BAG03A'])
+  assert.deepEqual(sent[0].roundKeys, ['BAG01:8:1', 'BAG03A:8:1'])
+
+  function round(tableId) {
+    return { tableId, shoe: 8, round: 1, winner: 'banker' }
+  }
+})
+
+test('v098.17 pusher sanitizes legacy restored queue envelopes before replay', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  await writeFile(queuePath, JSON.stringify({
+    timestamp: 1000,
+    sequence: 1000,
+    snapshot: {
+      sessionId: 'vm',
+      tables: [{ tableId: 'BAG11' }, { tableId: 'BAG01' }],
+      rounds: [
+        { tableId: 'BAG11', shoe: 8, round: 1, winner: 'banker' },
+        { tableId: 'BAG01', shoe: 8, round: 1, winner: 'player' },
+      ],
+    },
+  }))
+  const sent = []
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    getSnapshot: async () => ({ sessionId: 'vm', tables: [], rounds: [] }),
+    fetchImpl: async (_url, options) => {
+      const body = JSON.parse(options.body)
+      sent.push(body)
+      if (body.sequence === 1000) return {
+        status: 200,
+        json: async () => ({ accepted: true, sessionId: 'vm', sequence: 1000, acceptedRoundKeys: ['BAG11:8:1', 'BAG01:8:1'] }),
+      }
+      return acceptedResponse(options)
+    },
+  })
+
+  assert.equal(await pusher.tick(), true)
+  assert.ok(sent[0].sequence > 1000, 'sanitized legacy envelope must receive a fresh sequence')
+  assert.deepEqual(sent[0].snapshot.tables.map((table) => table.tableId), ['BAG01'])
+  assert.deepEqual(sent[0].snapshot.rounds.map((round) => round.tableId), ['BAG01'])
+  assert.deepEqual(sent[0].roundKeys, ['BAG01:8:1'])
+})
+
 test('pusher preserves and retries the exact unacknowledged envelope', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
   t.after(() => rm(dir, { recursive: true, force: true }))

@@ -11,13 +11,34 @@ const MEMBER_SESSION_TOKEN_KEY = 'darven-member-session-token'
 const MEMBER_SESSION_EXPIRES_KEY = 'darven-member-session-expires-at'
 const label = { Banker: '莊', Player: '閒', Tie: '和' }
 const tableDisplayOrder = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
+const MEMBER_TABLE_IDS = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10'] as const
+const memberTableLabels: ReadonlyMap<string, string> = new Map(MEMBER_TABLE_IDS.map((tableId, index) => [tableId, ['1', '2', '3', '3A', '5', '6', '7', '8', '9', '10'][index]]))
 type BackendScoreTotals = NonNullable<NonNullable<LiveTable['prediction']>['scoreTotals']>
 const sidePredictionKeys: SidePredictionKey[] = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
 
+function canonicalMemberTableId(table: LiveTable) {
+  const id = String(table.id ?? table.name ?? '').trim().toUpperCase()
+  const match = id.match(/^BAG(\d{1,2})(A?)$/)
+  if (!match) return id
+  return `BAG${match[1].padStart(2, '0')}${match[2]}`
+}
+
+function orderedMemberTables(tables: LiveTable[]) {
+  const byId = new Map<string, LiveTable>()
+  for (const table of tables) {
+    const tableId = canonicalMemberTableId(table)
+    if (!byId.has(tableId)) byId.set(tableId, table)
+  }
+  return MEMBER_TABLE_IDS.flatMap((tableId) => byId.has(tableId) ? [byId.get(tableId)!] : [])
+}
+
+export function selectMemberTable(tables: LiveTable[], selectedTableId: string) {
+  const visibleTables = orderedMemberTables(tables)
+  return visibleTables.find((table) => canonicalMemberTableId(table) === selectedTableId) ?? visibleTables[0]
+}
+
 function tableNumber(table: LiveTable, index: number) {
-  if (tableDisplayOrder[index]) return tableDisplayOrder[index]
-  const match = String(table.table_name ?? table.name ?? table.id).match(/\d+/)
-  return match?.[0] ? String(Number(match[0])) : String(index + 1)
+  return memberTableLabels.get(canonicalMemberTableId(table)) ?? tableDisplayOrder[index] ?? String(index + 1)
 }
 
 function backendPredictionFromTable(table?: LiveTable | null): Prediction | null {
@@ -82,14 +103,14 @@ export default function App() {
   const memberLoggedIn = memberSessionState === 'valid'
   const adminLoggedIn = Boolean(window.sessionStorage.getItem('darven-admin-account') && window.sessionStorage.getItem('darven-admin-session-token'))
   const [tables, setTables] = useState<LiveTable[]>([])
-  const [selectedIndex, setSelectedIndex] = useState(0)
+  const [selectedTableId, setSelectedTableId] = useState<string>(MEMBER_TABLE_IDS[0])
   const [status, setStatus] = useState({ state: 'disconnected', message: '等待雲端資料來源' })
   const [supabaseStatus, setSupabaseStatus] = useState({ state: isSupabaseConfigured ? 'connecting' : 'error', message: isSupabaseConfigured ? 'Supabase 檢查中' : 'Supabase 未設定' })
   const [onlineCoreStatus, setOnlineCoreStatus] = useState<OnlineCoreStatus>({ state: 'connecting', message: '記憶中心檢查中' })
   const client = useRef<LiveRoadClient | null>(null)
-  const visibleTables = useMemo(() => tables.slice(0, 9), [tables])
-  const selectedSafeIndex = Math.min(selectedIndex, Math.max(visibleTables.length - 1, 0))
-  const selected = visibleTables[selectedSafeIndex] ?? tables[0]
+  const visibleTables = useMemo(() => orderedMemberTables(tables), [tables])
+  const selected = useMemo(() => selectMemberTable(tables, selectedTableId), [tables, selectedTableId])
+  const selectedCanonicalId = selected ? canonicalMemberTableId(selected) : ''
   const displaySelected = selected
   const staleNotice = useMemo(() => {
     const staleTables = visibleTables.filter((table) => isLiveTableStale(table)).length
@@ -159,7 +180,6 @@ export default function App() {
       memberSessionToken,
       onTables: (next) => {
         setTables(next)
-        setSelectedIndex((currentIndex) => Math.min(currentIndex, Math.max(next.slice(0, 9).length - 1, 0)))
       },
       onStatus: setStatus,
       onUnauthorized: () => {
@@ -209,9 +229,12 @@ export default function App() {
     <div className="workspace">
       <aside className="sidebar balanced-sidebar-line" aria-label="桌號與資料選擇">
         <nav className="table-list" aria-label="桌號選擇">
-          {visibleTables.map((table, index) => <button className={`table-item ${index === selectedSafeIndex ? 'active' : ''}`} key={`${String(table.id)}-${index}`} onClick={() => setSelectedIndex(index)}>
-            MT百家樂第{tableNumber(table, index)}桌 第{table.trend.current_round ?? 0}局
-          </button>)}
+          {visibleTables.map((table, index) => {
+            const tableId = canonicalMemberTableId(table)
+            return <button className={`table-item ${tableId === selectedCanonicalId ? 'active' : ''}`} key={tableId} onClick={() => setSelectedTableId(tableId)}>
+              MT百家樂第{tableNumber(table, index)}桌 第{table.trend.current_round ?? 0}局
+            </button>
+          })}
         </nav>
       </aside>
       <section className="content">

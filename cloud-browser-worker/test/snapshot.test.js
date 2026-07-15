@@ -9,6 +9,29 @@ import {
   redactUrlSecrets,
 } from '../src/snapshot.js'
 
+test('v098.17 keeps only the approved ten tables and completed rounds in production order', () => {
+  const tableIds = ['BAG15', 'BAG3A', 'BAG11', 'BAG02', 'BAG13A', 'BAG01', 'BAG12', 'BAG10', 'BAG09', 'BAG08', 'BAG07', 'BAG06', 'BAG05', 'BAG13', 'BAG03']
+  const snapshot = extractSnapshotFromPayloads([
+    { tables: tableIds.map((tableId) => ({ tableId, tableType: 'BAC', shoe: 1, round: 1, name: tableId })) },
+    ...tableIds.map((tableId) => ({ event: 'roundResult', round: { tableId, shoe: 1, round: 1, winner: 'banker', rawResult: [1, 2, 3, 4, 0, 0, -1, -1, 4, 6] } })),
+  ])
+
+  const expected = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
+  assert.deepEqual(snapshot.tables.map((table) => table.tableId), expected)
+  assert.deepEqual(snapshot.rounds.map((round) => round.tableId).sort(), expected.slice().sort())
+  assert.equal(snapshot.diagnostics.tableCount, 10)
+})
+
+test('v098.17 canonicalizes alias round IDs before dedupe', () => {
+  const round = { shoe: 1, round: 1, winner: 'banker', rawResult: [1, 2, 3, 4, 0, 0, -1, -1, 4, 6] }
+  const snapshot = extractSnapshotFromPayloads([
+    { event: 'roundResult', round: { ...round, tableId: 'BAG3A' } },
+    { event: 'roundResult', round: { ...round, tableId: 'BAG03A' } },
+  ])
+
+  assert.deepEqual(snapshot.rounds.map((item) => `${item.tableId}:${item.shoe}:${item.round}`), ['BAG03A:1:1'])
+})
+
 test('annotates a captured JSON round with a stable event id', () => {
   assert.equal(
     annotateRoundPayload('{"action":"show_poker","body":{"table_id":"BAG01","round":1}}', 'capture-1:2'),

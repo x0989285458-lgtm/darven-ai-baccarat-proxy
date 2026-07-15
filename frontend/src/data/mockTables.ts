@@ -12,14 +12,16 @@ const bigSamples = [
   '0202,0202,0202,#0101,#0202,0202,0202,#0101,0101,#0202,0202,0202',
 ]
 
-export const mockTables: LiveTable[] = Array.from({ length: 9 }, (_, index) => {
+const mockTableIds = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
+
+export const mockTables: LiveTable[] = mockTableIds.map((tableId, index) => {
   const tableNo = index + 1
   const bankers = 14 + tableNo
   const players = 12 + (tableNo % 5)
   const ties = 2 + (tableNo % 4)
   return {
-    id: `BAG${String(tableNo).padStart(2, '0')}`,
-    name: `BAG${String(tableNo).padStart(2, '0')}`,
+    id: tableId,
+    name: tableId,
     table_type: tableNo % 2 === 0 ? 'BAS' : 'BAC',
     trend: {
       current_shoe: `S-240618-${String(tableNo).padStart(2, '0')}`,

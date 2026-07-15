@@ -5,10 +5,14 @@ const DEFAULT_POLL_MS = 5000
 const DEFAULT_REQUEST_TIMEOUT_MS = 15000
 const DEFAULT_REQUEST_RETRIES = 2
 
+export const PRODUCTION_TABLE_IDS = Object.freeze(['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10'])
+const PRODUCTION_TABLE_ORDER = new Map(PRODUCTION_TABLE_IDS.map((tableId, index) => [tableId, index]))
+
 export function parseCloudCapturePayload(payload = {}, receivedAt = new Date().toISOString()) {
-  const tables = normalizeCloudTables(payload.tables ?? payload.snapshot?.tables ?? [])
+  const tables = selectProductionTables(normalizeCloudTables(payload.tables ?? payload.snapshot?.tables ?? []))
     .map((table) => ({ ...table, sourceUpdatedAt: table.sourceUpdatedAt ?? receivedAt }))
-  const rounds = Array.isArray(payload.rounds) ? payload.rounds : payload.round ? [payload.round] : []
+  const rawRounds = Array.isArray(payload.rounds) ? payload.rounds : payload.round ? [payload.round] : []
+  const rounds = selectProductionRounds(rawRounds)
   const sessionId = payload.sessionId ?? payload.session_id ?? null
   return {
     sessionId,
@@ -131,6 +135,42 @@ export async function applyCloudCapturePayload({ parsed, state, writer }) {
       return writer.writeCloudRoundEvent?.({ sessionId, round, table })
     }))
   }
+}
+
+function canonicalTableId(value) {
+  const id = String(value ?? '').trim().toUpperCase()
+  const match = id.match(/^BAG(\d{1,2})(A?)$/)
+  if (!match) return id
+  return `BAG${match[1].padStart(2, '0')}${match[2]}`
+}
+
+function isProductionTable(value) {
+  return PRODUCTION_TABLE_ORDER.has(canonicalTableId(value))
+}
+
+function selectProductionTables(tables = []) {
+  const byId = new Map()
+  for (const table of tables) {
+    const tableId = canonicalTableId(table?.tableId)
+    if (isProductionTable(tableId) && !byId.has(tableId)) byId.set(tableId, { ...table, tableId })
+  }
+  return PRODUCTION_TABLE_IDS.flatMap((tableId) => byId.has(tableId) ? [byId.get(tableId)] : [])
+}
+
+function selectProductionRounds(rounds = []) {
+  const selected = []
+  const seen = new Set()
+  for (const round of rounds) {
+    const tableId = canonicalTableId(round?.tableId ?? round?.table_id)
+    if (!isProductionTable(tableId)) continue
+    const normalized = { ...round, tableId }
+    const hasIdentity = round?.shoe != null && round?.shoe !== '' && round?.round != null && round?.round !== ''
+    const key = hasIdentity ? `${tableId}:${round.shoe}:${round.round}` : null
+    if (key && seen.has(key)) continue
+    if (key) seen.add(key)
+    selected.push(normalized)
+  }
+  return selected
 }
 
 function normalizeCloudTables(tables) {
