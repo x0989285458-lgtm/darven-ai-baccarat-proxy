@@ -1,8 +1,11 @@
 import { createShoeTracker } from './card-shoe.js'
 import { BUILD_VERSION } from './build-version.js'
 
+const MAX_ROAD_HISTORY_ROUND = 100
+
 export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotRounds = true } = {}) {
   const shoeTracker = createShoeTracker({ deckCount: 8 })
+  const realRoundHistoryByTable = new Map()
   const state = {
     status: {
       service: 'Draven MT資料代理伺服器',
@@ -34,7 +37,9 @@ export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotR
     setTables(tables = []) {
       const previousTables = state.tables
       const inferredEvents = inferSnapshotRounds && Array.isArray(tables) ? inferRoundEventsFromSnapshots(previousTables, tables) : []
-      state.tables = Array.isArray(tables) ? mergeExistingRoundData(tables, previousTables) : []
+      const mergedTables = Array.isArray(tables) ? mergeExistingRoundData(tables, previousTables) : []
+      pruneRealRoundHistory(realRoundHistoryByTable, mergedTables)
+      state.tables = mergedTables.map((table) => applyRealRoundRoadFallback(table, getContiguousRealRoundHistory(realRoundHistoryByTable, table.tableId)))
       state.status.tableCount = state.tables.length
       for (const item of inferredEvents) emitRoundEvent(item.round, item.predictionTable)
       if (typeof onTablesUpdated === 'function') onTablesUpdated(structuredCloneSafe(state.tables))
@@ -58,6 +63,11 @@ export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotR
         sourceAction: event.sourceAction ?? null,
         receivedAt: now,
       }
+      const currentTable = index >= 0 ? state.tables[index] : null
+      const matchesCurrentShoe = !currentTable?.shoe || !lastRound.shoe || String(currentTable.shoe) === String(lastRound.shoe)
+      const realRoundHistory = matchesCurrentShoe
+        ? recordExactRealRound(realRoundHistoryByTable, lastRound, currentTable?.shoe)
+        : null
       const shoeState = shoeTracker.recordRound(lastRound)
       lastRound.cardShoe = {
         playerCards: shoeState.lastRound?.playerCards ?? null,
@@ -74,14 +84,17 @@ export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotR
         shoeProgressRatio: shoeState.shoeProgressRatio,
       }
       if (index >= 0) {
-        state.tables[index] = {
-          ...state.tables[index],
-          shoe: lastRound.shoe ?? state.tables[index].shoe,
-          round: lastRound.round ?? state.tables[index].round,
-          lastRound,
-        }
+        const currentRoundNo = Number(currentTable.round)
+        const eventRoundNo = Number(lastRound.round)
+        const advancesIdentity = matchesCurrentShoe && (!Number.isFinite(currentRoundNo) || !Number.isFinite(eventRoundNo) || eventRoundNo >= currentRoundNo)
+        state.tables[index] = applyRealRoundRoadFallback({
+          ...currentTable,
+          shoe: advancesIdentity ? (lastRound.shoe ?? currentTable.shoe) : currentTable.shoe,
+          round: advancesIdentity ? (lastRound.round ?? currentTable.round) : currentTable.round,
+          lastRound: advancesIdentity || !currentTable.lastRound ? lastRound : currentTable.lastRound,
+        }, realRoundHistory)
       } else {
-        state.tables.push({ tableId, displayName: `MT百家樂${tableId}`, tableType: 'BAC', shoe: lastRound.shoe, round: lastRound.round, lastRound })
+        state.tables.push(applyRealRoundRoadFallback({ tableId, displayName: `MT百家樂${tableId}`, tableType: 'BAC', shoe: lastRound.shoe, round: lastRound.round, lastRound }, realRoundHistory))
       }
       state.status.tableCount = state.tables.length
       emitRoundEvent(lastRound, state.tables.find((item) => String(item.tableId) === tableId) ?? { tableId })
@@ -94,6 +107,99 @@ export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotR
       return structuredCloneSafe(state)
     },
   }
+}
+
+function pruneRealRoundHistory(historyByTable, tables = []) {
+  const activeShoes = new Map(tables.map((table) => [String(table.tableId ?? ''), String(table.shoe ?? '')]))
+  for (const [tableId, history] of historyByTable) {
+    const activeShoe = activeShoes.get(tableId)
+    if (activeShoe == null || (activeShoe && activeShoe !== history.shoe)) historyByTable.delete(tableId)
+  }
+}
+
+function recordExactRealRound(historyByTable, round = {}, authoritativeShoe = null) {
+  if (!isExactRealRound(round)) return null
+  const tableId = String(round.tableId ?? '')
+  const shoe = String(round.shoe ?? '')
+  const roundNo = Number(round.round)
+  if (!tableId || !shoe || !Number.isInteger(roundNo) || roundNo < 1 || roundNo > MAX_ROAD_HISTORY_ROUND) return null
+  if (authoritativeShoe != null && String(authoritativeShoe) !== shoe) return null
+  let history = historyByTable.get(tableId)
+  if (!history || history.shoe !== shoe) {
+    history = { shoe, rounds: new Map() }
+    historyByTable.set(tableId, history)
+  }
+  history.rounds.set(roundNo, String(round.winner).toLowerCase())
+  return getContiguousRealRoundHistory(historyByTable, tableId)
+}
+
+function getContiguousRealRoundHistory(historyByTable, tableId) {
+  const history = historyByTable.get(String(tableId ?? ''))
+  if (!history) return null
+  const ordered = [...history.rounds.entries()].sort((a, b) => a[0] - b[0])
+  if (!ordered.every(([number], index) => number === index + 1)) return null
+  return { shoe: history.shoe, outcomes: ordered.map(([, winner]) => winner) }
+}
+
+function isExactRealRound(round = {}) {
+  if (!['banker', 'player', 'tie'].includes(String(round.winner).toLowerCase())) return false
+  const result = round.rawResult
+  if (!Array.isArray(result) || result.length !== 10 || result.some((value) => typeof value !== 'number' || !Number.isInteger(value))) return false
+  if (!result.slice(0, 4).every((value) => value >= 1 && value <= 52)) return false
+  if (!result.slice(4, 6).every((value) => value >= 0 && value <= 52)) return false
+  if (!result.slice(6, 8).every((value) => value >= -1 && value <= 52)) return false
+  return result.slice(8, 10).every((value) => value >= 0 && value <= 9)
+}
+
+function applyRealRoundRoadFallback(table = {}, history = null) {
+  if (!history || String(table.shoe ?? '') !== history.shoe) return table
+  if ((table.beadPlateRaw || table.bigRoadRaw) && table.roadSource !== 'real_round_fallback') return table
+  const counts = history.outcomes.reduce((totals, outcome) => ({ ...totals, [outcome]: totals[outcome] + 1 }), { banker: 0, player: 0, tie: 0 })
+  return {
+    ...table,
+    bankerCount: counts.banker,
+    playerCount: counts.player,
+    tieCount: counts.tie,
+    beadPlateRaw: history.outcomes.map(outcomeCode).join(''),
+    bigRoadRaw: buildFallbackBigRoad(history.outcomes),
+    roadSource: 'real_round_fallback',
+  }
+}
+
+function outcomeCode(outcome) {
+  return outcome === 'player' ? '01' : outcome === 'banker' ? '02' : '03'
+}
+
+function buildFallbackBigRoad(outcomes = []) {
+  const occupied = new Map()
+  let previousOutcome = null
+  let streakStartColumn = -1
+  let column = -1
+  let row = -1
+  for (const outcome of outcomes) {
+    if (outcome === 'tie') continue
+    if (outcome !== previousOutcome) {
+      streakStartColumn += 1
+      column = streakStartColumn
+      row = 0
+      while (occupied.has(`${column}:0`)) column += 1
+      streakStartColumn = column
+    } else if (row < 5 && !occupied.has(`${column}:${row + 1}`)) {
+      row += 1
+    } else {
+      column += 1
+      while (occupied.has(`${column}:${row}`)) column += 1
+    }
+    occupied.set(`${column}:${row}`, outcomeCode(outcome))
+    previousOutcome = outcome
+  }
+  if (occupied.size === 0) return ''
+  const maxColumn = Math.max(...[...occupied.keys()].map((key) => Number(key.split(':')[0])))
+  return Array.from({ length: maxColumn + 1 }, (_, currentColumn) => {
+    const cells = Array.from({ length: 6 }, (_, currentRow) => occupied.get(`${currentColumn}:${currentRow}`) ?? '')
+    while (cells.at(-1) === '') cells.pop()
+    return cells.join(',')
+  }).join('#')
 }
 
 function pointFromRawResult(rawResult, index) {
