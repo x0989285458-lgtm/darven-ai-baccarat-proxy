@@ -2,6 +2,23 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createProxyState } from '../src/state-store.js'
 
+test('v098.20 fills only a missing big road when authoritative bead plate already has three contiguous Final rounds', () => {
+  const state = createProxyState()
+  state.setTables([{
+    ...sparseTable({ shoe: 14504, round: 3 }),
+    bankerCount: 1, playerCount: 2, tieCount: 0,
+    beadPlateRaw: '010102',
+  }])
+
+  state.upsertRoundEvent(exactRound({ round: 1, winner: 'player' }))
+  state.upsertRoundEvent(exactRound({ round: 2, winner: 'player' }))
+  state.upsertRoundEvent(exactRound({ round: 3, winner: 'banker' }))
+
+  const table = state.snapshot().tables[0]
+  assert.equal(table.beadPlateRaw, '010102')
+  assert.equal(table.bigRoadRaw, '01,01#02')
+})
+
 test('v098.16 builds a temporary road from contiguous exact real rounds when a new-shoe MT table is sparse', () => {
   const state = createProxyState()
   state.setTables([{
@@ -44,6 +61,7 @@ test('v098.16 preserves a real-round fallback road across newer sparse snapshots
     beadPlateRaw: '', bigRoadRaw: '',
   }])
   state.upsertRoundEvent(exactRound({ round: 1, winner: 'player' }))
+  state.upsertRoundEvent(exactRound({ round: 2, winner: 'banker' }))
 
   state.setTables([{
     tableId: 'BAG01', displayName: 'MT百家樂第1桌', tableType: 'BAC',
@@ -52,7 +70,7 @@ test('v098.16 preserves a real-round fallback road across newer sparse snapshots
   }])
 
   const table = state.snapshot().tables[0]
-  assert.equal(table.beadPlateRaw, '01')
+  assert.equal(table.beadPlateRaw, '0102')
   assert.notEqual(table.bigRoadRaw, '')
   assert.equal(table.roadSource, 'real_round_fallback')
 })
@@ -124,6 +142,23 @@ test('v098.16 rejects zero placeholders and non-exact round payloads from road f
   const table = state.snapshot().tables[0]
   assert.equal(table.beadPlateRaw, '')
   assert.equal(table.bigRoadRaw, '')
+})
+
+test('v098.20 rejects provisional show_poker and unknown actions from fallback history', () => {
+  for (const sourceAction of ['/api/v1/gametype/*/game/*/room/*/table/*/show_poker', 'unknown']) {
+    const state = createProxyState()
+    state.setTables([sparseTable({ shoe: 14504, round: 1 })])
+    state.upsertRoundEvent({ ...exactRound({ round: 1, winner: 'player' }), sourceAction })
+    assert.equal(state.snapshot().tables[0].bigRoadRaw, '')
+  }
+})
+
+test('v098.20 fails closed on conflicting exact Final events for the same round', () => {
+  const state = createProxyState()
+  state.setTables([sparseTable({ shoe: 14504, round: 1 })])
+  state.upsertRoundEvent(exactRound({ round: 1, winner: 'player' }))
+  state.upsertRoundEvent(exactRound({ round: 1, winner: 'banker' }))
+  assert.equal(state.snapshot().tables[0].bigRoadRaw, '')
 })
 
 test('v098.16 rejects delayed previous-shoe events without regressing live table identity or road', () => {
@@ -199,6 +234,6 @@ function exactRound({ shoe = 14504, round, winner }) {
   return {
     tableId: 'BAG01', shoe, round, winner,
     rawResult: [14, 7, 4, 9, 0, 0, -1, -1, 5, 6],
-    sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/show_poker',
+    sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
   }
 }

@@ -1,5 +1,6 @@
 import { createShoeTracker } from './card-shoe.js'
 import { BUILD_VERSION } from './build-version.js'
+import { isVerifiedFinalRoundAction } from '../../shared/real-card-validator.js'
 
 const MAX_ROAD_HISTORY_ROUND = 100
 
@@ -129,19 +130,24 @@ function recordExactRealRound(historyByTable, round = {}, authoritativeShoe = nu
     history = { shoe, rounds: new Map() }
     historyByTable.set(tableId, history)
   }
-  history.rounds.set(roundNo, String(round.winner).toLowerCase())
+  const winner = String(round.winner).toLowerCase()
+  const existing = history.rounds.get(roundNo)
+  if (existing && existing !== winner) history.conflicted = true
+  else history.rounds.set(roundNo, winner)
   return getContiguousRealRoundHistory(historyByTable, tableId)
 }
 
 function getContiguousRealRoundHistory(historyByTable, tableId) {
   const history = historyByTable.get(String(tableId ?? ''))
   if (!history) return null
+  if (history.conflicted) return { shoe: history.shoe, conflicted: true }
   const ordered = [...history.rounds.entries()].sort((a, b) => a[0] - b[0])
   if (!ordered.every(([number], index) => number === index + 1)) return null
   return { shoe: history.shoe, outcomes: ordered.map(([, winner]) => winner) }
 }
 
 function isExactRealRound(round = {}) {
+  if (!isVerifiedFinalRoundAction(round.sourceAction)) return false
   if (!['banker', 'player', 'tie'].includes(String(round.winner).toLowerCase())) return false
   const result = round.rawResult
   if (!Array.isArray(result) || result.length !== 10 || result.some((value) => typeof value !== 'number' || !Number.isInteger(value))) return false
@@ -153,16 +159,33 @@ function isExactRealRound(round = {}) {
 
 function applyRealRoundRoadFallback(table = {}, history = null) {
   if (!history || String(table.shoe ?? '') !== history.shoe) return table
-  if ((table.beadPlateRaw || table.bigRoadRaw) && table.roadSource !== 'real_round_fallback') return table
+  if (history.conflicted) {
+    const fallbackFields = new Set(Array.isArray(table.roadFallbackFields) ? table.roadFallbackFields : [])
+    const next = { ...table }
+    for (const field of fallbackFields) next[field] = ''
+    delete next.roadSource
+    delete next.roadFallbackFields
+    return next
+  }
+  const currentRound = Number(table.round)
+  if (!Number.isInteger(currentRound) || currentRound < 1 || history.outcomes.length !== currentRound) return table
+  const fallbackFields = new Set(Array.isArray(table.roadFallbackFields) ? table.roadFallbackFields : [])
+  const missingBeadPlate = !table.beadPlateRaw || fallbackFields.has('beadPlateRaw')
+  const missingBigRoad = !table.bigRoadRaw || fallbackFields.has('bigRoadRaw')
+  if (!missingBeadPlate && !missingBigRoad) return table
   const counts = history.outcomes.reduce((totals, outcome) => ({ ...totals, [outcome]: totals[outcome] + 1 }), { banker: 0, player: 0, tie: 0 })
   return {
     ...table,
-    bankerCount: counts.banker,
-    playerCount: counts.player,
-    tieCount: counts.tie,
-    beadPlateRaw: history.outcomes.map(outcomeCode).join(''),
-    bigRoadRaw: buildFallbackBigRoad(history.outcomes),
+    bankerCount: Number(table.bankerCount) > 0 ? table.bankerCount : counts.banker,
+    playerCount: Number(table.playerCount) > 0 ? table.playerCount : counts.player,
+    tieCount: Number(table.tieCount) > 0 ? table.tieCount : counts.tie,
+    beadPlateRaw: missingBeadPlate ? history.outcomes.map(outcomeCode).join('') : table.beadPlateRaw,
+    bigRoadRaw: missingBigRoad ? buildFallbackBigRoad(history.outcomes) : table.bigRoadRaw,
     roadSource: 'real_round_fallback',
+    roadFallbackFields: [
+      ...(missingBeadPlate ? ['beadPlateRaw'] : []),
+      ...(missingBigRoad ? ['bigRoadRaw'] : []),
+    ],
   }
 }
 

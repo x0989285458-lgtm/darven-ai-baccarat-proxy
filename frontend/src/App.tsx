@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { fetchTableUiHistory, getBackendPredictionIssue, LiveRoadClient, isLiveTableStale, TableUiHistoryError, type BackendSideActions, type BackendSidePredictions, type LiveTable, type SidePredictionKey, type TableUiHistory } from './lib/liveClient'
 import { type MainOutcome, type Prediction } from './lib/roadParser'
-import { buildMtBigRoad } from './lib/realCardRoad'
+import { buildDisplayedBigRoad } from './lib/realCardRoad'
 import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from './lib/supabaseClient'
 import { checkOnlineCoreStatus, getOnlineMemoryCenter, getOnlineStrategyAnalysis, updateOnlineAppSetting, type OnlineCoreStatus, type OnlineMemoryCenter, type OnlineStrategyAnalysis } from './lib/onlineCoreClient'
 import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents, deleteOnlineLicense, extendOnlineLicense, getCloudDataStatus, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, validateMemberSession, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
@@ -120,7 +120,11 @@ export default function App() {
     if (/過期|stale/i.test(status.message)) return status.message
     return ''
   }, [visibleTables, status.message])
-  const bigRoad = useMemo(() => buildMtBigRoad(displaySelected?.trend.big2 ?? ''), [displaySelected?.trend.big2])
+  const bigRoad = useMemo(() => buildDisplayedBigRoad(
+    displaySelected?.trend.big2 ?? '',
+    { tableId: selectedCanonicalId, shoe: selectedShoe ?? '', currentRound: Number(displaySelected?.trend.current_round ?? 0) },
+    tableUiHistory,
+  ), [displaySelected?.trend.big2, displaySelected?.trend.current_round, selectedCanonicalId, selectedShoe, tableUiHistory])
   const prediction = useMemo(() => backendPredictionFromTable(displaySelected), [displaySelected])
   const bonusPredictions = useMemo(() => backendSidePredictionsFromTable(displaySelected), [displaySelected])
   const sideActions = useMemo(() => backendSideActionsFromTable(displaySelected), [displaySelected])

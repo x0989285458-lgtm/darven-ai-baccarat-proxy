@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildMtBigRoad, buildRealCardBigRoad } from './realCardRoad'
+import { buildDisplayedBigRoad, buildMtBigRoad, buildRealCardBigRoad } from './realCardRoad'
 
 describe('v098.19 authoritative MT big road', () => {
   it('decodes exact MT columns, winner points, and tie slashes without rebuilding layout', () => {
@@ -19,6 +19,26 @@ describe('v098.19 authoritative MT big road', () => {
 })
 
 describe('v098.18 real-card big road', () => {
+  const rounds = [
+    { round: 1, result: 'player' as const, bankerPoint: 2, playerPoint: 8 },
+    { round: 2, result: 'player' as const, bankerPoint: 3, playerPoint: 7 },
+    { round: 3, result: 'banker' as const, bankerPoint: 9, playerPoint: 1 },
+  ]
+
+  it('shows three contiguous current-shoe history rounds only while MT big road is missing', () => {
+    const history = { tableId: 'BAG01', shoe: 12, realCardRounds: rounds, realCardHistoryCompleteThroughRound: 3 }
+    expect(buildDisplayedBigRoad('', { tableId: 'BAG01', shoe: 12, currentRound: 3 }, history)).toHaveLength(3)
+    expect(buildDisplayedBigRoad('0801,0701#0902', { tableId: 'BAG01', shoe: 12, currentRound: 3 }, history))
+      .toEqual(buildMtBigRoad('0801,0701#0902'))
+  })
+
+  it('does not show history fallback for a missing round or another table/shoe', () => {
+    const table = { tableId: 'BAG01', shoe: 12, currentRound: 3 }
+    expect(buildDisplayedBigRoad('', table, { tableId: 'BAG01', shoe: 12, realCardRounds: [rounds[0], rounds[2]], realCardHistoryCompleteThroughRound: 3 })).toEqual([])
+    expect(buildDisplayedBigRoad('', table, { tableId: 'BAG02', shoe: 12, realCardRounds: rounds, realCardHistoryCompleteThroughRound: 3 })).toEqual([])
+    expect(buildDisplayedBigRoad('', table, { tableId: 'BAG01', shoe: 13, realCardRounds: rounds, realCardHistoryCompleteThroughRound: 3 })).toEqual([])
+  })
+
   it('uses six-row layout, winner points, and one tie slash only after a prior decisive round', () => {
     const road = buildRealCardBigRoad([
       { round: 1, result: 'tie', bankerPoint: 6, playerPoint: 6 },

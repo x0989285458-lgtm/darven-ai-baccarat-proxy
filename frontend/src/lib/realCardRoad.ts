@@ -1,6 +1,7 @@
 import type { RealCardRound } from './liveClient'
 
 export type RealCardRoadCell = {
+  code?: never
   round: number
   outcome: 'banker' | 'player'
   point: number
@@ -84,4 +85,23 @@ export function buildRealCardBigRoad(rounds: RealCardRound[], completeThroughRou
     occupied.add(`${column}:${row}`)
   }
   return cells
+}
+
+export function buildDisplayedBigRoad(
+  mtBigRoadRaw: string,
+  table: { tableId: string; shoe: string | number; currentRound: number },
+  history: { tableId: string; shoe: string | number; realCardRounds: RealCardRound[]; realCardHistoryCompleteThroughRound: number } | null,
+): Array<MtBigRoadCell | RealCardRoadCell> {
+  const authoritative = buildMtBigRoad(mtBigRoadRaw)
+  if (mtBigRoadRaw.trim()) return authoritative
+  const currentRound = Number(table.currentRound)
+  if (!history
+    || String(history.tableId) !== String(table.tableId)
+    || String(history.shoe) !== String(table.shoe)
+    || !Number.isSafeInteger(currentRound)
+    || currentRound < 1
+    || history.realCardHistoryCompleteThroughRound < currentRound) return []
+  const rounds = history.realCardRounds.filter((item) => item.round <= currentRound)
+  if (rounds.length !== currentRound || rounds.some((item, index) => item.round !== index + 1)) return []
+  return buildRealCardBigRoad(rounds, currentRound)
 }
