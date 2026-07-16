@@ -45,9 +45,9 @@ export const SIDE_WEIGHT_KEYS = [
 ]
 
 export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildWeightedProfile(MAIN_WEIGHT_KEYS, {
-  ask_road_signals: 0.05,
-  roadmap_trend_signals: 0.75,
-  recent_practical_calibration: 0.10,
+  ask_road_signals: 0.15,
+  roadmap_trend_signals: 0.55,
+  recent_practical_calibration: 0.20,
   shoe_banker_player_bias: 0.10,
 })
 

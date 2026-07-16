@@ -116,7 +116,7 @@ test('v067 main and side strategy uses high-hit weighted features', () => {
   assert.deepEqual(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).sort(), sideKeys.sort())
   assert.equal(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length, 32)
   assert.equal(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).length, 28)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.05)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.15)
   assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'table_id'), false)
   assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.pair_risk, 0.30)
   assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.remaining_rank_pressure, 0.05)

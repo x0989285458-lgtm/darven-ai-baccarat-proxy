@@ -8,8 +8,8 @@ const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Num
 test('v067 main recommendation weights strongly favor empirically higher-hit signals', () => {
   assert.equal(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length, 32)
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.05)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals, 0.75)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.15)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals, 0.55)
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.next_player_road, 0)
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.shoe_stage, 0)
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.card_points, 0)

@@ -5,7 +5,10 @@ import {
   ALL_MT_EQUAL_MAIN_WEIGHTS,
   SIDE_PREDICTION_THRESHOLDS,
   SIDE_PREDICTION_WEIGHT_PROFILES,
+  buildFormalActiveStrategy,
+  buildLivePrediction,
 } from '../src/supabase-writer.js'
+import { FORMAL_MAIN_PREDICTION_WEIGHTS } from '../src/stable-report.js'
 
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 const nonZero = (weights) => Object.fromEntries(Object.entries(weights).filter(([, value]) => Number(value) !== 0))
@@ -14,11 +17,14 @@ test('v081 uses only the user-defined main weights and ignores previous main wei
   assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v098_主信心實際命中校準版')
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
   assert.deepEqual(nonZero(ALL_MT_EQUAL_MAIN_WEIGHTS), {
-    ask_road_signals: 0.05,
-    roadmap_trend_signals: 0.75,
-    recent_practical_calibration: 0.10,
+    ask_road_signals: 0.15,
+    roadmap_trend_signals: 0.55,
+    recent_practical_calibration: 0.20,
     shoe_banker_player_bias: 0.10,
   })
+  assert.deepEqual(buildFormalActiveStrategy().metrics.main_weights, ALL_MT_EQUAL_MAIN_WEIGHTS)
+  assert.deepEqual(buildLivePrediction({ tableId: 'BAG01', shoe: 1, round: 0 }).featureWeights, ALL_MT_EQUAL_MAIN_WEIGHTS)
+  assert.strictEqual(FORMAL_MAIN_PREDICTION_WEIGHTS, ALL_MT_EQUAL_MAIN_WEIGHTS)
 })
 
 test('v081 uses user-defined side thresholds and independent side weight profiles', () => {

@@ -14,7 +14,7 @@ test('v077 main weights add requested roadmap and remaining-card aggregate featu
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals > 0)
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.road_structure_signals, 0)
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.derived_road_structure_signals, 0)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.05)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.15)
   assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'remaining_zero_to_k_total'), false)
   assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'pattern_tags'), false)
 })

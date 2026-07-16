@@ -29,8 +29,8 @@ test('v075 main weights rebalance away from over-player bias while keeping requi
   for (const removed of ['round', 'super_six', 'banker_pair_count', 'player_pair_count']) {
     assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, removed), false)
   }
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.05)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals, 0.75)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.15)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals, 0.55)
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.direction_calibration, 0)
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.confidence, 0)
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.probability_gap, 0)
