@@ -10,7 +10,7 @@ function validTable(overrides: Partial<LiveTable> = {}): LiveTable {
     id: 'BAG01',
     table_id: 'BAG01',
     table_type: 'BAC',
-    buildVersion: '098',
+    buildVersion: '098.22',
     sourceUpdatedAt: new Date().toISOString(),
     trend: {
       bead_plate2: '0102',
@@ -21,10 +21,12 @@ function validTable(overrides: Partial<LiveTable> = {}): LiveTable {
     prediction: {
       source: 'backend',
       strategyVersion,
-      buildVersion: '098',
+      buildVersion: '098.22',
       targetTableId: 'BAG01',
       targetShoe: '123',
-      targetRound: 19,
+      targetRound: 18,
+      predictionId: 'pid-round-18',
+      issuedAt: '2026-07-17T01:00:00.000Z',
       predictedResult: 'banker',
       confidence: 61,
       probabilities: { banker: 61, player: 30, tie: 9 },
@@ -46,7 +48,7 @@ describe('v098 live frontend contract', () => {
     expect(getBackendPredictionIssue(validTable({ buildVersion: '097' }))).toMatch(/版本/)
     expect(getBackendPredictionIssue(validTable({ sourceUpdatedAt: null }))).toMatch(/過期/)
     expect(getBackendPredictionIssue(validTable({ prediction: { ...validTable().prediction!, strategyVersion: 'v096' } }))).toMatch(/策略/)
-    expect(getBackendPredictionIssue(validTable({ prediction: { ...validTable().prediction!, targetRound: 18 } }))).toMatch(/目標/)
+    expect(getBackendPredictionIssue(validTable({ prediction: { ...validTable().prediction!, targetRound: 19 } }))).toMatch(/目標/)
     expect(getBackendPredictionIssue(validTable({ prediction: { ...validTable().prediction!, probabilities: undefined } }))).toMatch(/主預測/)
     expect(getBackendPredictionIssue(validTable({ prediction: {
       ...validTable().prediction!,
@@ -58,9 +60,18 @@ describe('v098 live frontend contract', () => {
     } }))).toMatch(/六項/)
   })
 
-  it('accepts a real Proxy table payload only when targetRound is current_round plus one', async () => {
+  it('accepts a real Proxy table payload only when targetRound is the exact visible current_round', async () => {
     vi.useFakeTimers()
-    const app = createApp({ autoConnect: false, memberAuthRequired: false })
+    const exact = validTable().prediction!
+    const app = createApp({
+      autoConnect: false,
+      memberAuthRequired: false,
+      supabaseClient: {
+        configured: true,
+        issuePrediction: async (candidate: any) => ({ ...candidate, predictionId: `pid-${candidate.targetRound}`, issuedAt: '2026-07-17T01:00:00.000Z' }),
+        readIssuedPrediction: async () => exact,
+      },
+    })
     app.state.setTables([{
       tableId: 'BAG01', shoe: 123, round: 18,
       tableType: 'BAC', beadPlateRaw: '0102', bigRoadRaw: '0102',
@@ -85,7 +96,7 @@ describe('v098 live frontend contract', () => {
     await vi.advanceTimersByTimeAsync(1)
     client.disconnect(false)
 
-    expect(proxyTables[0].prediction.targetRound).toBe(proxyTables[0].round + 1)
+    expect(proxyTables[0].prediction.targetRound).toBe(proxyTables[0].round)
     expect(getBackendPredictionIssue(received[0]?.[0])).toBeNull()
   })
 
@@ -125,7 +136,7 @@ describe('v098 live frontend contract', () => {
 
     expect(eventSource).not.toHaveBeenCalled()
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(received[0]?.[0].prediction?.targetRound).toBe(19)
+    expect(received[0]?.[0].prediction?.targetRound).toBe(18)
   })
 
   it('v098.21 rejects per-table sourceUpdatedAt rollback from SSE while keeping other tables and allows a newer shoe', async () => {
@@ -192,10 +203,12 @@ describe('v098 live frontend contract', () => {
     expect(received[1].find((item) => item.table_id === 'BAG02')?.sourceUpdatedAt).toBe(newerB.sourceUpdatedAt)
   })
 
-  it('v098.21 keeps prediction identity fields optional for old API payloads', () => {
-    expect(getBackendPredictionIssue(validTable())).toBeNull()
-    const modern = validTable({ prediction: { ...validTable().prediction!, predictionId: 'pid-1', issuedAt: '2026-07-16T01:00:00.000Z' } })
+  it('v098.22 requires durable prediction identity and fails old v098.21 payloads closed', () => {
+    const modern = validTable()
     expect(getBackendPredictionIssue(modern)).toBeNull()
+    expect(getBackendPredictionIssue({ ...modern, prediction: { ...modern.prediction!, predictionId: undefined } })).toMatch(/識別/)
+    expect(getBackendPredictionIssue({ ...modern, prediction: { ...modern.prediction!, issuedAt: undefined } })).toMatch(/識別/)
+    expect(getBackendPredictionIssue({ ...modern, buildVersion: '098', prediction: { ...modern.prediction!, buildVersion: '098' } })).toMatch(/版本/)
   })
 
   it('uses Authorization for the polling fallback without token-bearing URLs', async () => {

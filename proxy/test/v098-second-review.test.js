@@ -68,6 +68,7 @@ test('v098 production fails closed when the strategy service is unconfigured', a
 test('v098 startup verifies the active strategy before accepting live tables', async () => {
   let ready = false
   let ensureCalls = 0
+  let futureCandidate = null
   const supabaseClient = {
     configured: true,
     getRuntimeStatus: () => ({ ready, degraded: false, reason: ready ? null : 'active_strategy_not_verified' }),
@@ -75,7 +76,11 @@ test('v098 startup verifies the active strategy before accepting live tables', a
       ensureCalls += 1
       ready = true
     },
-    issuePrediction: async (candidate) => ({ ...candidate, predictionId: 'verified-prediction', issuedAt: new Date().toISOString() }),
+    issuePrediction: async (candidate) => {
+      futureCandidate = candidate
+      return { ...candidate, predictionId: 'verified-future', issuedAt: '2026-07-17T01:00:00.000Z' }
+    },
+    readIssuedPrediction: async ({ round }) => ({ ...futureCandidate, targetRound: round, predictionId: 'verified-screen', issuedAt: '2026-07-17T01:00:00.000Z' }),
   }
   const app = createApp({ autoConnect: false, port: 0, requireVerifiedStrategy: true, supabaseClient })
 

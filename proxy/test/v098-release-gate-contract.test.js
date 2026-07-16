@@ -28,7 +28,7 @@ test('v098 pending snapshot contains all pre-result probability score MT derived
 
   const row = buildPredictionResultRow(completed, changedAfterReveal, pending)
 
-  assert.equal(pending.buildVersion, '098')
+  assert.equal(pending.buildVersion, '098.22')
   assert.ok(pending.probabilities)
   assert.ok(pending.scoreTotals)
   assert.ok(pending.scoreSources)
@@ -56,7 +56,7 @@ test('v098 expired pending is deleted by API and the same target is tombstoned i
     supabaseClient: { configured: true, ensureInitialStrategy: async () => {}, persistRound: async () => { writes += 1 } },
   })
   app.state.setTables([table])
-  assert.equal(JSON.parse((await app.inject({ url: '/api/tables' })).body)[0].prediction.targetRound, 21)
+  assert.equal(JSON.parse((await app.inject({ url: '/api/tables' })).body)[0].prediction.targetRound, 20)
 
   clock += 30_001
   assert.equal(JSON.parse((await app.inject({ url: '/api/tables' })).body)[0].prediction, null)

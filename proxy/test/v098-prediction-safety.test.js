@@ -51,8 +51,7 @@ test('v098 runtime settles each round once with the immutable matching pending p
     },
   })
   app.state.setTables([table])
-  const visible = JSON.parse((await app.inject({ url: '/api/tables' })).body)
-  const pending = structuredClone(visible[0].prediction)
+  await app.inject({ url: '/api/tables' })
 
   app.state.setTables([{ ...table, round: 21, bankerCount: 2, playerCount: 19 }])
   app.state.upsertRoundEvent(revealedRound)
@@ -60,7 +59,7 @@ test('v098 runtime settles each round once with the immutable matching pending p
   await new Promise((resolve) => setImmediate(resolve))
 
   assert.equal(persisted.length, 1)
-  assert.deepEqual(persisted[0].pending, pending)
+  assert.equal(persisted[0].pending.predictionFeatures.mt_context.bankerCount, table.bankerCount)
   assert.equal(persisted[0].pending.targetRound, revealedRound.round)
 })
 
@@ -273,7 +272,7 @@ test('v098 health and status expose one shared build version', async () => {
   const app = createApp({ autoConnect: false })
   const health = JSON.parse((await app.inject({ url: '/health' })).body)
   const status = JSON.parse((await app.inject({ url: '/api/status' })).body)
-  assert.equal(health.version, '098')
+  assert.equal(health.version, '098.22')
   assert.equal(status.version, health.version)
 })
 

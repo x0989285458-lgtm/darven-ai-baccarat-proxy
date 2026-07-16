@@ -30,8 +30,8 @@ test('v098 durable cloud snapshot stamps buildVersion 098 on every table and pre
     tables: [{ tableId: 'BAG01', shoe: 8, round: 20 }],
   })
 
-  assert.equal(row.tables[0].buildVersion, '098')
-  assert.equal(row.tables[0].prediction.buildVersion, '098')
+  assert.equal(row.tables[0].buildVersion, '098.22')
+  assert.equal(row.tables[0].prediction.buildVersion, '098.22')
 })
 
 test('v098.13 writer accepts the durable latest-snapshot RPC acknowledgement', async () => {

@@ -17,6 +17,7 @@ import { hasExactRealCardCodes, isExactTenRawResult, isVerifiedFinalRoundAction 
 
 const VERSION = BUILD_VERSION
 const SERVICE = 'Draven MT資料代理伺服器'
+const WORKER_PROTOCOL_BUILD_VERSION = '098'
 
 export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient() } = {}) {
   const deployConfig = resolveDeployConfig({
@@ -532,8 +533,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
     if (pendingPredictions.has(key)) return pendingPredictions.get(key)
     if (issuingPredictionPromises.has(key)) return issuingPredictionPromises.get(key)
-    const durableIssuanceRequired = supabaseClient?.configured === true
-      && (requireVerifiedStrategy || typeof supabaseClient.issuePrediction === 'function')
+    const durableIssuanceRequired = isDurablePredictionIssuanceRequired()
     if (!durableIssuanceRequired) {
       const localPrediction = deepFreeze(structuredClone(generated))
       pendingPredictions.set(key, localPrediction)
@@ -569,16 +569,67 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   }
 
   async function withLivePrediction(table, actionable = true) {
-    const pending = actionable ? await savePendingPrediction(table) : null
-    if (!pending && table?.tableId != null && table?.shoe != null && table?.round != null) {
-      const key = predictionTargetKey(table.tableId, table.shoe, Number(table.round) + 1)
-      const existing = pendingPredictions.get(key)
-      if (existing && isPendingPredictionExpired(existing)) {
-        pendingPredictions.delete(key)
-        rememberExpiredPredictionKey(key)
+    if (!actionable || table?.tableId == null || table?.shoe == null || table?.round == null) {
+      return { ...table, buildVersion: BUILD_VERSION, prediction: null }
+    }
+
+    await savePendingPrediction(table)
+    const targetRound = Number(table.round)
+    const key = predictionTargetKey(table.tableId, table.shoe, targetRound)
+    const durableIssuanceRequired = isDurablePredictionIssuanceRequired()
+    let exact = pendingPredictions.get(key)
+    if (exact && isPendingPredictionExpired(exact)) {
+      pendingPredictions.delete(key)
+      rememberExpiredPredictionKey(key)
+      exact = null
+    }
+    if (!exact && issuingPredictionPromises.has(key)) exact = await issuingPredictionPromises.get(key)
+    if (!exact && durableIssuanceRequired && typeof supabaseClient?.readIssuedPrediction === 'function') {
+
+      try {
+        exact = await supabaseClient.readIssuedPrediction({
+          tableId: table.tableId,
+          shoe: table.shoe,
+          round: targetRound,
+          strategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION,
+        })
+      } catch (error) {
+        state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+        exact = null
       }
     }
-    return { ...table, buildVersion: BUILD_VERSION, prediction: pending ? structuredClone(pending) : null }
+    if (!exact && !durableIssuanceRequired && !expiredPredictionKeys.has(key) && isPredictionRuntimeReady() && recentPerformanceReady) {
+      const tablePerformance = recentTablePerformance.summary(table.tableId)
+      exact = deepFreeze(structuredClone({
+        ...buildLivePrediction({ ...table, ...tablePerformance }),
+        targetRound,
+        createdAtMs: now(),
+      }))
+      pendingPredictions.set(key, exact)
+    }
+    if (!isExactScreenPrediction(exact, table, targetRound, durableIssuanceRequired)) exact = null
+    if (exact && !pendingPredictions.has(key)) {
+      exact = deepFreeze(structuredClone({
+        ...exact,
+        createdAtMs: Number(exact.createdAtMs ?? Date.parse(exact.issuedAt)) || now(),
+      }))
+      pendingPredictions.set(key, exact)
+    }
+    return { ...table, buildVersion: BUILD_VERSION, prediction: exact ? structuredClone(exact) : null }
+  }
+
+  function isDurablePredictionIssuanceRequired() {
+    return supabaseClient?.configured === true
+      && (requireVerifiedStrategy || typeof supabaseClient.issuePrediction === 'function')
+  }
+
+  function isExactScreenPrediction(prediction, table, targetRound, durableRequired) {
+    return Boolean(prediction)
+      && isValidPendingPrediction(prediction)
+      && (!durableRequired || (Boolean(prediction.predictionId) && Boolean(prediction.issuedAt)))
+      && prediction.strategyVersion === ALL_MT_EQUAL_STRATEGY_VERSION
+      && predictionTargetKey(prediction.targetTableId, prediction.targetShoe, prediction.targetRound)
+        === predictionTargetKey(table.tableId, table.shoe, targetRound)
   }
 
   function isPendingPredictionExpired(prediction) {
@@ -917,7 +968,7 @@ function validateIngestEnvelope(envelope, currentTime) {
   if (!Number.isSafeInteger(envelope.sequence) || envelope.sequence < 0) throw new Error('sequence must be a non-negative integer')
   const snapshot = envelope.snapshot
   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) throw new Error('snapshot must be an object')
-  if (snapshot.buildVersion !== BUILD_VERSION) {
+  if (snapshot.buildVersion !== WORKER_PROTOCOL_BUILD_VERSION) {
     const error = new Error('version_mismatch')
     error.statusCode = 409
     error.versionMismatch = true

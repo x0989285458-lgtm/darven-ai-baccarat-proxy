@@ -38,12 +38,18 @@ test('v098.11 proxy warms settled performance before creating a live prediction'
     strategy_version: 'v097_副預測命中校準與門檻降5版', predicted_result: 'banker',
     actual_result: index < 13 ? 'banker' : 'player', created_at: new Date(Date.UTC(2026, 6, 14, 0, index)).toISOString(),
   }))
+  const issuedAt = '2026-07-17T01:00:00.000Z'
+  let futureCandidate = null
   const supabaseClient = {
     configured: true,
     ensureInitialStrategy: async () => ({ ok: true }),
     getRuntimeStatus: () => ({ ready: true, degraded: false, activeStrategyVersion: 'v098.20_六階段權重門檻整合版' }),
     getRecentPredictionRows: async () => rows,
-    issuePrediction: async (candidate) => ({ ...candidate, predictionId: 'warmup-prediction', issuedAt: new Date().toISOString() }),
+    issuePrediction: async (candidate) => {
+      futureCandidate = candidate
+      return { ...candidate, predictionId: 'warmup-future', issuedAt }
+    },
+    readIssuedPrediction: async ({ round }) => ({ ...futureCandidate, targetRound: round, predictionId: 'warmup-screen', issuedAt }),
   }
   const app = createApp({ autoConnect: false, port: 0, production: true, memberAuthRequired: false, supabaseClient })
   await app.start()
@@ -51,6 +57,7 @@ test('v098.11 proxy warms settled performance before creating a live prediction'
   app.state.setTables([{ tableId: 'BAG01', shoe: 8, round: 1, bankerCount: 8, playerCount: 8, tieCount: 1, beadPlateRaw: '02010102' }])
   const response = await app.inject({ method: 'GET', url: '/api/tables', headers: { 'x-forwarded-proto': 'https' } })
   const prediction = JSON.parse(response.body)[0].prediction
+  assert.equal(prediction.targetRound, 1)
   assert.equal(prediction.predictionFeatures.confidence_calibration.reason, 'settled-hit-rate-calibration')
   assert.equal(prediction.predictionFeatures.confidence_calibration.recentPredictionCount, 18)
   assert.equal(prediction.confidence >= 60, true)

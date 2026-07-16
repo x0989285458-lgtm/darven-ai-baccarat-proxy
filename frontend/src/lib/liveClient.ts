@@ -90,7 +90,7 @@ const pollIntervalMs = Number(import.meta.env.VITE_DRAVEN_PROXY_POLL_MS ?? 5000)
 const streamStaleMs = Number(import.meta.env.VITE_DRAVEN_STREAM_STALE_MS ?? 15000)
 const liveTableMaxAgeMs = Number(import.meta.env.VITE_DRAVEN_TABLE_MAX_AGE_MS ?? 120000)
 const CURRENT_STRATEGY_VERSION = 'v098.20_六階段權重門檻整合版'
-const CURRENT_BUILD_VERSION = '098'
+const CURRENT_BUILD_VERSION = '098.22'
 const sidePredictionKeys: SidePredictionKey[] = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
 
 export async function fetchTableUiHistory(tableId: string, memberSessionToken: string, signal?: AbortSignal): Promise<TableUiHistory> {
@@ -315,7 +315,8 @@ export function getBackendPredictionIssue(table?: LiveTable | null, now = Date.n
   if (isLiveTableStale(table ?? {}, now)) return '資料過期'
   if (String(prediction.targetTableId ?? '') !== String(table?.table_id ?? table?.id ?? '')
     || String(prediction.targetShoe ?? '') !== String(table?.trend.current_shoe ?? '')
-    || Number(prediction.targetRound) !== Number(table?.trend.current_round) + 1) return '預測目標不符'
+    || Number(prediction.targetRound) !== Number(table?.trend.current_round)) return '預測目標不符'
+  if (!String(prediction.predictionId ?? '').trim() || !String(prediction.issuedAt ?? '').trim()) return '預測識別不完整'
   if (!['banker', 'player'].includes(prediction.predictedResult)
     || !Number.isFinite(Number(prediction.confidence))
     || !['banker', 'player', 'tie'].every((key) => Number.isFinite(Number(prediction.probabilities?.[key as 'banker' | 'player' | 'tie'])))) return '主預測資料不完整'

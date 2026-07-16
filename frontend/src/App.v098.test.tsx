@@ -14,14 +14,16 @@ function table(overrides: Record<string, unknown> = {}) {
     beadPlateRaw: '0102',
     bigRoadRaw: '0102',
     sourceUpdatedAt: new Date().toISOString(),
-    buildVersion: '098',
+    buildVersion: '098.22',
     prediction: {
       source: 'backend',
       strategyVersion,
-      buildVersion: '098',
+      buildVersion: '098.22',
       targetTableId: 'BAG01',
       targetShoe: '123',
-      targetRound: 19,
+      targetRound: 18,
+      predictionId: 'pid-round-18',
+      issuedAt: '2026-07-17T01:00:00.000Z',
       predictedResult: 'banker',
       confidence: 61,
       probabilities: { banker: 61, player: 30, tie: 9 },
@@ -36,7 +38,7 @@ function stubBackend(row: Record<string, unknown>, tablesStatus = 200) {
   vi.stubGlobal('fetch', vi.fn((url: string) => {
     if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, sessionExpiresAt: new Date(Date.now() + 600000).toISOString() }) })
     if (url.includes('/api/tables')) return Promise.resolve({ ok: tablesStatus === 200, status: tablesStatus, json: () => Promise.resolve(tablesStatus === 200 ? [row] : {}) })
-    if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: '098' }) })
+    if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: '098.22' }) })
     if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ configured: true }) })
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, maintenanceMode: false, items: [], reports: [], strategies: [] }) })
   }))
@@ -67,7 +69,7 @@ describe('App v098 prediction and session contract', () => {
     expect(row.querySelectorAll('.prediction-metric.active')).toHaveLength(1)
   })
 
-  it('clears every action and reports unavailable when buildVersion is not 098', async () => {
+  it('clears every action and reports unavailable when buildVersion is not 098.22', async () => {
     stubBackend(table({ buildVersion: '097' }))
     await renderMemberApp()
 

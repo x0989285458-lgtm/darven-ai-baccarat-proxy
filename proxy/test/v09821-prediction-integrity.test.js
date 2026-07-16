@@ -138,7 +138,7 @@ test('v098.21 settlement fails closed unless the acknowledgement prediction_id e
   }
 })
 
-test('v098.21 proxy exposes only DB-issued first payload, survives app/client reconstruction, separates table/shoe identity, and fails closed', async () => {
+test('v098.22 proxy exposes only the exact DB-issued screen-round payload, survives reconstruction, separates identity, and fails closed', async () => {
   const firstByIdentity = new Map()
   let fail = false
   const writer = {
@@ -149,6 +149,14 @@ test('v098.21 proxy exposes only DB-issued first payload, survives app/client re
       if (!firstByIdentity.has(key)) firstByIdentity.set(key, { ...candidate, predictionId: `pid-${key}`, issuedAt: '2026-07-16T01:00:01.000Z' })
       return structuredClone(firstByIdentity.get(key))
     },
+    async readIssuedPrediction({ tableId, shoe, round, strategyVersion }) {
+      return structuredClone(firstByIdentity.get([tableId, shoe, round, strategyVersion].join(':')) ?? null)
+    },
+  }
+  for (const exactTable of [table({ round: 19 }), table({ tableId: 'BAG02', round: 19 }), table({ shoe: 89, round: 19 })]) {
+    const candidate = buildLivePrediction(exactTable)
+    const key = [candidate.targetTableId, candidate.targetShoe, candidate.targetRound, candidate.strategyVersion].join(':')
+    firstByIdentity.set(key, { ...candidate, predictionId: `pid-${key}`, issuedAt: '2026-07-16T01:00:01.000Z' })
   }
   const clock = () => Date.parse('2026-07-16T01:00:30.000Z')
   const app1 = createApp({ autoConnect: false, supabaseClient: writer, now: clock })

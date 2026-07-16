@@ -1,5 +1,5 @@
 export const frontendBuildMetadata = Object.freeze({
-  buildVersion: '098',
+  buildVersion: '098.22',
   strategyVersion: 'v098.20_六階段權重門檻整合版',
 })
 
