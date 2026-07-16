@@ -57,7 +57,7 @@ function proxyTablesFromMocks() {
     buildVersion: '098',
     prediction: {
       source: 'backend',
-      strategyVersion: 'v098_主信心實際命中校準版',
+      strategyVersion: 'v098.20_六階段權重門檻整合版',
       buildVersion: '098',
       targetTableId: table.id,
       targetShoe: table.trend.current_shoe,
@@ -209,7 +209,7 @@ describe('AI百家預測軟體', () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table, index) => ({
         ...table,
-        prediction: { source: 'backend', predictedResult: index % 2 === 0 ? 'banker' : 'player', confidence: 34, strategyVersion: 'v098_主信心實際命中校準版' },
+        prediction: { source: 'backend', predictedResult: index % 2 === 0 ? 'banker' : 'player', confidence: 34, strategyVersion: 'v098.20_六階段權重門檻整合版' },
       }))) })
       if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tables: [], statusText: '已抓到9桌' }) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: [], reports: [], strategies: [] }) })
@@ -417,7 +417,7 @@ describe('AI百家預測軟體', () => {
 
   it('v096 waits and never takes side actions when backend side prediction data is missing', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table) => ({ ...table, prediction: { source: 'backend', strategyVersion: 'v098_主信心實際命中校準版', predictedResult: 'banker', confidence: 34 } }))) })
+      if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table) => ({ ...table, prediction: { source: 'backend', strategyVersion: 'v098.20_六階段權重門檻整合版', predictedResult: 'banker', confidence: 34 } }))) })
       if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tables: [], statusText: '已抓到9桌' }) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: [], reports: [], strategies: [] }) })
     }))
@@ -902,7 +902,7 @@ describe('AI百家預測軟體', () => {
         nextBankerRaw: '111',
         nextPlayerRaw: '222',
         prediction: {
-          source: 'backend', strategyVersion: 'v098_主信心實際命中校準版',
+          source: 'backend', strategyVersion: 'v098.20_六階段權重門檻整合版',
           predictedResult: 'banker', confidence: 34, probabilities: { banker: 54, player: 46, tie: 0 }, scoreTotals: { banker: 38, player: 33 },
         },
       }))),

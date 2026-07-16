@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import App from './App'
 
-const strategyVersion = 'v098_主信心實際命中校準版'
+const strategyVersion = 'v098.20_六階段權重門檻整合版'
 
 function table(overrides: Record<string, unknown> = {}) {
   return {

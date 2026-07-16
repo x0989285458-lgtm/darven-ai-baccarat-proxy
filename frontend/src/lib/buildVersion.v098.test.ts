@@ -5,7 +5,7 @@ describe('v098 frontend build metadata', () => {
   it('exposes buildVersion 098 with the formal v098 strategy identity', () => {
     expect(frontendBuildMetadata).toEqual({
       buildVersion: '098',
-      strategyVersion: 'v098_主信心實際命中校準版',
+      strategyVersion: 'v098.20_六階段權重門檻整合版',
     })
   })
 })

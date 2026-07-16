@@ -9,7 +9,7 @@ import { buildPredictionResultRow } from './helpers/prediction-result.js'
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 
 test('v077 main weights add requested roadmap and remaining-card aggregate features', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v098_主信心實際命中校準版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v098.20_六階段權重門檻整合版')
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals > 0)
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.road_structure_signals, 0)
@@ -41,7 +41,7 @@ test('v077 prediction features expose Chinese-requested roadmap details and 0-K 
       nextPlayerRaw: { big_eye: '222', small: '222', cockroach: '222' },
     },
   )
-  assert.equal(row.strategy_version, 'v098_主信心實際命中校準版')
+  assert.equal(row.strategy_version, 'v098.20_六階段權重門檻整合版')
   const features = row.prediction_features.derived_main_features
   assert.ok(features.roadmapTrendSignals)
   assert.ok(Object.hasOwn(features.roadmapTrendSignals, 'singleJump'))

@@ -5,7 +5,7 @@ import { isVerifiedFinalRoundAction, normalizeExactRealCardEvent } from '../../s
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v094_no_observe_confidence_30_70'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v098_主信心實際命中校準版'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v098.20_六階段權重門檻整合版'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -1562,7 +1562,7 @@ export function createSupabaseIngestionClient({
       const rows = await getRest('daily_prediction_results', {
         select: 'table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,prediction_features,created_at',
         'prediction_features->>settlement_final': 'eq.true',
-        strategy_version: 'in.(v097_副預測命中校準與門檻降5版,v098_主信心實際命中校準版)',
+        strategy_version: 'in.(v097_副預測命中校準與門檻降5版,v098_主信心實際命中校準版,v098.20_六階段權重門檻整合版)',
         order: 'created_at.desc',
         limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
       })

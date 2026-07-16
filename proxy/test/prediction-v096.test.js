@@ -18,7 +18,7 @@ const expectedProfiles = {
 }
 
 test('v097 uses the approved Traditional Chinese strategy name and side thresholds', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v098_主信心實際命中校準版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v098.20_六階段權重門檻整合版')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 20,
     superSix: 40,
@@ -40,7 +40,7 @@ test('v097 side profiles keep only the approved existing weighted items and each
 
 test('v097 live prediction emits only the approved strategy instead of a v096 fallback', () => {
   const prediction = buildLivePrediction({ tableId: 'BAG97', shoe: 1, round: 0 })
-  assert.equal(prediction.strategyVersion, 'v098_主信心實際命中校準版')
+  assert.equal(prediction.strategyVersion, 'v098.20_六階段權重門檻整合版')
   assert.equal(prediction.strategyVersion.includes('v096'), false)
 })
 

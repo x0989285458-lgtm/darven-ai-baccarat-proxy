@@ -12,7 +12,7 @@ import {
   buildSideActions,
 } from '../src/supabase-writer.js'
 
-const approvedStrategyVersion = 'v098_主信心實際命中校準版'
+const approvedStrategyVersion = 'v098.20_六階段權重門檻整合版'
 
 const approvedSideProfiles = {
   tie: { tie_risk: 0.45, tie_count: 0.10, shoe_stage: 0.10, road_chaos: 0.15, remaining_rank_total: 0.20 },

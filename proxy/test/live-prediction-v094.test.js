@@ -15,7 +15,7 @@ test('v094 exposes one backend live prediction with a non-fixed 30-70 confidence
 
   const prediction = buildLivePrediction(table)
 
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v098_主信心實際命中校準版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v098.20_六階段權重門檻整合版')
   assert.equal(prediction.strategyVersion, ALL_MT_EQUAL_STRATEGY_VERSION)
   assert.match(prediction.predictedResult, /^(banker|player)$/)
   assert.ok(prediction.confidence > 30)
@@ -57,7 +57,7 @@ test('v094 settlement persists the pre-result backend direction and confidence',
 })
 
 test('v098.10 calibrates confidence against settled hit rate without changing direction', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v098_主信心實際命中校準版')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v098.20_六階段權重門檻整合版')
   assert.deepEqual(calibrateMainConfidenceByHitRate(30, {}), {
     rawSignalConfidence: 30, finalConfidence: 46, reason: 'learning-neutral-shrinkage', recentHitRate: null, recentPredictionCount: null, reliability: 0,
   })
