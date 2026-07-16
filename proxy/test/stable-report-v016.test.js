@@ -58,7 +58,7 @@ test('v016 side predictions are recorded every round but actions require per-ite
     sideLearningSamples: 6,
     sideActions: 1,
     sideHits: 0,
-    tie: { probability: 74, actionable: true, samples: 1, actions: 1, hits: 0, hitRate: 0 },
+    tie: { probability: 65, actionable: true, samples: 1, actions: 1, hits: 0, hitRate: 0 },
   })
 })
 

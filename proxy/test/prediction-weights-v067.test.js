@@ -20,9 +20,9 @@ test('v067 main recommendation weights strongly favor empirically higher-hit sig
 test('v067 side recommendation weights and thresholds suppress low-hit bonus noise', () => {
   assert.equal(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).length, 28)
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_SIDE_WEIGHTS) - 1) < 1e-9)
-  assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.pair_risk, 0.30)
-  assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.banker_pair_count, 0.10)
-  assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.remaining_rank_pressure, 0.05)
+  assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.pair_risk, 0.35)
+  assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.banker_pair_count, 0.20)
+  assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.remaining_rank_pressure, 0.15)
   assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerPair, 48)
   assert.equal(SIDE_PREDICTION_THRESHOLDS.playerPair, 50)
   assert.equal(SIDE_PREDICTION_THRESHOLDS.tie, 42)

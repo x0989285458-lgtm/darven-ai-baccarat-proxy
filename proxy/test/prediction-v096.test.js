@@ -9,12 +9,12 @@ import {
 } from '../src/supabase-writer.js'
 
 const expectedProfiles = {
-  tie: { tie_risk: 0.65, tie_count: 0.05, shoe_stage: 0.05, road_chaos: 0.05, remaining_rank_total: 0.20 },
-  superSix: { banker_point: 0.40, remaining_rank_total: 0.15, table_side_history: 0.40, shoe_stage: 0.05 },
-  bankerPair: { remaining_rank_pressure: 0.05, table_side_history: 0.05, banker_pair_count: 0.10, shoe_stage: 0.50, pair_risk: 0.30 },
-  playerPair: { remaining_rank_pressure: 0.15, table_side_history: 0.35, player_pair_count: 0.15, shoe_stage: 0.30, pair_risk: 0.05 },
-  bankerDragon: { point_diff: 0.10, banker_natural: 0.05, banker_point: 0.40, remaining_rank_total: 0.35, big_road: 0.10 },
-  playerDragon: { point_diff: 0.05, player_natural: 0.05, player_point: 0.45, remaining_rank_total: 0.40, big_road: 0.05 },
+  tie: { tie_risk: 0.45, tie_count: 0.10, shoe_stage: 0.10, road_chaos: 0.15, remaining_rank_total: 0.20 },
+  superSix: { banker_point: 0.35, remaining_rank_total: 0.20, table_side_history: 0.35, shoe_stage: 0.10 },
+  bankerPair: { remaining_rank_pressure: 0.15, table_side_history: 0.10, banker_pair_count: 0.20, shoe_stage: 0.20, pair_risk: 0.35 },
+  playerPair: { remaining_rank_pressure: 0.20, table_side_history: 0.20, player_pair_count: 0.20, shoe_stage: 0.15, pair_risk: 0.25 },
+  bankerDragon: { point_diff: 0.15, banker_natural: 0.10, banker_point: 0.35, remaining_rank_total: 0.30, big_road: 0.10 },
+  playerDragon: { point_diff: 0.15, player_natural: 0.10, player_point: 0.35, remaining_rank_total: 0.30, big_road: 0.10 },
 }
 
 test('v097 uses the approved Traditional Chinese strategy name and side thresholds', () => {

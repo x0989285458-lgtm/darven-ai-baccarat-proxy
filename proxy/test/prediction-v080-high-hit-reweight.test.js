@@ -31,7 +31,7 @@ test('v080 side prediction thresholds match observed score ceilings', () => {
     bankerDragon: 48,
     playerDragon: 52,
   })
-  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.remaining_rank_total, 0.15)
+  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.remaining_rank_total, 0.20)
   assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair.remaining_rank_total, 0)
   assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.playerPair.remaining_rank_total, 0)
   for (const profile of Object.values(SIDE_PREDICTION_WEIGHT_PROFILES)) {

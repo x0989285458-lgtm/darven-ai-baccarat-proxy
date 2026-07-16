@@ -30,11 +30,11 @@ test('v079 loosens side prediction thresholds and strengthens side aggregate ran
     bankerDragon: 48,
     playerDragon: 52,
   })
-  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.remaining_rank_total, 0.15)
+  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.remaining_rank_total, 0.20)
   assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair.remaining_rank_total, 0)
   assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.playerPair.remaining_rank_total, 0)
-  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.bankerDragon.remaining_rank_total, 0.35)
-  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.playerDragon.remaining_rank_total, 0.40)
+  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.bankerDragon.remaining_rank_total, 0.30)
+  assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.playerDragon.remaining_rank_total, 0.30)
   for (const profile of Object.values(SIDE_PREDICTION_WEIGHT_PROFILES)) {
     assert.ok(Math.abs(sum(profile) - 1) < 1e-9)
   }
