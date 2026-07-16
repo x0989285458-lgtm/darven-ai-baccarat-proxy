@@ -4,8 +4,8 @@ import { SIDE_PREDICTION_THRESHOLDS, SIDE_PREDICTION_ACTION_RATE_TARGETS } from 
 import { buildPredictionResultRow } from './helpers/prediction-result.js'
 
 test('v071 enables banker/player dragon predictions with action-rate targets', () => {
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerDragon, 48)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerDragon, 52)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerDragon, 25)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerDragon, 25)
   assert.equal(SIDE_PREDICTION_ACTION_RATE_TARGETS.bankerDragon, 0.08)
   assert.equal(SIDE_PREDICTION_ACTION_RATE_TARGETS.playerDragon, 0.08)
 })

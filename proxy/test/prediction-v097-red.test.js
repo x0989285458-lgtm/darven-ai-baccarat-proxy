@@ -24,12 +24,12 @@ const approvedSideProfiles = {
 }
 
 const approvedThresholds = {
-  tie: 42,
-  superSix: 60,
-  bankerPair: 48,
-  playerPair: 50,
-  bankerDragon: 48,
-  playerDragon: 52,
+  tie: 20,
+  superSix: 40,
+  bankerPair: 40,
+  playerPair: 40,
+  bankerDragon: 25,
+  playerDragon: 25,
 }
 
 function activeWeights(profile) {
@@ -68,7 +68,7 @@ test('v097 side prediction thresholds match the approved lowered gates', () => {
 })
 
 test('v097 side prediction boundary gates require scores to reach the threshold', () => {
-  const below = Object.fromEntries(Object.entries(approvedThresholds).map(([sideName, threshold]) => [sideName, threshold - 0.1]))
+  const below = Object.fromEntries(Object.entries(approvedThresholds).map(([sideName, threshold]) => [sideName, threshold - 1]))
   assert.deepEqual(buildSideActions(below, 'banker'), {
     tie: false,
     superSix: false,

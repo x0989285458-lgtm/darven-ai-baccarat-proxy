@@ -23,12 +23,12 @@ test('v079 rebalances main prediction away from noisy road overfit toward calibr
 
 test('v079 loosens side prediction thresholds and strengthens side aggregate rank signal', () => {
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
-    tie: 42,
-    superSix: 60,
-    bankerPair: 48,
-    playerPair: 50,
-    bankerDragon: 48,
-    playerDragon: 52,
+    tie: 20,
+    superSix: 40,
+    bankerPair: 40,
+    playerPair: 40,
+    bankerDragon: 25,
+    playerDragon: 25,
   })
   assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.remaining_rank_total, 0.20)
   assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair.remaining_rank_total, 0)

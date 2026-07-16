@@ -20,12 +20,12 @@ const expectedProfiles = {
 test('v097 uses the approved Traditional Chinese strategy name and side thresholds', () => {
   assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v098_主信心實際命中校準版')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
-    tie: 42,
-    superSix: 60,
-    bankerPair: 48,
-    playerPair: 50,
-    bankerDragon: 48,
-    playerDragon: 52,
+    tie: 20,
+    superSix: 40,
+    bankerPair: 40,
+    playerPair: 40,
+    bankerDragon: 25,
+    playerDragon: 25,
   })
 })
 

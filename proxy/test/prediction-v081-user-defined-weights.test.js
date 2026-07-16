@@ -29,12 +29,12 @@ test('v081 uses only the user-defined main weights and ignores previous main wei
 
 test('v081 uses user-defined side thresholds and independent side weight profiles', () => {
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
-    tie: 42,
-    superSix: 60,
-    bankerPair: 48,
-    playerPair: 50,
-    bankerDragon: 48,
-    playerDragon: 52,
+    tie: 20,
+    superSix: 40,
+    bankerPair: 40,
+    playerPair: 40,
+    bankerDragon: 25,
+    playerDragon: 25,
   })
 
   assert.deepEqual(nonZero(SIDE_PREDICTION_WEIGHT_PROFILES.tie), {

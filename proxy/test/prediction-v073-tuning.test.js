@@ -21,14 +21,14 @@ test('v073 main prediction removes unstable identity fields and gives real weigh
   for (const key of addedMainKeys) assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS[key] > 0, `${key} should have non-zero main weight`)
 })
 
-test('v073 side prediction thresholds are original baseline plus five', () => {
+test('v073 side prediction thresholds match the formal gates', () => {
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
-    tie: 42,
-    superSix: 60,
-    bankerPair: 48,
-    playerPair: 50,
-    bankerDragon: 48,
-    playerDragon: 52,
+    tie: 20,
+    superSix: 40,
+    bankerPair: 40,
+    playerPair: 40,
+    bankerDragon: 25,
+    playerDragon: 25,
   })
 })
 

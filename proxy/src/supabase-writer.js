@@ -86,12 +86,12 @@ export const SIDE_PREDICTION_WEIGHT_PROFILES = Object.freeze({
 export const ALL_MT_EQUAL_SIDE_WEIGHTS = SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair
 
 export const SIDE_PREDICTION_THRESHOLDS = {
-  tie: 42,
-  superSix: 60,
-  bankerPair: 48,
-  playerPair: 50,
-  bankerDragon: 48,
-  playerDragon: 52,
+  tie: 20,
+  superSix: 40,
+  bankerPair: 40,
+  playerPair: 40,
+  bankerDragon: 25,
+  playerDragon: 25,
 }
 
 const DEFAULT_EQUAL_WEIGHTS = Object.freeze({
