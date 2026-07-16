@@ -12,6 +12,7 @@ const MEMBER_SESSION_EXPIRES_KEY = 'darven-member-session-expires-at'
 const tableDisplayOrder = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
 const MEMBER_TABLE_IDS = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10'] as const
 const memberTableLabels: ReadonlyMap<string, string> = new Map(MEMBER_TABLE_IDS.map((tableId, index) => [tableId, ['1', '2', '3', '3A', '5', '6', '7', '8', '9', '10'][index]]))
+const HISTORY_RETRY_DELAYS_MS = [150, 400] as const
 type BackendScoreTotals = NonNullable<NonNullable<LiveTable['prediction']>['scoreTotals']>
 const sidePredictionKeys: SidePredictionKey[] = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
 
@@ -114,6 +115,7 @@ export default function App() {
   const selectedCanonicalId = selected ? canonicalMemberTableId(selected) : ''
   const displaySelected = selected
   const selectedShoe = displaySelected?.trend.current_shoe
+  const selectedRound = Number(displaySelected?.trend.current_round ?? 0)
   const staleNotice = useMemo(() => {
     const staleTables = visibleTables.filter((table) => isLiveTableStale(table)).length
     if (staleTables > 0) return `資料過期：${staleTables}桌桌況資料可能不是即時`
@@ -202,24 +204,46 @@ export default function App() {
 
   useEffect(() => {
     const requestId = ++historyRequestId.current
-    setTableUiHistory(null)
+    setTableUiHistory((current) => (
+      current?.tableId === selectedCanonicalId && String(current.shoe) === String(selectedShoe)
+        ? current
+        : null
+    ))
     if (!memberLoggedIn || !selectedCanonicalId || selectedShoe == null || selectedShoe === '') return
     const controller = new AbortController()
-    void fetchTableUiHistory(selectedCanonicalId, memberSessionToken, controller.signal).then((history) => {
-      if (requestId !== historyRequestId.current) return
-      if (history.tableId !== selectedCanonicalId || String(history.shoe) !== String(selectedShoe)) return
-      setTableUiHistory(history)
-    }).catch((error) => {
-      if (controller.signal.aborted || requestId !== historyRequestId.current) return
-      setTableUiHistory(null)
-      if (error instanceof TableUiHistoryError && error.status === 401) {
-        clearMemberSession()
-        client.current?.disconnect(false)
-        setMemberSessionState('invalid')
+    let retryTimer: number | undefined
+    const hasDuplicateRounds = (history: TableUiHistory) => {
+      const predictionRounds = history.settledPredictions.map((item) => item.round)
+      const cardRounds = history.realCardRounds.map((item) => item.round)
+      return new Set(predictionRounds).size !== predictionRounds.length || new Set(cardRounds).size !== cardRounds.length
+    }
+    const load = async (attempt: number) => {
+      try {
+        const history = await fetchTableUiHistory(selectedCanonicalId, memberSessionToken, controller.signal)
+        if (controller.signal.aborted || requestId !== historyRequestId.current) return
+        if (history.tableId !== selectedCanonicalId || String(history.shoe) !== String(selectedShoe) || hasDuplicateRounds(history)) return
+        setTableUiHistory(history)
+        const latestSettledRound = history.settledPredictions.reduce((latest, item) => Math.max(latest, item.round), 0)
+        const historyIsBehind = history.realCardHistoryCompleteThroughRound < selectedRound
+          || latestSettledRound < selectedRound
+        if (historyIsBehind && attempt < HISTORY_RETRY_DELAYS_MS.length) {
+          retryTimer = window.setTimeout(() => void load(attempt + 1), HISTORY_RETRY_DELAYS_MS[attempt])
+        }
+      } catch (error) {
+        if (controller.signal.aborted || requestId !== historyRequestId.current) return
+        if (error instanceof TableUiHistoryError && error.status === 401) {
+          clearMemberSession()
+          client.current?.disconnect(false)
+          setMemberSessionState('invalid')
+        }
       }
-    })
-    return () => controller.abort()
-  }, [memberLoggedIn, memberSessionToken, selectedCanonicalId, selectedShoe])
+    }
+    void load(0)
+    return () => {
+      controller.abort()
+      if (retryTimer) window.clearTimeout(retryTimer)
+    }
+  }, [memberLoggedIn, memberSessionToken, selectedCanonicalId, selectedShoe, selectedRound])
 
   useInactivityLogout(path === '/admin' && adminLoggedIn ? 'admin' : (path === '/' || path === '') && memberLoggedIn ? 'member' : null)
 

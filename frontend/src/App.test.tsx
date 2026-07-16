@@ -235,6 +235,31 @@ describe('AI百家預測軟體', () => {
     expect(within(history).getByText('和')).toBeInTheDocument()
   })
 
+  it('shows settled predictions when real-card history is incomplete for the selected round', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) })
+      if (url.includes('/api/tables/BAG01/ui-history')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
+        ...tableUiHistory('BAG01', 12),
+        settledPredictions: [
+          { round: 20, predictedResult: 'banker', actualResult: 'banker', isHit: true },
+          { round: 21, predictedResult: 'player', actualResult: 'banker', isHit: false },
+          { round: 22, predictedResult: 'tie', actualResult: 'tie', isHit: true },
+        ],
+      }) })
+      if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([
+        { ...proxyTablesFromMocks()[0], shoe: 12, round: 22 },
+      ]) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, configured: true }) })
+    }))
+
+    await renderApp('/', false)
+
+    const history = await screen.findByLabelText('近十局預測紀錄')
+    expect(await within(history).findByText('第20局')).toBeInTheDocument()
+    expect(within(history).getByText('第21局')).toBeInTheDocument()
+    expect(within(history).getByText('第22局')).toBeInTheDocument()
+  })
+
   it('v098.18 clears old B-table rows immediately and ignores a late prior-table response', async () => {
     let resolveBag01!: (value: Response) => void
     const bag01History = new Promise<Response>((resolve) => { resolveBag01 = resolve })
@@ -257,6 +282,108 @@ describe('AI百家預測軟體', () => {
     await act(async () => { await Promise.resolve() })
     expect(screen.queryByText('第99局')).not.toBeInTheDocument()
     expect(screen.getByText('第22局')).toBeInTheDocument()
+  })
+
+  it('refreshes ui-history when the selected table advances within the same shoe', async () => {
+    let pushTables!: (round: number) => void
+    const stream = new ReadableStream({
+      start(controller) {
+        const encoder = new TextEncoder()
+        pushTables = (round) => controller.enqueue(encoder.encode(`event: tables\ndata: ${JSON.stringify({
+          tables: [{ ...proxyTablesFromMocks()[0], shoe: 12, round }],
+        })}\n\n`))
+      },
+    })
+    let historyCalls = 0
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) })
+      if (url.includes('/api/tables/stream')) return Promise.resolve({ ok: true, status: 200, body: stream })
+      if (url.includes('/api/tables/BAG01/ui-history')) {
+        historyCalls += 1
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(tableUiHistory('BAG01', 12)) })
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, configured: true }) })
+    }))
+
+    await renderApp('/', false)
+    act(() => pushTables(0))
+    await waitFor(() => expect(historyCalls).toBe(1))
+
+    act(() => pushTables(1))
+    await waitFor(() => expect(historyCalls).toBe(2))
+  })
+
+  it('keeps same-shoe history while a bounded retry waits for the durable round', async () => {
+    let pushTables!: (round: number) => void
+    const stream = new ReadableStream({
+      start(controller) {
+        const encoder = new TextEncoder()
+        pushTables = (round) => controller.enqueue(encoder.encode(`event: tables\ndata: ${JSON.stringify({
+          tables: [{ ...proxyTablesFromMocks()[0], shoe: 12, round }],
+        })}\n\n`))
+      },
+    })
+    let historyCalls = 0
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) })
+      if (url.includes('/api/tables/stream')) return Promise.resolve({ ok: true, status: 200, body: stream })
+      if (url.includes('/api/tables/BAG01/ui-history')) {
+        historyCalls += 1
+        const durable = historyCalls !== 2
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
+          ...tableUiHistory('BAG01', 12),
+          settledPredictions: [{ round: durable && historyCalls > 2 ? 4 : 3, predictedResult: 'player', actualResult: 'player', isHit: true }],
+          realCardHistoryCompleteThroughRound: durable ? (historyCalls > 2 ? 1 : 0) : 0,
+        }) })
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, configured: true }) })
+    }))
+
+    await renderApp('/', false)
+    act(() => pushTables(0))
+    expect(await screen.findByText('第3局')).toBeInTheDocument()
+
+    act(() => pushTables(1))
+    await waitFor(() => expect(historyCalls).toBe(2))
+    expect(screen.getByText('第3局')).toBeInTheDocument()
+    expect(screen.queryByText('第4局')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('第4局')).toBeInTheDocument())
+    expect(historyCalls).toBe(3)
+  })
+
+  it('does not invent a settled row when show_poker advances but bounded retries stay behind', async () => {
+    let pushTables!: (round: number) => void
+    const stream = new ReadableStream({
+      start(controller) {
+        const encoder = new TextEncoder()
+        pushTables = (round) => controller.enqueue(encoder.encode(`event: tables\ndata: ${JSON.stringify({
+          tables: [{ ...proxyTablesFromMocks()[0], shoe: 12, round }],
+        })}\n\n`))
+      },
+    })
+    let historyCalls = 0
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) })
+      if (url.includes('/api/tables/stream')) return Promise.resolve({ ok: true, status: 200, body: stream })
+      if (url.includes('/api/tables/BAG01/ui-history')) {
+        historyCalls += 1
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
+          ...tableUiHistory('BAG01', 12),
+          settledPredictions: [{ round: 3, predictedResult: 'player', actualResult: 'player', isHit: true }],
+          realCardHistoryCompleteThroughRound: historyCalls === 1 ? 3 : 4,
+        }) })
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, configured: true }) })
+    }))
+
+    await renderApp('/', false)
+    act(() => pushTables(3))
+    expect(await screen.findByText('第3局')).toBeInTheDocument()
+
+    act(() => pushTables(4))
+    await waitFor(() => expect(historyCalls).toBe(4))
+    expect(screen.getByText('第3局')).toBeInTheDocument()
+    expect(screen.queryByText('第4局')).not.toBeInTheDocument()
   })
 
   it('v096 displays backend side prediction values and actions without frontend recalculation', async () => {
