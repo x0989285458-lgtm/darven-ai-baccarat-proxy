@@ -35,7 +35,7 @@ export type LiveTable = {
 export type SidePredictionKey = 'tie' | 'superSix' | 'bankerPair' | 'playerPair' | 'bankerDragon' | 'playerDragon'
 export type BackendSidePredictions = Record<SidePredictionKey, number>
 export type BackendSideActions = Record<SidePredictionKey, boolean>
-export type BackendPrediction = { source?: string; strategyVersion: string; buildVersion?: string; targetTableId?: string | number; targetShoe?: string | number; targetRound?: number; predictedResult: 'banker' | 'player'; recommendation?: string; confidence: number; probabilities?: { banker?: number; player?: number; tie?: number }; scoreTotals?: { banker?: number; player?: number }; sidePredictions?: BackendSidePredictions; sideActions?: BackendSideActions }
+export type BackendPrediction = { source?: string; predictionId?: string; issuedAt?: string; strategyVersion: string; buildVersion?: string; targetTableId?: string | number; targetShoe?: string | number; targetRound?: number; predictedResult: 'banker' | 'player'; recommendation?: string; confidence: number; probabilities?: { banker?: number; player?: number; tie?: number }; scoreTotals?: { banker?: number; player?: number }; sidePredictions?: BackendSidePredictions; sideActions?: BackendSideActions }
 export type SettledPrediction = { round: number; predictedResult: 'banker' | 'player'; actualResult: 'banker' | 'player' | 'tie'; isHit: boolean }
 export type RealCardRound = { round: number; result: 'banker' | 'player' | 'tie'; bankerPoint: number; playerPoint: number }
 export type TableUiHistory = {
@@ -115,6 +115,8 @@ export class LiveRoadClient {
   private lastStreamAt = 0
   private stopped = true
   private authorizationLost = false
+  private readonly sourceUpdatedAtByTable = new Map<string, number>()
+  private readonly acceptedTableById = new Map<string, LiveTable>()
 
   constructor(private readonly options: LiveClientOptions) {}
 
@@ -216,13 +218,45 @@ export class LiveRoadClient {
   }
 
   private publishTables(tables: LiveTable[], liveMessage: string) {
+    const incomingTableIds = new Set(tables.map((table) => String(table.table_id ?? table.id ?? '')).filter(Boolean))
+    let acceptedAny = false
+    for (const [tableId, accepted] of this.acceptedTableById) {
+      if (incomingTableIds.has(tableId) || !isLiveTableStale(accepted)) continue
+      this.acceptedTableById.delete(tableId)
+      this.sourceUpdatedAtByTable.delete(tableId)
+      acceptedAny = true
+    }
     const freshTables = tables.filter((table) => !isLiveTableStale(table))
-    if (freshTables.length !== tables.length || !freshTables.length) {
-      this.options.onTables([])
+    for (const stale of tables.filter((table) => isLiveTableStale(table))) {
+      const tableId = String(stale.table_id ?? stale.id ?? '')
+      if (!tableId || !this.acceptedTableById.delete(tableId)) continue
+      this.sourceUpdatedAtByTable.delete(tableId)
+      acceptedAny = true
+    }
+    if (!freshTables.length) {
+      if (acceptedAny || !this.acceptedTableById.size) this.options.onTables([...this.acceptedTableById.values()])
       this.options.onStatus({ state: 'error', message: '桌況時間無效或資料過期，已停止出手' })
       return false
     }
-    this.options.onTables(freshTables)
+    for (const incoming of freshTables) {
+      const tableId = String(incoming.table_id ?? incoming.id ?? '')
+      if (!tableId) continue
+      const timestamp = Date.parse(String(incoming.sourceUpdatedAt ?? ''))
+      const previousTimestamp = this.sourceUpdatedAtByTable.get(tableId)
+      const accepted = this.acceptedTableById.get(tableId)
+      if (previousTimestamp != null && timestamp < previousTimestamp) continue
+      let next = incoming
+      if (accepted && previousTimestamp === timestamp && !hasAdvancedTableIdentity(accepted, incoming)) {
+        next = !accepted.prediction && incoming.prediction
+          ? { ...accepted, prediction: incoming.prediction }
+          : accepted
+      }
+      if (accepted && JSON.stringify(accepted) === JSON.stringify(next)) continue
+      this.sourceUpdatedAtByTable.set(tableId, timestamp)
+      this.acceptedTableById.set(tableId, next)
+      acceptedAny = true
+    }
+    if (acceptedAny) this.options.onTables([...this.acceptedTableById.values()])
     this.options.onStatus({ state: 'connected', message: liveMessage })
     return true
   }
@@ -234,6 +268,13 @@ export class LiveRoadClient {
     this.authorizationLost = true
     this.options.onUnauthorized?.()
   }
+}
+
+function hasAdvancedTableIdentity(previous: LiveTable, incoming: LiveTable) {
+  const previousShoe = String(previous.trend.current_shoe ?? '')
+  const incomingShoe = String(incoming.trend.current_shoe ?? '')
+  if (incomingShoe !== previousShoe) return true
+  return Number(incoming.trend.current_round) > Number(previous.trend.current_round)
 }
 
 async function readProxyStatus(memberSessionToken?: string): Promise<Status> {

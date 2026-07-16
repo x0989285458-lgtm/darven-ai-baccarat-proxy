@@ -506,6 +506,8 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const [newAgentParent, setNewAgentParent] = useState('')
   const [agentActionBusy, setAgentActionBusy] = useState(false)
   const [codeActionBusy, setCodeActionBusy] = useState(false)
+  const [createAuthorizationBusy, setCreateAuthorizationBusy] = useState(false)
+  const createAuthorizationBusyRef = useRef(false)
   const [toast, setToast] = useState('')
   const [memoryCenter, setMemoryCenter] = useState<OnlineMemoryCenter>({ state: 'connecting', items: [], reports: [], strategies: [] })
   const [strategyAnalysis, setStrategyAnalysis] = useState<OnlineStrategyAnalysis>({ state: 'connecting', strategyRows: [], weakTables: [], strongTables: [], watchTables: [], suggestions: [] })
@@ -549,27 +551,39 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       setLatestMember('')
     }
   }) }, [])
-  const startDate = '2026/06/25'
+  const localToday = new Date()
+  const localStartDate = new Date(localToday.getFullYear(), localToday.getMonth(), localToday.getDate())
+  const startDate = formatLocalDate(localStartDate)
   const displayManager = loginAgent
   const displayManagerLabel = isSuper ? '超級管理員帳號' : displayManager
   const displayMember = memberAccount.trim() || 'User001'
-  const serialNo = useMemo(() => findLowestAvailableSerial(codes, displayManager), [codes, displayManager])
+  const serialNo = useMemo(() => findLowestAvailableSerial(codes, displayManager, licenseStatus.usedLicenseCodes), [codes, displayManager, licenseStatus.usedLicenseCodes])
   const clampedPlanDays = clampPlanDays(planDays)
   const expiryDate = useMemo(() => {
-    const date = new Date('2026-06-25T00:00:00')
+    const date = new Date(localStartDate)
     date.setDate(date.getDate() + clampedPlanDays)
-    return date.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
-  }, [clampedPlanDays])
+    return formatLocalDate(date)
+  }, [localStartDate.getTime(), clampedPlanDays])
   const createAuthorization = async () => {
     if (!canManageCodes) return notify('此角色不能建立驗證碼')
-    const nextCode = buildLicenseCode(displayManager, displayMember, serialNo)
-    const result = await createOnlineLicense({ memberAccount: displayMember, code: nextCode, agentCode: displayManager, durationDays: clampedPlanDays, adminSessionToken })
-    setLatestMember(displayMember)
-    setLatestCode(result.row?.code ?? nextCode)
-    const nextRows = await getOnlineLicenseStatus({ adminAccount: displayManager, adminSessionToken })
-    setLicenseStatus(nextRows)
-    if (nextRows.licenseRows.length) setCodes(pruneExpiredCodes(nextRows.licenseRows as CodeRow[]))
-    else setCodes((rows) => pruneExpiredCodes([{ member: displayMember, code: result.row?.code ?? nextCode, status: '啟用中', remain: `${clampedPlanDays}天` }, ...rows]))
+    if (createAuthorizationBusyRef.current) return
+    createAuthorizationBusyRef.current = true
+    setCreateAuthorizationBusy(true)
+    try {
+      const nextCode = buildLicenseCode(displayManager, displayMember, serialNo)
+      const result = await createOnlineLicense({ memberAccount: displayMember, code: nextCode, agentCode: displayManager, durationDays: clampedPlanDays, adminSessionToken })
+      setLatestMember(displayMember)
+      setLatestCode(result.row?.code ?? nextCode)
+      const nextRows = await getOnlineLicenseStatus({ adminAccount: displayManager, adminSessionToken })
+      setLicenseStatus(nextRows)
+      if (nextRows.licenseRows.length) setCodes(pruneExpiredCodes(nextRows.licenseRows as CodeRow[]))
+      else setCodes((rows) => pruneExpiredCodes([{ member: displayMember, code: result.row?.code ?? nextCode, status: '啟用中', remain: `${result.durationDays ?? clampedPlanDays}天` }, ...rows]))
+    } catch (error: any) {
+      notify(error?.message || '建立授權失敗')
+    } finally {
+      createAuthorizationBusyRef.current = false
+      setCreateAuthorizationBusy(false)
+    }
   }
   const refreshLicenses = async () => {
     const nextRows = await getOnlineLicenseStatus({ adminAccount: displayManager, adminSessionToken })
@@ -750,7 +764,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
         <label>方案天數<input aria-label="方案天數" type="number" min="1" max="30" value={String(clampedPlanDays)} onChange={(event) => setPlanDays(String(clampPlanDays(event.target.value)))} /></label>
         <label>流水號<input aria-label="流水號" value={serialNo} readOnly /></label>
       </div>
-      <button className="primary create-auth" disabled={!canManageCodes} onClick={createAuthorization}>建立授權</button>
+      <button className="primary create-auth" disabled={!canManageCodes || createAuthorizationBusy} onClick={createAuthorization}>建立授權</button>
       <div className="v015-result-grid">
         <div className="serial-box member-box">會員帳號：{latestMember || '尚未建立'}</div>
         <div className="serial-box code-box">驗證碼：{latestCode || '尚未建立'}</div>
@@ -797,7 +811,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
           <button className="extend" disabled={!canManageCodes || codeActionBusy} onClick={extendSelectedCodes}>延長驗證碼</button>
         </div>
         <div className="scroll-list code-list">
-          {filteredCodes.map((row) => <div className="list-row code-row" key={row.member}>
+          {filteredCodes.map((row) => <div className="list-row code-row" key={row.code}>
             <input aria-label={`勾選 ${row.code}`} type="checkbox" checked={selectedCodeMembers.includes(row.code)} onChange={() => toggleCode(row.code)} />
             <span>{row.member}</span><b>{row.code}</b><em>{row.status}｜{row.remain}</em>
             <input placeholder="延長1-30天" />
@@ -903,9 +917,24 @@ function clampPlanDays(value: string | number) {
   return Math.min(30, Math.max(1, Math.floor(parsed)))
 }
 
-function findLowestAvailableSerial(codes: CodeRow[], agentCode: string) {
-  const used = new Set(codes
-    .map((row) => row.code.match(new RegExp(`^${escapeRegExp(agentCode)}_(\\d+)$`))?.[1])
+function formatLocalDate(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}/${month}/${day}`
+}
+
+function canonicalLicensePrefix(agentCode: string) {
+  const safeAgent = String(agentCode || SUPER_ADMIN).replace(/[^A-Za-z0-9]/g, '') || SUPER_ADMIN
+  const letters = safeAgent.match(/[A-Za-z]+/)?.[0] ?? 'dv'
+  const digits = (safeAgent.replace(/\D/g, '') || '0001').slice(-4).padStart(4, '0')
+  return `${letters}${digits}`
+}
+
+function findLowestAvailableSerial(codes: CodeRow[], agentCode: string, reservedCodes: string[] = []) {
+  const prefix = canonicalLicensePrefix(agentCode)
+  const used = new Set([...codes.map((row) => row.code), ...reservedCodes]
+    .map((code) => code.match(new RegExp(`^${escapeRegExp(prefix)}_(\\d+)$`, 'i'))?.[1])
     .filter(Boolean)
     .map((value) => Number(value)))
   for (let index = 1; index <= 999; index += 1) {
@@ -1031,13 +1060,8 @@ function buildChildAgentAccount(parentCode: string, rawCode: string) {
   return parent ? `${parent}-${child}` : child
 }
 
-function buildLicenseCode(agentCode: string, memberAccount: string, runningNo: string) {
-  const safeAgent = String(agentCode || SUPER_ADMIN).replace(/[^A-Za-z0-9]/g, '') || SUPER_ADMIN
-  const letters = safeAgent.match(/[A-Za-z]+/)?.[0] ?? 'dv'
-  const agentDigits = safeAgent.replace(/\D/g, '')
-  const memberDigits = memberAccount.match(/\d+/)?.[0] ?? ''
-  const digits = (agentDigits || memberDigits || '0001').slice(-4).padStart(4, '0')
-  return `${letters}${digits}_${runningNo || '001'}`
+function buildLicenseCode(agentCode: string, _memberAccount: string, runningNo: string) {
+  return `${canonicalLicensePrefix(agentCode)}_${runningNo || '001'}`
 }
 
 function rolePermission(role: string) {

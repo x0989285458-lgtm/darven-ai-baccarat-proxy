@@ -63,6 +63,7 @@ function fakeResult(sql, params) {
   if (sql.includes('select id from public.plans')) return { rows: [] }
   if (sql.includes('select id from public.agents')) return { rows: [] }
   if (sql.includes('select id from public.licenses')) return { rows: [] }
+  if (sql.includes('from public.licenses l') && sql.includes('where l.code = $1')) return { rows: [] }
   if (sql.includes('select id, name, duration_days from public.plans')) return { rows: [{ id: 'plan-1', name: params[0], duration_days: params[1] ?? 30 }] }
   if (sql.includes('select id, code from public.agents')) return { rows: [{ id: 'agent-1', code: params[0] }] }
   if (sql.includes('manager_accounts')) return { rows: [{ id: 'manager-1', username: params[0], role: params[3], is_active: true }] }

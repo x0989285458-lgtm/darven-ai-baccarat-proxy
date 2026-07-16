@@ -128,6 +128,76 @@ describe('v098 live frontend contract', () => {
     expect(received[0]?.[0].prediction?.targetRound).toBe(19)
   })
 
+  it('v098.21 rejects per-table sourceUpdatedAt rollback from SSE while keeping other tables and allows a newer shoe', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-16T02:00:30.000Z'))
+    const newer = validTable({ sourceUpdatedAt: '2026-07-16T02:00:00.000Z' })
+    const older = validTable({ sourceUpdatedAt: '2026-07-16T01:59:00.000Z' })
+    const other = validTable({ id: 'BAG02', table_id: 'BAG02', sourceUpdatedAt: '2026-07-16T01:59:30.000Z', prediction: { ...validTable().prediction!, targetTableId: 'BAG02' } })
+    const nextShoe = validTable({ sourceUpdatedAt: '2026-07-16T02:01:00.000Z', trend: { ...validTable().trend, current_shoe: '124', current_round: 1 }, prediction: { ...validTable().prediction!, targetShoe: '124', targetRound: 2 } })
+    const toProxy = (item: LiveTable) => ({ tableId: item.table_id, tableType: item.table_type, shoe: item.trend.current_shoe, round: item.trend.current_round, beadPlateRaw: item.trend.bead_plate2, bigRoadRaw: item.trend.big2, sourceUpdatedAt: item.sourceUpdatedAt, buildVersion: item.buildVersion, prediction: item.prediction })
+    const events = [newer, older, other, nextShoe].map((item) => `event: tables\ndata: ${JSON.stringify({ tables: [toProxy(item)] })}\n\n`).join('')
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, status: 200, body: new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(events)); controller.close() } }) })))
+    const received: LiveTable[][] = []
+    const client = new LiveRoadClient({ onTables: (tables) => received.push(tables), onStatus: vi.fn() })
+    client.connect()
+    await vi.advanceTimersByTimeAsync(1)
+    client.disconnect(false)
+    expect(received).toHaveLength(3)
+    expect(received[0].map((item) => item.table_id)).toEqual(['BAG01'])
+    expect(received[1].map((item) => item.table_id)).toEqual(['BAG01', 'BAG02'])
+    expect(received[2].map((item) => item.table_id)).toEqual(['BAG01', 'BAG02'])
+    expect(received.at(-1)?.find((item) => item.table_id === 'BAG01')?.trend.current_shoe).toBe('124')
+  })
+
+  it('v098.21 rejects polling rollback but a reconstructed client accepts its own first payload', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-16T02:00:30.000Z'))
+    const proxy = (stamp: string) => ({ tableId: 'BAG01', tableType: 'BAC', shoe: 123, round: 18, beadPlateRaw: '0102', bigRoadRaw: '0102', sourceUpdatedAt: stamp, buildVersion: '098', prediction: validTable().prediction })
+    let streamCall = 0
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes('/stream')) {
+        streamCall += 1
+        const body = streamCall === 1 ? `event: tables\ndata: ${JSON.stringify({ tables: [proxy('2026-07-16T02:00:00.000Z')] })}\n\n` : `event: tables\ndata: ${JSON.stringify({ tables: [proxy('2026-07-16T01:59:00.000Z')] })}\n\n`
+        return Promise.resolve({ ok: true, status: 200, body: new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(body)); controller.close() } }) })
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([proxy('2026-07-16T01:59:00.000Z')]) })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const firstReceived: LiveTable[][] = []
+    const first = new LiveRoadClient({ onTables: (tables) => firstReceived.push(tables), onStatus: vi.fn() })
+    first.connect()
+    await vi.advanceTimersByTimeAsync(1)
+    first.disconnect(false)
+    expect(firstReceived).toHaveLength(1)
+    const rebuiltReceived: LiveTable[][] = []
+    const rebuilt = new LiveRoadClient({ onTables: (tables) => rebuiltReceived.push(tables), onStatus: vi.fn() })
+    rebuilt.connect()
+    await vi.advanceTimersByTimeAsync(1)
+    rebuilt.disconnect(false)
+    expect(rebuiltReceived).toHaveLength(1)
+  })
+
+  it('v098.21 retains the accepted table when only that table regresses inside a mixed response', () => {
+    const received: LiveTable[][] = []
+    const client = new LiveRoadClient({ onTables: (tables) => received.push(tables), onStatus: vi.fn() })
+    const firstA = validTable({ sourceUpdatedAt: new Date(Date.now() - 1_000).toISOString() })
+    const firstB = validTable({ id: 'BAG02', table_id: 'BAG02', sourceUpdatedAt: new Date(Date.now() - 1_000).toISOString() })
+    const olderA = { ...firstA, sourceUpdatedAt: new Date(Date.now() - 2_000).toISOString() }
+    const newerB = { ...firstB, sourceUpdatedAt: new Date().toISOString() }
+    ;(client as any).publishTables([firstA, firstB], 'first')
+    ;(client as any).publishTables([olderA, newerB], 'mixed')
+    expect(received[1]).toHaveLength(2)
+    expect(received[1].find((item) => item.table_id === 'BAG01')?.sourceUpdatedAt).toBe(firstA.sourceUpdatedAt)
+    expect(received[1].find((item) => item.table_id === 'BAG02')?.sourceUpdatedAt).toBe(newerB.sourceUpdatedAt)
+  })
+
+  it('v098.21 keeps prediction identity fields optional for old API payloads', () => {
+    expect(getBackendPredictionIssue(validTable())).toBeNull()
+    const modern = validTable({ prediction: { ...validTable().prediction!, predictionId: 'pid-1', issuedAt: '2026-07-16T01:00:00.000Z' } })
+    expect(getBackendPredictionIssue(modern)).toBeNull()
+  })
+
   it('uses Authorization for the polling fallback without token-bearing URLs', async () => {
     vi.useFakeTimers()
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
@@ -189,6 +259,39 @@ describe('v098 live frontend contract', () => {
 
     expect(tables).toHaveBeenCalledWith([])
     expect(unauthorized).toHaveBeenCalledTimes(1)
+  })
+
+  it('v098.21 merges partial table payloads, ignores one stale table, and preserves accepted order', () => {
+    const received: LiveTable[][] = []
+    const client = new LiveRoadClient({ onTables: (tables) => received.push(tables), onStatus: vi.fn() })
+    const stamp = new Date(Date.now() - 1_000).toISOString()
+    const a = validTable({ id: 'BAG01', table_id: 'BAG01', sourceUpdatedAt: stamp })
+    const b = validTable({ id: 'BAG02', table_id: 'BAG02', sourceUpdatedAt: stamp, prediction: { ...validTable().prediction!, targetTableId: 'BAG02' } })
+    const c = validTable({ id: 'BAG03', table_id: 'BAG03', sourceUpdatedAt: stamp, prediction: { ...validTable().prediction!, targetTableId: 'BAG03' } })
+    ;(client as any).publishTables([a, b, c], 'all')
+    ;(client as any).publishTables([{ ...b, sourceUpdatedAt: new Date(Date.now() - 500).toISOString() }], 'partial')
+    ;(client as any).publishTables([{ ...a, sourceUpdatedAt: new Date(Date.now() - 300_000).toISOString() }, { ...c, sourceUpdatedAt: new Date().toISOString() }], 'mixed')
+    expect(received[1].map((item) => item.table_id)).toEqual(['BAG01', 'BAG02', 'BAG03'])
+    expect(received[2].map((item) => item.table_id)).toEqual(['BAG02', 'BAG03'])
+    expect(received[2].find((item) => item.table_id === 'BAG01')).toBeUndefined()
+  })
+
+  it('v098.21 equal timestamp cannot replace durable prediction, while higher round may advance', () => {
+    const received: LiveTable[][] = []
+    const client = new LiveRoadClient({ onTables: (tables) => received.push(tables), onStatus: vi.fn() })
+    const stamp = new Date(Date.now() - 1_000).toISOString()
+    const durable = validTable({ sourceUpdatedAt: stamp, prediction: { ...validTable().prediction!, predictionId: 'pid-accepted', issuedAt: stamp } })
+    ;(client as any).publishTables([durable], 'issued')
+    ;(client as any).publishTables([{ ...durable, prediction: null }], 'null replay')
+    ;(client as any).publishTables([{ ...durable, prediction: { ...durable.prediction!, predictionId: 'pid-other' } }], 'different replay')
+    const other = validTable({ id: 'BAG02', table_id: 'BAG02', sourceUpdatedAt: stamp, prediction: { ...validTable().prediction!, targetTableId: 'BAG02' } })
+    ;(client as any).publishTables([other], 'partial trigger')
+    const advancedRound = Number(durable.trend.current_round) + 1
+    const advanced = { ...durable, trend: { ...durable.trend, current_round: advancedRound }, prediction: null }
+    ;(client as any).publishTables([advanced], 'advanced')
+    expect(received).toHaveLength(3)
+    expect(received[1].find((item) => item.table_id === 'BAG01')?.prediction?.predictionId).toBe('pid-accepted')
+    expect(received[2].find((item) => item.table_id === 'BAG01')?.trend.current_round).toBe(advancedRound)
   })
 
   it('fails closed when backend status reports a non-098 build', async () => {

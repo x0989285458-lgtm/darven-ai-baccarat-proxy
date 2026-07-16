@@ -126,7 +126,7 @@ describe('LiveRoadClient v032 status messages', () => {
     expect(isLiveTableStale({ sourceUpdatedAt: 'not-a-date' }, now, 60000)).toBe(true)
   })
 
-  it('fails closed and clears prior tables when a later response has no valid fresh rows', async () => {
+  it('v098.21 preserves accepted tables when a partial response omits them', async () => {
     vi.useFakeTimers()
     const received: any[][] = []
     let tableCalls = 0
@@ -149,7 +149,8 @@ describe('LiveRoadClient v032 status messages', () => {
     client.disconnect(false)
 
     expect(received[0]).toHaveLength(1)
-    expect(received.at(-1)).toEqual([])
+    expect(received.at(-1)).toHaveLength(1)
+    expect(received.at(-1)?.[0].table_id).toBe('BAG01')
   })
 
   it('fails closed when backend status reports stale despite fresh table timestamps', async () => {
@@ -200,6 +201,79 @@ describe('LiveRoadClient v032 status messages', () => {
     streamController!.close()
 
     expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/tables'))).toHaveLength(0)
+  })
+
+  it('v098.21 retains the first durable prediction when equal-time same-id content conflicts', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-16T01:00:30.000Z'))
+    const received: any[][] = []
+    const sourceUpdatedAt = '2026-07-16T01:00:00.000Z'
+    const firstPrediction = {
+      source: 'backend', predictionId: 'pid-1', issuedAt: '2026-07-16T01:00:01.000Z',
+      strategyVersion: 'v098.20_六階段權重門檻整合版', targetTableId: 'BAG01', targetShoe: 88, targetRound: 21,
+      predictedResult: 'banker', confidence: 51,
+      probabilities: { banker: 51, player: 44, tie: 5 }, scoreTotals: { banker: 0.51, player: 0.49 },
+      sidePredictions: { tie: 1, superSix: 2, bankerPair: 3, playerPair: 4, bankerDragon: 5, playerDragon: 6 },
+      sideActions: { tie: false, superSix: false, bankerPair: false, playerPair: false, bankerDragon: false, playerDragon: false },
+    }
+    const conflictingPrediction = {
+      ...firstPrediction, issuedAt: '2026-07-16T01:00:02.000Z', strategyVersion: 'conflict', targetTableId: 'BAG09', targetShoe: 99, targetRound: 999,
+      predictedResult: 'player', confidence: 69,
+      probabilities: { banker: 1, player: 98, tie: 1 }, scoreTotals: { banker: 0.01, player: 0.99 },
+      sidePredictions: { tie: 60, superSix: 50, bankerPair: 40, playerPair: 30, bankerDragon: 20, playerDragon: 10 },
+      sideActions: { tie: true, superSix: true, bankerPair: true, playerPair: true, bankerDragon: true, playerDragon: true },
+    }
+    let tableCalls = 0
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1 }) })
+      if (url.endsWith('/api/tables/stream')) return Promise.resolve({ ok: false, status: 503, body: null })
+      tableCalls += 1
+      const firstPayload = tableCalls === 1
+      const prediction = firstPayload ? firstPrediction : conflictingPrediction
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([{
+        tableId: 'BAG01', tableType: 'BAC', shoe: 88, round: 20, sourceUpdatedAt, prediction,
+        bankerCount: firstPayload ? 1 : 999,
+        beadPlateRaw: firstPayload ? '0102' : '9999',
+        dealerName: firstPayload ? '原始荷官' : '衝突荷官',
+      }]) })
+    }))
+
+    const client = new LiveRoadClient({ onTables: (tables) => received.push(tables), onStatus: vi.fn() })
+    client.connect()
+    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(5001)
+    client.disconnect(false)
+
+    expect(received.at(-1)?.[0].prediction).toEqual(firstPrediction)
+    expect(received.at(-1)?.[0].trend.total_round_banker).toBe(1)
+    expect(received.at(-1)?.[0].trend.bead_plate2).toBe('0102')
+    expect(received.at(-1)?.[0].dealerName).toBe('原始荷官')
+  })
+
+  it('v098.21 prunes omitted tables by each table TTL without clearing fresh peers or changing order', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-16T01:00:00.000Z'))
+    const received: any[][] = []
+    const makeTable = (id: string, sourceUpdatedAt: string) => ({
+      id, table_id: id, table_type: 'BAC', sourceUpdatedAt,
+      trend: { bead_plate2: '', big2: '', current_round: 1, current_shoe: 1 },
+    })
+    const tableA = makeTable('BAG01', '2026-07-16T00:58:30.000Z')
+    const tableB = makeTable('BAG02', '2026-07-16T00:59:30.000Z')
+    const tableC = makeTable('BAG03', '2026-07-16T01:00:00.000Z')
+    const client = new LiveRoadClient({ onTables: (tables) => received.push(tables), onStatus: vi.fn() })
+    const publish = (tables: any[]) => (client as any).publishTables(tables, 'test')
+
+    publish([tableA, tableB, tableC])
+    expect(received.at(-1)?.map((table) => table.table_id)).toEqual(['BAG01', 'BAG02', 'BAG03'])
+
+    vi.setSystemTime(new Date('2026-07-16T01:00:31.000Z'))
+    publish([tableC])
+    expect(received.at(-1)?.map((table) => table.table_id)).toEqual(['BAG02', 'BAG03'])
+
+    vi.setSystemTime(new Date('2026-07-16T01:01:31.000Z'))
+    publish([tableC])
+    expect(received.at(-1)?.map((table) => table.table_id)).toEqual(['BAG03'])
   })
 
 })

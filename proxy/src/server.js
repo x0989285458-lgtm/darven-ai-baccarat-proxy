@@ -6,7 +6,7 @@ import { createMtClient } from './mt-client.js'
 import { createChromeCaptureClient } from './chrome-capture.js'
 import { applyCloudCapturePayload, canonicalProductionTableId, createCloudCaptureClient, parseCloudCapturePayload, PRODUCTION_TABLE_IDS } from './cloud-capture.js'
 import { loadLocalEnv, maskToken, resolveDeployConfig } from './config.js'
-import { buildLivePrediction, createSupabaseIngestionClient } from './supabase-writer.js'
+import { ALL_MT_EQUAL_STRATEGY_VERSION, buildLivePrediction, createSupabaseIngestionClient } from './supabase-writer.js'
 import { createRecentTablePerformanceStore } from './recent-table-performance.js'
 import { createOnlineCoreClient } from './online-core.js'
 import { createLicenseAdminClient } from './license-admin.js'
@@ -35,6 +35,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const adminSessions = new Map()
   const ingestSequences = new Map()
   const pendingPredictions = new Map()
+  const issuingPredictionPromises = new Map()
   const expiredPredictionKeys = new Set()
   const settlingPredictionKeys = new Set()
   const memberSessions = new Map()
@@ -49,20 +50,35 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     inferSnapshotRounds: !strictRealCardRounds,
     onTablesUpdated: (tables) => {
       tablesReceivedAtMs = now()
-      for (const table of tables) savePendingPrediction(table)
+      for (const table of tables) void savePendingPrediction(table)
     },
     onRoundEvent: async (round, table) => {
       if (!supabaseClient?.configured && !supabaseClient?.persistRound) return
       if (!isVerifiedFinalRoundAction(round?.sourceAction)) return
       if (strictRealCardRounds && !hasRealCardCodes(round)) return
       const pendingKey = predictionTargetKey(round.tableId ?? table.tableId, round.shoe, round.round)
-      const precomputedPrediction = pendingPredictions.get(pendingKey)
-      if (!precomputedPrediction) return
-      if (now() - Number(precomputedPrediction.createdAtMs ?? 0) > actionablePredictionTtlMs) {
-        pendingPredictions.delete(pendingKey)
-        rememberExpiredPredictionKey(pendingKey)
+      let issuedCandidate
+      try {
+        issuedCandidate = pendingPredictions.get(pendingKey)
+        if (!issuedCandidate && issuingPredictionPromises.has(pendingKey)) issuedCandidate = await issuingPredictionPromises.get(pendingKey)
+        if (!issuedCandidate && typeof supabaseClient?.readIssuedPrediction === 'function') {
+          issuedCandidate = await supabaseClient.readIssuedPrediction({
+            tableId: round.tableId ?? table.tableId,
+            shoe: round.shoe,
+            round: round.round,
+            strategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION,
+          })
+        }
+      } catch (error) {
+        state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
         return
       }
+      const precomputedPrediction = issuedCandidate
+        && predictionTargetKey(issuedCandidate.targetTableId, issuedCandidate.targetShoe, issuedCandidate.targetRound) === pendingKey
+        && issuedCandidate.strategyVersion === ALL_MT_EQUAL_STRATEGY_VERSION
+        ? issuedCandidate
+        : null
+      if (!precomputedPrediction) return
       if (settlingPredictionKeys.has(pendingKey)) return
       settlingPredictionKeys.add(pendingKey)
       try {
@@ -494,14 +510,14 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     const localTables = state.snapshot().tables
     if (localTables.length > 0) {
       const actionable = tablesReceivedAtMs > 0 && now() - tablesReceivedAtMs <= actionablePredictionTtlMs
-      return includePrediction ? localTables.map((table) => withLivePrediction(table, actionable)) : localTables
+      return includePrediction ? Promise.all(localTables.map((table) => withLivePrediction(table, actionable))) : localTables
     }
     if (tablesReceivedAtMs > 0) return []
     const cloudSnapshot = await readLatestCloudSnapshot({ requireFresh: true })
-    return includePrediction ? (cloudSnapshot?.tables ?? []).map((table) => withLivePrediction(table)) : (cloudSnapshot?.tables ?? [])
+    return includePrediction ? Promise.all((cloudSnapshot?.tables ?? []).map((table) => withLivePrediction(table))) : (cloudSnapshot?.tables ?? [])
   }
 
-  function savePendingPrediction(table) {
+  async function savePendingPrediction(table) {
     if (!isPredictionRuntimeReady() || !recentPerformanceReady) return null
     const tablePerformance = recentTablePerformance.summary(table?.tableId)
     const generated = { ...buildLivePrediction({ ...table, ...tablePerformance }), createdAtMs: now() }
@@ -514,12 +530,46 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       rememberExpiredPredictionKey(key)
       return null
     }
-    if (!pendingPredictions.has(key)) pendingPredictions.set(key, deepFreeze(structuredClone(generated)))
-    return pendingPredictions.get(key)
+    if (pendingPredictions.has(key)) return pendingPredictions.get(key)
+    if (issuingPredictionPromises.has(key)) return issuingPredictionPromises.get(key)
+    const durableIssuanceRequired = supabaseClient?.configured === true
+      && (requireVerifiedStrategy || typeof supabaseClient.issuePrediction === 'function')
+    if (!durableIssuanceRequired) {
+      const localPrediction = deepFreeze(structuredClone(generated))
+      pendingPredictions.set(key, localPrediction)
+      return localPrediction
+    }
+    if (typeof supabaseClient.issuePrediction !== 'function') {
+      state.setStatus({ persistenceStatus: 'error', persistenceError: 'durable prediction issuance is unavailable' })
+      return null
+    }
+    const issuance = Promise.resolve()
+      .then(() => supabaseClient.issuePrediction(generated))
+      .then((issued) => {
+        if (!isValidPendingPrediction(issued) || !issued.predictionId || !issued.issuedAt
+          || predictionTargetKey(issued.targetTableId, issued.targetShoe, issued.targetRound) !== key
+          || issued.strategyVersion !== generated.strategyVersion) {
+          throw new Error('durable prediction issuance acknowledgement failed')
+        }
+        const immutable = deepFreeze(structuredClone({
+          ...issued,
+          createdAtMs: Number(issued.createdAtMs ?? Date.parse(issued.issuedAt)) || generated.createdAtMs,
+        }))
+        pendingPredictions.set(key, immutable)
+        state.setStatus({ persistenceStatus: 'ok', persistenceError: null })
+        return immutable
+      })
+      .catch((error) => {
+        state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+        return null
+      })
+      .finally(() => issuingPredictionPromises.delete(key))
+    issuingPredictionPromises.set(key, issuance)
+    return issuance
   }
 
-  function withLivePrediction(table, actionable = true) {
-    const pending = actionable ? savePendingPrediction(table) : null
+  async function withLivePrediction(table, actionable = true) {
+    const pending = actionable ? await savePendingPrediction(table) : null
     if (!pending && table?.tableId != null && table?.shoe != null && table?.round != null) {
       const key = predictionTargetKey(table.tableId, table.shoe, Number(table.round) + 1)
       const existing = pendingPredictions.get(key)

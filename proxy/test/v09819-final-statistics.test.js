@@ -22,7 +22,9 @@ test('v098.19 today prediction fallback count queries only verified final settle
   })
 
   assert.equal(await client.countTodayPredictionRounds(), 0)
-  assert.equal(requestedUrl.searchParams.get('prediction_features->>settlement_final'), 'eq.true')
+  assert.match(requestedUrl.searchParams.get('select') ?? '', /settlement_final/)
+  assert.match(requestedUrl.searchParams.get('or') ?? '', /settlement_final\.eq\.true/)
+  assert.match(requestedUrl.searchParams.get('or') ?? '', /prediction_features->>settlement_final\.eq\.true/)
 })
 
 test('v098.19 stable report rows quarantine predictions without a verified final settlement marker', async () => {
@@ -35,7 +37,9 @@ test('v098.19 stable report rows quarantine predictions without a verified final
   })
 
   assert.deepEqual(await client.getStablePredictionRows({ limit: 100 }), [finalRow])
-  assert.equal(requestedUrl.searchParams.get('prediction_features->>settlement_final'), 'eq.true')
+  assert.match(requestedUrl.searchParams.get('select') ?? '', /settlement_final/)
+  assert.match(requestedUrl.searchParams.get('or') ?? '', /settlement_final\.eq\.true/)
+  assert.match(requestedUrl.searchParams.get('or') ?? '', /prediction_features->>settlement_final\.eq\.true/)
 })
 
 test('v098.19 recent calibration rows quarantine predictions without a verified final settlement marker', async () => {
@@ -55,5 +59,7 @@ test('v098.19 recent calibration rows quarantine predictions without a verified 
   })
 
   assert.deepEqual(await client.getRecentPredictionRows({ limit: 100 }), [finalRow])
-  assert.equal(requestedUrl.searchParams.get('prediction_features->>settlement_final'), 'eq.true')
+  assert.match(requestedUrl.searchParams.get('select') ?? '', /settlement_final/)
+  assert.match(requestedUrl.searchParams.get('or') ?? '', /settlement_final\.eq\.true/)
+  assert.match(requestedUrl.searchParams.get('or') ?? '', /prediction_features->>settlement_final\.eq\.true/)
 })

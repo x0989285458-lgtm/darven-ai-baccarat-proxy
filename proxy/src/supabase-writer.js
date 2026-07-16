@@ -331,6 +331,27 @@ export function buildCompactPredictionResultDbRow(row = {}) {
   }
 }
 
+export function buildPredictionIssuanceDbRow(prediction = {}) {
+  return {
+    source: SOURCE,
+    table_id: String(prediction.targetTableId ?? ''),
+    shoe_no: prediction.targetShoe == null ? null : String(prediction.targetShoe),
+    round_no: Number(prediction.targetRound ?? 0),
+    strategy_version: prediction.strategyVersion,
+    predicted_result: prediction.predictedResult,
+    confidence: prediction.confidence,
+    actual_result: null,
+    is_hit: null,
+    table_recent_hit_rate: prediction.tableRecentHitRate ?? null,
+    table_recent_prediction_count: prediction.tableRecentPredictionCount ?? null,
+    short_run_adjustment: structuredClone(prediction.shortRunAdjustment ?? {}),
+    prediction_features: structuredClone(prediction.predictionFeatures ?? {}),
+    probabilities: structuredClone(prediction.probabilities ?? {}),
+    resolved_at: null,
+    issued_prediction_payload: structuredClone(prediction),
+  }
+}
+
 function compactPredictionFeatureSummary({ row = {}, derived = {}, mt = {} } = {}) {
   return {
     table: {
@@ -1529,6 +1550,61 @@ export function createSupabaseIngestionClient({
 
   return {
     configured,
+    async issuePrediction(candidate) {
+      if (runtimeStatus.degraded) throw new Error(runtimeStatus.reason)
+      if (requireVerifiedStrategy && runtimeStatus.ready !== true) throw new Error('active strategy not verified')
+      const row = buildPredictionIssuanceDbRow(candidate)
+      if (!row.table_id || !row.shoe_no || !Number.isSafeInteger(row.round_no) || row.round_no < 1
+        || !row.strategy_version || !['banker', 'player'].includes(row.predicted_result)) {
+        throw new Error('prediction issuance payload is incomplete')
+      }
+      const acknowledgement = await enqueueWrite(() => postRest('rpc/issue_v09821_prediction', { p_prediction: row }, undefined, { requireObject: true }))
+      const prediction = acknowledgement?.prediction
+      if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
+        || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at
+        || String(prediction.predictionId ?? '') !== String(acknowledgement.prediction_id)
+        || String(prediction.issuedAt ?? '') !== String(acknowledgement.prediction_issued_at)
+        || String(prediction.targetTableId ?? '') !== String(candidate.targetTableId ?? '')
+        || String(prediction.targetShoe ?? '') !== String(candidate.targetShoe ?? '')
+        || Number(prediction.targetRound) !== Number(candidate.targetRound)
+        || String(prediction.strategyVersion ?? '') !== String(candidate.strategyVersion ?? '')) {
+        throw new Error('durable prediction issuance acknowledgement failed')
+      }
+      return structuredClone(prediction)
+    },
+    async readIssuedPrediction({ tableId, shoe, round, strategyVersion } = {}) {
+      const targetRound = Number(round)
+      if (!tableId || shoe == null || !Number.isSafeInteger(targetRound) || targetRound < 1 || !strategyVersion) return null
+      const rows = await getRest('daily_prediction_results', {
+        select: 'id,source,table_id,shoe_no,round_no,strategy_version,prediction_issued_at,issued_prediction_payload,settlement_final',
+        source: `eq.${SOURCE}`,
+        table_id: `eq.${tableId}`,
+        shoe_no: `eq.${shoe}`,
+        round_no: `eq.${targetRound}`,
+        strategy_version: `eq.${strategyVersion}`,
+        prediction_issued_at: 'not.is.null',
+        issued_prediction_payload: 'not.is.null',
+        order: 'created_at.asc',
+        limit: '2',
+      })
+      if (!Array.isArray(rows) || rows.length === 0) return null
+      if (rows.length !== 1) throw new Error('conflicting durable prediction issuance identity')
+      const row = rows[0]
+      const prediction = row?.issued_prediction_payload
+      if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
+        || String(row.table_id ?? tableId) !== String(tableId)
+        || String(row.shoe_no ?? shoe) !== String(shoe)
+        || Number(row.round_no ?? targetRound) !== targetRound
+        || String(row.strategy_version ?? strategyVersion) !== String(strategyVersion)
+        || String(prediction.targetTableId ?? '') !== String(tableId)
+        || String(prediction.targetShoe ?? '') !== String(shoe)
+        || Number(prediction.targetRound) !== targetRound
+        || String(prediction.strategyVersion ?? '') !== String(strategyVersion)
+        || !row.id || !row.prediction_issued_at) {
+        throw new Error('durable prediction issuance read failed')
+      }
+      return structuredClone({ ...prediction, predictionId: row.id, issuedAt: row.prediction_issued_at })
+    },
     async ensureInitialStrategy() {
       try {
         await patchRest('ai_strategy_versions', { status: 'archived' }, { status: 'eq.active', version: `neq.${ALL_MT_EQUAL_STRATEGY_VERSION}` })
@@ -1549,33 +1625,34 @@ export function createSupabaseIngestionClient({
     },
     async getStablePredictionRows({ since = null, limit = 10000 } = {}) {
       const query = {
-        select: 'source,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,prediction_features,created_at',
-        'prediction_features->>settlement_final': 'eq.true',
+        select: 'id,source,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,side_hits,prediction_features,created_at',
+        or: '(settlement_final.eq.true,prediction_features->>settlement_final.eq.true)',
         order: 'created_at.asc',
         limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
       }
       if (since) query.created_at = `gte.${since}`
       const rows = await getRest('daily_prediction_results', query)
-      return (Array.isArray(rows) ? rows : []).filter((row) => row?.prediction_features?.settlement_final === true)
+      return (Array.isArray(rows) ? rows : []).filter(isFinalPredictionSettlement)
     },
     async getRecentPredictionRows({ limit = 10000 } = {}) {
       const rows = await getRest('daily_prediction_results', {
-        select: 'table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,prediction_features,created_at',
-        'prediction_features->>settlement_final': 'eq.true',
+        select: 'id,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,side_hits,prediction_features,created_at',
+        or: '(settlement_final.eq.true,prediction_features->>settlement_final.eq.true)',
         strategy_version: 'in.(v097_副預測命中校準與門檻降5版,v098_主信心實際命中校準版,v098.20_六階段權重門檻整合版)',
         order: 'created_at.desc',
         limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
       })
-      return (Array.isArray(rows) ? rows : []).filter((row) => row?.prediction_features?.settlement_final === true)
+      return (Array.isArray(rows) ? rows : []).filter(isFinalPredictionSettlement)
     },
     async getTableUiSettledPredictions({ tableId, shoe, limit = 10 } = {}) {
       const boundedLimit = Math.min(10, Math.max(1, Number(limit) || 10))
       const fetchLimit = Math.min(100, boundedLimit * 10)
       const rows = await getRest('daily_prediction_results', {
-        select: 'table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,prediction_features,created_at',
+        select: 'id,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,side_hits,prediction_features,created_at',
         table_id: `eq.${tableId}`,
         shoe_no: `eq.${shoe}`,
         strategy_version: `eq.${ALL_MT_EQUAL_STRATEGY_VERSION}`,
+        or: '(settlement_final.eq.true,prediction_features->>settlement_final.eq.true)',
         order: 'created_at.desc',
         limit: String(fetchLimit),
       })
@@ -1585,7 +1662,7 @@ export function createSupabaseIngestionClient({
           && String(row?.shoe_no ?? '') === String(shoe)
           && row?.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION
           && row?.prediction_features?.prediction_timing === 'pre_result_context'
-          && row?.prediction_features?.settlement_final === true
+          && isFinalPredictionSettlement(row)
           && Number.isSafeInteger(Number(row?.round_no))
           && Number(row.round_no) > 0
           && ['banker', 'player'].includes(row?.predicted_result)
@@ -1676,11 +1753,35 @@ export function createSupabaseIngestionClient({
           preparedRoundWrites.delete(preparationKey)
           return { skipped: true, reason: 'duplicate_round', event, prediction, compactEvent, compactPrediction }
         }
-        const acknowledgement = await postRest('rpc/persist_v098_settled_round', {
-          p_roadmap: compactEvent,
-          p_prediction: compactPrediction,
-        }, undefined, { requireObject: true })
-        if (acknowledgement.persisted !== true || acknowledgement.roadmapDurable !== true || acknowledgement.predictionDurable !== true) {
+        const hasPredictionIdentity = Boolean(precomputedPrediction?.predictionId)
+        if (!hasPredictionIdentity && configured && requireVerifiedStrategy) {
+          throw new Error('prediction identity is required for production settlement')
+        }
+        const acknowledgement = hasPredictionIdentity
+          ? await postRest('rpc/settle_v09821_prediction', {
+              p_roadmap: compactEvent,
+              p_settlement: {
+                prediction_id: precomputedPrediction.predictionId,
+                source: compactPrediction.source,
+                table_id: compactPrediction.table_id,
+                shoe_no: compactPrediction.shoe_no,
+                round_no: compactPrediction.round_no,
+                strategy_version: compactPrediction.strategy_version,
+                actual_result: compactPrediction.actual_result,
+                is_hit: compactPrediction.is_hit,
+                resolved_at: compactPrediction.resolved_at,
+                settlement_final: compactPrediction.prediction_features?.settlement_final === true,
+                settlement_source_action: compactPrediction.prediction_features?.settlement_source_action ?? null,
+                side_actual_results: compactPrediction.prediction_features?.side_actual_results ?? {},
+                side_hits: compactPrediction.prediction_features?.side_hits ?? {},
+              },
+            }, undefined, { requireObject: true })
+          : await postRest('rpc/persist_v098_settled_round', {
+              p_roadmap: compactEvent,
+              p_prediction: compactPrediction,
+            }, undefined, { requireObject: true })
+        if (acknowledgement.persisted !== true || acknowledgement.roadmapDurable !== true || acknowledgement.predictionDurable !== true
+          || (hasPredictionIdentity && acknowledgement.prediction_id !== precomputedPrediction.predictionId)) {
           throw new Error('durable settlement acknowledgement failed')
         }
         completedRoundKeys.add(roundKey)
@@ -1744,11 +1845,11 @@ export function createSupabaseIngestionClient({
       const since = new Date()
       since.setHours(0, 0, 0, 0)
       const rows = await getRest('daily_prediction_results', {
-        select: 'id',
+        select: 'id,settlement_final,prediction_features',
         created_at: `gte.${since.toISOString()}`,
-        'prediction_features->>settlement_final': 'eq.true',
+        or: '(settlement_final.eq.true,prediction_features->>settlement_final.eq.true)',
       })
-      return Array.isArray(rows) ? rows.length : 0
+      return (Array.isArray(rows) ? rows : []).filter(isFinalPredictionSettlement).length
     },
     async writeCloudRoundEvent(payload) {
       const row = buildCloudRoundEventRow(payload)
@@ -1826,6 +1927,11 @@ function buildRoundDedupeKey(event = {}, prediction = {}) {
     bankerPoints: event.banker_points,
     playerPoints: event.player_points,
   })
+}
+
+function isFinalPredictionSettlement(row = {}) {
+  return row?.settlement_final === true
+    || (row?.settlement_final == null && row?.prediction_features?.settlement_final === true)
 }
 
 function isRetryableError(error) {

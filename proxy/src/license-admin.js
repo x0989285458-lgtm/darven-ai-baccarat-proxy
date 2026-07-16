@@ -8,8 +8,8 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
   const db = pool ?? (resolvedConnectionString ? new pg.Pool({ connectionString: resolvedConnectionString, ssl: { rejectUnauthorized: false }, max: 2 }) : null)
 
   async function getStatus({ adminAccount = null } = {}) {
-    if (!configured) return { configured: false, managers: [], agents: [], plans: [], licenses: [], agentRows: [], licenseRows: [] }
-    const [managers, agents, plans, licenses] = await Promise.all([
+    if (!configured) return { configured: false, managers: [], agents: [], plans: [], licenses: [], agentRows: [], licenseRows: [], usedLicenseCodes: [] }
+    const [managers, agents, plans, licenses, usedLicenses] = await Promise.all([
       db.query("select id, username, role, is_active, created_at from public.manager_accounts where lower(username) = 'dv1788' order by created_at desc limit 50"),
       db.query(`select id, code, name, role, parent_code, is_active, permission, created_at
                 from public.agents where coalesce(is_active, true) = true order by created_at desc limit 100`),
@@ -20,10 +20,16 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
                 left join public.plans p on p.id = l.plan_id
                 where l.status <> 'expired'
                 order by l.created_at desc limit 100`),
+      db.query(`select l.code, a.code as agent_code
+                from public.licenses l
+                join public.agents a on a.id = l.agent_id
+                order by l.created_at desc`),
     ])
     const scopedAgents = scopeAgents(agents.rows, adminAccount)
     const scopedCodes = new Set(scopedAgents.map((agent) => agent.code))
-    const scopedLicenses = isSuperAdmin(adminAccount) || !adminAccount ? licenses.rows : licenses.rows.filter((license) => scopedCodes.has(license.agent_code) || license.agent_code === adminAccount)
+    const inLicenseScope = (license) => isSuperAdmin(adminAccount) || !adminAccount || scopedCodes.has(license.agent_code) || license.agent_code === adminAccount
+    const scopedLicenses = licenses.rows.filter(inLicenseScope)
+    const scopedUsedLicenses = usedLicenses.rows.filter(inLicenseScope)
     return {
       configured: true,
       managers: managers.rows,
@@ -39,6 +45,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
         expiresOn: dateOnly(license.expires_on),
         agentCode: license.agent_code,
       })),
+      usedLicenseCodes: scopedUsedLicenses.map((license) => license.code),
     }
   }
 
@@ -114,29 +121,48 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
 
   async function createLicense({ memberAccount, code, agentCode, planName = '正式月卡', durationDays = 30, startsOn = todayIso(), adminAccount = 'dv1788' } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
+    if (!Number.isInteger(durationDays) || durationDays < 1 || durationDays > 30) {
+      throw httpError(400, 'durationDays must be an integer from 1 through 30')
+    }
     if (!code || !agentCode) throw new Error('license code and agentCode are required')
     await assertCanManageCodes(adminAccount)
     await assertCanManageAgentCode(adminAccount, agentCode)
     const resolvedMemberAccount = memberAccount || `User${String(code).match(/(\d+)/)?.[1]?.slice(-4)?.padStart(4, '0') ?? '0001'}`
     const plan = await getOrCreatePlan({ name: planName, durationDays })
     const agent = await getOrCreateAgentByCode(agentCode)
+    const existing = await db.query(
+      `select l.id, l.code, l.member_account, l.agent_id, a.code as agent_code,
+              l.plan_id, p.duration_days, l.starts_on, l.expires_on, l.status
+       from public.licenses l
+       join public.agents a on a.id = l.agent_id
+       join public.plans p on p.id = l.plan_id
+       where l.code = $1 limit 1`,
+      [code],
+    )
+    if (existing.rows[0]) {
+      const row = existing.rows[0]
+      const sameIdentity = row.member_account === resolvedMemberAccount
+        && row.agent_code === agentCode
+        && Number(row.duration_days) === durationDays
+      if (!sameIdentity) throw httpError(409, 'license code already belongs to a different license identity')
+      return { ok: true, idempotent: true, durationDays, row }
+    }
     const member = await upsertMember({ account: resolvedMemberAccount, agentId: agent.id })
-    const expiresOn = addDaysIso(startsOn, plan.duration_days)
-    const existing = await db.query('select id from public.licenses where code = $1 limit 1', [code])
-    const result = existing.rows[0]
-      ? await db.query(
-        `update public.licenses set member_account = $2, agent_id = $3, plan_id = $4, starts_on = $5, expires_on = $6, status = 'active', updated_at = now()
-         where code = $1 returning id, code, member_account, agent_id, plan_id, starts_on, expires_on, status`,
-        [code, member.account, agent.id, plan.id, startsOn, expiresOn],
-      )
-      : await db.query(
+    const expiresOn = addDaysIso(startsOn, durationDays)
+    let result
+    try {
+      result = await db.query(
         `insert into public.licenses(code, member_account, agent_id, plan_id, starts_on, expires_on, status)
          values ($1, $2, $3, $4, $5, $6, 'active')
          returning id, code, member_account, agent_id, plan_id, starts_on, expires_on, status`,
         [code, member.account, agent.id, plan.id, startsOn, expiresOn],
       )
+    } catch (error) {
+      if (error?.code === '23505') throw httpError(409, 'license code already exists')
+      throw error
+    }
     await logAdminOperation({ adminAccount, action: 'create_license', targetType: 'license', targetCode: code, payload: { memberAccount: resolvedMemberAccount, agentCode, durationDays } })
-    return { ok: true, row: result.rows[0] }
+    return { ok: true, durationDays, row: result.rows[0] }
   }
 
   async function setLicenseStatus({ code, status, adminAccount = 'DVAI' } = {}) {
@@ -179,9 +205,19 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
   }
 
   async function getOrCreatePlan({ name, durationDays }) {
-    const existing = await db.query('select id, name, duration_days from public.plans where name = $1 limit 1', [name])
-    if (existing.rows[0]) return existing.rows[0]
-    return upsertPlan({ name, durationDays })
+    const resolvedName = durationDays === 30 ? name : `${name}-${durationDays}天`
+    const existing = await db.query('select id, name, duration_days from public.plans where name = $1 limit 1', [resolvedName])
+    if (existing.rows[0]) {
+      if (Number(existing.rows[0].duration_days) !== durationDays) {
+        throw httpError(409, 'plan name already exists with a different duration')
+      }
+      return existing.rows[0]
+    }
+    const result = await db.query(
+      'insert into public.plans(name, duration_days) values ($1, $2) returning id, name, duration_days',
+      [resolvedName, durationDays],
+    )
+    return result.rows[0]
   }
 
   async function getOrCreateAgentByCode(code) {
@@ -272,12 +308,12 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     const todayCount = await db.query(`select count(distinct table_id || ':' || shoe_no || ':' || round_no)::int as rounds
       from public.daily_prediction_results
       where created_at >= date_trunc('day', now()) and strategy_version = $1
-        and prediction_features->>'settlement_final' = 'true'`, [ALL_MT_EQUAL_STRATEGY_VERSION])
+        and (settlement_final is true or (settlement_final is null and prediction_features->>'settlement_final' = 'true'))`, [ALL_MT_EQUAL_STRATEGY_VERSION])
     const tableRows = await db.query(`with scoped as (
-        select table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, prediction_features
+        select table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, settlement_final, side_hits, prediction_features
         from public.daily_prediction_results
         where created_at >= date_trunc('day', now()) and strategy_version = $1
-          and prediction_features->>'settlement_final' = 'true'
+          and (settlement_final is true or (settlement_final is null and prediction_features->>'settlement_final' = 'true'))
       ), validated as (
         select *,
           jsonb_typeof(prediction_features->'side_actions') = 'object'
@@ -294,20 +330,20 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
           and (prediction_features->'side_actions'->>'playerPair') in ('true','false')
           and (prediction_features->'side_actions'->>'bankerDragon') in ('true','false')
           and (prediction_features->'side_actions'->>'playerDragon') in ('true','false')
-          and jsonb_typeof(prediction_features->'side_hits') = 'object'
-          and (prediction_features->'side_hits' ? 'tie')
-          and (prediction_features->'side_hits' ? 'superSix')
-          and (prediction_features->'side_hits' ? 'bankerPair')
-          and (prediction_features->'side_hits' ? 'playerPair')
-          and (prediction_features->'side_hits' ? 'bankerDragon')
-          and (prediction_features->'side_hits' ? 'playerDragon')
-          and jsonb_object_length(prediction_features->'side_hits') = 6
-          and (prediction_features->'side_hits'->>'tie') in ('true','false')
-          and (prediction_features->'side_hits'->>'superSix') in ('true','false')
-          and (prediction_features->'side_hits'->>'bankerPair') in ('true','false')
-          and (prediction_features->'side_hits'->>'playerPair') in ('true','false')
-          and (prediction_features->'side_hits'->>'bankerDragon') in ('true','false')
-          and (prediction_features->'side_hits'->>'playerDragon') in ('true','false') as side_actions_available
+          and jsonb_typeof(coalesce(side_hits, prediction_features->'side_hits')) = 'object'
+          and (coalesce(side_hits, prediction_features->'side_hits') ? 'tie')
+          and (coalesce(side_hits, prediction_features->'side_hits') ? 'superSix')
+          and (coalesce(side_hits, prediction_features->'side_hits') ? 'bankerPair')
+          and (coalesce(side_hits, prediction_features->'side_hits') ? 'playerPair')
+          and (coalesce(side_hits, prediction_features->'side_hits') ? 'bankerDragon')
+          and (coalesce(side_hits, prediction_features->'side_hits') ? 'playerDragon')
+          and jsonb_object_length(coalesce(side_hits, prediction_features->'side_hits')) = 6
+          and (coalesce(side_hits, prediction_features->'side_hits')->>'tie') in ('true','false')
+          and (coalesce(side_hits, prediction_features->'side_hits')->>'superSix') in ('true','false')
+          and (coalesce(side_hits, prediction_features->'side_hits')->>'bankerPair') in ('true','false')
+          and (coalesce(side_hits, prediction_features->'side_hits')->>'playerPair') in ('true','false')
+          and (coalesce(side_hits, prediction_features->'side_hits')->>'bankerDragon') in ('true','false')
+          and (coalesce(side_hits, prediction_features->'side_hits')->>'playerDragon') in ('true','false') as side_actions_available
         from scoped
       ), side as (
         select table_id,
@@ -321,17 +357,17 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
             case when (prediction_features->'side_actions'->>'playerDragon')::boolean is true then 1 else 0 end
           )::int as side_actions,
           sum(
-            case when (prediction_features->'side_actions'->>'tie')::boolean is true and (prediction_features->'side_hits'->>'tie')::boolean is true then 1 else 0 end +
-            case when (prediction_features->'side_actions'->>'superSix')::boolean is true and (prediction_features->'side_hits'->>'superSix')::boolean is true then 1 else 0 end +
-            case when (prediction_features->'side_actions'->>'bankerPair')::boolean is true and (prediction_features->'side_hits'->>'bankerPair')::boolean is true then 1 else 0 end +
-            case when (prediction_features->'side_actions'->>'playerPair')::boolean is true and (prediction_features->'side_hits'->>'playerPair')::boolean is true then 1 else 0 end +
-            case when (prediction_features->'side_actions'->>'bankerDragon')::boolean is true and (prediction_features->'side_hits'->>'bankerDragon')::boolean is true then 1 else 0 end +
-            case when (prediction_features->'side_actions'->>'playerDragon')::boolean is true and (prediction_features->'side_hits'->>'playerDragon')::boolean is true then 1 else 0 end
+            case when (prediction_features->'side_actions'->>'tie')::boolean is true and (coalesce(side_hits, prediction_features->'side_hits')->>'tie')::boolean is true then 1 else 0 end +
+            case when (prediction_features->'side_actions'->>'superSix')::boolean is true and (coalesce(side_hits, prediction_features->'side_hits')->>'superSix')::boolean is true then 1 else 0 end +
+            case when (prediction_features->'side_actions'->>'bankerPair')::boolean is true and (coalesce(side_hits, prediction_features->'side_hits')->>'bankerPair')::boolean is true then 1 else 0 end +
+            case when (prediction_features->'side_actions'->>'playerPair')::boolean is true and (coalesce(side_hits, prediction_features->'side_hits')->>'playerPair')::boolean is true then 1 else 0 end +
+            case when (prediction_features->'side_actions'->>'bankerDragon')::boolean is true and (coalesce(side_hits, prediction_features->'side_hits')->>'bankerDragon')::boolean is true then 1 else 0 end +
+            case when (prediction_features->'side_actions'->>'playerDragon')::boolean is true and (coalesce(side_hits, prediction_features->'side_hits')->>'playerDragon')::boolean is true then 1 else 0 end
           )::int as side_hits
         from validated group by table_id
       ) select s.table_id,
           count(distinct s.table_id || ':' || s.shoe_no || ':' || s.round_no)::int as rounds,
-          count(*) filter (where s.predicted_result in ('banker','player') and s.actual_result is not null)::int as main_total,
+          count(*) filter (where s.predicted_result in ('banker','player') and s.actual_result in ('banker','player'))::int as main_total,
           count(*) filter (where s.predicted_result in ('banker','player') and s.is_hit is true)::int as main_hits,
           coalesce(side.side_actions,0)::int as side_actions,
           coalesce(side.side_hits,0)::int as side_hits,
@@ -339,10 +375,10 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
         from scoped s left join side on side.table_id=s.table_id
         group by s.table_id, side.side_actions, side.side_hits, side.side_actions_available`, [ALL_MT_EQUAL_STRATEGY_VERSION])
     const reportRows = await db.query(`with scoped as (
-        select created_at::date as day, table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, prediction_features
+        select created_at::date as day, table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, settlement_final, side_hits, prediction_features
         from public.daily_prediction_results
         where created_at >= (current_date - interval '7 days') and created_at < current_date and strategy_version = $1
-          and prediction_features->>'settlement_final' = 'true'
+          and (settlement_final is true or (settlement_final is null and prediction_features->>'settlement_final' = 'true'))
       ), validated as (
         select *,
           jsonb_typeof(prediction_features->'side_actions') = 'object'
@@ -359,37 +395,37 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
           and (prediction_features->'side_actions'->>'playerPair') in ('true','false')
           and (prediction_features->'side_actions'->>'bankerDragon') in ('true','false')
           and (prediction_features->'side_actions'->>'playerDragon') in ('true','false')
-          and jsonb_typeof(prediction_features->'side_hits') = 'object'
-          and (prediction_features->'side_hits' ? 'tie')
-          and (prediction_features->'side_hits' ? 'superSix')
-          and (prediction_features->'side_hits' ? 'bankerPair')
-          and (prediction_features->'side_hits' ? 'playerPair')
-          and (prediction_features->'side_hits' ? 'bankerDragon')
-          and (prediction_features->'side_hits' ? 'playerDragon')
-          and jsonb_object_length(prediction_features->'side_hits') = 6
-          and (prediction_features->'side_hits'->>'tie') in ('true','false')
-          and (prediction_features->'side_hits'->>'superSix') in ('true','false')
-          and (prediction_features->'side_hits'->>'bankerPair') in ('true','false')
-          and (prediction_features->'side_hits'->>'playerPair') in ('true','false')
-          and (prediction_features->'side_hits'->>'bankerDragon') in ('true','false')
-          and (prediction_features->'side_hits'->>'playerDragon') in ('true','false') as side_actions_available
+          and jsonb_typeof(coalesce(side_hits, prediction_features->'side_hits')) = 'object'
+          and (coalesce(side_hits, prediction_features->'side_hits') ? 'tie')
+          and (coalesce(side_hits, prediction_features->'side_hits') ? 'superSix')
+          and (coalesce(side_hits, prediction_features->'side_hits') ? 'bankerPair')
+          and (coalesce(side_hits, prediction_features->'side_hits') ? 'playerPair')
+          and (coalesce(side_hits, prediction_features->'side_hits') ? 'bankerDragon')
+          and (coalesce(side_hits, prediction_features->'side_hits') ? 'playerDragon')
+          and jsonb_object_length(coalesce(side_hits, prediction_features->'side_hits')) = 6
+          and (coalesce(side_hits, prediction_features->'side_hits')->>'tie') in ('true','false')
+          and (coalesce(side_hits, prediction_features->'side_hits')->>'superSix') in ('true','false')
+          and (coalesce(side_hits, prediction_features->'side_hits')->>'bankerPair') in ('true','false')
+          and (coalesce(side_hits, prediction_features->'side_hits')->>'playerPair') in ('true','false')
+          and (coalesce(side_hits, prediction_features->'side_hits')->>'bankerDragon') in ('true','false')
+          and (coalesce(side_hits, prediction_features->'side_hits')->>'playerDragon') in ('true','false') as side_actions_available
         from scoped
       ), grouped as (
         select day,
           bool_and(side_actions_available) as side_actions_available,
           count(distinct table_id || ':' || shoe_no || ':' || round_no)::int as rounds,
-          count(*) filter (where predicted_result='banker')::int as banker_total,
+          count(*) filter (where predicted_result='banker' and actual_result in ('banker','player'))::int as banker_total,
           count(*) filter (where predicted_result='banker' and actual_result='banker')::int as banker_hits,
-          count(*) filter (where predicted_result='player')::int as player_total,
+          count(*) filter (where predicted_result='player' and actual_result in ('banker','player'))::int as player_total,
           count(*) filter (where predicted_result='player' and actual_result='player')::int as player_hits,
           sum(case when (prediction_features->'side_actions'->>'tie')::boolean is true then 1 else 0 end)::int as tie_total,
-          sum(case when (prediction_features->'side_actions'->>'tie')::boolean is true and (prediction_features->'side_hits'->>'tie')::boolean is true then 1 else 0 end)::int as tie_hits,
+          sum(case when (prediction_features->'side_actions'->>'tie')::boolean is true and (coalesce(side_hits, prediction_features->'side_hits')->>'tie')::boolean is true then 1 else 0 end)::int as tie_hits,
           sum(case when predicted_result='banker' and (prediction_features->'side_actions'->>'bankerDragon')::boolean is true then 1 when predicted_result='player' and (prediction_features->'side_actions'->>'playerDragon')::boolean is true then 1 else 0 end)::int as dragon_total,
-          sum(case when predicted_result='banker' and (prediction_features->'side_actions'->>'bankerDragon')::boolean is true and (prediction_features->'side_hits'->>'bankerDragon')::boolean is true then 1 when predicted_result='player' and (prediction_features->'side_actions'->>'playerDragon')::boolean is true and (prediction_features->'side_hits'->>'playerDragon')::boolean is true then 1 else 0 end)::int as dragon_hits,
+          sum(case when predicted_result='banker' and (prediction_features->'side_actions'->>'bankerDragon')::boolean is true and (coalesce(side_hits, prediction_features->'side_hits')->>'bankerDragon')::boolean is true then 1 when predicted_result='player' and (prediction_features->'side_actions'->>'playerDragon')::boolean is true and (coalesce(side_hits, prediction_features->'side_hits')->>'playerDragon')::boolean is true then 1 else 0 end)::int as dragon_hits,
           sum(case when (prediction_features->'side_actions'->>'bankerPair')::boolean is true then 1 else 0 end + case when (prediction_features->'side_actions'->>'playerPair')::boolean is true then 1 else 0 end)::int as pair_total,
-          sum(case when (prediction_features->'side_actions'->>'bankerPair')::boolean is true and (prediction_features->'side_hits'->>'bankerPair')::boolean is true then 1 else 0 end + case when (prediction_features->'side_actions'->>'playerPair')::boolean is true and (prediction_features->'side_hits'->>'playerPair')::boolean is true then 1 else 0 end)::int as pair_hits,
+          sum(case when (prediction_features->'side_actions'->>'bankerPair')::boolean is true and (coalesce(side_hits, prediction_features->'side_hits')->>'bankerPair')::boolean is true then 1 else 0 end + case when (prediction_features->'side_actions'->>'playerPair')::boolean is true and (coalesce(side_hits, prediction_features->'side_hits')->>'playerPair')::boolean is true then 1 else 0 end)::int as pair_hits,
           sum(case when (prediction_features->'side_actions'->>'superSix')::boolean is true then 1 else 0 end)::int as six_total,
-          sum(case when (prediction_features->'side_actions'->>'superSix')::boolean is true and (prediction_features->'side_hits'->>'superSix')::boolean is true then 1 else 0 end)::int as six_hits
+          sum(case when (prediction_features->'side_actions'->>'superSix')::boolean is true and (coalesce(side_hits, prediction_features->'side_hits')->>'superSix')::boolean is true then 1 else 0 end)::int as six_hits
         from validated group by day
       ) select to_char(day, 'YYYY-MM-DD') as date, rounds, side_actions_available,
           case when banker_total>0 then round((banker_hits::numeric/banker_total)*100,1)::text || '%' else '-' end as banker_hit_rate,
@@ -522,12 +558,14 @@ function countDistinctRounds(rows) {
   return new Set(rows.map((r) => `${r.table_id}:${r.shoe_no}:${r.round_no}`)).size
 }
 function pctText(hits, total) { return total ? `${((hits / total) * 100).toFixed(1)}%` : '-' }
-function sideAction(features, key) { return features?.side_actions?.[key] === true }
-function sideHit(features, key) { return features?.side_hits?.[key] === true }
+function sideAction(row, key) { return row?.prediction_features?.side_actions?.[key] === true }
+function effectiveSideHits(row = {}) { return row.side_hits ?? row.prediction_features?.side_hits }
+function sideHit(row, key) { return effectiveSideHits(row)?.[key] === true }
+function isFinalSettlementRow(row = {}) { return row.settlement_final === true || (row.settlement_final == null && row.prediction_features?.settlement_final === true) }
 const SAVED_SIDE_ACTION_KEYS = ['tie','superSix','bankerPair','playerPair','bankerDragon','playerDragon']
-function hasCompleteSavedSideActions(features = {}) {
-  const actions = features.side_actions
-  const hits = features.side_hits
+function hasCompleteSavedSideActions(row = {}) {
+  const actions = row.prediction_features?.side_actions
+  const hits = effectiveSideHits(row)
   return actions && typeof actions === 'object' && !Array.isArray(actions)
     && Object.keys(actions).length === SAVED_SIDE_ACTION_KEYS.length
     && SAVED_SIDE_ACTION_KEYS.every((key) => typeof actions[key] === 'boolean')
@@ -536,19 +574,18 @@ function hasCompleteSavedSideActions(features = {}) {
     && SAVED_SIDE_ACTION_KEYS.every((key) => typeof hits[key] === 'boolean')
 }
 function sideActionStats(rows, keys) {
-  if (rows.some((row) => !hasCompleteSavedSideActions(row.prediction_features))) {
+  if (rows.some((row) => !hasCompleteSavedSideActions(row))) {
     return { actions: 0, hits: 0, rate: 'unavailable', available: false }
   }
   let actions = 0, hits = 0
   for (const r of rows) {
-    const f = r.prediction_features ?? {}
     for (const key of keys) {
       if (key === 'bankerDragon' || key === 'playerDragon') continue
-      if (sideAction(f, key)) { actions += 1; if (sideHit(f, key)) hits += 1 }
+      if (sideAction(r, key)) { actions += 1; if (sideHit(r, key)) hits += 1 }
     }
     if (keys.includes('bankerDragon') || keys.includes('playerDragon')) {
       const dragonKey = r.predicted_result === 'banker' ? 'bankerDragon' : r.predicted_result === 'player' ? 'playerDragon' : null
-      if (dragonKey && keys.includes(dragonKey) && sideAction(f, dragonKey)) { actions += 1; if (sideHit(f, dragonKey)) hits += 1 }
+      if (dragonKey && keys.includes(dragonKey) && sideAction(r, dragonKey)) { actions += 1; if (sideHit(r, dragonKey)) hits += 1 }
     }
   }
   return { actions, hits, rate: pctText(hits, actions), available: true }
@@ -557,20 +594,21 @@ function tableLabel(tableId) {
   const map = { BAG01:'1桌', BAG02:'2桌', BAG03:'3桌', BAG04:'4桌', BAG05:'5桌', BAG06:'6桌', BAG07:'7桌', BAG08:'8桌', BAG09:'9桌' }
   return map[tableId] ?? String(tableId ?? '')
 }
-function buildTableStats(rows) {
+export function buildTableStats(rows) {
   const order = ['BAG01','BAG02','BAG03','BAG04','BAG05','BAG06','BAG07','BAG08','BAG09']
   return order.map((tableId) => {
-    const list = rows.filter((r) => r.table_id === tableId || (tableId === 'BAG04' && r.table_id === 'BAG03A'))
-    const mainRows = list.filter((r) => ['banker', 'player'].includes(r.predicted_result) && r.actual_result)
+    const list = rows.filter((r) => isFinalSettlementRow(r) && (r.table_id === tableId || (tableId === 'BAG04' && r.table_id === 'BAG03A')))
+    const mainRows = list.filter((r) => ['banker', 'player'].includes(r.predicted_result) && ['banker', 'player'].includes(r.actual_result))
     const mainTotal = mainRows.length
     const mainHits = mainRows.filter((r) => r.is_hit === true).length
     const side = sideActionStats(list, ['tie','superSix','bankerPair','playerPair','bankerDragon','playerDragon'])
     return { tableId, tableName: tableLabel(tableId), rounds: countDistinctRounds(list), mainHitRate: pctText(mainHits, mainTotal), sideHitRate: side.rate, sideActionsAvailable: side.available }
   })
 }
-function buildDailyReports(rows) {
+export function buildDailyReports(rows) {
   const groups = new Map()
   for (const r of rows) {
+    if (!isFinalSettlementRow(r)) continue
     const key = String(r.day).slice(0, 10)
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key).push(r)
@@ -578,13 +616,13 @@ function buildDailyReports(rows) {
   return [...groups.entries()].sort((a,b)=>b[0].localeCompare(a[0])).slice(0,7).map(([date, list]) => {
     const category = (name) => {
       if (name === 'tie') return sideActionStats(list, ['tie']).rate
-      const rows = list.filter((r) => r.predicted_result === name)
+      const rows = list.filter((r) => r.predicted_result === name && ['banker', 'player'].includes(r.actual_result))
       return pctText(rows.filter((r) => r.actual_result === name).length, rows.length)
     }
     return {
       date,
       rounds: countDistinctRounds(list),
-      side_actions_available: list.every((row) => hasCompleteSavedSideActions(row.prediction_features)),
+      side_actions_available: list.every((row) => hasCompleteSavedSideActions(row)),
       banker_hit_rate: category('banker'),
       player_hit_rate: category('player'),
       tie_hit_rate: category('tie'),
@@ -640,6 +678,12 @@ function formatRemain(expiresOn) {
   const expiry = String(expiresOn).includes('T') ? new Date(expiresOn) : new Date(`${expiresOn}T00:00:00`)
   const diff = Math.ceil((expiry.getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) / 86400000)
   return diff > 0 ? `${diff}天` : '已到期'
+}
+
+function httpError(statusCode, message) {
+  const error = new Error(message)
+  error.statusCode = statusCode
+  return error
 }
 
 function addDaysIso(dateText, days) {

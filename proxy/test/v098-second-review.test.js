@@ -75,6 +75,7 @@ test('v098 startup verifies the active strategy before accepting live tables', a
       ensureCalls += 1
       ready = true
     },
+    issuePrediction: async (candidate) => ({ ...candidate, predictionId: 'verified-prediction', issuedAt: new Date().toISOString() }),
   }
   const app = createApp({ autoConnect: false, port: 0, requireVerifiedStrategy: true, supabaseClient })
 

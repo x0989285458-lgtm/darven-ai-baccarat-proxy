@@ -64,7 +64,7 @@ test('v098 runtime settles each round once with the immutable matching pending p
   assert.equal(persisted[0].pending.targetRound, revealedRound.round)
 })
 
-test('v098 runtime rejects expired pending predictions at settlement time', async () => {
+test('v098.21 display TTL does not prevent settlement of an already issued pending prediction', async () => {
   let clock = 1_000_000
   const persisted = []
   const app = createApp({
@@ -82,7 +82,8 @@ test('v098 runtime rejects expired pending predictions at settlement time', asyn
   app.state.upsertRoundEvent(revealedRound)
   await new Promise((resolve) => setImmediate(resolve))
 
-  assert.equal(persisted.length, 0)
+  assert.equal(persisted.length, 1)
+  assert.equal(persisted[0][2].targetRound, revealedRound.round)
 })
 
 test('v098 runtime retains a matching pending prediction when persistence fails so the event can retry', async () => {

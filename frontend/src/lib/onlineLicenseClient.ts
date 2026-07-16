@@ -10,6 +10,7 @@ export type OnlineLicenseStatus = {
   licenses: Array<{ code: string; member_account?: string; status?: string; agent_code?: string; plan_name?: string; expires_on?: string }>
   agentRows: Array<{ account: string; level: string; permission: string; parent?: string; depth?: number }>
   licenseRows: Array<{ member: string; code: string; status: string; remain: string; agentCode?: string; expiresOn?: string }>
+  usedLicenseCodes?: string[]
 }
 
 type AdminSessionPayload = { adminSessionToken?: string }
@@ -123,7 +124,8 @@ function mapStatus(body: any): OnlineLicenseStatus {
     expiresOn: license.expires_on ? String(license.expires_on).slice(0, 10) : undefined,
     agentCode: license.agent_code,
   }))
-  return { configured: body.configured, managers, agents, plans: body.plans ?? [], licenses, agentRows, licenseRows }
+  const usedLicenseCodes = Array.isArray(body.usedLicenseCodes) ? body.usedLicenseCodes.filter((code: unknown): code is string => typeof code === 'string') : []
+  return { configured: body.configured, managers, agents, plans: body.plans ?? [], licenses, agentRows, licenseRows, usedLicenseCodes }
 }
 
 function roleLabel(role?: string, fallback?: string) {

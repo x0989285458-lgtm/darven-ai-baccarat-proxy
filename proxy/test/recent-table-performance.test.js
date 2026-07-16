@@ -43,6 +43,7 @@ test('v098.11 proxy warms settled performance before creating a live prediction'
     ensureInitialStrategy: async () => ({ ok: true }),
     getRuntimeStatus: () => ({ ready: true, degraded: false, activeStrategyVersion: 'v098.20_六階段權重門檻整合版' }),
     getRecentPredictionRows: async () => rows,
+    issuePrediction: async (candidate) => ({ ...candidate, predictionId: 'warmup-prediction', issuedAt: new Date().toISOString() }),
   }
   const app = createApp({ autoConnect: false, port: 0, production: true, memberAuthRequired: false, supabaseClient })
   await app.start()

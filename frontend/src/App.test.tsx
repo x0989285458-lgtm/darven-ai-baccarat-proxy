@@ -486,7 +486,7 @@ describe('AI百家預測軟體', () => {
     const buttons = within(sidebar).getAllByRole('button', { name: /MT百家樂第.+桌 第\d+局/ })
     expect(buttons).toHaveLength(10)
     expect(buttons.map((button) => button.textContent?.match(/第(.+?)桌/)?.[1])).toEqual(['1', '2', '3', '3A', '5', '6', '7', '8', '9', '10'])
-    expect(buttons[3]).toHaveTextContent('第3A桌 第101局')
+    expect(buttons[3]).toHaveTextContent('第3A桌 第115局')
   })
 
   it('v098.19 renders the six-row big road directly from authoritative MT codes with points and no legends', async () => {
