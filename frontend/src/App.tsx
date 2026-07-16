@@ -139,27 +139,46 @@ export default function App() {
     if (path !== '/' && path !== '') return
     if (!memberSessionToken) { setMemberSessionState('invalid'); return }
     let active = true
+    let expiryTimer: number | undefined
+    const expireMemberSession = () => {
+      if (!active) return
+      clearMemberSession()
+      setMemberSessionState('invalid')
+      client.current?.disconnect(false)
+    }
+    const scheduleExpiry = (expiresAt?: string | null) => {
+      if (expiryTimer !== undefined) window.clearTimeout(expiryTimer)
+      if (!expiresAt) return true
+      const expiresAtMs = Date.parse(expiresAt)
+      if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+        expireMemberSession()
+        return false
+      }
+      expiryTimer = window.setTimeout(expireMemberSession, expiresAtMs - Date.now())
+      return true
+    }
     const verify = async () => {
       const expiresAt = window.sessionStorage.getItem(MEMBER_SESSION_EXPIRES_KEY)
-      if (expiresAt && (!Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now())) {
-        clearMemberSession()
-        if (active) setMemberSessionState('invalid')
-        return
-      }
+      if (!scheduleExpiry(expiresAt)) return
       const result = await validateMemberSession(memberSessionToken)
       if (!active) return
       if (!result.ok) {
-        clearMemberSession()
-        setMemberSessionState('invalid')
-        client.current?.disconnect(false)
+        expireMemberSession()
         return
       }
-      if (result.sessionExpiresAt) window.sessionStorage.setItem(MEMBER_SESSION_EXPIRES_KEY, result.sessionExpiresAt)
+      if (result.sessionExpiresAt) {
+        window.sessionStorage.setItem(MEMBER_SESSION_EXPIRES_KEY, result.sessionExpiresAt)
+        if (!scheduleExpiry(result.sessionExpiresAt)) return
+      }
       setMemberSessionState('valid')
     }
     void verify()
     const timer = window.setInterval(verify, 60000)
-    return () => { active = false; window.clearInterval(timer) }
+    return () => {
+      active = false
+      window.clearInterval(timer)
+      if (expiryTimer !== undefined) window.clearTimeout(expiryTimer)
+    }
   }, [path, memberSessionToken])
   useEffect(() => {
     if (path === '/login' || path === '/admin-login' || path === '/後台登入') return
@@ -804,7 +823,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
 function useInactivityLogout(mode: 'admin' | 'member' | null) {
   useEffect(() => {
     if (!mode) return
-    const timeoutMs = 10 * 60 * 1000
+    const timeoutMs = (mode === 'member' ? 30 : 10) * 60 * 1000
     let timer: ReturnType<typeof setTimeout>
     const clearLogin = () => {
       if (mode === 'admin') {

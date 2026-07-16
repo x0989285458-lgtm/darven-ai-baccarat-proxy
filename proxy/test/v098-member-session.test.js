@@ -56,13 +56,32 @@ test('v098 member session can be revalidated immediately after login without ret
   assert.deepEqual(JSON.parse(response.body), { ok: true, sessionExpiresAt })
 })
 
-test('v098 member session expiry is capped at ten minutes server-side', async () => {
+test('v098 member session expiry defaults to thirty minutes server-side', async () => {
   let clock = 1_000_000
-  const app = createMemberApp({ now: () => clock, memberSessionTtlMs: 20 * 60 * 1000 })
+  const app = createMemberApp({ now: () => clock, memberSessionTtlMs: undefined })
   const session = await login(app)
 
-  assert.equal(Date.parse(session.sessionExpiresAt) - clock, 10 * 60 * 1000)
-  clock += 10 * 60 * 1000 + 1
+  assert.equal(Date.parse(session.sessionExpiresAt) - clock, 30 * 60 * 1000)
+})
+
+test('v098 member session expiry is capped at thirty minutes server-side', async () => {
+  let clock = 1_000_000
+  const app = createMemberApp({ now: () => clock, memberSessionTtlMs: 60 * 60 * 1000 })
+  const session = await login(app)
+
+  assert.equal(Date.parse(session.sessionExpiresAt) - clock, 30 * 60 * 1000)
+})
+
+test('v098 member session remains valid at 29:59 and expires at 30:00', async () => {
+  let clock = 1_000_000
+  const app = createMemberApp({ now: () => clock, memberSessionTtlMs: undefined })
+  const session = await login(app)
+
+  clock += 29 * 60 * 1000 + 59 * 1000
+  const stillValid = await app.inject({ url: '/api/tables', headers: { authorization: `Bearer ${session.memberSessionToken}` } })
+  assert.equal(stillValid.statusCode, 200)
+
+  clock += 1000
   const expired = await app.inject({ url: '/api/tables', headers: { authorization: `Bearer ${session.memberSessionToken}` } })
   assert.equal(expired.statusCode, 401)
 })

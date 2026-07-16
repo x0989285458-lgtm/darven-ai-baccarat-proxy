@@ -6,9 +6,10 @@ import { applyAskRoadWeighting, calculateAskRoadInfluence, ALL_MT_EQUAL_MAIN_WEI
 
 async function renderApp(path = '/', waitForConnected = true) {
   window.history.pushState({}, '', path)
+  const memberSessionExpiresAt = window.sessionStorage.getItem('darven-member-session-expires-at') ?? new Date(Date.now() + 600000).toISOString()
   if (path === '/' || path === '') {
-    window.sessionStorage.setItem('darven-member-session-token', 'test-member-session')
-    window.sessionStorage.setItem('darven-member-session-expires-at', new Date(Date.now() + 600000).toISOString())
+    if (!window.sessionStorage.getItem('darven-member-session-token')) window.sessionStorage.setItem('darven-member-session-token', 'test-member-session')
+    window.sessionStorage.setItem('darven-member-session-expires-at', memberSessionExpiresAt)
   }
   if (path === '/admin') {
     if (!window.sessionStorage.getItem('darven-admin-account')) window.sessionStorage.setItem('darven-admin-account', 'DV1788')
@@ -20,7 +21,7 @@ async function renderApp(path = '/', waitForConnected = true) {
   }
   const currentFetch = fetch
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
-    if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, sessionExpiresAt: new Date(Date.now() + 600000).toISOString() }) })
+    if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, sessionExpiresAt: memberSessionExpiresAt }) })
     const response = await currentFetch(url, init)
     if (!url.includes('/api/tables') || !response.ok) return response
     return {
@@ -1099,7 +1100,7 @@ describe('AI百家預測軟體', () => {
     expect(screen.getByRole('button', { name: '刪除驗證碼' })).toBeInTheDocument()
   })
 
-  it('v045 admin has logout and frontend/backend inactivity clears login state after 10 minutes', async () => {
+  it('v098 keeps admin logout and changes member inactivity logout to 30 minutes', async () => {
     vi.useFakeTimers()
     window.sessionStorage.setItem('darven-admin-account', 'DVAI')
     window.sessionStorage.setItem('darven_admin_login', 'yes')
@@ -1111,10 +1112,29 @@ describe('AI百家預測軟體', () => {
     adminRender.unmount()
 
     window.sessionStorage.setItem('darven-member-session-token', 'test-member-session')
-    window.sessionStorage.setItem('darven-member-session-expires-at', new Date(Date.now() + 600000).toISOString())
+    window.sessionStorage.setItem('darven-member-session-expires-at', new Date(Date.now() + 30 * 60 * 1000).toISOString())
     await renderApp('/', false)
-    act(() => { vi.advanceTimersByTime(600001) })
+    act(() => { vi.advanceTimersByTime(29 * 60 * 1000 + 59 * 1000) })
+    expect(window.sessionStorage.getItem('darven-member-session-token')).toBe('test-member-session')
+    act(() => { vi.advanceTimersByTime(1001) })
     expect(window.sessionStorage.getItem('darven-member-session-token')).toBeNull()
+    vi.useRealTimers()
+  })
+
+  it('v098 clears a member session at the exact backend expiry even after recent activity', async () => {
+    vi.useFakeTimers()
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000 + 500).toISOString()
+    window.sessionStorage.setItem('darven-member-session-token', 'test-member-session')
+    window.sessionStorage.setItem('darven-member-session-expires-at', expiresAt)
+    await renderApp('/', false)
+
+    act(() => { vi.advanceTimersByTime(29 * 60 * 1000 + 59 * 1000) })
+    window.dispatchEvent(new Event('mousemove'))
+    expect(window.sessionStorage.getItem('darven-member-session-token')).toBe('test-member-session')
+
+    act(() => { vi.advanceTimersByTime(1501) })
+    expect(window.sessionStorage.getItem('darven-member-session-token')).toBeNull()
+    expect(screen.getByRole('button', { name: '會員登入' })).toBeInTheDocument()
     vi.useRealTimers()
   })
 })
