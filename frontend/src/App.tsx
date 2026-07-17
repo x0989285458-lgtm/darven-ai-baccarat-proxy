@@ -87,12 +87,12 @@ function backendMainScorePercentagesFromTable(table?: LiveTable | null) {
   const player = Number(value?.player)
   const total = banker + player
   if (![banker, player, total].every(Number.isFinite) || total <= 0) return null
-  let bankerPercent = Math.round(((banker / total) * 100) * 100) / 100
-  let playerPercent = Math.round((100 - bankerPercent) * 100) / 100
+  let bankerPercent = Math.round((banker / total) * 100)
+  let playerPercent = 100 - bankerPercent
   if (bankerPercent === playerPercent) {
     const recommendation = normalizeBackendRecommendation(table?.prediction?.recommendation ?? table?.prediction?.predictedResult)
-    if (recommendation === 'Banker') { bankerPercent = 50.01; playerPercent = 49.99 }
-    if (recommendation === 'Player') { bankerPercent = 49.99; playerPercent = 50.01 }
+    if (recommendation === 'Banker') { bankerPercent = 51; playerPercent = 49 }
+    if (recommendation === 'Player') { bankerPercent = 49; playerPercent = 51 }
   }
   return { banker: bankerPercent, player: playerPercent }
 }
@@ -327,7 +327,7 @@ export default function App() {
           {prediction ?
             <div className="prediction-row main-probability-row" aria-label="莊閒預測機率">
               <PredictionMetric title="閒" value={mainScorePercentages?.player ?? null} tone="Player" active={predictionsActionable && prediction.recommendation === 'Player'} />
-              <PredictionMetric title="和" value={bonusPredictions?.tie ?? null} tone="Tie" active={predictionsActionable && (sideActions?.tie ?? false)} />
+              <PredictionMetric title="和" value={bonusPredictions?.tie == null ? null : Math.round(bonusPredictions.tie)} tone="Tie" active={predictionsActionable && (sideActions?.tie ?? false)} />
               <PredictionMetric title="莊" value={mainScorePercentages?.banker ?? null} tone="Banker" active={predictionsActionable && prediction.recommendation === 'Banker'} />
             </div>
           : null}

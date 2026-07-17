@@ -67,7 +67,31 @@ describe('v98 frozen frontend release', () => {
     row.prediction = { ...row.prediction, scoreTotals: { banker: 0.50001, player: 0.49999 } }
     await renderMember(row)
     const mainMetrics = Array.from(document.querySelectorAll('.main-probability-row .prediction-metric'))
-    expect(mainMetrics.map((node) => node.querySelector('.probability-value')?.textContent)).toEqual(['49.99%', '25%', '50.01%'])
+    expect(mainMetrics.map((node) => node.querySelector('.probability-value')?.textContent)).toEqual(['49%', '25%', '51%'])
+  })
+
+  it('keeps a player recommendation visibly higher when integer rounding would display 50/50', async () => {
+    const row = liveTable()
+    row.prediction = {
+      ...row.prediction,
+      predictedResult: 'player',
+      scoreTotals: { banker: 0.49999, player: 0.50001 },
+    }
+    await renderMember(row)
+    const mainMetrics = Array.from(document.querySelectorAll('.main-probability-row .prediction-metric'))
+    expect(mainMetrics.map((node) => node.querySelector('.probability-value')?.textContent)).toEqual(['51%', '25%', '49%'])
+  })
+
+  it('rounds decimal player tie and banker display values to whole percentages only', async () => {
+    const row = liveTable()
+    row.prediction = {
+      ...row.prediction,
+      scoreTotals: { banker: 53.25, player: 46.75 },
+      sidePredictions: { ...sidePredictions, tie: 28.4 },
+    }
+    await renderMember(row)
+    const mainMetrics = Array.from(document.querySelectorAll('.main-probability-row .prediction-metric'))
+    expect(mainMetrics.map((node) => node.querySelector('.probability-value')?.textContent)).toEqual(['47%', '28%', '53%'])
   })
 
   it('fails closed for stale, wrong-version, or incomplete v98 payloads', async () => {
