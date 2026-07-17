@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { sanitizeProductionSnapshot } from './table-policy.js'
+import { BUILD_VERSION } from './runtime-config.js'
 
 export function createSnapshotPusher({
   targetUrl,
@@ -243,9 +244,14 @@ export function createSnapshotPusher({
       captureTimestamp,
       sequence: Number(envelope.sequence),
       roundKeys: keys,
-      snapshot: { ...snapshot, rounds: keyedRounds.map(({ round, key }) => normalizeRoundForEnvelope(round, key)) },
+      snapshot: {
+        ...snapshot,
+        buildVersion: BUILD_VERSION,
+        rounds: keyedRounds.map(({ round, key }) => normalizeRoundForEnvelope(round, key)),
+      },
     }
-    const changed = JSON.stringify(normalizedEnvelope.snapshot) !== JSON.stringify(originalSnapshot)
+    const changed = normalizedEnvelope.protocolVersion !== envelope.protocolVersion
+      || JSON.stringify(normalizedEnvelope.snapshot) !== JSON.stringify(originalSnapshot)
       || JSON.stringify(keys) !== JSON.stringify(originalKeys)
     return { envelope: normalizedEnvelope, changed, drop: originalRounds.length > 0 && keyedRounds.length === 0 }
   }

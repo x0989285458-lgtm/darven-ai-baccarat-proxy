@@ -6,6 +6,49 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createSnapshotPusher } from '../src/snapshot-pusher.js'
 
+test('v100 migration restamps a retained v098 snapshot so an empty head cannot block the v100 FIFO', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-v100-build-migration-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  const key = 'BAG01:8:1'
+  const final = {
+    tableId: 'BAG01', shoe: 8, round: 1, winner: 'banker',
+    rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
+    sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
+  }
+  await writeFile(queuePath, JSON.stringify({ version: 2, entries: [
+    {
+      protocolVersion: 'v098', sessionId: 'vm', timestamp: 1000, captureTimestamp: 1000,
+      sequence: 1000, roundKeys: [], snapshot: { sessionId: 'vm', buildVersion: '098', tables: [], rounds: [] },
+    },
+    {
+      protocolVersion: 'v100', sessionId: 'vm', timestamp: 1001, captureTimestamp: 1001,
+      sequence: 1001, roundKeys: [key], snapshot: { sessionId: 'vm', buildVersion: '100', tables: [], rounds: [final] },
+    },
+  ] }))
+  await writeFile(`${queuePath}.cursor.json`, JSON.stringify({
+    version: 3, initialized: true, lastSequence: 1001,
+    observedRoundKeys: [key], acknowledgedRoundKeys: [],
+  }))
+  const sent = []
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    now: () => 3000,
+    getSnapshot: async () => ({ sessionId: 'vm', buildVersion: '100', tables: [], rounds: [final] }),
+    isRoundDeliverable: () => true,
+    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
+  })
+
+  assert.equal(await pusher.tick(), true)
+  assert.equal(sent[0].protocolVersion, 'v100')
+  assert.equal(sent[0].snapshot.buildVersion, '100')
+  assert.deepEqual(sent[0].roundKeys, [])
+  assert.equal(await pusher.tick(), true)
+  assert.equal(sent[1].snapshot.buildVersion, '100')
+  assert.deepEqual(sent[1].roundKeys, [key])
+  await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
+})
+
 test('v098.17 pusher sanitizes tables and rounds before durable queue persistence', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
@@ -191,7 +234,7 @@ test('pusher restores the queued envelope, keeps collecting, and only 2xx acknow
   const original = {
     timestamp: 1000,
     sequence: 1000,
-    snapshot: { sessionId: 'vm', tables: [], rounds: [{ tableId: 'BAG01', shoe: 8, round: 9, winner: 'banker' }] },
+    snapshot: { sessionId: 'vm', buildVersion: '098', tables: [], rounds: [{ tableId: 'BAG01', shoe: 8, round: 9, winner: 'banker' }] },
   }
   await import('node:fs/promises').then(({ writeFile }) => writeFile(queuePath, JSON.stringify(original)))
   const statuses = [302, 204]
@@ -213,7 +256,7 @@ test('pusher restores the queued envelope, keeps collecting, and only 2xx acknow
   assert.equal(sent[0].protocolVersion, 'v100')
   assert.equal(sent[0].sessionId, 'vm')
   assert.deepEqual(sent[0].roundKeys, ['BAG01:8:9'])
-  assert.deepEqual(sent[0].snapshot, original.snapshot)
+  assert.deepEqual(sent[0].snapshot, { ...original.snapshot, buildVersion: '100' })
   assert.deepEqual(JSON.parse(await readFile(queuePath, 'utf8')).entries[0], sent[0])
   assert.equal(await pusher.tick(), true)
   assert.equal(snapshotCalls, 2)
