@@ -10,7 +10,7 @@ function validTable(overrides: Partial<LiveTable> = {}): LiveTable {
     id: 'BAG01',
     table_id: 'BAG01',
     table_type: 'BAC',
-    buildVersion: '098.22',
+    buildVersion: '098.23',
     sourceUpdatedAt: new Date().toISOString(),
     trend: {
       bead_plate2: '0102',
@@ -21,7 +21,7 @@ function validTable(overrides: Partial<LiveTable> = {}): LiveTable {
     prediction: {
       source: 'backend',
       strategyVersion,
-      buildVersion: '098.22',
+      buildVersion: '098.23',
       targetTableId: 'BAG01',
       targetShoe: '123',
       targetRound: 18,
@@ -203,12 +203,12 @@ describe('v098 live frontend contract', () => {
     expect(received[1].find((item) => item.table_id === 'BAG02')?.sourceUpdatedAt).toBe(newerB.sourceUpdatedAt)
   })
 
-  it('v098.22 requires durable prediction identity and fails old v098.21 payloads closed', () => {
+  it('v098.23 requires durable prediction identity and fails old v098.22 tabs closed', () => {
     const modern = validTable()
     expect(getBackendPredictionIssue(modern)).toBeNull()
     expect(getBackendPredictionIssue({ ...modern, prediction: { ...modern.prediction!, predictionId: undefined } })).toMatch(/識別/)
     expect(getBackendPredictionIssue({ ...modern, prediction: { ...modern.prediction!, issuedAt: undefined } })).toMatch(/識別/)
-    expect(getBackendPredictionIssue({ ...modern, buildVersion: '098', prediction: { ...modern.prediction!, buildVersion: '098' } })).toMatch(/版本/)
+    expect(getBackendPredictionIssue({ ...modern, buildVersion: '098.22', prediction: { ...modern.prediction!, buildVersion: '098.22' } })).toMatch(/版本/)
   })
 
   it('uses Authorization for the polling fallback without token-bearing URLs', async () => {

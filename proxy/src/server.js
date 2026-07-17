@@ -18,6 +18,49 @@ import { hasExactRealCardCodes, isExactTenRawResult, isVerifiedFinalRoundAction 
 const VERSION = BUILD_VERSION
 const SERVICE = 'Draven MT資料代理伺服器'
 const WORKER_PROTOCOL_BUILD_VERSION = '098'
+const LIFECYCLE_IDENTITIES_PER_TABLE = 256
+const LIFECYCLE_SHOES_PER_TABLE = 64
+
+function acceptLifecycleScreenIdentity(guardsByTable, { tableId, shoe, visibleRound }) {
+  const identity = `${tableId}:${shoe}:${visibleRound}`
+  const guard = guardsByTable.get(tableId) ?? {
+    latestShoe: null,
+    latestRound: null,
+    seenIdentities: new Set(),
+    identityOrder: [],
+    seenShoes: new Set(),
+    shoeOrder: [],
+  }
+
+  if (guard.seenIdentities.has(identity)) return false
+  if (guard.latestShoe === shoe) {
+    if (visibleRound <= guard.latestRound) return false
+  } else if (guard.latestShoe != null) {
+    if (guard.seenShoes.has(shoe)) return false
+    const candidateNumericShoe = numericShoe(shoe)
+    const latestNumericShoe = numericShoe(guard.latestShoe)
+    if (candidateNumericShoe != null && latestNumericShoe != null && candidateNumericShoe <= latestNumericShoe) return false
+  }
+
+  guard.latestShoe = shoe
+  guard.latestRound = visibleRound
+  rememberBounded(guard.seenIdentities, guard.identityOrder, identity, LIFECYCLE_IDENTITIES_PER_TABLE)
+  rememberBounded(guard.seenShoes, guard.shoeOrder, shoe, LIFECYCLE_SHOES_PER_TABLE)
+  guardsByTable.set(tableId, guard)
+  return true
+}
+
+function numericShoe(value) {
+  const normalized = String(value ?? '')
+  return /^\d+$/.test(normalized) ? BigInt(normalized) : null
+}
+
+function rememberBounded(seen, order, value, limit) {
+  if (seen.has(value)) return
+  seen.add(value)
+  order.push(value)
+  while (order.length > limit) seen.delete(order.shift())
+}
 
 export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient() } = {}) {
   const deployConfig = resolveDeployConfig({
@@ -39,6 +82,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const issuingPredictionPromises = new Map()
   const expiredPredictionKeys = new Set()
   const settlingPredictionKeys = new Set()
+  const lifecycleGuardsByTable = new Map()
   const memberSessions = new Map()
   const recentTablePerformance = createRecentTablePerformanceStore({ windowSize: 18 })
   let recentPerformanceReady = !(production && supabaseClient?.configured === true && typeof supabaseClient.getRecentPredictionRows === 'function')
@@ -51,7 +95,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     inferSnapshotRounds: !strictRealCardRounds,
     onTablesUpdated: (tables) => {
       tablesReceivedAtMs = now()
-      for (const table of tables) void savePendingPrediction(table)
+      for (const table of tables) void reconcileThenSavePendingPrediction(table)
     },
     onRoundEvent: async (round, table) => {
       if (!supabaseClient?.configured && !supabaseClient?.persistRound) return
@@ -254,11 +298,14 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       try {
         const formalStatus = await licenseAdminClient.getCloudDataStatus?.()
         const cloudStatus = await readCloudSnapshotStatus()
-        const analytics = await licenseAdminClient.getDailyAnalytics?.().catch(() => null)
+        const [analytics, lifecycleStats] = await Promise.all([
+          licenseAdminClient.getDailyAnalytics?.().catch(() => null),
+          supabaseClient.getPredictionLifecycleStats?.().catch(() => null),
+        ])
         const todayRoundCount = Number(analytics?.todayRoundCount ?? await readTodayRoundCount()) || 0
         const tableCount = Number(cloudStatus?.tableCount ?? snapshot.tables.length ?? formalStatus?.tableCount ?? 0)
         const message = appendTodayRoundMessage(formalStatus?.message ?? cloudStatus?.statusText, todayRoundCount)
-        return jsonResponse(200, { ok: true, mtAutoLoginEnabled: false, ...formalStatus, message, todayRoundCount, tableStats: analytics?.tableStats ?? [], dailyReports: analytics?.dailyReports ?? [], captureSource: cloudStatus?.captureSource ?? captureSource, deployMode: deployConfig.deployMode, tableCount, status: { ...snapshot.status, ...cloudStatus } }, frontendOrigin)
+        return jsonResponse(200, { ok: true, mtAutoLoginEnabled: false, ...formalStatus, message, todayRoundCount, tableStats: analytics?.tableStats ?? [], dailyReports: analytics?.dailyReports ?? [], ...(lifecycleStats ? { lifecycleStats } : {}), captureSource: cloudStatus?.captureSource ?? captureSource, deployMode: deployConfig.deployMode, tableCount, status: { ...snapshot.status, ...cloudStatus } }, frontendOrigin)
       } catch (error) {
         return jsonResponse(200, { ok: true, mtAutoLoginEnabled: false, captureSource, deployMode: deployConfig.deployMode, tableCount: snapshot.tables.length, status: snapshot.status, error: error?.message ?? String(error) }, frontendOrigin)
       }
@@ -516,6 +563,37 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     if (tablesReceivedAtMs > 0) return []
     const cloudSnapshot = await readLatestCloudSnapshot({ requireFresh: true })
     return includePrediction ? Promise.all((cloudSnapshot?.tables ?? []).map((table) => withLivePrediction(table))) : (cloudSnapshot?.tables ?? [])
+  }
+
+  async function reconcileThenSavePendingPrediction(table) {
+    let reconciliationError = null
+    const tableId = canonicalProductionTableId(table?.tableId)
+    const shoe = table?.shoe == null ? '' : String(table.shoe)
+    const visibleRound = Number(table?.round)
+    const canReconcile = supabaseClient?.configured === true
+      && typeof supabaseClient.reconcilePredictionLifecycle === 'function'
+      && PRODUCTION_TABLE_IDS.includes(tableId)
+      && Boolean(shoe)
+      && Number.isSafeInteger(visibleRound)
+      && visibleRound > 0
+    if (canReconcile) {
+      const accepted = acceptLifecycleScreenIdentity(lifecycleGuardsByTable, { tableId, shoe, visibleRound })
+      if (!accepted) return
+      try {
+        await supabaseClient.reconcilePredictionLifecycle({
+          source: 'ofalive99',
+          tableId,
+          currentShoe: shoe,
+          currentVisibleRound: visibleRound,
+        })
+      } catch (error) {
+        reconciliationError = error
+      }
+    }
+    await savePendingPrediction(table)
+    if (reconciliationError) {
+      state.setStatus({ persistenceStatus: 'error', persistenceError: reconciliationError?.message ?? String(reconciliationError) })
+    }
   }
 
   async function savePendingPrediction(table) {

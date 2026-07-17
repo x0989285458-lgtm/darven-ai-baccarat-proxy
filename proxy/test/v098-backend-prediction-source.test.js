@@ -5,7 +5,7 @@ import { buildLivePrediction } from '../src/supabase-writer.js'
 
 const issuedAt = '2026-07-17T01:00:00.000Z'
 
-test('v098.22 tables expose only a complete backend prediction for the exact screen round', async () => {
+test('v098.23 tables expose only a complete backend prediction for the exact screen round', async () => {
   const tableState = { tableId: 'BAG01', shoe: 88, round: 20, sourceUpdatedAt: issuedAt }
   const exact = {
     ...buildLivePrediction({ ...tableState, round: 19 }),

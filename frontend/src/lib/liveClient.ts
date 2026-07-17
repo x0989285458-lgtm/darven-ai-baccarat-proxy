@@ -90,7 +90,7 @@ const pollIntervalMs = Number(import.meta.env.VITE_DRAVEN_PROXY_POLL_MS ?? 5000)
 const streamStaleMs = Number(import.meta.env.VITE_DRAVEN_STREAM_STALE_MS ?? 15000)
 const liveTableMaxAgeMs = Number(import.meta.env.VITE_DRAVEN_TABLE_MAX_AGE_MS ?? 120000)
 const CURRENT_STRATEGY_VERSION = 'v098.20_六階段權重門檻整合版'
-const CURRENT_BUILD_VERSION = '098.22'
+const CURRENT_BUILD_VERSION = '098.23'
 const sidePredictionKeys: SidePredictionKey[] = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
 
 export async function fetchTableUiHistory(tableId: string, memberSessionToken: string, signal?: AbortSignal): Promise<TableUiHistory> {

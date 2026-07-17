@@ -28,7 +28,7 @@ test('v098 pending snapshot contains all pre-result probability score MT derived
 
   const row = buildPredictionResultRow(completed, changedAfterReveal, pending)
 
-  assert.equal(pending.buildVersion, '098.22')
+  assert.equal(pending.buildVersion, '098.23')
   assert.ok(pending.probabilities)
   assert.ok(pending.scoreTotals)
   assert.ok(pending.scoreSources)

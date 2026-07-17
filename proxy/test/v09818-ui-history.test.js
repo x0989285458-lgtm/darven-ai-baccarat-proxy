@@ -65,7 +65,7 @@ test('v098.18 ui-history uses bearer auth, canonical live-table allowlist, and a
   assert.equal(response.statusCode, 200)
   assert.deepEqual(JSON.parse(response.body), {
     ok: true,
-    buildVersion: '098.22',
+    buildVersion: '098.23',
     tableId: 'BAG01',
     shoe: 88,
     settledPredictions: [],

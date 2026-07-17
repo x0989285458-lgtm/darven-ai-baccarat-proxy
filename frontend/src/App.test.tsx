@@ -54,11 +54,11 @@ function proxyTablesFromMocks() {
     beadPlateRaw: table.trend.bead_plate2,
     bigRoadRaw: table.trend.big2,
     sourceUpdatedAt: new Date().toISOString(),
-    buildVersion: '098.22',
+    buildVersion: '098.23',
     prediction: {
       source: 'backend',
       strategyVersion: 'v098.20_六階段權重門檻整合版',
-      buildVersion: '098.22',
+      buildVersion: '098.23',
       targetTableId: table.id,
       targetShoe: table.trend.current_shoe,
       targetRound: Number(table.trend.current_round ?? 0),

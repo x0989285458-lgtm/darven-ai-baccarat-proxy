@@ -1550,6 +1550,34 @@ export function createSupabaseIngestionClient({
 
   return {
     configured,
+    async reconcilePredictionLifecycle({ source = SOURCE, tableId, currentShoe, currentVisibleRound } = {}) {
+      const visibleRound = Number(currentVisibleRound)
+      const normalizedShoe = currentShoe == null ? '' : String(currentShoe)
+      if (!source || !tableId || !normalizedShoe || !Number.isSafeInteger(visibleRound) || visibleRound < 1) {
+        throw new Error('prediction lifecycle reconciliation identity is incomplete')
+      }
+      const acknowledgement = await enqueueWrite(() => postRest('rpc/reconcile_v09823_prediction_lifecycle', {
+        p_source: String(source),
+        p_table_id: String(tableId),
+        p_current_shoe: normalizedShoe,
+        p_current_visible_round: visibleRound,
+      }, undefined, { requireObject: true }))
+      const counts = {
+        pending: Number(acknowledgement?.pending),
+        expiredNoFinal: Number(acknowledgement?.expired_no_final),
+        abandonedShoeChange: Number(acknowledgement?.abandoned_shoe_change),
+        updatedTotal: Number(acknowledgement?.updated_total),
+      }
+      if (String(acknowledgement?.source ?? '') !== String(source)
+        || String(acknowledgement?.table_id ?? '') !== String(tableId)
+        || String(acknowledgement?.current_shoe ?? '') !== normalizedShoe
+        || Number(acknowledgement?.current_visible_round) !== visibleRound
+        || !Object.values(counts).every((value) => Number.isSafeInteger(value) && value >= 0)
+        || counts.pending + counts.expiredNoFinal + counts.abandonedShoeChange !== counts.updatedTotal) {
+        throw new Error('prediction lifecycle reconciliation acknowledgement failed')
+      }
+      return { source: String(source), tableId: String(tableId), currentShoe: normalizedShoe, currentVisibleRound: visibleRound, counts }
+    },
     async issuePrediction(candidate) {
       if (runtimeStatus.degraded) throw new Error(runtimeStatus.reason)
       if (requireVerifiedStrategy && runtimeStatus.ready !== true) throw new Error('active strategy not verified')
@@ -1850,6 +1878,22 @@ export function createSupabaseIngestionClient({
         or: '(settlement_final.eq.true,prediction_features->>settlement_final.eq.true)',
       })
       return (Array.isArray(rows) ? rows : []).filter(isFinalPredictionSettlement).length
+    },
+    async getPredictionLifecycleStats() {
+      const acknowledgement = await postRest('rpc/get_v09823_prediction_lifecycle_stats', {}, undefined, { requireObject: true })
+      const stats = {
+        activePending: Number(acknowledgement?.active_pending),
+        settled: Number(acknowledgement?.settled),
+        expiredNoFinal: Number(acknowledgement?.expired_no_final),
+        abandonedShoeChange: Number(acknowledgement?.abandoned_shoe_change),
+        unclassified: Number(acknowledgement?.unclassified),
+        total: Number(acknowledgement?.total),
+      }
+      if (!Object.values(stats).every((value) => Number.isSafeInteger(value) && value >= 0)
+        || stats.activePending + stats.settled + stats.expiredNoFinal + stats.abandonedShoeChange + stats.unclassified !== stats.total) {
+        throw new Error('prediction lifecycle stats acknowledgement failed')
+      }
+      return stats
     },
     async writeCloudRoundEvent(payload) {
       const row = buildCloudRoundEventRow(payload)

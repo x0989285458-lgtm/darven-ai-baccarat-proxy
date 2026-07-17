@@ -2,10 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createApp } from '../src/server.js'
 
-test('v098.22 health endpoint reports version 098.22', async () => {
+test('v098.23 health endpoint reports version 098.23', async () => {
   const app = createApp({ autoConnect: false })
   const health = await app.inject({ method: 'GET', url: '/health' })
-  assert.equal(JSON.parse(health.body).version, '098.22')
+  assert.equal(JSON.parse(health.body).version, '098.23')
 })
 
 test('v046 cloud deployment listens on all interfaces unless HOST is overridden', async () => {
