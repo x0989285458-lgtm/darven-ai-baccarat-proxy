@@ -107,4 +107,10 @@ assert.match(watchdog, /"settlement_final":\s*"eq\.true"/)
 assert.match(watchdog, /"predicted_result":\s*"in\.\(banker,player\)"/)
 assert.match(watchdog, /"actual_result":\s*"in\.\(banker,player\)"/)
 
+const captureWatchdog = read('scripts/ai_baccarat_data_watchdog.py')
+assert.match(captureWatchdog, /GCP_WORKER\s*=\s*'darven-mt-taiwan-worker-5'/)
+assert.match(captureWatchdog, /--tunnel-through-iap[\s\S]*systemctl restart darven-worker\.service/)
+assert.match(captureWatchdog, /RECOVERY_COOLDOWN_SECONDS\s*=\s*3\s*\*\s*60/)
+assert.doesNotMatch(captureWatchdog, /cloud-capture\/(?:tick|start)/)
+
 console.log('v100 release consistency: PASS')
