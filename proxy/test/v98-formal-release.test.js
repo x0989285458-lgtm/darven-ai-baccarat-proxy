@@ -78,7 +78,7 @@ test('v98 history derives tie display only from complete persisted tie action/hi
   const history = await client.getTableUiSettledPredictions({ tableId: 'BAG01', shoe: 88, limit: 10 })
   assert.match(decodeURIComponent(requests[0]), /strategy_version=in\.\(v98,v098\.20_/)
   assert.deepEqual(history, [
-    { round: 13, mainPredictedResult: 'banker', predictedResult: 'tie', actualResult: 'banker', isHit: false, result: 'miss' },
+    { round: 13, mainPredictedResult: 'banker', predictedResult: 'banker', actualResult: 'banker', isHit: true, result: 'hit' },
     { round: 12, mainPredictedResult: 'player', predictedResult: 'tie', actualResult: 'tie', isHit: true, result: 'hit' },
     { round: 11, mainPredictedResult: 'banker', predictedResult: 'banker', actualResult: 'tie', isHit: false, result: 'uncalculated' },
     { round: 10, predictedResult: 'banker', actualResult: 'tie', isHit: false },

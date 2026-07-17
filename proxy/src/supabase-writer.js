@@ -1703,10 +1703,10 @@ export function createSupabaseIngestionClient({
         const tieAction = row?.prediction_features?.side_actions?.tie
         const tieHit = row?.side_hits?.tie ?? row?.prediction_features?.side_hits?.tie
         const hasTieEvidence = typeof tieAction === 'boolean' && typeof tieHit === 'boolean'
-        const displaysTiePrediction = hasTieEvidence && tieAction === true
-        const result = displaysTiePrediction
-          ? (tieHit === true ? 'hit' : 'miss')
-          : (row.actual_result === 'tie' && hasTieEvidence ? 'uncalculated' : (row.is_hit ? 'hit' : 'miss'))
+        const displaysTiePrediction = row.actual_result === 'tie' && hasTieEvidence && tieAction === true && tieHit === true
+        const result = row.actual_result === 'tie'
+          ? (displaysTiePrediction ? 'hit' : (hasTieEvidence ? 'uncalculated' : (row.is_hit ? 'hit' : 'miss')))
+          : (row.is_hit ? 'hit' : 'miss')
         const next = {
           round: Number(row.round_no),
           ...(hasTieEvidence ? { mainPredictedResult: row.predicted_result } : {}),
