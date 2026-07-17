@@ -1743,6 +1743,7 @@ function normalizeV100DurableRankLedger(row = {}, expectedIdentity = {}) {
     throw new Error('v100 durable rank ledger identity mismatch')
   }
   const completeThrough = Number(row.complete_through_round)
+  const status = String(row.status ?? '')
   const cardsSeen = Number(row.cards_seen_dealt)
   const revision = Number(row.revision)
   const seen = row.seen_dealt_rank_counts
@@ -1763,7 +1764,8 @@ function normalizeV100DurableRankLedger(row = {}, expectedIdentity = {}) {
   const codeRanksMatch = validCodes && validRanks && RANK_REMAINING_FACES.every((rank) => ranksFromCodes[rank] === Number(seen[rank]))
   const seenTotal = validRanks ? RANK_REMAINING_FACES.reduce((sum, rank) => sum + Number(seen[rank]), 0) : -1
   const codeTotal = validCodes ? Array.from({ length: 52 }, (_, index) => String(index + 1)).reduce((sum, code) => sum + Number(codes[code]), 0) : -1
-  if (row.status !== 'contiguous' || !Number.isSafeInteger(completeThrough) || completeThrough < 0
+  if (!['contiguous', 'gap', 'conflicted', 'invalid'].includes(status)
+    || !Number.isSafeInteger(completeThrough) || completeThrough < 0
     || !Number.isSafeInteger(cardsSeen) || cardsSeen < 0 || cardsSeen > 416
     || !Number.isSafeInteger(revision) || revision < 0 || !validRanks || !validCodes || !codeRanksMatch
     || seenTotal !== cardsSeen || codeTotal !== cardsSeen
@@ -1773,11 +1775,11 @@ function normalizeV100DurableRankLedger(row = {}, expectedIdentity = {}) {
   }
   return {
     identity: { source, table_id: tableId, shoe },
-    status: 'contiguous',
+    status,
     complete_through_round: completeThrough,
     completeThroughRound: completeThrough,
     targetRound: completeThrough + 1,
-    rankDataAvailable: true,
+    rankDataAvailable: status === 'contiguous',
     seen_dealt_rank_counts: structuredClone(seen),
     seenDealtCodeCounts: structuredClone(codes),
     undealt_after_observed_deals: structuredClone(undealt),

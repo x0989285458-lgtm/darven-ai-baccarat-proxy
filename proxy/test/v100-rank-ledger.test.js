@@ -259,6 +259,15 @@ test('v100 Supabase client rehydrates only one exact durable ledger identity and
   assert.equal(result.rankDataAvailable, true)
   assert.equal(result.completeThroughRound, 1)
 
+  const gapClient = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    fetchImpl: async () => new Response(JSON.stringify([{ ...row, status: 'gap' }]), { status: 200 }),
+  })
+  const gap = await gapClient.readV100RankLedger({ source: 'mt-cloud', tableId: 'BAG01', shoe: 'S100' })
+  assert.equal(gap.status, 'gap')
+  assert.equal(gap.rankDataAvailable, false)
+  assert.equal(gap.completeThroughRound, 1)
+
   const mismatch = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
     fetchImpl: async () => new Response(JSON.stringify([{ ...row, shoe_no: 'S999' }]), { status: 200 }),
