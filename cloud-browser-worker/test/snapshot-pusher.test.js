@@ -41,9 +41,11 @@ test('v100 migration restamps a retained v098 snapshot so an empty head cannot b
 
   assert.equal(await pusher.tick(), true)
   assert.equal(sent[0].protocolVersion, 'v100')
+  assert.equal(sent[0].sequence, 1000)
   assert.equal(sent[0].snapshot.buildVersion, '100')
   assert.deepEqual(sent[0].roundKeys, [])
   assert.equal(await pusher.tick(), true)
+  assert.equal(sent[1].sequence, 1001)
   assert.equal(sent[1].snapshot.buildVersion, '100')
   assert.deepEqual(sent[1].roundKeys, [key])
   await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })

@@ -26,6 +26,7 @@ export function createSnapshotPusher({
   let restored = false
   let stateInvalid = false
   let queue = []
+  let queueNeedsSave = false
   let queueNeedsResequence = false
   let cursorInitialized = false
   const observedRoundKeys = new Set()
@@ -147,7 +148,8 @@ export function createSnapshotPusher({
           const entries = Array.isArray(queued.entries) ? queued.entries : [queued]
           const normalizedEntries = entries.map(normalizeQueuedEnvelope)
           queue = normalizedEntries.filter((item) => !item.drop).map((item) => item.envelope)
-          queueNeedsResequence = normalizedEntries.some((item) => item.changed)
+          queueNeedsSave = normalizedEntries.some((item) => item.changed)
+          queueNeedsResequence = normalizedEntries.some((item) => item.resequence)
           for (const entry of queue) lastSequence = Math.max(lastSequence, entry.sequence)
         } catch (error) {
           await quarantineState(queuePath, 'queue', error)
@@ -187,6 +189,9 @@ export function createSnapshotPusher({
           lastSequence = sequence
         }
         queueNeedsResequence = false
+      }
+      if (queueNeedsSave) {
+        queueNeedsSave = false
         await saveQueue()
       }
     } catch (error) {
@@ -250,10 +255,21 @@ export function createSnapshotPusher({
         rounds: keyedRounds.map(({ round, key }) => normalizeRoundForEnvelope(round, key)),
       },
     }
-    const changed = normalizedEnvelope.protocolVersion !== envelope.protocolVersion
-      || JSON.stringify(normalizedEnvelope.snapshot) !== JSON.stringify(originalSnapshot)
+    const originalPayload = { ...originalSnapshot }
+    const normalizedPayload = { ...normalizedEnvelope.snapshot }
+    delete originalPayload.buildVersion
+    delete normalizedPayload.buildVersion
+    const payloadChanged = JSON.stringify(normalizedPayload) !== JSON.stringify(originalPayload)
       || JSON.stringify(keys) !== JSON.stringify(originalKeys)
-    return { envelope: normalizedEnvelope, changed, drop: originalRounds.length > 0 && keyedRounds.length === 0 }
+    const changed = normalizedEnvelope.protocolVersion !== envelope.protocolVersion
+      || normalizedEnvelope.snapshot.buildVersion !== originalSnapshot.buildVersion
+      || payloadChanged
+    return {
+      envelope: normalizedEnvelope,
+      changed,
+      resequence: payloadChanged,
+      drop: originalRounds.length > 0 && keyedRounds.length === 0,
+    }
   }
 
   async function saveJson(filePath, value) {
