@@ -81,13 +81,14 @@ function backendSideActionsFromTable(table?: LiveTable | null): BackendSideActio
   return Object.fromEntries(sidePredictionKeys.map((key) => [key, value[key]])) as BackendSideActions
 }
 
-function backendOutcomeProbabilitiesFromTable(table?: LiveTable | null) {
-  const value = table?.prediction?.probabilities
+function backendMainScorePercentagesFromTable(table?: LiveTable | null) {
+  const value = table?.prediction?.scoreTotals
   const banker = Number(value?.banker)
   const player = Number(value?.player)
-  const tie = Number(value?.tie)
-  if (![banker, player, tie].every(Number.isFinite)) return null
-  return { banker, player, tie }
+  const total = banker + player
+  if (![banker, player, total].every(Number.isFinite) || total <= 0) return null
+  const bankerPercent = Math.round((banker / total) * 100)
+  return { banker: bankerPercent, player: 100 - bankerPercent }
 }
 
 function clearMemberSession() {
@@ -130,7 +131,7 @@ export default function App() {
   const prediction = useMemo(() => backendPredictionFromTable(displaySelected), [displaySelected])
   const bonusPredictions = useMemo(() => backendSidePredictionsFromTable(displaySelected), [displaySelected])
   const sideActions = useMemo(() => backendSideActionsFromTable(displaySelected), [displaySelected])
-  const outcomePredictions = useMemo(() => backendOutcomeProbabilitiesFromTable(displaySelected), [displaySelected])
+  const mainScorePercentages = useMemo(() => backendMainScorePercentagesFromTable(displaySelected), [displaySelected])
   const predictionIssue = useMemo(() => getBackendPredictionIssue(displaySelected), [displaySelected])
   const predictionsActionable = !predictionIssue && !staleNotice
 
@@ -319,9 +320,9 @@ export default function App() {
           {predictionIssue ? <strong className="status stale">{predictionIssue}，預測暫不可用，已停止出手</strong> : null}
           {prediction ?
             <div className="prediction-row main-probability-row" aria-label="莊閒預測機率">
-              <PredictionMetric title="閒" value={outcomePredictions?.player ?? null} tone="Player" active={predictionsActionable && prediction.recommendation === 'Player'} />
+              <PredictionMetric title="閒" value={mainScorePercentages?.player ?? null} tone="Player" active={predictionsActionable && prediction.recommendation === 'Player'} />
               <PredictionMetric title="和" value={bonusPredictions?.tie ?? null} tone="Tie" active={predictionsActionable && (sideActions?.tie ?? false)} />
-              <PredictionMetric title="莊" value={outcomePredictions?.banker ?? null} tone="Banker" active={predictionsActionable && prediction.recommendation === 'Banker'} />
+              <PredictionMetric title="莊" value={mainScorePercentages?.banker ?? null} tone="Banker" active={predictionsActionable && prediction.recommendation === 'Banker'} />
             </div>
           : null}
           <PredictionHistoryTable history={tableUiHistory} />

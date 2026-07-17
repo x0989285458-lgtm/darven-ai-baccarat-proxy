@@ -14,7 +14,7 @@ function liveTable(overrides: Record<string, unknown> = {}) {
     prediction: {
       source: 'backend', strategyVersion: 'v98', buildVersion: 'v98', targetTableId: 'BAG01', targetShoe: '88', targetRound: 13,
       predictionId: 'pid-13', issuedAt: '2026-07-17T01:00:00.000Z', predictedResult: 'banker', confidence: 60,
-      probabilities: { banker: 60, player: 35, tie: 5 }, sidePredictions, sideActions,
+      probabilities: { banker: 60, player: 35, tie: 5 }, scoreTotals: { banker: 0.53, player: 0.47 }, sidePredictions, sideActions,
     },
     ...overrides,
   }
@@ -57,7 +57,7 @@ describe('v98 frozen frontend release', () => {
   it('shows the backend tie side score in the main row and lights tie simultaneously with main and other side actions', async () => {
     await renderMember()
     const mainMetrics = Array.from(document.querySelectorAll('.main-probability-row .prediction-metric'))
-    expect(mainMetrics.map((node) => node.querySelector('.probability-value')?.textContent)).toEqual(['35%', '25%', '60%'])
+    expect(mainMetrics.map((node) => node.querySelector('.probability-value')?.textContent)).toEqual(['47%', '25%', '53%'])
     expect(mainMetrics.filter((node) => node.classList.contains('active'))).toHaveLength(2)
     expect(document.querySelectorAll('.prediction-card .prediction-metric.active')).toHaveLength(5)
   })

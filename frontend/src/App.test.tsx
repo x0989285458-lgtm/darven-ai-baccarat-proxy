@@ -396,11 +396,11 @@ describe('AI百家預測軟體', () => {
     expect(Array.from(sideRow.querySelectorAll('.prediction-metric.active')).map((node) => node.textContent)).toEqual([expect.stringContaining('55%')])
   })
 
-  it('v098 displays backend main probabilities verbatim instead of deriving them from score totals', async () => {
+  it('v98 displays normalized backend main score totals so banker and player sum to 100', async () => {
     await renderApp()
 
-    expect(screen.getByLabelText('莊預測')).toHaveTextContent('12.5%')
-    expect(screen.getByLabelText('閒預測')).toHaveTextContent('77.25%')
+    expect(screen.getByLabelText('莊預測')).toHaveTextContent('54%')
+    expect(screen.getByLabelText('閒預測')).toHaveTextContent('46%')
     expect(screen.getByLabelText('和預測')).toHaveTextContent('11%')
   })
 
