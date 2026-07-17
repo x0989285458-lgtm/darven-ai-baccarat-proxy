@@ -6,6 +6,7 @@ const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v094_no_observe_confidence_30_70'
 export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v98'
+export const V99_MAIN_SIGNAL_DEDUP_VERSION = 'v99_主預測靴內偏移去重版'
 const COMPATIBLE_PREDECESSOR_STRATEGY_VERSION = 'v098.20_六階段權重門檻整合版'
 
 function buildEqualWeights(keys) {
@@ -51,6 +52,8 @@ export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildWeightedProfile(MAIN_WEIGHT_KEYS, 
   recent_practical_calibration: 0.20,
   shoe_banker_player_bias: 0.10,
 })
+
+export const V99_MAIN_SIGNAL_DEDUP_WEIGHTS = ALL_MT_EQUAL_MAIN_WEIGHTS
 
 export const SIDE_PREDICTION_ACTION_RATE_TARGETS = Object.freeze({
   tie: 0.15,
@@ -477,6 +480,132 @@ function calculateAllMtEqualMainPrediction({ round = {}, table = {}, facts = {},
   const rawSignalConfidence = difference < 1e-9 ? 30 : calculateConservativeMainConfidence(scores, ALL_MT_EQUAL_MAIN_WEIGHTS)
   const confidenceCalibration = calibrateMainConfidenceByHitRate(rawSignalConfidence, tablePerformance)
   return { predictedResult, confidence: confidenceCalibration.finalConfidence, confidenceCalibration, scores, total }
+}
+
+export function calculateV99MainPredictionShadow({ round = {}, table = {}, facts = {}, probabilities = {}, tablePerformance = {} } = {}) {
+  const prepared = prepareV99SignalInputs(table)
+  const safeTable = prepared.table
+  const derived = buildDerivedMainFeatures(round, safeTable, facts, probabilities, tablePerformance)
+  const roadFeatures = buildRoadFeatures(safeTable)
+  const scores = Object.fromEntries(Object.keys(V99_MAIN_SIGNAL_DEDUP_WEIGHTS).map((key) => [key, scoreAllMtFeature(key, { round, facts, table: safeTable, probabilities, tablePerformance, derived, roadFeatures })]))
+  const originalShoeScore = scores.shoe_banker_player_bias
+  const askRoadScore = scores.ask_road_signals
+  const adjustment = deduplicateShoeBankerPlayerBias(
+    prepared.askRoadValid ? askRoadScore : { banker: Number.NaN, player: Number.NaN },
+    prepared.shoeBiasValid ? originalShoeScore : { banker: Number.NaN, player: Number.NaN },
+  )
+  scores.shoe_banker_player_bias = adjustment.adjustedScore
+  const total = Object.entries(V99_MAIN_SIGNAL_DEDUP_WEIGHTS).reduce((acc, [key, weight]) => {
+    const score = scores[key] ?? neutralScore()
+    acc.banker += score.banker * weight
+    acc.player += score.player * weight
+    return acc
+  }, { banker: 0, player: 0 })
+  const difference = Math.abs(total.banker - total.player)
+  const predictedResult = difference < 1e-9 ? breakAllMtMainTie({ round, table: safeTable, facts, probabilities }) : (total.banker > total.player ? 'banker' : 'player')
+  const rawSignalConfidence = difference < 1e-9 ? 30 : calculateConservativeMainConfidence(scores, V99_MAIN_SIGNAL_DEDUP_WEIGHTS)
+  const confidenceCalibration = calibrateMainConfidenceByHitRate(rawSignalConfidence, tablePerformance)
+  return {
+    strategyVersion: V99_MAIN_SIGNAL_DEDUP_VERSION,
+    predictedResult,
+    confidence: confidenceCalibration.finalConfidence,
+    confidenceCalibration,
+    scores,
+    total,
+    featureWeights: { ...V99_MAIN_SIGNAL_DEDUP_WEIGHTS },
+    diagnostics: {
+      shoeBankerPlayerBias: {
+        originalScore: { ...originalShoeScore },
+        adjustedScore: { ...adjustment.adjustedScore },
+        askRoadMargin: adjustment.askRoadMargin,
+        originalShoeMargin: adjustment.originalShoeMargin,
+        sharedComponentMargin: adjustment.sharedComponentMargin,
+        residualMargin: adjustment.residualMargin,
+        deduplicated: adjustment.deduplicated,
+      },
+    },
+  }
+}
+
+function prepareV99SignalInputs(table) {
+  const tableIsObject = Boolean(table) && typeof table === 'object' && !Array.isArray(table)
+  const safeTable = tableIsObject ? { ...table } : {}
+  const askRoadValid = tableIsObject
+    && isValidV99AskRoadInput(safeTable.nextBankerRaw)
+    && isValidV99AskRoadInput(safeTable.nextPlayerRaw)
+  const shoeBiasValid = tableIsObject
+    && isValidV99Count(safeTable.bankerCount)
+    && isValidV99Count(safeTable.playerCount)
+  if (!askRoadValid) {
+    safeTable.nextBankerRaw = null
+    safeTable.nextPlayerRaw = null
+  }
+  if (!shoeBiasValid) {
+    safeTable.bankerCount = 0
+    safeTable.playerCount = 0
+  }
+  return { table: safeTable, askRoadValid, shoeBiasValid }
+}
+
+function isValidV99AskRoadInput(value) {
+  if (value == null || value === '') return true
+  if (typeof value === 'string') return true
+  if (typeof value !== 'object') return false
+  try {
+    return typeof JSON.stringify(value) === 'string'
+  } catch {
+    return false
+  }
+}
+
+function isValidV99Count(value) {
+  if (value == null || value === '') return true
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= 0
+}
+
+function deduplicateShoeBankerPlayerBias(askRoadScore = {}, shoeScore = {}) {
+  const askRoadMargin = signedScoreMargin(askRoadScore)
+  const originalShoeMargin = signedScoreMargin(shoeScore)
+  if (askRoadMargin == null || originalShoeMargin == null) {
+    return {
+      adjustedScore: neutralScore(),
+      askRoadMargin: askRoadMargin ?? 0,
+      originalShoeMargin: originalShoeMargin ?? 0,
+      sharedComponentMargin: 0,
+      residualMargin: 0,
+      deduplicated: false,
+    }
+  }
+  const sameDirection = Math.sign(askRoadMargin) !== 0 && Math.sign(askRoadMargin) === Math.sign(originalShoeMargin)
+  const sharedComponentMargin = sameDirection
+    ? roundSignalMargin(Math.sign(originalShoeMargin) * Math.min(Math.abs(originalShoeMargin), Math.abs(askRoadMargin)))
+    : 0
+  const residualMargin = roundSignalMargin(Math.max(-0.10, Math.min(0.10, sameDirection
+    ? Math.sign(originalShoeMargin) * Math.max(Math.abs(originalShoeMargin) - Math.abs(askRoadMargin), 0)
+    : originalShoeMargin)))
+  return {
+    adjustedScore: {
+      banker: roundSignalMargin((1 + residualMargin) / 2),
+      player: roundSignalMargin((1 - residualMargin) / 2),
+    },
+    askRoadMargin,
+    originalShoeMargin,
+    sharedComponentMargin,
+    residualMargin,
+    deduplicated: sameDirection,
+  }
+}
+
+function signedScoreMargin(score = {}) {
+  const banker = Number(score?.banker)
+  const player = Number(score?.player)
+  if (!Number.isFinite(banker) || !Number.isFinite(player)) return null
+  return roundSignalMargin(banker - player)
+}
+
+function roundSignalMargin(value) {
+  return Number(Number(value).toFixed(12))
 }
 
 export function buildLivePrediction(table = {}) {
