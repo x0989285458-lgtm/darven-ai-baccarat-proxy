@@ -8,7 +8,6 @@ const MAX_ROAD_HISTORY_ROUND = 100
 export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotRounds = true } = {}) {
   const shoeTracker = createShoeTracker({ deckCount: 8 })
   const rankLedger = createRankLedger()
-  const retiredShoesByTable = new Map()
   const realRoundHistoryByTable = new Map()
   const state = {
     status: {
@@ -72,16 +71,10 @@ export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotR
       const currentShoe = currentTable?.shoe == null ? '' : String(currentTable.shoe)
       const eventShoe = lastRound.shoe == null ? '' : String(lastRound.shoe)
       const eventRoundNo = Number(lastRound.round)
-      const retiredShoes = retiredShoesByTable.get(tableId) ?? new Set()
-      retiredShoesByTable.set(tableId, retiredShoes)
       const rankState = rankLedger.recordFinal({ ...event, source, tableId })
       const isVerifiedRankEvent = rankState.disposition !== 'rejected'
-      const isDifferentShoe = Boolean(currentShoe && eventShoe && currentShoe !== eventShoe)
-      const startsNewShoe = isVerifiedRankEvent && isDifferentShoe && eventRoundNo === 1 && !retiredShoes.has(eventShoe)
-      if (startsNewShoe && currentShoe) retiredShoes.add(currentShoe)
-      const isRetiredShoe = Boolean(eventShoe && retiredShoes.has(eventShoe))
-      const matchesActiveShoe = !currentShoe || !eventShoe || currentShoe === eventShoe || startsNewShoe
-      const canActivate = matchesActiveShoe && !isRetiredShoe
+      const matchesActiveShoe = !currentShoe || !eventShoe || currentShoe === eventShoe
+      const canActivate = matchesActiveShoe
       const realRoundHistory = canActivate
         ? recordExactRealRound(realRoundHistoryByTable, lastRound, eventShoe || currentShoe)
         : null
@@ -103,13 +96,13 @@ export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotR
       const mountedCardShoe = isVerifiedRankEvent ? buildMountedRankCardShoe(rankState, eventRoundNo + 1) : null
       if (index >= 0) {
         const currentRoundNo = Number(currentTable.round)
-        const advancesIdentity = canActivate && (startsNewShoe || !Number.isFinite(currentRoundNo) || !Number.isFinite(eventRoundNo) || eventRoundNo >= currentRoundNo)
+        const advancesIdentity = canActivate && (!Number.isFinite(currentRoundNo) || !Number.isFinite(eventRoundNo) || eventRoundNo >= currentRoundNo)
         state.tables[index] = applyRealRoundRoadFallback({
           ...currentTable,
           shoe: advancesIdentity ? (lastRound.shoe ?? currentTable.shoe) : currentTable.shoe,
           round: advancesIdentity ? (lastRound.round ?? currentTable.round) : currentTable.round,
           lastRound: advancesIdentity || !currentTable.lastRound ? lastRound : currentTable.lastRound,
-          cardShoe: advancesIdentity && mountedCardShoe ? mountedCardShoe : currentTable.cardShoe,
+          v100RankLedger: advancesIdentity && mountedCardShoe ? mountedCardShoe : currentTable.v100RankLedger,
         }, realRoundHistory)
       } else {
         state.tables.push(applyRealRoundRoadFallback({
@@ -119,7 +112,7 @@ export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotR
           shoe: lastRound.shoe,
           round: lastRound.round,
           lastRound,
-          ...(mountedCardShoe ? { cardShoe: mountedCardShoe } : {}),
+          ...(mountedCardShoe ? { v100RankLedger: mountedCardShoe } : {}),
         }, realRoundHistory))
       }
       state.status.tableCount = state.tables.length
@@ -395,15 +388,16 @@ function mergeExistingRoundData(nextTables, currentTables) {
   const currentById = new Map(currentTables.map((table) => [String(table.tableId), table]))
   return nextTables.map((table) => {
     const existing = currentById.get(String(table.tableId))
-    if (!existing?.lastRound) return table
+    if (!existing) return table
+    const nextShoe = table.shoe ?? existing.lastRound?.shoe ?? null
+    const sameShoe = String(nextShoe ?? '') === String(existing.shoe ?? '')
+    if (!sameShoe || !existing.lastRound) return { ...table, shoe: nextShoe }
     return {
       ...table,
-      shoe: table.shoe ?? existing.lastRound.shoe ?? null,
+      shoe: nextShoe,
       round: table.round ?? existing.lastRound.round ?? null,
       lastRound: existing.lastRound,
-      ...(String(table.shoe ?? existing.lastRound.shoe ?? '') === String(existing.shoe ?? '') && existing.cardShoe
-        ? { cardShoe: existing.cardShoe }
-        : {}),
+      ...(existing.v100RankLedger ? { v100RankLedger: existing.v100RankLedger } : {}),
     }
   })
 }

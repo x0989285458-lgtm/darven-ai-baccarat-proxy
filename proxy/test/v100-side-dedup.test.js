@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import {
   V100_SIDE_DEDUP_VERSION,
   V100_SIDE_SCORE_CALIBRATION_OFFSETS,
@@ -53,6 +54,7 @@ test('v100 diagnostics expose rank availability, fallback, and effective coeffic
     available: false,
     fallback: 'neutral',
     substituted: { Q: 50, R: 50 },
+    excluded: [],
   })
   assert.equal(neutral.diagnostics.primitives.Q, 50)
   assert.equal(neutral.diagnostics.primitives.R, 50)
@@ -66,6 +68,8 @@ test('v100 diagnostics expose rank availability, fallback, and effective coeffic
   closeTo(renormalized.diagnostics.rawPredictions.playerPair, (0.15 * 30 + 0.20 * 30 + 0.25 * 0 + 0.20 * 50) / 0.80)
   closeTo(renormalized.diagnostics.rawPredictions.superSix, (0.35 * 60 + 0.35 * 30 + 0.10 * 30) / 0.80)
   assert.equal(renormalized.diagnostics.effectiveCoefficients.tie.R, 0)
+  assert.equal(renormalized.diagnostics.rank.substituted, null)
+  assert.deepEqual(renormalized.diagnostics.rank.excluded, ['Q', 'R'])
   closeTo(Object.values(renormalized.diagnostics.effectiveCoefficients.tie).reduce((sum, value) => sum + value, 0), 1)
   assert.throws(() => score(BASE, { rankAvailable: false, rankFallback: undefined }), /rankFallback/)
 })
@@ -81,7 +85,7 @@ test('v100 table mode reads only an explicitly available table.cardShoe and reje
   const counts = Object.fromEntries(['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'].map((face) => [face, 30]))
   const baseTable = { tableId: 'BAG01', round: 12, bankerCount: 6, playerCount: 5, tieCount: 1 }
   const gap = calculateV100SidePredictionShadow({
-    table: { ...baseTable, cardShoe: { remainingRankCounts: counts, rankDataAvailable: false, status: 'gap' } },
+    table: { ...baseTable, v100RankLedger: { remainingRankCounts: counts, rankDataAvailable: false, status: 'gap' } },
     rankFallback: 'neutral',
     mainPrediction: 'banker',
   })
@@ -89,12 +93,20 @@ test('v100 table mode reads only an explicitly available table.cardShoe and reje
   assert.deepEqual(gap.diagnostics.rank.substituted, { Q: 50, R: 50 })
 
   const contiguous = calculateV100SidePredictionShadow({
-    table: { ...baseTable, cardShoe: { remainingRankCounts: counts, rankDataAvailable: true, status: 'contiguous' } },
+    table: { ...baseTable, v100RankLedger: { remainingRankCounts: counts, rankDataAvailable: true, status: 'contiguous' } },
     rankFallback: 'neutral',
     mainPrediction: 'banker',
   })
   assert.equal(contiguous.diagnostics.rank.available, true)
   assert.equal(contiguous.diagnostics.rank.fallback, null)
+})
+
+test('v100 runtime calibration constants match the reproducible strict train artifact', () => {
+  const artifact = JSON.parse(readFileSync(new URL('../config/v100-side-calibration.json', import.meta.url), 'utf8'))
+  assert.equal(artifact.method, 'chronological_train_product_runtime_quantile')
+  assert.equal(artifact.trainRows, 1182)
+  assert.match(artifact.trainIdsSha256, /^[0-9a-f]{64}$/)
+  assert.deepEqual(V100_SIDE_SCORE_CALIBRATION_OFFSETS, artifact.offsets)
 })
 
 test('v100 applies fixed train-only score calibration without changing thresholds or raw formula lineage', () => {

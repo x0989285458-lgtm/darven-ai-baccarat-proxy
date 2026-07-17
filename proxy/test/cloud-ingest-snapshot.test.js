@@ -68,6 +68,23 @@ test('valid cloud ingest updates tables and uses existing Supabase capture flow'
   assert.deepEqual(calls.map(([name]) => name), ['status', 'tables'])
 })
 
+test('v100 shadow receives the authoritative worker push before formal table state', async () => {
+  const calls = []
+  const app = createTestApp({
+    v100ShadowRuntime: {
+      enabled: true,
+      processSnapshot: async ({ tables, rounds }) => {
+        calls.push(['shadow', tables[0].tableId, rounds.length, app.state.snapshot().tables.length])
+        return { enabled: true, shadows: [] }
+      },
+    },
+    supabaseClient: { configured: true, writeCloudTableSnapshot: async () => calls.push(['tables']) },
+  })
+  const response = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': key }, body: body() })
+  assert.equal(response.statusCode, 200)
+  assert.deepEqual(calls, [['shadow', 'BAG01', 0, 0], ['tables']])
+})
+
 test('v098.19 cloud ingest rejects an exact-looking provisional show_poker before any durable write', async () => {
   const writes = []
   const provisional = {

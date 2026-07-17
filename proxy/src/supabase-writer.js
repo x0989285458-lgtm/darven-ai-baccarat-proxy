@@ -9,10 +9,10 @@ export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v98'
 export const V99_MAIN_SIGNAL_DEDUP_VERSION = 'v99_主預測靴內偏移去重版'
 export const V100_SIDE_DEDUP_VERSION = 'v100_主副訊號去重與8副牌階完整性版'
 export const V100_SIDE_SCORE_CALIBRATION_OFFSETS = Object.freeze({
-  tie: -18.00629434954008,
-  superSix: -7.900000000000006,
-  bankerPair: 16.54,
-  playerPair: 14.22,
+  tie: -13.867936925098554,
+  superSix: -1.8125,
+  bankerPair: 18.877647058823527,
+  playerPair: 13.875,
   bankerDragon: 0,
   playerDragon: 0,
 })
@@ -1245,7 +1245,7 @@ export function calculateV100SidePredictionShadow({
   mainPrediction = null,
   v98SidePredictions: v98Overrides = null,
 } = {}) {
-  const rankCardShoe = round.cardShoe ?? table.cardShoe ?? null
+  const rankCardShoe = round.v100RankLedger ?? table.v100RankLedger ?? null
   const featureScores = primitiveOverrides == null ? buildSideFeatureScores(table, { ...round, cardShoe: rankCardShoe }) : null
   const sourcePrimitives = primitiveOverrides ?? {
     T: featureScores.tie_count,
@@ -1327,7 +1327,8 @@ export function calculateV100SidePredictionShadow({
       rank: {
         available: rankAvailable,
         fallback: rankAvailable ? null : rankFallback,
-        substituted: rankAvailable ? null : { Q: 50, R: 50 },
+        substituted: !rankAvailable && rankFallback === 'neutral' ? { Q: 50, R: 50 } : null,
+        excluded: !rankAvailable && rankFallback === 'renormalize' ? ['Q', 'R'] : [],
       },
       effectiveCoefficients: {
         tie: tie.effectiveCoefficients,
@@ -1706,6 +1707,68 @@ export function buildStrategyAdjustmentStatsRows({ reportId = null, stats = {}, 
   }))
 }
 
+function normalizeV100DurableRankLedger(row = {}, expectedIdentity = {}) {
+  const source = String(row.source ?? expectedIdentity.source ?? '')
+  const tableId = String(row.table_id ?? expectedIdentity.tableId ?? '')
+  const shoe = String(row.shoe_no ?? expectedIdentity.shoe ?? '')
+  if (!source || !tableId || !shoe
+    || source !== String(expectedIdentity.source ?? source)
+    || tableId !== String(expectedIdentity.tableId ?? tableId)
+    || shoe !== String(expectedIdentity.shoe ?? shoe)) {
+    throw new Error('v100 durable rank ledger identity mismatch')
+  }
+  const completeThrough = Number(row.complete_through_round)
+  const cardsSeen = Number(row.cards_seen_dealt)
+  const revision = Number(row.revision)
+  const seen = row.seen_dealt_rank_counts
+  const codes = row.seen_dealt_code_counts
+  const undealt = row.undealt_after_observed_deals
+  const validRanks = seen && undealt && RANK_REMAINING_FACES.every((rank) => Number.isInteger(Number(seen[rank]))
+    && Number(seen[rank]) >= 0 && Number(seen[rank]) <= 32
+    && Number.isInteger(Number(undealt[rank])) && Number(undealt[rank]) >= 0 && Number(undealt[rank]) <= 32
+    && Number(seen[rank]) + Number(undealt[rank]) === 32)
+  const validCodes = codes && Array.from({ length: 52 }, (_, index) => String(index + 1)).every((code) => Number.isInteger(Number(codes[code]))
+    && Number(codes[code]) >= 0 && Number(codes[code]) <= 8)
+  const ranksFromCodes = Object.fromEntries(RANK_REMAINING_FACES.map((rank) => [rank, 0]))
+  if (validCodes) {
+    for (let code = 1; code <= 52; code += 1) {
+      ranksFromCodes[RANK_REMAINING_FACES[(code - 1) % 13]] += Number(codes[String(code)])
+    }
+  }
+  const codeRanksMatch = validCodes && validRanks && RANK_REMAINING_FACES.every((rank) => ranksFromCodes[rank] === Number(seen[rank]))
+  const seenTotal = validRanks ? RANK_REMAINING_FACES.reduce((sum, rank) => sum + Number(seen[rank]), 0) : -1
+  const codeTotal = validCodes ? Array.from({ length: 52 }, (_, index) => String(index + 1)).reduce((sum, code) => sum + Number(codes[code]), 0) : -1
+  if (row.status !== 'contiguous' || !Number.isSafeInteger(completeThrough) || completeThrough < 0
+    || !Number.isSafeInteger(cardsSeen) || cardsSeen < 0 || cardsSeen > 416
+    || !Number.isSafeInteger(revision) || revision < 0 || !validRanks || !validCodes || !codeRanksMatch
+    || seenTotal !== cardsSeen || codeTotal !== cardsSeen
+    || row.physical_remaining_exact !== false || row.burn_observation_status !== 'unavailable'
+    || !/^[0-9a-f]{64}$/.test(String(row.ledger_checksum ?? ''))) {
+    throw new Error('v100 durable rank ledger acknowledgement failed')
+  }
+  return {
+    identity: { source, table_id: tableId, shoe },
+    status: 'contiguous',
+    complete_through_round: completeThrough,
+    completeThroughRound: completeThrough,
+    targetRound: completeThrough + 1,
+    rankDataAvailable: true,
+    seen_dealt_rank_counts: structuredClone(seen),
+    seenDealtCodeCounts: structuredClone(codes),
+    undealt_after_observed_deals: structuredClone(undealt),
+    remainingRankCounts: structuredClone(undealt),
+    cards_seen_dealt: cardsSeen,
+    cardsSeenTotal: cardsSeen,
+    cardsRemainingTotal: 416 - cardsSeen,
+    physical_remaining_exact: false,
+    physicalRemainingExact: false,
+    burn_observation_status: 'unavailable',
+    burnObservationStatus: 'unavailable',
+    ledgerChecksum: String(row.ledger_checksum),
+    revision,
+  }
+}
+
 export function createSupabaseIngestionClient({
   url = process.env.SUPABASE_URL,
   serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY,
@@ -1824,6 +1887,60 @@ export function createSupabaseIngestionClient({
 
   return {
     configured,
+    async applyV100RankLedgerEvent(event = {}) {
+      const normalized = normalizeExactRealCardEvent(event)
+      const source = String(event.source ?? SOURCE)
+      const tableId = String(event.tableId ?? event.table_id ?? '')
+      const shoe = String(event.shoe ?? '')
+      const round = Number(event.round)
+      if (!isVerifiedFinalRoundAction(event.sourceAction) || !normalized || !source || !tableId || !shoe
+        || !Number.isSafeInteger(round) || round < 1) {
+        throw new Error('v100 durable rank event is invalid')
+      }
+      const acknowledgement = await enqueueWrite(() => postRest('rpc/apply_v100_rank_ledger_event', {
+        p_event: {
+          source,
+          table_id: tableId,
+          shoe_no: shoe,
+          round_no: round,
+          source_action: event.sourceAction,
+          raw_result_exact10: normalized.rawResult,
+        },
+        p_ledger: null,
+      }, undefined, { requireObject: true }))
+      if (acknowledgement?.accepted !== true) {
+        const status = String(acknowledgement?.status ?? 'unavailable')
+        if (!['gap', 'conflicted', 'invalid'].includes(status)) throw new Error('v100 durable rank ledger acknowledgement failed')
+        return {
+          identity: { source, table_id: tableId, shoe },
+          status,
+          rankDataAvailable: false,
+          reason: acknowledgement?.reason ?? null,
+          expectedRound: Number(acknowledgement?.expected_round) || null,
+          revision: Number(acknowledgement?.revision) || 0,
+        }
+      }
+      if (Number(acknowledgement.complete_through_round) !== round) {
+        throw new Error('v100 durable rank ledger acknowledgement failed')
+      }
+      return normalizeV100DurableRankLedger({ ...acknowledgement, source, table_id: tableId, shoe_no: shoe }, { source, tableId, shoe })
+    },
+    async readV100RankLedger({ source = SOURCE, tableId, shoe } = {}) {
+      const normalizedSource = String(source ?? '')
+      const normalizedTable = String(tableId ?? '')
+      const normalizedShoe = String(shoe ?? '')
+      if (!normalizedSource || !normalizedTable || !normalizedShoe) throw new Error('v100 durable rank ledger identity is incomplete')
+      const rows = await getRest('shoe_rank_ledgers', {
+        select: 'source,table_id,shoe_no,complete_through_round,seen_dealt_rank_counts,seen_dealt_code_counts,undealt_after_observed_deals,cards_seen_dealt,status,ledger_checksum,revision,physical_remaining_exact,burn_observation_status',
+        source: `eq.${normalizedSource}`,
+        table_id: `eq.${normalizedTable}`,
+        shoe_no: `eq.${normalizedShoe}`,
+        limit: '2',
+      })
+      if (!Array.isArray(rows) || rows.length === 0) return null
+      if (rows.length !== 1) throw new Error('conflicting v100 durable rank ledger identity')
+      return normalizeV100DurableRankLedger(rows[0], { source: normalizedSource, tableId: normalizedTable, shoe: normalizedShoe })
+    },
     async reconcilePredictionLifecycle({ source = SOURCE, tableId, currentShoe, currentVisibleRound } = {}) {
       const visibleRound = Number(currentVisibleRound)
       const normalizedShoe = currentShoe == null ? '' : String(currentShoe)

@@ -123,6 +123,7 @@ function serializeShoeState(state) {
 }
 
 function deserializeShoeState(serialized = {}) {
+  const serializedEvents = Array.isArray(serialized.events) ? serialized.events : []
   const state = {
     identity: { ...serialized.identity },
     seen: { ...serialized.seen },
@@ -131,13 +132,30 @@ function deserializeShoeState(serialized = {}) {
     completeThrough: serialized.complete_through,
     status: serialized.status,
     invalidReason: serialized.invalid_reason ?? null,
-    events: new Map((serialized.events ?? []).map((event) => [event.round, { hash: event.hash, applied: event.applied }])),
+    events: new Map(serializedEvents.map((event) => [event.round, { hash: event.hash, applied: event.applied }])),
+  }
+  const validStatuses = new Set(['contiguous', 'gap', 'conflicted', 'invalid'])
+  const eventShapeValid = serializedEvents.every((event) => Number.isInteger(event.round) && event.round >= 1
+    && typeof event.hash === 'string' && /^[0-9a-f]{64}$/.test(event.hash)
+    && typeof event.applied === 'boolean')
+  const appliedRounds = serializedEvents.filter((event) => event.applied).map((event) => event.round).sort((a, b) => a - b)
+  const appliedRoundsContiguous = appliedRounds.length === state.completeThrough
+    && appliedRounds.every((round, index) => round === index + 1)
+  const codeCountTotal = Object.values(state.codeCounts).reduce((sum, count) => sum + count, 0)
+  const rankCountsFromCodes = Object.fromEntries(RANKS.map((rank) => [rank, 0]))
+  for (let code = 1; code <= 52; code += 1) {
+    rankCountsFromCodes[RANKS[(code - 1) % 13]] += Number(state.codeCounts[code] ?? 0)
   }
   if (!state.identity.source || !state.identity.table_id || !state.identity.shoe
+    || !validStatuses.has(state.status)
+    || !Number.isInteger(state.completeThrough) || state.completeThrough < 0
+    || serializedEvents.length !== state.events.size || !eventShapeValid || !appliedRoundsContiguous
     || !RANKS.every((rank) => Number.isInteger(state.seen[rank]) && state.seen[rank] >= 0 && state.seen[rank] <= 32)
     || !Array.from({ length: 52 }, (_, index) => index + 1).every((code) => Number.isInteger(state.codeCounts[code]) && state.codeCounts[code] >= 0 && state.codeCounts[code] <= 8)
     || !Number.isInteger(state.cardsSeen) || state.cardsSeen < 0 || state.cardsSeen > EIGHT_DECK_CARD_COUNT
-    || Object.values(state.seen).reduce((sum, count) => sum + count, 0) !== state.cardsSeen) {
+    || Object.values(state.seen).reduce((sum, count) => sum + count, 0) !== state.cardsSeen
+    || codeCountTotal !== state.cardsSeen
+    || !RANKS.every((rank) => rankCountsFromCodes[rank] === state.seen[rank])) {
     throw new Error('invalid rank ledger snapshot state')
   }
   return state

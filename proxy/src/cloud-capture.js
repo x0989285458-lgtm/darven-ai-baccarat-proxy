@@ -33,7 +33,7 @@ export function parseCloudCapturePayload(payload = {}, receivedAt = new Date().t
   }
 }
 
-export function createCloudCaptureClient({ url, state, writer = null, fetchImpl = globalThis.fetch, pollMs = DEFAULT_POLL_MS, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, requestRetries = DEFAULT_REQUEST_RETRIES, retryDelayMs = 250, adminKey = process.env.WORKER_ADMIN_KEY } = {}) {
+export function createCloudCaptureClient({ url, state, writer = null, v100Shadow = null, fetchImpl = globalThis.fetch, pollMs = DEFAULT_POLL_MS, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, requestRetries = DEFAULT_REQUEST_RETRIES, retryDelayMs = 250, adminKey = process.env.WORKER_ADMIN_KEY } = {}) {
   let timer = null
   let stopped = true
 
@@ -53,7 +53,7 @@ export function createCloudCaptureClient({ url, state, writer = null, fetchImpl 
       if (body?.buildVersion !== '098') throw new Error('version_mismatch: worker buildVersion must be 098')
       const parsed = parseCloudCapturePayload(body)
       try {
-        await applyCloudCapturePayload({ parsed, state, writer })
+        await applyCloudCapturePayload({ parsed, state, writer, v100Shadow })
       } catch (error) {
         const event = buildOperationalEvent({ component: 'supabase_writer', kind: 'persist_capture', message: error?.message ?? String(error) })
         state?.setStatus?.({ ...toStatusEvent(event), persistenceStatus: 'error', persistenceError: event.eventMessage })
@@ -120,11 +120,19 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-export async function applyCloudCapturePayload({ parsed, state, writer }) {
+export async function applyCloudCapturePayload({ parsed, state, writer, v100Shadow = null }) {
+  let v100Result = null
+  if (v100Shadow?.enabled === true) {
+    try {
+      v100Result = await v100Shadow.processSnapshot({ tables: parsed.tables, rounds: parsed.rounds })
+    } catch (error) {
+      state?.setStatus?.({ v100ShadowStatus: 'error', v100ShadowError: String(error?.message ?? error) })
+    }
+  }
   state?.setStatus?.(parsed.status)
   state?.setTables?.(parsed.tables)
   for (const round of parsed.rounds) state?.upsertRoundEvent?.(round)
-  if (!writer?.configured) return
+  if (!writer?.configured) return { v100Shadow: v100Result }
   const sessionId = parsed.sessionId ?? 'cloud-browser'
   await writer.writeCloudCaptureStatus?.({ sessionId, captureSource: 'cloud_browser', status: parsed.status })
   await writer.writeCloudTableSnapshot?.({ sessionId, tables: parsed.tables, status: parsed.status })
@@ -135,6 +143,7 @@ export async function applyCloudCapturePayload({ parsed, state, writer }) {
       return writer.writeCloudRoundEvent?.({ sessionId, round, table })
     }))
   }
+  return { v100Shadow: v100Result }
 }
 
 export function canonicalProductionTableId(value) {
