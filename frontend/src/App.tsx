@@ -320,7 +320,7 @@ export default function App() {
           {prediction ?
             <div className="prediction-row main-probability-row" aria-label="莊閒預測機率">
               <PredictionMetric title="閒" value={outcomePredictions?.player ?? null} tone="Player" active={predictionsActionable && prediction.recommendation === 'Player'} />
-              <PredictionMetric title="和" value={outcomePredictions?.tie ?? null} tone="Tie" active={false} />
+              <PredictionMetric title="和" value={bonusPredictions?.tie ?? null} tone="Tie" active={predictionsActionable && (sideActions?.tie ?? false)} />
               <PredictionMetric title="莊" value={outcomePredictions?.banker ?? null} tone="Banker" active={predictionsActionable && prediction.recommendation === 'Banker'} />
             </div>
           : null}
@@ -1105,7 +1105,10 @@ function PredictionHistoryTable({ history }: { history: TableUiHistory | null })
         <tr><th scope="row">局數</th>{predictions.map((item) => <td key={`${shoe}:${item.round}:round`}>第{item.round}局</td>)}</tr>
         <tr><th scope="row">AI預測</th>{predictions.map((item) => <td className={item.predictedResult} key={`${shoe}:${item.round}:prediction`}>{outcomeLabel[item.predictedResult]}</td>)}</tr>
         <tr><th scope="row">實際開獎</th>{predictions.map((item) => <td className={item.actualResult} key={`${shoe}:${item.round}:actual`}>{outcomeLabel[item.actualResult]}</td>)}</tr>
-        <tr><th scope="row">結果</th>{predictions.map((item) => <td className={item.isHit ? 'hit' : 'miss'} key={`${shoe}:${item.round}:hit`}>{item.isHit ? '命中' : '未中'}</td>)}</tr>
+        <tr><th scope="row">結果</th>{predictions.map((item) => {
+          const result = item.result ?? (item.isHit ? 'hit' : 'miss')
+          return <td className={result === 'uncalculated' ? 'uncalculated' : result} key={`${shoe}:${item.round}:hit`}>{result === 'uncalculated' ? '不計算' : result === 'hit' ? '命中' : '未中'}</td>
+        })}</tr>
       </tbody>
     </table>
     </div>

@@ -1,1 +1,1 @@
-export const BUILD_VERSION = '098.23'
+export const BUILD_VERSION = 'v98'

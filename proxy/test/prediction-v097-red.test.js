@@ -12,7 +12,7 @@ import {
   buildSideActions,
 } from '../src/supabase-writer.js'
 
-const approvedStrategyVersion = 'v098.20_六階段權重門檻整合版'
+const approvedStrategyVersion = 'v98'
 
 const approvedSideProfiles = {
   tie: { tie_risk: 0.45, tie_count: 0.10, shoe_stage: 0.10, road_chaos: 0.15, remaining_rank_total: 0.20 },
@@ -24,12 +24,12 @@ const approvedSideProfiles = {
 }
 
 const approvedThresholds = {
-  tie: 20,
-  superSix: 40,
-  bankerPair: 40,
-  playerPair: 40,
-  bankerDragon: 25,
-  playerDragon: 25,
+  tie: 25,
+  superSix: 45,
+  bankerPair: 43,
+  playerPair: 43,
+  bankerDragon: 30,
+  playerDragon: 30,
 }
 
 function activeWeights(profile) {

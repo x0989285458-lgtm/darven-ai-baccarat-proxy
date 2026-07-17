@@ -59,12 +59,12 @@ test('v050 low-performing table keeps banker/player prediction and records all-M
     recentPredictionCount: 25,
   })
 
-  assert.equal(prediction.strategy_version, 'v098.20_六階段權重門檻整合版')
+  assert.equal(prediction.strategy_version, 'v98')
   assert.equal(prediction.prediction_features.table_performance.recentHitRate, 0.44)
   assert.match(prediction.predicted_result, /^(banker|player)$/)
   assert.equal(prediction.confidence >= 30, true)
   assert.equal(prediction.confidence <= 70, true)
-  assert.equal(prediction.short_run_adjustment.rule, 'v098.20_六階段權重門檻整合版')
+  assert.equal(prediction.short_run_adjustment.rule, 'v98')
 })
 
 test('v098 revealed winner never changes an already-created neutral pre-result prediction', () => {
@@ -116,7 +116,7 @@ test('v067 main and side strategy uses high-hit weighted features', () => {
   assert.deepEqual(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).sort(), sideKeys.sort())
   assert.equal(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length, 32)
   assert.equal(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).length, 28)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.15)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.25)
   assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'table_id'), false)
   assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.pair_risk, 0.35)
   assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.remaining_rank_pressure, 0.15)
@@ -141,7 +141,7 @@ test('v067 prediction rows persist high-hit main and side weights plus captured 
     sourceUpdatedAt: '2026-07-01T09:00:00Z',
   })
 
-  assert.equal(prediction.strategy_version, 'v098.20_六階段權重門檻整合版')
+  assert.equal(prediction.strategy_version, 'v98')
   assert.deepEqual(prediction.feature_weights, ALL_MT_EQUAL_MAIN_WEIGHTS)
   assert.deepEqual(prediction.prediction_features.side_weights.bankerPair, ALL_MT_EQUAL_SIDE_WEIGHTS)
   assert.equal(Object.keys(prediction.prediction_features.side_weights.tie).length, 28)
@@ -171,7 +171,7 @@ test('v050 high-performing table still keeps confidence in 30-70 range', () => {
     recentPredictionCount: 25,
   })
 
-  assert.equal(neutralPrediction.strategy_version, 'v098.20_六階段權重門檻整合版')
+  assert.equal(neutralPrediction.strategy_version, 'v98')
   assert.equal(neutralPrediction.confidence >= 30, true)
   assert.equal(neutralPrediction.confidence <= 70, true)
   assert.equal(boostedPrediction.confidence <= 70, true)

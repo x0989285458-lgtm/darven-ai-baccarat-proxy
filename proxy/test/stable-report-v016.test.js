@@ -37,12 +37,12 @@ test('v016 main hit-rate excludes tie rounds from denominator', () => {
 
 test('v016 side predictions are recorded every round but actions require per-item thresholds', () => {
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
-    tie: 20,
-    superSix: 40,
-    bankerPair: 40,
-    playerPair: 40,
-    bankerDragon: 25,
-    playerDragon: 25,
+    tie: 25,
+    superSix: 45,
+    bankerPair: 43,
+    playerPair: 43,
+    bankerDragon: 30,
+    playerDragon: 30,
   })
   const session = createStableReportSession({ startedAt: '2026-01-01T00:00:00.000Z' })
   const table = makeTable({ bankerCount: 5, playerCount: 5, tieCount: 90, bankerPairCount: 2, playerPairCount: 2 })
@@ -89,5 +89,5 @@ test('v088 confidence is clamped between 30 and 70', () => {
   session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [table] }, 't0')
   session.recordSnapshot({ status: { connected: true, authenticated: true, tableCount: 9 }, tables: [{ ...table, round: 1, lastRound: { tableId: 'BAG01', shoe: 1, round: 1, winner: 2 } }] }, 't1')
   const report = session.getReport('2026-01-01T00:10:00.000Z')
-  assert.equal(report.tables[0].lastConfidence, 47)
+  assert.equal(report.tables[0].lastConfidence, 46)
 })

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { createApp } from '../src/server.js'
 import { buildLivePrediction } from '../src/supabase-writer.js'
 
-const strategyVersion = 'v098.20_六階段權重門檻整合版'
+const strategyVersion = 'v98'
 const issuedAt = '2026-07-17T01:00:00.000Z'
 
 function table(round) {

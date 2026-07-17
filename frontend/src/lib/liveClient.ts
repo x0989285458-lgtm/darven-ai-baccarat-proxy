@@ -36,7 +36,7 @@ export type SidePredictionKey = 'tie' | 'superSix' | 'bankerPair' | 'playerPair'
 export type BackendSidePredictions = Record<SidePredictionKey, number>
 export type BackendSideActions = Record<SidePredictionKey, boolean>
 export type BackendPrediction = { source?: string; predictionId?: string; issuedAt?: string; strategyVersion: string; buildVersion?: string; targetTableId?: string | number; targetShoe?: string | number; targetRound?: number; predictedResult: 'banker' | 'player'; recommendation?: string; confidence: number; probabilities?: { banker?: number; player?: number; tie?: number }; scoreTotals?: { banker?: number; player?: number }; sidePredictions?: BackendSidePredictions; sideActions?: BackendSideActions }
-export type SettledPrediction = { round: number; predictedResult: 'banker' | 'player'; actualResult: 'banker' | 'player' | 'tie'; isHit: boolean }
+export type SettledPrediction = { round: number; mainPredictedResult?: 'banker' | 'player'; predictedResult: 'banker' | 'player' | 'tie'; actualResult: 'banker' | 'player' | 'tie'; isHit: boolean; result?: 'hit' | 'miss' | 'uncalculated' }
 export type RealCardRound = { round: number; result: 'banker' | 'player' | 'tie'; bankerPoint: number; playerPoint: number }
 export type TableUiHistory = {
   ok: true
@@ -89,8 +89,8 @@ const proxyApiUrl = dravenApiBaseUrl
 const pollIntervalMs = Number(import.meta.env.VITE_DRAVEN_PROXY_POLL_MS ?? 5000)
 const streamStaleMs = Number(import.meta.env.VITE_DRAVEN_STREAM_STALE_MS ?? 15000)
 const liveTableMaxAgeMs = Number(import.meta.env.VITE_DRAVEN_TABLE_MAX_AGE_MS ?? 120000)
-const CURRENT_STRATEGY_VERSION = 'v098.20_六階段權重門檻整合版'
-const CURRENT_BUILD_VERSION = '098.23'
+const CURRENT_STRATEGY_VERSION = 'v98'
+const CURRENT_BUILD_VERSION = 'v98'
 const sidePredictionKeys: SidePredictionKey[] = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
 
 export async function fetchTableUiHistory(tableId: string, memberSessionToken: string, signal?: AbortSignal): Promise<TableUiHistory> {

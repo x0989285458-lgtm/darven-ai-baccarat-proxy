@@ -3,14 +3,14 @@ import { getBackendPredictionIssue, LiveRoadClient, type LiveTable } from './liv
 // @ts-expect-error Proxy is JavaScript and intentionally exercised as a real integration boundary.
 import { createApp } from '../../../proxy/src/server.js'
 
-const strategyVersion = 'v098.20_六階段權重門檻整合版'
+const strategyVersion = 'v98'
 
 function validTable(overrides: Partial<LiveTable> = {}): LiveTable {
   return {
     id: 'BAG01',
     table_id: 'BAG01',
     table_type: 'BAC',
-    buildVersion: '098.23',
+    buildVersion: 'v98',
     sourceUpdatedAt: new Date().toISOString(),
     trend: {
       bead_plate2: '0102',
@@ -21,7 +21,7 @@ function validTable(overrides: Partial<LiveTable> = {}): LiveTable {
     prediction: {
       source: 'backend',
       strategyVersion,
-      buildVersion: '098.23',
+      buildVersion: 'v98',
       targetTableId: 'BAG01',
       targetShoe: '123',
       targetRound: 18,

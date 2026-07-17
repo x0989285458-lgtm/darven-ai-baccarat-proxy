@@ -236,7 +236,7 @@ test('v098.21 rollback preserves evidence and requires app-first order before RP
 
 test('v098.21 readers include new final columns, retain legacy fallback, and exclude pending issuance', async () => {
   const requests = []
-  const legacy = { id: 'legacy', table_id: 'BAG01', shoe_no: '88', round_no: 3, strategy_version: 'v098.20_六階段權重門檻整合版', predicted_result: 'banker', actual_result: 'banker', is_hit: true, settlement_final: null, side_hits: null, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true, side_hits: { tie: false } }, created_at: '2026-07-16T01:00:00Z' }
+  const legacy = { id: 'legacy', table_id: 'BAG01', shoe_no: '88', round_no: 3, strategy_version: 'v98', predicted_result: 'banker', actual_result: 'banker', is_hit: true, settlement_final: null, side_hits: null, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true, side_hits: { tie: false } }, created_at: '2026-07-16T01:00:00Z' }
   const modern = { ...legacy, id: 'modern', round_no: 4, settlement_final: true, side_hits: { tie: true }, prediction_features: { prediction_timing: 'pre_result_context' }, created_at: '2026-07-16T01:01:00Z' }
   const pending = { ...modern, id: 'pending', round_no: 5, actual_result: null, is_hit: null, settlement_final: false }
   const client = createSupabaseIngestionClient({ url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false, fetchImpl: async (url) => { requests.push(new URL(url)); return response([modern, legacy, pending]) } })

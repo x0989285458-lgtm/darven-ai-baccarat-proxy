@@ -210,7 +210,7 @@ describe('LiveRoadClient v032 status messages', () => {
     const sourceUpdatedAt = '2026-07-16T01:00:00.000Z'
     const firstPrediction = {
       source: 'backend', predictionId: 'pid-1', issuedAt: '2026-07-16T01:00:01.000Z',
-      strategyVersion: 'v098.20_六階段權重門檻整合版', targetTableId: 'BAG01', targetShoe: 88, targetRound: 21,
+      strategyVersion: 'v98', targetTableId: 'BAG01', targetShoe: 88, targetRound: 21,
       predictedResult: 'banker', confidence: 51,
       probabilities: { banker: 51, player: 44, tie: 5 }, scoreTotals: { banker: 0.51, player: 0.49 },
       sidePredictions: { tie: 1, superSix: 2, bankerPair: 3, playerPair: 4, bankerDragon: 5, playerDragon: 6 },

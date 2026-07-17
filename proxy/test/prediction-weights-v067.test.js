@@ -8,8 +8,8 @@ const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Num
 test('v067 main recommendation weights strongly favor empirically higher-hit signals', () => {
   assert.equal(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length, 32)
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.15)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals, 0.55)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.25)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals, 0.45)
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.next_player_road, 0)
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.shoe_stage, 0)
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.card_points, 0)
@@ -23,12 +23,12 @@ test('v067 side recommendation weights and thresholds suppress low-hit bonus noi
   assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.pair_risk, 0.35)
   assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.banker_pair_count, 0.20)
   assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.remaining_rank_pressure, 0.15)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerPair, 40)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerPair, 40)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.tie, 20)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.superSix, 40)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerDragon, 25)
-  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerDragon, 25)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerPair, 43)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerPair, 43)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.tie, 25)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.superSix, 45)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.bankerDragon, 30)
+  assert.equal(SIDE_PREDICTION_THRESHOLDS.playerDragon, 30)
 })
 
 test('v067 prediction row records high-hit weight strategy version and keeps banker/player output', () => {
@@ -42,7 +42,7 @@ test('v067 prediction row records high-hit weight strategy version and keeps ban
       nextBankerRaw: 'weak', nextPlayerRaw: '2222222222',
     },
   )
-  assert.match(row.strategy_version, /v098/)
+  assert.equal(row.strategy_version, 'v98')
   assert.ok(['banker', 'player'].includes(row.predicted_result))
-  assert.equal(row.short_run_adjustment.rule, 'v098.20_六階段權重門檻整合版')
+  assert.equal(row.short_run_adjustment.rule, 'v98')
 })

@@ -9,7 +9,7 @@ const rollbackUrl = new URL('../../frontend/supabase/rollback_v09823_prediction_
 const dryRunUrl = new URL('../scripts/v09823-prediction-lifecycle-dry-run.sql', import.meta.url)
 const postMigrationVerificationUrl = new URL('../scripts/v09823-prediction-lifecycle-post-migration-verification.sql', import.meta.url)
 const deploymentUrl = new URL('../../docs/release/v09823-prediction-lifecycle-deployment.md', import.meta.url)
-const strategyVersion = 'v098.20_六階段權重門檻整合版'
+const strategyVersion = 'v98'
 
 function response(payload, status = 200) {
   return { ok: status >= 200 && status < 300, status, text: async () => JSON.stringify(payload), json: async () => payload }

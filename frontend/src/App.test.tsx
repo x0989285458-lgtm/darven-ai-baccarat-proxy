@@ -54,11 +54,11 @@ function proxyTablesFromMocks() {
     beadPlateRaw: table.trend.bead_plate2,
     bigRoadRaw: table.trend.big2,
     sourceUpdatedAt: new Date().toISOString(),
-    buildVersion: '098.23',
+    buildVersion: 'v98',
     prediction: {
       source: 'backend',
-      strategyVersion: 'v098.20_六階段權重門檻整合版',
-      buildVersion: '098.23',
+      strategyVersion: 'v98',
+      buildVersion: 'v98',
       targetTableId: table.id,
       targetShoe: table.trend.current_shoe,
       targetRound: Number(table.trend.current_round ?? 0),
@@ -211,7 +211,7 @@ describe('AI百家預測軟體', () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table, index) => ({
         ...table,
-        prediction: { source: 'backend', predictedResult: index % 2 === 0 ? 'banker' : 'player', confidence: 34, strategyVersion: 'v098.20_六階段權重門檻整合版' },
+        prediction: { source: 'backend', predictedResult: index % 2 === 0 ? 'banker' : 'player', confidence: 34, strategyVersion: 'v98' },
       }))) })
       if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tables: [], statusText: '已抓到9桌' }) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: [], reports: [], strategies: [] }) })
@@ -401,7 +401,7 @@ describe('AI百家預測軟體', () => {
 
     expect(screen.getByLabelText('莊預測')).toHaveTextContent('12.5%')
     expect(screen.getByLabelText('閒預測')).toHaveTextContent('77.25%')
-    expect(screen.getByLabelText('和預測')).toHaveTextContent('10.25%')
+    expect(screen.getByLabelText('和預測')).toHaveTextContent('11%')
   })
 
   it('v098 disables all actions and warns when the backend strategy is not current', async () => {
@@ -419,7 +419,7 @@ describe('AI百家預測軟體', () => {
 
   it('v096 waits and never takes side actions when backend side prediction data is missing', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table) => ({ ...table, prediction: { source: 'backend', strategyVersion: 'v098.20_六階段權重門檻整合版', predictedResult: 'banker', confidence: 34 } }))) })
+      if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table) => ({ ...table, prediction: { source: 'backend', strategyVersion: 'v98', predictedResult: 'banker', confidence: 34 } }))) })
       if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tables: [], statusText: '已抓到9桌' }) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: [], reports: [], strategies: [] }) })
     }))
@@ -697,20 +697,20 @@ describe('AI百家預測軟體', () => {
 
   it('v051 records every side prediction for learning but only counts action when each threshold is reached', () => {
     expect(SIDE_PREDICTION_THRESHOLDS).toEqual({
-      tie: 47,
-      superSix: 65,
-      bankerPair: 53,
-      playerPair: 55,
-      bankerDragon: 53,
-      playerDragon: 57,
+      tie: 25,
+      superSix: 45,
+      bankerPair: 43,
+      playerPair: 43,
+      bankerDragon: 30,
+      playerDragon: 30,
     })
     expect(createSidePredictionLearningRecord({
-      tie: 46,
-      superSix: 64,
-      bankerPair: 49,
-      playerPair: 55,
-      bankerDragon: 53,
-      playerDragon: 52,
+      tie: 24,
+      superSix: 44,
+      bankerPair: 42,
+      playerPair: 43,
+      bankerDragon: 29,
+      playerDragon: 29,
     }, {
       tie: true,
       superSix: false,
@@ -734,17 +734,18 @@ describe('AI百家預測軟體', () => {
       }),
     }))
 
-    expect(isSidePredictionActionable('tie', 46)).toBe(false)
-    expect(isSidePredictionActionable('tie', 47)).toBe(true)
-    expect(isSidePredictionActionable('superSix', 64)).toBe(false)
-    expect(isSidePredictionActionable('superSix', 65)).toBe(true)
-    expect(isSidePredictionActionable('bankerPair', 49)).toBe(false)
-    expect(isSidePredictionActionable('playerPair', 54)).toBe(false)
-    expect(isSidePredictionActionable('playerPair', 55)).toBe(true)
-    expect(isSidePredictionActionable('bankerDragon', 52)).toBe(false)
-    expect(isSidePredictionActionable('bankerDragon', 53)).toBe(true)
-    expect(isSidePredictionActionable('playerDragon', 56)).toBe(false)
-    expect(isSidePredictionActionable('playerDragon', 57)).toBe(true)
+    expect(isSidePredictionActionable('tie', 24)).toBe(false)
+    expect(isSidePredictionActionable('tie', 25)).toBe(true)
+    expect(isSidePredictionActionable('superSix', 44)).toBe(false)
+    expect(isSidePredictionActionable('superSix', 45)).toBe(true)
+    expect(isSidePredictionActionable('bankerPair', 42)).toBe(false)
+    expect(isSidePredictionActionable('bankerPair', 43)).toBe(true)
+    expect(isSidePredictionActionable('playerPair', 42)).toBe(false)
+    expect(isSidePredictionActionable('playerPair', 43)).toBe(true)
+    expect(isSidePredictionActionable('bankerDragon', 29)).toBe(false)
+    expect(isSidePredictionActionable('bankerDragon', 30)).toBe(true)
+    expect(isSidePredictionActionable('playerDragon', 29)).toBe(false)
+    expect(isSidePredictionActionable('playerDragon', 30)).toBe(true)
   })
 
 
@@ -904,7 +905,7 @@ describe('AI百家預測軟體', () => {
         nextBankerRaw: '111',
         nextPlayerRaw: '222',
         prediction: {
-          source: 'backend', strategyVersion: 'v098.20_六階段權重門檻整合版',
+          source: 'backend', strategyVersion: 'v98',
           predictedResult: 'banker', confidence: 34, probabilities: { banker: 54, player: 46, tie: 0 }, scoreTotals: { banker: 38, player: 33 },
         },
       }))),

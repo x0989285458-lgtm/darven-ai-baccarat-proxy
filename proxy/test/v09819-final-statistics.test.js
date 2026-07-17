@@ -46,7 +46,7 @@ test('v098.19 recent calibration rows quarantine predictions without a verified 
   let requestedUrl
   const finalRow = {
     table_id: 'BAG01', shoe_no: '8', round_no: 3,
-    strategy_version: 'v098.20_六階段權重門檻整合版', predicted_result: 'banker', actual_result: 'banker', is_hit: true,
+    strategy_version: 'v98', predicted_result: 'banker', actual_result: 'banker', is_hit: true,
     prediction_features: { settlement_final: true }, created_at: '2026-07-15T08:03:00Z',
   }
   const legacyRow = {

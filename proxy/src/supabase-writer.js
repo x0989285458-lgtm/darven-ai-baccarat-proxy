@@ -5,7 +5,8 @@ import { isVerifiedFinalRoundAction, normalizeExactRealCardEvent } from '../../s
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v094_no_observe_confidence_30_70'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v098.20_六階段權重門檻整合版'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v98'
+const COMPATIBLE_PREDECESSOR_STRATEGY_VERSION = 'v098.20_六階段權重門檻整合版'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -45,8 +46,8 @@ export const SIDE_WEIGHT_KEYS = [
 ]
 
 export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildWeightedProfile(MAIN_WEIGHT_KEYS, {
-  ask_road_signals: 0.15,
-  roadmap_trend_signals: 0.55,
+  ask_road_signals: 0.25,
+  roadmap_trend_signals: 0.45,
   recent_practical_calibration: 0.20,
   shoe_banker_player_bias: 0.10,
 })
@@ -86,12 +87,12 @@ export const SIDE_PREDICTION_WEIGHT_PROFILES = Object.freeze({
 export const ALL_MT_EQUAL_SIDE_WEIGHTS = SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair
 
 export const SIDE_PREDICTION_THRESHOLDS = {
-  tie: 20,
-  superSix: 40,
-  bankerPair: 40,
-  playerPair: 40,
-  bankerDragon: 25,
-  playerDragon: 25,
+  tie: 25,
+  superSix: 45,
+  bankerPair: 43,
+  playerPair: 43,
+  bankerDragon: 30,
+  playerDragon: 30,
 }
 
 const DEFAULT_EQUAL_WEIGHTS = Object.freeze({
@@ -160,9 +161,9 @@ export function buildFormalActiveStrategy() {
       main_weights: { ...ALL_MT_EQUAL_MAIN_WEIGHTS },
       side_weights: Object.fromEntries(Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES).map(([key, profile]) => [key, { ...profile }])),
       side_thresholds: { ...SIDE_PREDICTION_THRESHOLDS },
-      description: 'v098 正式主副預測；主信心依已結算真牌命中率校準至30-70，舊策略僅保留歷史。',
+      description: 'v98 正式主副預測；主權重25/45/20/10，副門檻25/45/43/43/30/30，舊策略僅保留歷史。',
     },
-    notes: 'Only active runtime strategy for v098 settled-hit-rate calibrated formal predictions.',
+    notes: 'Only active runtime strategy for formal release v98.',
   }
 }
 
@@ -1666,7 +1667,7 @@ export function createSupabaseIngestionClient({
       const rows = await getRest('daily_prediction_results', {
         select: 'id,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,side_hits,prediction_features,created_at',
         or: '(settlement_final.eq.true,prediction_features->>settlement_final.eq.true)',
-        strategy_version: 'in.(v097_副預測命中校準與門檻降5版,v098_主信心實際命中校準版,v098.20_六階段權重門檻整合版)',
+        strategy_version: `in.(${ALL_MT_EQUAL_STRATEGY_VERSION},${COMPATIBLE_PREDECESSOR_STRATEGY_VERSION},v098_主信心實際命中校準版,v097_副預測命中校準與門檻降5版)`,
         order: 'created_at.desc',
         limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
       })
@@ -1679,7 +1680,7 @@ export function createSupabaseIngestionClient({
         select: 'id,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,side_hits,prediction_features,created_at',
         table_id: `eq.${tableId}`,
         shoe_no: `eq.${shoe}`,
-        strategy_version: `eq.${ALL_MT_EQUAL_STRATEGY_VERSION}`,
+        strategy_version: `in.(${ALL_MT_EQUAL_STRATEGY_VERSION},${COMPATIBLE_PREDECESSOR_STRATEGY_VERSION})`,
         or: '(settlement_final.eq.true,prediction_features->>settlement_final.eq.true)',
         order: 'created_at.desc',
         limit: String(fetchLimit),
@@ -1688,7 +1689,7 @@ export function createSupabaseIngestionClient({
         .filter((row) => (
           String(row?.table_id ?? '') === String(tableId)
           && String(row?.shoe_no ?? '') === String(shoe)
-          && row?.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION
+          && [ALL_MT_EQUAL_STRATEGY_VERSION, COMPATIBLE_PREDECESSOR_STRATEGY_VERSION].includes(row?.strategy_version)
           && row?.prediction_features?.prediction_timing === 'pre_result_context'
           && isFinalPredictionSettlement(row)
           && Number.isSafeInteger(Number(row?.round_no))
@@ -1696,23 +1697,40 @@ export function createSupabaseIngestionClient({
           && ['banker', 'player'].includes(row?.predicted_result)
           && ['banker', 'player', 'tie'].includes(row?.actual_result)
           && typeof row?.is_hit === 'boolean'
-          && (row.actual_result !== 'tie' || row.is_hit === false)
         ))
       const byRound = new Map()
       for (const row of validRows) {
+        const tieAction = row?.prediction_features?.side_actions?.tie
+        const tieHit = row?.side_hits?.tie ?? row?.prediction_features?.side_hits?.tie
+        const hasTieEvidence = typeof tieAction === 'boolean' && typeof tieHit === 'boolean'
+        const displaysTiePrediction = hasTieEvidence && tieAction === true
+        const result = displaysTiePrediction
+          ? (tieHit === true ? 'hit' : 'miss')
+          : (row.actual_result === 'tie' && hasTieEvidence ? 'uncalculated' : (row.is_hit ? 'hit' : 'miss'))
         const next = {
           round: Number(row.round_no),
-          predictedResult: row.predicted_result,
+          ...(hasTieEvidence ? { mainPredictedResult: row.predicted_result } : {}),
+          predictedResult: displaysTiePrediction ? 'tie' : row.predicted_result,
           actualResult: row.actual_result,
-          isHit: row.is_hit,
+          isHit: result === 'hit',
+          ...(hasTieEvidence ? { result } : {}),
         }
         const existing = byRound.get(next.round)
-        if (existing && JSON.stringify(existing) !== JSON.stringify(next)) {
-          throw new Error(`conflicting settled prediction round ${next.round}`)
+        if (!existing) {
+          byRound.set(next.round, { strategyVersion: row.strategy_version, prediction: next })
+          continue
         }
-        if (!existing) byRound.set(next.round, next)
+        if (existing.strategyVersion === row.strategy_version) {
+          if (JSON.stringify(existing.prediction) !== JSON.stringify(next)) {
+            throw new Error(`conflicting settled prediction round ${next.round}`)
+          }
+          continue
+        }
+        if (row.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION) {
+          byRound.set(next.round, { strategyVersion: row.strategy_version, prediction: next })
+        }
       }
-      return [...byRound.values()].slice(0, boundedLimit)
+      return [...byRound.values()].map((entry) => entry.prediction).slice(0, boundedLimit)
     },
     async getTableUiRealCardRounds({ tableId, shoe, limit = 100 } = {}) {
       const boundedLimit = Math.min(100, Math.max(1, Number(limit) || 100))

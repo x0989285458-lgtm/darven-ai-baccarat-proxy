@@ -7,7 +7,7 @@ test('v098.11 hydrates and updates an 18-round settled real-card performance win
   const store = createRecentTablePerformanceStore({ windowSize: 18 })
   const rows = Array.from({ length: 22 }, (_, index) => ({
     table_id: 'BAG01', shoe_no: '1', round_no: index + 1,
-    strategy_version: index < 10 ? 'v097_副預測命中校準與門檻降5版' : 'v098.20_六階段權重門檻整合版',
+    strategy_version: index < 10 ? 'v097_副預測命中校準與門檻降5版' : 'v98',
     predicted_result: 'banker', actual_result: index % 3 === 0 ? 'player' : 'banker',
     created_at: new Date(Date.UTC(2026, 6, 14, 0, index)).toISOString(),
   }))
@@ -21,7 +21,7 @@ test('v098.11 hydrates and updates an 18-round settled real-card performance win
     source: 'settled_real_card_window',
   })
 
-  store.record({ table_id: 'BAG01', shoe_no: '1', round_no: 23, strategy_version: 'v098.20_六階段權重門檻整合版', predicted_result: 'player', actual_result: 'banker', created_at: '2026-07-14T01:00:00.000Z' })
+  store.record({ table_id: 'BAG01', shoe_no: '1', round_no: 23, strategy_version: 'v98', predicted_result: 'player', actual_result: 'banker', created_at: '2026-07-14T01:00:00.000Z' })
   assert.equal(store.summary('BAG01').recentPredictionCount, 18)
   assert.equal(store.summary('BAG01').recentHitRate < 2 / 3, true)
 })
@@ -43,7 +43,7 @@ test('v098.11 proxy warms settled performance before creating a live prediction'
   const supabaseClient = {
     configured: true,
     ensureInitialStrategy: async () => ({ ok: true }),
-    getRuntimeStatus: () => ({ ready: true, degraded: false, activeStrategyVersion: 'v098.20_六階段權重門檻整合版' }),
+    getRuntimeStatus: () => ({ ready: true, degraded: false, activeStrategyVersion: 'v98' }),
     getRecentPredictionRows: async () => rows,
     issuePrediction: async (candidate) => {
       futureCandidate = candidate

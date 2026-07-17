@@ -46,7 +46,7 @@ test('v098 stable report does not run legacy strategy adjustment modes after out
     },
   })
   assert.equal(report.tables[0].strategyAdjustment, undefined)
-  assert.equal(report.tables[0].lastConfidence, 47)
+  assert.equal(report.tables[0].lastConfidence, 46)
 
   const text = formatReportText(report)
   assert.match(text, /策略調整成效/)

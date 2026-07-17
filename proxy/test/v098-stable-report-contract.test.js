@@ -8,7 +8,7 @@ const flags = (enabled = []) => Object.fromEntries(sideKeys.map((key) => [key, e
 const rows = [
   {
     source: 'ofalive99', table_id: 'BAG01', shoe_no: '101', round_no: 18,
-    strategy_version: 'v098.20_六階段權重門檻整合版',
+    strategy_version: 'v98',
     predicted_result: 'banker', actual_result: 'banker', is_hit: true,
     prediction_features: {
       side_actions: flags(['superSix', 'bankerPair', 'playerPair']),
@@ -17,13 +17,13 @@ const rows = [
   },
   {
     source: 'ofalive99', table_id: 'BAG01', shoe_no: '101', round_no: 19,
-    strategy_version: 'v098.20_六階段權重門檻整合版',
+    strategy_version: 'v98',
     predicted_result: 'player', actual_result: 'tie', is_hit: false,
     prediction_features: { side_actions: flags(['tie']), side_hits: flags(['tie']) },
   },
   {
     source: 'ofalive99', table_id: 'BAG01', shoe_no: '102', round_no: 1,
-    strategy_version: 'v098.20_六階段權重門檻整合版',
+    strategy_version: 'v98',
     predicted_result: 'banker', actual_result: 'banker', is_hit: true,
     prediction_features: { side_actions: flags(['bankerDragon']), side_hits: flags(['bankerDragon']) },
   },
