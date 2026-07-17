@@ -9,6 +9,7 @@
 ```bash
 set -euo pipefail
 sudo test "$(sudo stat -c '%a' /etc/darven-worker/worker.env)" = 600
+sudo test "$(sudo stat -c '%u:%g' /etc/darven-worker/worker.env)" = 0:0
 for key in MT_LOGIN_URL WORKER_ADMIN_KEY INGEST_KEY PUSH_TARGET_URL; do
   sudo sh -eu -c "grep -Eq '^${key}=.+' /etc/darven-worker/worker.env"
 done
@@ -22,8 +23,9 @@ sudo test "$(sudo stat -c '%a' /var/lib/darven-worker)" = 700
 set -euo pipefail
 PREVIOUS_IMAGE_ID="$(sudo docker inspect darven-worker --format '{{.Image}}')"
 test -n "$PREVIOUS_IMAGE_ID"
-printf '%s\n' "$PREVIOUS_IMAGE_ID" | sudo tee /etc/darven-worker/previous-image-id >/dev/null
-sudo chmod 600 /etc/darven-worker/previous-image-id
+printf '%s\n' "$PREVIOUS_IMAGE_ID" | \
+  sudo install -o root -g root -m 600 /dev/stdin /etc/darven-worker/previous-image-id
+sudo test "$(sudo stat -c '%u:%g:%a' /etc/darven-worker/previous-image-id)" = 0:0:600
 sudo python3 /opt/darven-v100-<sha7>/cloud-browser-worker/deploy/vm/verify-state-continuity.py \
   capture --evidence /tmp/darven-worker-state-before.json
 ```
@@ -51,8 +53,8 @@ sudo systemd-analyze verify cloud-browser-worker/deploy/vm/darven-worker.service
 set -euo pipefail
 PREVIOUS_IMAGE_ID="$(sudo cat /etc/darven-worker/previous-image-id)"
 rollback() {
-  printf 'WORKER_IMAGE=%s\n' "$PREVIOUS_IMAGE_ID" | sudo tee /etc/darven-worker/release.env >/dev/null
-  sudo chmod 600 /etc/darven-worker/release.env
+  printf 'WORKER_IMAGE=%s\n' "$PREVIOUS_IMAGE_ID" | \
+    sudo install -o root -g root -m 600 /dev/stdin /etc/darven-worker/release.env
   sudo systemctl daemon-reload
   sudo systemctl restart darven-worker.service
 }
@@ -62,8 +64,8 @@ sudo install -m 0644 \
   /opt/darven-v100-<sha7>/cloud-browser-worker/deploy/vm/darven-worker.service \
   /etc/systemd/system/darven-worker.service
 printf '%s\n' 'WORKER_IMAGE=darven-worker:v100-<sha7>' | \
-  sudo tee /etc/darven-worker/release.env >/dev/null
-sudo chmod 600 /etc/darven-worker/release.env
+  sudo install -o root -g root -m 600 /dev/stdin /etc/darven-worker/release.env
+sudo test "$(sudo stat -c '%u:%g:%a' /etc/darven-worker/release.env)" = 0:0:600
 sudo systemctl daemon-reload
 sudo systemd-analyze verify /etc/systemd/system/darven-worker.service
 sudo systemctl restart darven-worker.service
@@ -107,8 +109,8 @@ set -euo pipefail
 PREVIOUS_IMAGE_ID="$(sudo cat /etc/darven-worker/previous-image-id)"
 test -n "$PREVIOUS_IMAGE_ID"
 printf 'WORKER_IMAGE=%s\n' "$PREVIOUS_IMAGE_ID" | \
-  sudo tee /etc/darven-worker/release.env >/dev/null
-sudo chmod 600 /etc/darven-worker/release.env
+  sudo install -o root -g root -m 600 /dev/stdin /etc/darven-worker/release.env
+sudo test "$(sudo stat -c '%u:%g:%a' /etc/darven-worker/release.env)" = 0:0:600
 sudo systemctl daemon-reload
 sudo systemctl restart darven-worker.service
 sudo systemctl is-active --quiet darven-worker.service

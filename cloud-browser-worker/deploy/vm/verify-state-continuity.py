@@ -35,6 +35,7 @@ def snapshot(state_dir: Path) -> dict:
         "observed_round_keys": sorted(str(value) for value in (cursor.get("observedRoundKeys") or [])),
         "acknowledged_round_keys": sorted(str(value) for value in (cursor.get("acknowledgedRoundKeys") or [])),
         "queue_sequences": [int(item.get("sequence") or 0) for item in queue],
+        "head_sequence": int(head.get("sequence") or 0),
         "head_round_keys": sorted(str(value) for value in (head.get("roundKeys") or [])),
         "corrupt_files": corrupt,
     }
@@ -49,9 +50,9 @@ def verify(before: dict, after: dict) -> None:
     if new_corrupt:
         raise RuntimeError("worker created corrupt durable state")
     previous_head = set(before["head_round_keys"])
+    previous_head_sequence = int(before.get("head_sequence") or 0)
     after_sequences = set(after["queue_sequences"])
-    prior_sequences = set(before["queue_sequences"])
-    head_still_queued = bool(prior_sequences & after_sequences)
+    head_still_queued = previous_head_sequence > 0 and previous_head_sequence in after_sequences
     head_acknowledged = previous_head.issubset(after["acknowledged_round_keys"])
     if previous_head and not head_still_queued and not head_acknowledged:
         raise RuntimeError("unacknowledged queue head disappeared across restart")

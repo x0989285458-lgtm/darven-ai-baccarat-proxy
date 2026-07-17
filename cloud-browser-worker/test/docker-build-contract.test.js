@@ -28,6 +28,8 @@ test('v100 worker image and systemd deployment fail closed and preserve durable 
   assert.match(runbook, /docker build --pull[\s\S]*-f cloud-browser-worker\/Dockerfile \./)
   assert.match(runbook, /systemd-analyze verify[\s\S]*trap rollback ERR/)
   assert.match(runbook, /sudo sh -eu -c[\s\S]*connected[\s\S]*authenticated[\s\S]*== 10/)
+  assert.match(runbook, /stat -c '%u:%g' \/etc\/darven-worker\/worker\.env[\s\S]*= 0:0/)
+  assert.match(runbook, /install -o root -g root -m 600 \/dev\/stdin \/etc\/darven-worker\/release\.env/)
   assert.match(runbook, /verify-state-continuity\.py[\s\S]*capture[\s\S]*verify/)
   assert.match(dockerfile, /^RUN npm ci --omit=dev$/m)
   assert.doesNotMatch(dockerfile, /npm ci[^\n]*\|\||npm install --omit=dev/)
@@ -48,5 +50,6 @@ test('v100 worker image and systemd deployment fail closed and preserve durable 
 
   assert.match(continuity, /lastSequence regressed/)
   assert.match(continuity, /acknowledged cursor regressed/)
+  assert.match(continuity, /previous_head_sequence in after_sequences/)
   assert.match(continuity, /unacknowledged queue head disappeared/)
 })
