@@ -7,6 +7,7 @@ const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v094_no_observe_confidence_30_70'
 export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v98'
 export const V99_MAIN_SIGNAL_DEDUP_VERSION = 'v99_主預測靴內偏移去重版'
+export const V100_SIDE_DEDUP_VERSION = 'v100_主副訊號去重與8副牌階完整性版'
 const COMPATIBLE_PREDECESSOR_STRATEGY_VERSION = 'v098.20_六階段權重門檻整合版'
 
 function buildEqualWeights(keys) {
@@ -1225,6 +1226,130 @@ function buildSidePredictions(table = {}, round = {}) {
     key,
     clampPercent(Object.entries(profile).reduce((sum, [featureKey, weight]) => sum + (Number(featureScores[featureKey] ?? 0) * Number(weight ?? 0)), 0), 0, 100),
   ]))
+}
+
+export function calculateV100SidePredictionShadow({
+  table = {},
+  round = {},
+  primitives: primitiveOverrides = null,
+  rankAvailable: rankAvailableOverride,
+  rankFallback,
+  mainPrediction = null,
+  v98SidePredictions: v98Overrides = null,
+} = {}) {
+  const featureScores = primitiveOverrides == null ? buildSideFeatureScores(table, round) : null
+  const sourcePrimitives = primitiveOverrides ?? {
+    T: featureScores.tie_count,
+    B: featureScores.banker_point,
+    P: featureScores.player_point,
+    R: featureScores.remaining_rank_total,
+    S: featureScores.shoe_stage,
+    Q: featureScores.remaining_rank_pressure,
+    XB: featureScores.banker_pair_count,
+    XP: featureScores.player_pair_count,
+    DB: featureScores.banker_dragon,
+    DP: featureScores.player_dragon,
+  }
+  const inferredRankAvailable = primitiveOverrides == null
+    ? hasCompleteRemainingRankCounts(round.cardShoe?.remainingRankCounts)
+    : isAvailableRankValue(sourcePrimitives.Q) && isAvailableRankValue(sourcePrimitives.R)
+  const rankAvailable = rankAvailableOverride == null ? inferredRankAvailable : Boolean(rankAvailableOverride)
+  if (!rankAvailable && !['neutral', 'renormalize'].includes(rankFallback)) {
+    throw new TypeError("rankFallback must be 'neutral' or 'renormalize' when rank is unavailable")
+  }
+  if (rankAvailable && rankFallback != null && !['neutral', 'renormalize'].includes(rankFallback)) {
+    throw new TypeError("rankFallback must be 'neutral' or 'renormalize'")
+  }
+
+  const primitives = Object.fromEntries(['T', 'B', 'P', 'R', 'S', 'Q', 'XB', 'XP', 'DB', 'DP']
+    .map((key) => [key, rankAvailable || !['Q', 'R'].includes(key) ? clampSideScore(sourcePrimitives[key]) : 50]))
+  primitives.A = clampSideScore(100 - Math.abs(primitives.B - primitives.P))
+  primitives.Hpair = clampSideScore(Math.max(primitives.T, primitives.DB, primitives.DP))
+  const bankerPairResidual = clampSideScore(Math.max(0, clampSideScore(2.4 * primitives.XP) - clampSideScore(2.4 * primitives.XB)))
+  const playerPairResidual = clampSideScore(Math.max(0, clampSideScore(2.4 * primitives.XB) - clampSideScore(2.4 * primitives.XP)))
+  const bankerDragonShared = clampSideScore(Math.min(primitives.DB, 0.7 * primitives.B))
+  const bankerDragonResidual = clampSideScore(Math.max(0, primitives.DB - bankerDragonShared))
+  primitives.H6 = clampSideScore(Math.max(primitives.T, primitives.XB, primitives.XP, bankerDragonResidual, primitives.DP))
+
+  const omitRank = !rankAvailable && rankFallback === 'renormalize'
+  const tie = weightedShadowScore({ T: primitives.T, A: primitives.A, S: primitives.S, R: primitives.R }, {
+    T: 0.5068331143232588, A: 0.1931668856767411, S: 0.10, R: 0.20,
+  }, omitRank ? ['R'] : [])
+  const bankerPair = weightedShadowScore({ Q: primitives.Q, S: primitives.S, XB: primitives.XB, RB: bankerPairResidual, Hpair: primitives.Hpair }, {
+    Q: 0.15, S: 0.20, XB: 0.20, RB: 0.35, Hpair: 0.10,
+  }, omitRank ? ['Q'] : [])
+  const playerPair = weightedShadowScore({ Q: primitives.Q, S: primitives.S, XP: primitives.XP, RP: playerPairResidual, Hpair: primitives.Hpair }, {
+    Q: 0.20, S: 0.15, XP: 0.20, RP: 0.25, Hpair: 0.20,
+  }, omitRank ? ['Q'] : [])
+  const superSix = weightedShadowScore({ B: primitives.B, H6: primitives.H6, R: primitives.R, S: primitives.S }, {
+    B: 0.35, H6: 0.35, R: 0.20, S: 0.10,
+  }, omitRank ? ['R'] : [])
+  const v98SidePredictions = v98Overrides ?? buildSidePredictions(table, round)
+  const predictions = {
+    tie: tie.score,
+    superSix: superSix.score,
+    bankerPair: bankerPair.score,
+    playerPair: playerPair.score,
+    bankerDragon: clampSideScore(v98SidePredictions.bankerDragon),
+    playerDragon: clampSideScore(v98SidePredictions.playerDragon),
+  }
+  return {
+    strategyVersion: V100_SIDE_DEDUP_VERSION,
+    predictions,
+    actions: buildV100SideShadowActions(predictions, mainPrediction),
+    diagnostics: {
+      primitives,
+      residuals: {
+        bankerPair: bankerPairResidual,
+        playerPair: playerPairResidual,
+        bankerDragonShared,
+        bankerDragonResidual,
+      },
+      rank: {
+        available: rankAvailable,
+        fallback: rankAvailable ? null : rankFallback,
+        substituted: rankAvailable ? null : { Q: 50, R: 50 },
+      },
+      effectiveCoefficients: {
+        tie: tie.effectiveCoefficients,
+        bankerPair: bankerPair.effectiveCoefficients,
+        playerPair: playerPair.effectiveCoefficients,
+        superSix: superSix.effectiveCoefficients,
+        bankerDragon: { ...SIDE_PREDICTION_WEIGHT_PROFILES.bankerDragon },
+        playerDragon: { ...SIDE_PREDICTION_WEIGHT_PROFILES.playerDragon },
+      },
+    },
+  }
+}
+
+export function buildV100SideShadowActions(predictions = {}, mainPrediction = null) {
+  return buildSideActions(predictions, mainPrediction)
+}
+
+function weightedShadowScore(values, coefficients, omittedKeys = []) {
+  const omitted = new Set(omittedKeys)
+  const activeWeight = Object.entries(coefficients).reduce((sum, [key, weight]) => sum + (omitted.has(key) ? 0 : weight), 0)
+  const effectiveCoefficients = Object.fromEntries(Object.entries(coefficients).map(([key, weight]) => [
+    key,
+    omitted.has(key) || !activeWeight ? 0 : weight / activeWeight,
+  ]))
+  const score = Object.entries(effectiveCoefficients)
+    .reduce((sum, [key, weight]) => sum + clampSideScore(values[key]) * weight, 0)
+  return { score: clampSideScore(score), effectiveCoefficients }
+}
+
+function clampSideScore(value) {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? Math.max(0, Math.min(100, numeric)) : 0
+}
+
+function hasCompleteRemainingRankCounts(counts) {
+  return Boolean(counts) && typeof counts === 'object' && !Array.isArray(counts)
+    && RANK_REMAINING_FACES.every((face) => isAvailableRankValue(counts[face]) && Number(counts[face]) >= 0)
+}
+
+function isAvailableRankValue(value) {
+  return value != null && value !== '' && Number.isFinite(Number(value))
 }
 
 function buildSideFeatureScores(table = {}, round = {}) {
