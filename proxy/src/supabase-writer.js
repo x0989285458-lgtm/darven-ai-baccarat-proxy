@@ -8,6 +8,14 @@ export const SHORT_RUN_STRATEGY_VERSION = 'v094_no_observe_confidence_30_70'
 export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v98'
 export const V99_MAIN_SIGNAL_DEDUP_VERSION = 'v99_主預測靴內偏移去重版'
 export const V100_SIDE_DEDUP_VERSION = 'v100_主副訊號去重與8副牌階完整性版'
+export const V100_SIDE_SCORE_CALIBRATION_OFFSETS = Object.freeze({
+  tie: -18.00629434954008,
+  superSix: -7.900000000000006,
+  bankerPair: 16.54,
+  playerPair: 14.22,
+  bankerDragon: 0,
+  playerDragon: 0,
+})
 const COMPATIBLE_PREDECESSOR_STRATEGY_VERSION = 'v098.20_六階段權重門檻整合版'
 
 function buildEqualWeights(keys) {
@@ -1237,7 +1245,8 @@ export function calculateV100SidePredictionShadow({
   mainPrediction = null,
   v98SidePredictions: v98Overrides = null,
 } = {}) {
-  const featureScores = primitiveOverrides == null ? buildSideFeatureScores(table, round) : null
+  const rankCardShoe = round.cardShoe ?? table.cardShoe ?? null
+  const featureScores = primitiveOverrides == null ? buildSideFeatureScores(table, { ...round, cardShoe: rankCardShoe }) : null
   const sourcePrimitives = primitiveOverrides ?? {
     T: featureScores.tie_count,
     B: featureScores.banker_point,
@@ -1251,7 +1260,7 @@ export function calculateV100SidePredictionShadow({
     DP: featureScores.player_dragon,
   }
   const inferredRankAvailable = primitiveOverrides == null
-    ? hasCompleteRemainingRankCounts(round.cardShoe?.remainingRankCounts)
+    ? rankCardShoe?.rankDataAvailable === true && hasCompleteRemainingRankCounts(rankCardShoe.remainingRankCounts)
     : isAvailableRankValue(sourcePrimitives.Q) && isAvailableRankValue(sourcePrimitives.R)
   const rankAvailable = rankAvailableOverride == null ? inferredRankAvailable : Boolean(rankAvailableOverride)
   if (!rankAvailable && !['neutral', 'renormalize'].includes(rankFallback)) {
@@ -1285,7 +1294,7 @@ export function calculateV100SidePredictionShadow({
     B: 0.35, H6: 0.35, R: 0.20, S: 0.10,
   }, omitRank ? ['R'] : [])
   const v98SidePredictions = v98Overrides ?? buildSidePredictions(table, round)
-  const predictions = {
+  const rawPredictions = {
     tie: tie.score,
     superSix: superSix.score,
     bankerPair: bankerPair.score,
@@ -1293,11 +1302,21 @@ export function calculateV100SidePredictionShadow({
     bankerDragon: clampSideScore(v98SidePredictions.bankerDragon),
     playerDragon: clampSideScore(v98SidePredictions.playerDragon),
   }
+  const predictions = Object.fromEntries(Object.entries(rawPredictions).map(([key, score]) => [
+    key,
+    clampSideScore(score + Number(V100_SIDE_SCORE_CALIBRATION_OFFSETS[key] ?? 0)),
+  ]))
   return {
     strategyVersion: V100_SIDE_DEDUP_VERSION,
     predictions,
     actions: buildV100SideShadowActions(predictions, mainPrediction),
     diagnostics: {
+      rawPredictions,
+      scoreCalibration: {
+        method: 'train_quantile_to_existing_threshold',
+        offsets: { ...V100_SIDE_SCORE_CALIBRATION_OFFSETS },
+        actionRateTargets: { ...SIDE_PREDICTION_ACTION_RATE_TARGETS },
+      },
       primitives,
       residuals: {
         bankerPair: bankerPairResidual,

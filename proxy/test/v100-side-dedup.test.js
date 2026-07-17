@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import {
   V100_SIDE_DEDUP_VERSION,
+  V100_SIDE_SCORE_CALIBRATION_OFFSETS,
   buildLivePrediction,
   buildV100SideShadowActions,
   calculateV100SidePredictionShadow,
@@ -31,10 +32,10 @@ test('v100 audit matrix applies each approved deduplicated side formula exactly 
   const expectedTie = 0.5068331143232588 * BASE.T + 0.1931668856767411 * A + 0.10 * BASE.S + 0.20 * BASE.R
 
   assert.equal(V100_SIDE_DEDUP_VERSION, 'v100_主副訊號去重與8副牌階完整性版')
-  closeTo(shadow.predictions.tie, expectedTie)
-  closeTo(shadow.predictions.bankerPair, 40.3)
-  closeTo(shadow.predictions.playerPair, 34.5)
-  closeTo(shadow.predictions.superSix, 50.5)
+  closeTo(shadow.diagnostics.rawPredictions.tie, expectedTie)
+  closeTo(shadow.diagnostics.rawPredictions.bankerPair, 40.3)
+  closeTo(shadow.diagnostics.rawPredictions.playerPair, 34.5)
+  closeTo(shadow.diagnostics.rawPredictions.superSix, 50.5)
   assert.equal(shadow.predictions.bankerDragon, 67)
   assert.equal(shadow.predictions.playerDragon, 33)
   assert.deepEqual(shadow.diagnostics.residuals, {
@@ -60,10 +61,10 @@ test('v100 diagnostics expose rank availability, fallback, and effective coeffic
 
   const renormalized = score({ ...BASE, Q: Number.NaN, R: Number.NaN }, { rankAvailable: false, rankFallback: 'renormalize' })
   const tieWithoutRank = (0.5068331143232588 * 20 + 0.1931668856767411 * 80 + 0.10 * 30) / 0.80
-  closeTo(renormalized.predictions.tie, tieWithoutRank)
-  closeTo(renormalized.predictions.bankerPair, (0.20 * 30 + 0.20 * 10 + 0.35 * 48 + 0.10 * 50) / 0.85)
-  closeTo(renormalized.predictions.playerPair, (0.15 * 30 + 0.20 * 30 + 0.25 * 0 + 0.20 * 50) / 0.80)
-  closeTo(renormalized.predictions.superSix, (0.35 * 60 + 0.35 * 30 + 0.10 * 30) / 0.80)
+  closeTo(renormalized.diagnostics.rawPredictions.tie, tieWithoutRank)
+  closeTo(renormalized.diagnostics.rawPredictions.bankerPair, (0.20 * 30 + 0.20 * 10 + 0.35 * 48 + 0.10 * 50) / 0.85)
+  closeTo(renormalized.diagnostics.rawPredictions.playerPair, (0.15 * 30 + 0.20 * 30 + 0.25 * 0 + 0.20 * 50) / 0.80)
+  closeTo(renormalized.diagnostics.rawPredictions.superSix, (0.35 * 60 + 0.35 * 30 + 0.10 * 30) / 0.80)
   assert.equal(renormalized.diagnostics.effectiveCoefficients.tie.R, 0)
   closeTo(Object.values(renormalized.diagnostics.effectiveCoefficients.tie).reduce((sum, value) => sum + value, 0), 1)
   assert.throws(() => score(BASE, { rankAvailable: false, rankFallback: undefined }), /rankFallback/)
@@ -74,6 +75,39 @@ test('v100 infers null rank primitives as unavailable instead of silently conver
   assert.equal(shadow.diagnostics.rank.available, false)
   assert.equal(shadow.diagnostics.primitives.Q, 50)
   assert.equal(shadow.diagnostics.primitives.R, 50)
+})
+
+test('v100 table mode reads only an explicitly available table.cardShoe and rejects a gap even with 13 counts', () => {
+  const counts = Object.fromEntries(['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'].map((face) => [face, 30]))
+  const baseTable = { tableId: 'BAG01', round: 12, bankerCount: 6, playerCount: 5, tieCount: 1 }
+  const gap = calculateV100SidePredictionShadow({
+    table: { ...baseTable, cardShoe: { remainingRankCounts: counts, rankDataAvailable: false, status: 'gap' } },
+    rankFallback: 'neutral',
+    mainPrediction: 'banker',
+  })
+  assert.equal(gap.diagnostics.rank.available, false)
+  assert.deepEqual(gap.diagnostics.rank.substituted, { Q: 50, R: 50 })
+
+  const contiguous = calculateV100SidePredictionShadow({
+    table: { ...baseTable, cardShoe: { remainingRankCounts: counts, rankDataAvailable: true, status: 'contiguous' } },
+    rankFallback: 'neutral',
+    mainPrediction: 'banker',
+  })
+  assert.equal(contiguous.diagnostics.rank.available, true)
+  assert.equal(contiguous.diagnostics.rank.fallback, null)
+})
+
+test('v100 applies fixed train-only score calibration without changing thresholds or raw formula lineage', () => {
+  const shadow = score()
+  for (const key of ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']) {
+    closeTo(shadow.predictions[key], Math.max(0, Math.min(100,
+      shadow.diagnostics.rawPredictions[key] + V100_SIDE_SCORE_CALIBRATION_OFFSETS[key])))
+  }
+  assert.equal(shadow.diagnostics.scoreCalibration.method, 'train_quantile_to_existing_threshold')
+  assert.deepEqual(shadow.diagnostics.scoreCalibration.offsets, V100_SIDE_SCORE_CALIBRATION_OFFSETS)
+  assert.deepEqual(shadow.diagnostics.scoreCalibration.actionRateTargets, {
+    tie: 0.15, superSix: 0.10, bankerPair: 0.20, playerPair: 0.20, bankerDragon: 0.08, playerDragon: 0.08,
+  })
 })
 
 test('v100 clamps malformed primitives and keeps every numeric output finite in 0..100', () => {
