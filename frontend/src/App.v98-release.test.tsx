@@ -62,6 +62,14 @@ describe('v98 frozen frontend release', () => {
     expect(document.querySelectorAll('.prediction-card .prediction-metric.active')).toHaveLength(5)
   })
 
+  it('keeps the predicted side visibly higher while banker and player still sum to 100 after rounding', async () => {
+    const row = liveTable()
+    row.prediction = { ...row.prediction, scoreTotals: { banker: 0.50001, player: 0.49999 } }
+    await renderMember(row)
+    const mainMetrics = Array.from(document.querySelectorAll('.main-probability-row .prediction-metric'))
+    expect(mainMetrics.map((node) => node.querySelector('.probability-value')?.textContent)).toEqual(['49.99%', '25%', '50.01%'])
+  })
+
   it('fails closed for stale, wrong-version, or incomplete v98 payloads', async () => {
     await renderMember(liveTable({ buildVersion: 'v97' }))
     expect(document.querySelectorAll('.prediction-card .prediction-metric.active')).toHaveLength(0)

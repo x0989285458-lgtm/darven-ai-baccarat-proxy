@@ -399,8 +399,8 @@ describe('AI百家預測軟體', () => {
   it('v98 displays normalized backend main score totals so banker and player sum to 100', async () => {
     await renderApp()
 
-    expect(screen.getByLabelText('莊預測')).toHaveTextContent('54%')
-    expect(screen.getByLabelText('閒預測')).toHaveTextContent('46%')
+    expect(screen.getByLabelText('莊預測')).toHaveTextContent('53.52%')
+    expect(screen.getByLabelText('閒預測')).toHaveTextContent('46.48%')
     expect(screen.getByLabelText('和預測')).toHaveTextContent('11%')
   })
 
@@ -913,8 +913,8 @@ describe('AI百家預測軟體', () => {
 
     await renderApp()
 
-    await waitFor(() => expect(screen.getByLabelText('莊預測')).toHaveTextContent('54%'))
-    expect(screen.getByLabelText('閒預測')).toHaveTextContent('46%')
+    await waitFor(() => expect(screen.getByLabelText('莊預測')).toHaveTextContent('53.52%'))
+    expect(screen.getByLabelText('閒預測')).toHaveTextContent('46.48%')
   })
 
   it('v030 member login calls online license API and enters frontend only after success', async () => {

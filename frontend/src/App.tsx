@@ -87,8 +87,14 @@ function backendMainScorePercentagesFromTable(table?: LiveTable | null) {
   const player = Number(value?.player)
   const total = banker + player
   if (![banker, player, total].every(Number.isFinite) || total <= 0) return null
-  const bankerPercent = Math.round((banker / total) * 100)
-  return { banker: bankerPercent, player: 100 - bankerPercent }
+  let bankerPercent = Math.round(((banker / total) * 100) * 100) / 100
+  let playerPercent = Math.round((100 - bankerPercent) * 100) / 100
+  if (bankerPercent === playerPercent) {
+    const recommendation = normalizeBackendRecommendation(table?.prediction?.recommendation ?? table?.prediction?.predictedResult)
+    if (recommendation === 'Banker') { bankerPercent = 50.01; playerPercent = 49.99 }
+    if (recommendation === 'Player') { bankerPercent = 49.99; playerPercent = 50.01 }
+  }
+  return { banker: bankerPercent, player: playerPercent }
 }
 
 function clearMemberSession() {
