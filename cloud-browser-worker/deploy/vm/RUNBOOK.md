@@ -1,60 +1,117 @@
-# v098 VM 部署、回滾與驗證
+# v100 GCP VM部署、回滾與驗證
 
-本文件只定義操作步驟；提交此版本時不得直接操作正式 VM。
+正式VM：`darven-mt-taiwan-worker-5`（`asia-east1-b`）。正式服務：`darven-worker.service`。正式Queue／Cursor：`/var/lib/darven-worker`。
 
-## 部署前檢查
+## 部署前Gate
 
-先進入 VM repo 的 `cloud-browser-worker/deploy/vm` 目錄。下列檢查只確認變數存在，不輸出值：
+在VM執行，只確認設定存在，不輸出值：
 
 ```bash
-cd "$(git rev-parse --show-toplevel)/cloud-browser-worker/deploy/vm"
-test "$(stat -c '%a' worker.env)" = 600
+set -euo pipefail
+sudo test "$(sudo stat -c '%a' /etc/darven-worker/worker.env)" = 600
 for key in MT_LOGIN_URL WORKER_ADMIN_KEY INGEST_KEY PUSH_TARGET_URL; do
-  grep -Eq "^${key}=.+" worker.env || { printf 'missing %s\n' "$key" >&2; exit 1; }
+  sudo sh -eu -c "grep -Eq '^${key}=.+' /etc/darven-worker/worker.env"
 done
-grep -Eq '^NODE_ENV=production$' worker.env
+sudo test -d /var/lib/darven-worker
+sudo test "$(sudo stat -c '%a' /var/lib/darven-worker)" = 700
 ```
 
-記錄目前可回滾 revision，並以已審核的 commit 部署：
+以不可變Image ID記錄回滾點，並保存部署前Queue／Cursor狀態：
 
 ```bash
-cd "$(git rev-parse --show-toplevel)"
-git rev-parse HEAD > .previous-worker-revision
-git fetch origin
-: "${REVIEWED_COMMIT_SHA:?set REVIEWED_COMMIT_SHA to the reviewed commit SHA}"
-git checkout --detach "$REVIEWED_COMMIT_SHA"
-cd cloud-browser-worker/deploy/vm
-docker compose build --pull
-docker compose up -d
+set -euo pipefail
+PREVIOUS_IMAGE_ID="$(sudo docker inspect darven-worker --format '{{.Image}}')"
+test -n "$PREVIOUS_IMAGE_ID"
+printf '%s\n' "$PREVIOUS_IMAGE_ID" | sudo tee /etc/darven-worker/previous-image-id >/dev/null
+sudo chmod 600 /etc/darven-worker/previous-image-id
+sudo python3 /opt/darven-v100-<sha7>/cloud-browser-worker/deploy/vm/verify-state-continuity.py \
+  capture --evidence /tmp/darven-worker-state-before.json
 ```
 
-## 驗證
+## 建立不可變Image
 
-載入 VM 本機環境但不要列印變數：
+從已審核Commit的repo root建置；lockfile不一致時`npm ci`必須讓Build失敗：
 
 ```bash
-cd "$(git rev-parse --show-toplevel)/cloud-browser-worker/deploy/vm"
-set -a; . ./worker.env; set +a
-curl --fail --silent http://127.0.0.1:8787/health |
-  node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const x=JSON.parse(s);if(!x.ok||x.buildVersion!=='098')process.exit(1);console.log(x.buildVersion)})"
-test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
-  -H "x-worker-admin-key: $WORKER_ADMIN_KEY" http://127.0.0.1:8787/snapshot)" = 200
-test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
-  "http://127.0.0.1:8787/snapshot?adminKey=invalid")" = 401
-docker compose restart cloud-browser-worker
-docker compose ps --status running cloud-browser-worker
+set -euo pipefail
+cd /opt/darven-v100-<sha7>
+sudo docker build --pull \
+  -t darven-worker:v100-<sha7> \
+  -f cloud-browser-worker/Dockerfile .
+test "$(sudo docker image inspect darven-worker:v100-<sha7> \
+  --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = v100
+sudo systemd-analyze verify cloud-browser-worker/deploy/vm/darven-worker.service
 ```
 
-重啟後確認 `/health` 的 `buildVersion` 仍為 `098`，並從 Render/Supabase 的非敏感監控確認只新增 completed rounds；不得用正式資料做寫入測試或清除 queue/cursor volume。
+## 切換與自動回滾Gate
 
-## 回滾
+下列區塊任一步失敗會以部署前Image ID回滾；不刪除Queue／Cursor：
 
 ```bash
-cd "$(git rev-parse --show-toplevel)"
-git checkout --detach "$(cat .previous-worker-revision)"
-cd cloud-browser-worker/deploy/vm
-docker compose build
-docker compose up -d
+set -euo pipefail
+PREVIOUS_IMAGE_ID="$(sudo cat /etc/darven-worker/previous-image-id)"
+rollback() {
+  printf 'WORKER_IMAGE=%s\n' "$PREVIOUS_IMAGE_ID" | sudo tee /etc/darven-worker/release.env >/dev/null
+  sudo chmod 600 /etc/darven-worker/release.env
+  sudo systemctl daemon-reload
+  sudo systemctl restart darven-worker.service
+}
+trap rollback ERR
+
+sudo install -m 0644 \
+  /opt/darven-v100-<sha7>/cloud-browser-worker/deploy/vm/darven-worker.service \
+  /etc/systemd/system/darven-worker.service
+printf '%s\n' 'WORKER_IMAGE=darven-worker:v100-<sha7>' | \
+  sudo tee /etc/darven-worker/release.env >/dev/null
+sudo chmod 600 /etc/darven-worker/release.env
+sudo systemctl daemon-reload
+sudo systemd-analyze verify /etc/systemd/system/darven-worker.service
+sudo systemctl restart darven-worker.service
+sudo systemctl is-active --quiet darven-worker.service
+
+test "$(sudo docker inspect darven-worker --format '{{.Config.Image}}')" = 'darven-worker:v100-<sha7>'
+test "$(sudo docker inspect darven-worker --format '{{.State.Running}}')" = true
+sudo systemctl show darven-worker.service -p ExecStart -p ExecStop --no-pager
+
+curl -fsS http://127.0.0.1:8787/health |
+  node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const x=JSON.parse(s);if(!x.ok||x.buildVersion!=='100')process.exit(1)})"
+
+sudo sh -eu -c '
+  set -a
+  . /etc/darven-worker/worker.env
+  set +a
+  payload="$(curl -fsS -H "x-worker-admin-key: $WORKER_ADMIN_KEY" http://127.0.0.1:8787/snapshot)"
+  printf "%s" "$payload" | python3 -c '\''import json,sys; x=json.load(sys.stdin); assert x.get("connected") is True; assert x.get("authenticated") is True; assert len(x.get("tables") or []) == 10'\''
+  test "$(curl -sS -o /dev/null -w "%{http_code}" "http://127.0.0.1:8787/snapshot?adminKey=invalid")" = 401
+'
+
+sudo python3 /opt/darven-v100-<sha7>/cloud-browser-worker/deploy/vm/verify-state-continuity.py \
+  verify --evidence /tmp/darven-worker-state-before.json
+trap - ERR
 ```
 
-回滾後重跑該 revision 的 health/snapshot 驗證。保留 `worker-push-state` volume，避免遺失未確認 envelope 與 ack cursor；除非事故指揮明確批准，不得執行 `docker compose down -v`。
+再由Render `/api/status`與正式DB確認：
+
+- Proxy buildVersion=`v100`、Worker protocol=`v100`。
+- tableCount=`10`、connected/authenticated=true。
+- Persistence正常，Final持續寫入。
+- Rank Ledger失敗不ACK；未ACK Queue仍保留。
+- 新結算只寫`strategy_version=v100`、`settlement_final=true`。
+
+不得執行`docker system prune --volumes`，不得刪除`/var/lib/darven-worker`。
+
+## 手動回滾
+
+```bash
+set -euo pipefail
+PREVIOUS_IMAGE_ID="$(sudo cat /etc/darven-worker/previous-image-id)"
+test -n "$PREVIOUS_IMAGE_ID"
+printf 'WORKER_IMAGE=%s\n' "$PREVIOUS_IMAGE_ID" | \
+  sudo tee /etc/darven-worker/release.env >/dev/null
+sudo chmod 600 /etc/darven-worker/release.env
+sudo systemctl daemon-reload
+sudo systemctl restart darven-worker.service
+sudo systemctl is-active --quiet darven-worker.service
+```
+
+回滾使用不可變Image ID，不依賴可能被重新指向的Tag；只切Image，不刪除Queue／Cursor，不重建`worker.env`。

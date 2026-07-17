@@ -116,7 +116,7 @@ export function buildStableReportFromRows(rows = []) {
     return sum
   }, createSavedRowAggregate(null))
 
-  return { version: '098-row-contract', invalidRows, tables: reportTables, total: finalizeSavedRowAggregate(total, false) }
+  return { version: '100-row-contract', invalidRows, tables: reportTables, total: finalizeSavedRowAggregate(total, false) }
 }
 
 function savedSettlementKey(identity) {
@@ -400,7 +400,7 @@ export function parseDurationMs(value = '10m') {
 }
 
 export function formatReportText(report) {
-  if (report?.version === '098-row-contract') return formatSavedRowsReportText(report)
+  if (report?.version === '100-row-contract') return formatSavedRowsReportText(report)
   const lines = []
   lines.push(`## ${report.title}`)
   lines.push('')
@@ -427,7 +427,7 @@ export function formatReportText(report) {
 function formatSavedRowsReportText(report) {
   const rate = (value) => value == null ? '-' : `${value}%`
   const lines = [
-    '## v098 已保存預測結算報表',
+    '## v100 已保存預測結算報表',
     '',
     `主預測命中率：${rate(report.total.hitRate)}（命中 ${report.total.hits} / 未中 ${report.total.misses} / 和局不計 ${report.total.pushes} / 主統計 ${report.total.mainEvaluated} / 總局 ${report.total.rounds}）`,
     `副預測出手命中率：${rate(report.total.sideHitRate)}（出手 ${report.total.sideActions} / 命中 ${report.total.sideHits}）`,

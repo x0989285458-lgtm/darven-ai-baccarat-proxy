@@ -5,7 +5,7 @@ import { isVerifiedFinalRoundAction, normalizeExactRealCardEvent } from '../../s
 const SOURCE = 'ofalive99'
 const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
 export const SHORT_RUN_STRATEGY_VERSION = 'v094_no_observe_confidence_30_70'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v98'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v100'
 export const V99_MAIN_SIGNAL_DEDUP_VERSION = 'v99_主預測靴內偏移去重版'
 export const V100_SIDE_DEDUP_VERSION = 'v100_主副訊號去重與8副牌階完整性版'
 export const V100_SIDE_SCORE_CALIBRATION_OFFSETS = Object.freeze({
@@ -16,7 +16,7 @@ export const V100_SIDE_SCORE_CALIBRATION_OFFSETS = Object.freeze({
   bankerDragon: 0,
   playerDragon: 0,
 })
-const COMPATIBLE_PREDECESSOR_STRATEGY_VERSION = 'v098.20_六階段權重門檻整合版'
+const COMPATIBLE_PREDECESSOR_STRATEGY_VERSION = 'v98'
 
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
@@ -166,16 +166,19 @@ export function buildFormalActiveStrategy() {
     version: ALL_MT_EQUAL_STRATEGY_VERSION,
     status: 'active',
     sample_count: 0,
-    weights: { ...SHORT_RUN_WEIGHTS },
+    weights: { ...V99_MAIN_SIGNAL_DEDUP_WEIGHTS },
     metrics: {
       mode: 'formal_live_prediction',
       auto_adjust: false,
-      main_weights: { ...ALL_MT_EQUAL_MAIN_WEIGHTS },
+      main_strategy: V99_MAIN_SIGNAL_DEDUP_VERSION,
+      side_strategy: V100_SIDE_DEDUP_VERSION,
+      main_weights: { ...V99_MAIN_SIGNAL_DEDUP_WEIGHTS },
       side_weights: Object.fromEntries(Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES).map(([key, profile]) => [key, { ...profile }])),
       side_thresholds: { ...SIDE_PREDICTION_THRESHOLDS },
-      description: 'v98 正式主副預測；主權重25/45/20/10，副門檻25/45/43/43/30/30，舊策略僅保留歷史。',
+      rank_ledger: 'durable_eight_deck_exact_rank_ledger',
+      description: 'v100正式整合包；主預測採靴內偏移去重，副預測採訊號去重與固定8副牌牌階Ledger，沿用核准門檻。',
     },
-    notes: 'Only active runtime strategy for formal release v98.',
+    notes: 'Only active runtime strategy for formal release v100; v98 remains read-only history.',
   }
 }
 
@@ -627,15 +630,27 @@ export function buildLivePrediction(table = {}) {
     lastRound: table.lastRound ?? null,
     cardShoe: table.cardShoe ?? null,
   }
-  const prediction = calculateAllMtEqualMainPrediction({
+  const prediction = calculateV99MainPredictionShadow({
     round: nextRound,
     table,
     facts: {},
     probabilities,
     tablePerformance,
   })
-  const sidePredictions = buildSidePredictions(table, nextRound)
-  const sideActions = buildSideActions(sidePredictions, prediction.predictedResult)
+  const v98SidePredictions = buildSidePredictions(table, nextRound)
+  const rankCardShoe = table.v100RankLedger ?? null
+  const rankAvailable = rankCardShoe?.rankDataAvailable === true
+    && hasCompleteRemainingRankCounts(rankCardShoe.remainingRankCounts)
+  const v100Side = calculateV100SidePredictionShadow({
+    table,
+    round: { ...nextRound, v100RankLedger: rankCardShoe },
+    rankAvailable,
+    rankFallback: 'renormalize',
+    mainPrediction: prediction.predictedResult,
+    v98SidePredictions,
+  })
+  const sidePredictions = v100Side.predictions
+  const sideActions = v100Side.actions
   const preResultFacts = deriveBaccaratRoundFacts(table.lastRound ?? {})
   const predictionFeatures = {
     prediction_timing: 'pre_result_context',
@@ -662,6 +677,11 @@ export function buildLivePrediction(table = {}) {
     side_results: { superSix: false, bankerDragon: false, playerDragon: false, bankerPair: false, playerPair: false },
     table_performance: structuredClone(tablePerformance),
     confidence_calibration: structuredClone(prediction.confidenceCalibration),
+    v100_main_signal_dedup: {
+      strategyVersion: V99_MAIN_SIGNAL_DEDUP_VERSION,
+      diagnostics: structuredClone(prediction.diagnostics),
+    },
+    v100_side_dedup: structuredClone(v100Side),
   }
   return {
     source: 'backend',
@@ -688,7 +708,7 @@ export function buildLivePrediction(table = {}) {
       baseProbabilities: structuredClone(probabilities),
     },
     predictionFeatures,
-    featureWeights: { ...ALL_MT_EQUAL_MAIN_WEIGHTS },
+    featureWeights: { ...prediction.featureWeights },
   }
 }
 
@@ -1306,10 +1326,13 @@ export function calculateV100SidePredictionShadow({
     key,
     clampSideScore(score + Number(V100_SIDE_SCORE_CALIBRATION_OFFSETS[key] ?? 0)),
   ]))
+  const actions = rankAvailable
+    ? buildV100SideShadowActions(predictions, mainPrediction)
+    : { tie: false, superSix: false, bankerPair: false, playerPair: false, bankerDragon: false, playerDragon: false }
   return {
     strategyVersion: V100_SIDE_DEDUP_VERSION,
     predictions,
-    actions: buildV100SideShadowActions(predictions, mainPrediction),
+    actions,
     diagnostics: {
       rawPredictions,
       scoreCalibration: {
@@ -1582,7 +1605,9 @@ export function buildCloudTableSnapshotRow({ sessionId = null, tables = [], stat
 }
 
 function enrichTableWithLivePrediction(table = {}) {
-  if (table.prediction?.source === 'backend' && Number.isFinite(Number(table.prediction.confidence))) {
+  if (table.prediction?.source === 'backend'
+    && table.prediction?.strategyVersion === ALL_MT_EQUAL_STRATEGY_VERSION
+    && Number.isFinite(Number(table.prediction.confidence))) {
     return { ...table, buildVersion: BUILD_VERSION, prediction: { ...table.prediction, buildVersion: BUILD_VERSION } }
   }
   try {

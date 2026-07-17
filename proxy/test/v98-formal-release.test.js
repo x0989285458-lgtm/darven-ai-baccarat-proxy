@@ -18,8 +18,8 @@ function response(payload) {
   return { ok: true, status: 200, text: async () => JSON.stringify(payload), json: async () => payload }
 }
 
-test('v98 formal runtime exposes the exact release identity, approved main weights, and approved side thresholds', async () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v98')
+test('v100 formal runtime exposes the exact release identity, approved main weights, and approved side thresholds', async () => {
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v100')
   assert.deepEqual(ALL_MT_EQUAL_MAIN_WEIGHTS, {
     table_type: 0, total_players: 0, state: 0, source_updated_at: 0,
     shoe: 0, shoe_stage: 0, banker_count: 0, player_count: 0, tie_count: 0,
@@ -32,20 +32,20 @@ test('v98 formal runtime exposes the exact release identity, approved main weigh
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 25, superSix: 45, bankerPair: 43, playerPair: 43, bankerDragon: 30, playerDragon: 30,
   })
-  assert.equal(buildFormalActiveStrategy().version, 'v98')
+  assert.equal(buildFormalActiveStrategy().version, 'v100')
   assert.equal(buildFormalActiveStrategy().status, 'active')
   assert.deepEqual(buildFormalActiveStrategy().metrics.side_weights, Object.fromEntries(Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES).map(([key, value]) => [key, { ...value }])))
 
   const app = createApp({ autoConnect: false })
   const health = JSON.parse((await app.inject({ url: '/health' })).body)
-  assert.equal(health.buildVersion, 'v98')
+  assert.equal(health.buildVersion, 'v100')
 })
 
 test('v98 history derives tie display only from complete persisted tie action/hit evidence and includes the compatible predecessor', async () => {
   const requests = []
   const rows = [
     {
-      id: 'tie-action-miss', table_id: 'BAG01', shoe_no: '88', round_no: 13, strategy_version: 'v98',
+      id: 'tie-action-miss', table_id: 'BAG01', shoe_no: '88', round_no: 13, strategy_version: 'v100',
       predicted_result: 'banker', actual_result: 'banker', is_hit: true, settlement_final: true,
       side_hits: { tie: false }, prediction_features: { prediction_timing: 'pre_result_context', side_actions: { tie: true }, side_hits: { tie: false } },
     },
@@ -60,7 +60,7 @@ test('v98 history derives tie display only from complete persisted tie action/hi
       side_hits: { tie: true }, prediction_features: { prediction_timing: 'pre_result_context', side_actions: { tie: true }, side_hits: { tie: true } },
     },
     {
-      id: 'tie-no-action', table_id: 'BAG01', shoe_no: '88', round_no: 11, strategy_version: 'v098.20_六階段權重門檻整合版',
+      id: 'tie-no-action', table_id: 'BAG01', shoe_no: '88', round_no: 11, strategy_version: 'v98',
       predicted_result: 'banker', actual_result: 'tie', is_hit: false, settlement_final: true,
       side_hits: { tie: false }, prediction_features: { prediction_timing: 'pre_result_context', side_actions: { tie: false }, side_hits: { tie: false } },
     },
@@ -76,12 +76,12 @@ test('v98 history derives tie display only from complete persisted tie action/hi
   })
 
   const history = await client.getTableUiSettledPredictions({ tableId: 'BAG01', shoe: 88, limit: 10 })
-  assert.match(decodeURIComponent(requests[0]), /strategy_version=in\.\(v98,v098\.20_/)
+  assert.match(decodeURIComponent(requests[0]), /strategy_version=in\.\(v100,v98\)/)
   assert.deepEqual(history, [
     { round: 13, mainPredictedResult: 'banker', predictedResult: 'banker', actualResult: 'banker', isHit: true, result: 'hit' },
     { round: 12, mainPredictedResult: 'player', predictedResult: 'tie', actualResult: 'tie', isHit: true, result: 'hit' },
     { round: 11, mainPredictedResult: 'banker', predictedResult: 'banker', actualResult: 'tie', isHit: false, result: 'uncalculated' },
-    { round: 10, predictedResult: 'banker', actualResult: 'tie', isHit: false },
+
   ])
 })
 
@@ -94,7 +94,7 @@ test('v98 recent calibration hydration includes the formal release and compatibl
 
   await client.getRecentPredictionRows({ limit: 18 })
 
-  assert.match(requestedUrl, /strategy_version=in\.\([^)]*v98[^)]*v098\.20_/)
+  assert.match(requestedUrl, /strategy_version=in\.\([^)]*v100[^)]*v98/)
 })
 
 test('v98 additive migration activates exactly one formal strategy with rollback metadata', () => {

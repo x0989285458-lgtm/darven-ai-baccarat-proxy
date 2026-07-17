@@ -28,7 +28,7 @@ test('v098 pending snapshot contains all pre-result probability score MT derived
 
   const row = buildPredictionResultRow(completed, changedAfterReveal, pending)
 
-  assert.equal(pending.buildVersion, 'v98')
+  assert.equal(pending.buildVersion, 'v100')
   assert.ok(pending.probabilities)
   assert.ok(pending.scoreTotals)
   assert.ok(pending.scoreSources)
@@ -75,7 +75,7 @@ test('v098 cloud worker fetch rejects redirects', async () => {
     requestRetries: 1,
     fetchImpl: async (_url, options) => {
       init = options
-      return { ok: true, json: async () => ({ buildVersion: '098', tables: [], rounds: [] }) }
+      return { ok: true, json: async () => ({ buildVersion: '100', tables: [], rounds: [] }) }
     },
   })
 

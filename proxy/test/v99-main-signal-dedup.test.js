@@ -94,7 +94,7 @@ test('v99 fails closed to a finite neutral shoe score for invalid signal input',
     .filter((value) => typeof value === 'number').every(Number.isFinite), true)
 })
 
-test('v98 formal prediction behavior remains unchanged and keeps the raw shoe score', () => {
+test('v100 formal prediction uses the approved deduplicated main score', () => {
   const prediction = buildLivePrediction({
     tableId: 'BAG99',
     shoe: 1,
@@ -112,12 +112,12 @@ test('v98 formal prediction behavior remains unchanged and keeps the raw shoe sc
     askRoadScore: prediction.scoreSources.ask_road_signals,
     shoeScore: prediction.scoreSources.shoe_banker_player_bias,
   }, {
-    strategyVersion: 'v98',
+    strategyVersion: 'v100',
     predictedResult: 'banker',
     confidence: 46,
-    scoreTotals: { banker: 0.52, player: 0.48000000000000004 },
+    scoreTotals: { banker: 0.515, player: 0.48500000000000004 },
     askRoadScore: { banker: 0.56, player: 0.44 },
-    shoeScore: { banker: 0.55, player: 0.45 },
+    shoeScore: { banker: 0.5, player: 0.5 },
   })
 })
 

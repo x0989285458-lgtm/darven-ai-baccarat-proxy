@@ -1,6 +1,5 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import {
   V100_SIDE_DEDUP_VERSION,
@@ -70,6 +69,9 @@ test('v100 diagnostics expose rank availability, fallback, and effective coeffic
   assert.equal(renormalized.diagnostics.effectiveCoefficients.tie.R, 0)
   assert.equal(renormalized.diagnostics.rank.substituted, null)
   assert.deepEqual(renormalized.diagnostics.rank.excluded, ['Q', 'R'])
+  assert.deepEqual(renormalized.actions, {
+    tie: false, superSix: false, bankerPair: false, playerPair: false, bankerDragon: false, playerDragon: false,
+  })
   closeTo(Object.values(renormalized.diagnostics.effectiveCoefficients.tie).reduce((sum, value) => sum + value, 0), 1)
   assert.throws(() => score(BASE, { rankAvailable: false, rankFallback: undefined }), /rankFallback/)
 })
@@ -144,12 +146,18 @@ test('v100 shadow actions preserve formal thresholds ±1 and main-direction gate
   assert.equal(player.playerDragon, true)
 })
 
-test('v100 leaves the complete v98 buildLivePrediction fixture stable after the approved tie-risk dedup', () => {
+test('v100 formal buildLivePrediction packages the approved side dedup and live actions', () => {
   const table = {
     tableId: 'BAG100', shoe: 8, round: 20, bankerCount: 11, playerCount: 9, tieCount: 2,
     bankerPairCount: 1, playerPairCount: 2, nextBankerRaw: 'B', nextPlayerRaw: 'P',
     beadPlateRaw: '010203#020102', bigRoadRaw: 'BPBP', bigEyeRaw: '1212', smallRoadRaw: '1122', cockroachRaw: '1221',
   }
-  const digest = createHash('sha256').update(JSON.stringify(buildLivePrediction(table))).digest('hex')
-  assert.equal(digest, 'b99af2714318eb7df0654b43eeb0e3109075dcb15f45cd7628cd75d98ee7c3dc')
+  const prediction = buildLivePrediction(table)
+  assert.equal(prediction.strategyVersion, 'v100')
+  assert.equal(prediction.predictionFeatures.v100_side_dedup.strategyVersion, V100_SIDE_DEDUP_VERSION)
+  assert.deepEqual(prediction.sideActions, prediction.predictionFeatures.v100_side_dedup.actions)
+  assert.deepEqual(prediction.sideActions, {
+    tie: false, superSix: false, bankerPair: false, playerPair: false, bankerDragon: false, playerDragon: false,
+  })
+  assert.equal(prediction.predictionFeatures.v100_side_dedup.diagnostics.rank.available, false)
 })

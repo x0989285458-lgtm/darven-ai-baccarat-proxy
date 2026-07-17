@@ -6,5 +6,5 @@ test('v098 health endpoint reports version 098', async () => {
   const app = createApp({ autoConnect: false })
   const response = await app.inject({ url: '/health' })
   assert.equal(response.statusCode, 200)
-  assert.equal(JSON.parse(response.body).version, 'v98')
+  assert.equal(JSON.parse(response.body).version, 'v100')
 })

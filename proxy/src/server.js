@@ -18,7 +18,8 @@ import { hasExactRealCardCodes, isExactTenRawResult, isVerifiedFinalRoundAction 
 
 const VERSION = BUILD_VERSION
 const SERVICE = 'Draven MT資料代理伺服器'
-const WORKER_PROTOCOL_BUILD_VERSION = '098'
+const WORKER_PROTOCOL_BUILD_VERSION = '100'
+const WORKER_PROTOCOL_VERSION = 'v100'
 const LIFECYCLE_IDENTITIES_PER_TABLE = 256
 const LIFECYCLE_SHOES_PER_TABLE = 64
 
@@ -79,6 +80,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const strictRealCardRounds = process.env.REQUIRE_REAL_CARD_ROUNDS !== 'false'
   const adminSessions = new Map()
   const ingestSequences = new Map()
+  const ingestSessionLocks = new Map()
   const pendingPredictions = new Map()
   const issuingPredictionPromises = new Map()
   const expiredPredictionKeys = new Set()
@@ -154,6 +156,21 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     state.setStatus(toStatusEvent(event))
     await supabaseClient?.writeOperationalEvent?.(event).catch(() => {})
     return event
+  }
+
+  async function withIngestSessionLock(sessionId, task) {
+    const previous = ingestSessionLocks.get(sessionId) ?? Promise.resolve()
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    const current = previous.then(() => gate)
+    ingestSessionLocks.set(sessionId, current)
+    await previous
+    try {
+      return await task()
+    } finally {
+      release()
+      if (ingestSessionLocks.get(sessionId) === current) ingestSessionLocks.delete(sessionId)
+    }
   }
 
   async function handle(method, url, rawBody = '', headers = {}) {
@@ -243,34 +260,36 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         const envelope = parseJsonBody(rawBody)
         const validatedRoundKeys = validateIngestEnvelope(envelope, now())
         const sessionId = String(envelope.snapshot.sessionId ?? envelope.snapshot.session_id ?? 'cloud-browser')
-        const previous = ingestSequences.get(sessionId)
-        if (previous != null && envelope.sequence <= previous.sequence) {
-          return jsonResponse(200, { ...previous.ack, duplicate: true, sequence: envelope.sequence }, frontendOrigin)
-        }
-        const parsed = parseCloudCapturePayload(envelope.snapshot)
-        try {
-          assertDurableIngestWriter(supabaseClient, parsed.rounds.length)
-          await applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Shadow })
-        } catch (error) {
-          const durableError = new Error(error?.message ?? String(error))
-          durableError.statusCode = 503
-          durableError.durableFailure = true
-          throw durableError
-        }
-        const ack = {
-          ok: true,
-          accepted: true,
-          duplicate: false,
-          sessionId,
-          sequence: envelope.sequence,
-          acceptedRoundKeys: validatedRoundKeys,
-        }
-        ingestSequences.set(sessionId, { sequence: envelope.sequence, ack })
-        state.setStatus({ health: 'ok', reason: null, expectedProtocolVersion: 'v098', receivedProtocolVersion: 'v098' })
-        return jsonResponse(200, ack, frontendOrigin)
+        return await withIngestSessionLock(sessionId, async () => {
+          const previous = ingestSequences.get(sessionId)
+          if (previous != null && envelope.sequence <= previous.sequence) {
+            return jsonResponse(200, { ...previous.ack, duplicate: true, sequence: envelope.sequence }, frontendOrigin)
+          }
+          const parsed = parseCloudCapturePayload(envelope.snapshot)
+          try {
+            assertDurableIngestWriter(supabaseClient, parsed.rounds.length)
+            await applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Shadow })
+          } catch (error) {
+            const durableError = new Error(error?.message ?? String(error))
+            durableError.statusCode = 503
+            durableError.durableFailure = true
+            throw durableError
+          }
+          const ack = {
+            ok: true,
+            accepted: true,
+            duplicate: false,
+            sessionId,
+            sequence: envelope.sequence,
+            acceptedRoundKeys: validatedRoundKeys,
+          }
+          ingestSequences.set(sessionId, { sequence: envelope.sequence, ack })
+          state.setStatus({ health: 'ok', reason: null, expectedProtocolVersion: 'v100', receivedProtocolVersion: 'v100' })
+          return jsonResponse(200, ack, frontendOrigin)
+        })
       } catch (error) {
         if (error?.versionMismatch) {
-          state.setStatus({ health: 'degraded', reason: 'version_mismatch', expectedProtocolVersion: 'v098', receivedProtocolVersion: error.receivedProtocolVersion ?? null })
+          state.setStatus({ health: 'degraded', reason: 'version_mismatch', expectedProtocolVersion: 'v100', receivedProtocolVersion: error.receivedProtocolVersion ?? null })
         }
         return jsonResponse(error?.statusCode ?? 400, {
           ok: false,
@@ -1035,7 +1054,7 @@ function parseJsonBody(rawBody) {
 
 function validateIngestEnvelope(envelope, currentTime) {
   if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) throw new Error('invalid payload')
-  if (envelope.protocolVersion !== 'v098') {
+  if (envelope.protocolVersion !== WORKER_PROTOCOL_VERSION) {
     const error = new Error('version_mismatch')
     error.statusCode = 409
     error.versionMismatch = true

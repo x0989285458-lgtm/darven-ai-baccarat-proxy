@@ -50,7 +50,7 @@ export function createCloudCaptureClient({ url, state, writer = null, v100Shadow
         throw new Error(`Cloud capture worker failed: ${response?.status ?? 'unknown'} ${text}`)
       }
       const body = await response.json()
-      if (body?.buildVersion !== '098') throw new Error('version_mismatch: worker buildVersion must be 098')
+      if (body?.buildVersion !== '100') throw new Error('version_mismatch: worker buildVersion must be 100')
       const parsed = parseCloudCapturePayload(body)
       try {
         await applyCloudCapturePayload({ parsed, state, writer, v100Shadow })
@@ -126,20 +126,22 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Shad
     try {
       v100Result = await v100Shadow.processSnapshot({ tables: parsed.tables, rounds: parsed.rounds })
     } catch (error) {
-      state?.setStatus?.({ v100ShadowStatus: 'error', v100ShadowError: String(error?.message ?? error) })
+      state?.setStatus?.({ v100RuntimeStatus: 'error', v100RuntimeError: String(error?.message ?? error) })
+      throw error
     }
   }
+  const formalTables = Array.isArray(v100Result?.tables) ? v100Result.tables : parsed.tables
   state?.setStatus?.(parsed.status)
-  state?.setTables?.(parsed.tables)
+  state?.setTables?.(formalTables)
   for (const round of parsed.rounds) state?.upsertRoundEvent?.(round)
   if (!writer?.configured) return { v100Shadow: v100Result }
   const sessionId = parsed.sessionId ?? 'cloud-browser'
   await writer.writeCloudCaptureStatus?.({ sessionId, captureSource: 'cloud_browser', status: parsed.status })
-  await writer.writeCloudTableSnapshot?.({ sessionId, tables: parsed.tables, status: parsed.status })
+  await writer.writeCloudTableSnapshot?.({ sessionId, tables: formalTables, status: parsed.status })
   for (let offset = 0; offset < parsed.rounds.length; offset += 5) {
     const batch = parsed.rounds.slice(offset, offset + 5)
     await Promise.all(batch.map((round) => {
-      const table = parsed.tables.find((item) => String(item.tableId) === String(round.tableId)) ?? { tableId: round.tableId }
+      const table = formalTables.find((item) => String(item.tableId) === String(round.tableId)) ?? { tableId: round.tableId }
       return writer.writeCloudRoundEvent?.({ sessionId, round, table })
     }))
   }

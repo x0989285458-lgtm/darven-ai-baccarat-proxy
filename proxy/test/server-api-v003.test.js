@@ -5,7 +5,7 @@ import { createApp } from '../src/server.js'
 test('v098.23 health endpoint reports version 098.23', async () => {
   const app = createApp({ autoConnect: false })
   const health = await app.inject({ method: 'GET', url: '/health' })
-  assert.equal(JSON.parse(health.body).version, 'v98')
+  assert.equal(JSON.parse(health.body).version, 'v100')
 })
 
 test('v046 cloud deployment listens on all interfaces unless HOST is overridden', async () => {

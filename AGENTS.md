@@ -71,7 +71,7 @@ When Hermes asks for deployment verification, confirm with live outputs:
 - Admin URL: `https://darven-ai-baccarat.pages.dev/admin-login`.
 - Backend status: `https://darven-ai-baccarat-proxy.onrender.com/api/status`.
 - Tables: `https://darven-ai-baccarat-proxy.onrender.com/api/tables`.
-- Taiwan worker snapshot: `http://35.234.3.167:8787/snapshot`.
+- Taiwan worker: `darven-mt-taiwan-worker-5`（`asia-east1-b`）；透過SSH在VM內驗證 `http://127.0.0.1:8787/health`，Worker採主動HTTPS Push，不要求公開8787。
 
 A task is not done until the requested behavior is exercised with real command/API/browser output.
 

@@ -10,9 +10,9 @@ function liveTable(overrides: Record<string, unknown> = {}) {
   return {
     tableId: 'BAG01', displayName: 'MT真人百家1桌', tableType: 'BAC', shoe: 88, round: 13,
     bankerCount: 7, playerCount: 5, tieCount: 1, beadPlateRaw: '0102', bigRoadRaw: '0102',
-    sourceUpdatedAt: new Date().toISOString(), buildVersion: 'v98',
+    sourceUpdatedAt: new Date().toISOString(), buildVersion: 'v100',
     prediction: {
-      source: 'backend', strategyVersion: 'v98', buildVersion: 'v98', targetTableId: 'BAG01', targetShoe: '88', targetRound: 13,
+      source: 'backend', strategyVersion: 'v100', buildVersion: 'v100', targetTableId: 'BAG01', targetShoe: '88', targetRound: 13,
       predictionId: 'pid-13', issuedAt: '2026-07-17T01:00:00.000Z', predictedResult: 'banker', confidence: 60,
       probabilities: { banker: 60, player: 35, tie: 5 }, scoreTotals: { banker: 0.53, player: 0.47 }, sidePredictions, sideActions,
     },
@@ -22,7 +22,7 @@ function liveTable(overrides: Record<string, unknown> = {}) {
 
 function history() {
   return {
-    ok: true, buildVersion: 'v98', tableId: 'BAG01', shoe: 88,
+    ok: true, buildVersion: 'v100', tableId: 'BAG01', shoe: 88,
     settledPredictions: [
       { round: 11, mainPredictedResult: 'banker', predictedResult: 'banker', actualResult: 'tie', isHit: false, result: 'uncalculated' },
       { round: 12, mainPredictedResult: 'player', predictedResult: 'tie', actualResult: 'tie', isHit: true, result: 'hit' },
@@ -36,7 +36,7 @@ async function renderMember(row = liveTable()) {
     if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ ok: true, sessionExpiresAt: new Date(Date.now() + 600000).toISOString() }) })
     if (url.includes('/ui-history')) return Promise.resolve({ ok: true, status: 200, json: async () => history() })
     if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: async () => [row] })
-    if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v98' }) })
+    if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v100' }) })
     return Promise.resolve({ ok: true, status: 200, json: async () => ({ connected: true, configured: true, items: [], reports: [], strategies: [] }) })
   }))
   window.history.pushState({}, '', '/')
@@ -50,8 +50,8 @@ describe('v98 frozen frontend release', () => {
   beforeEach(() => window.sessionStorage.clear())
   afterEach(() => { window.sessionStorage.clear(); vi.unstubAllGlobals() })
 
-  it('uses exact v98 build and strategy contracts', () => {
-    expect(frontendBuildMetadata).toEqual({ buildVersion: 'v98', strategyVersion: 'v98' })
+  it('uses exact v100 build and strategy contracts', () => {
+    expect(frontendBuildMetadata).toEqual({ buildVersion: 'v100', strategyVersion: 'v100' })
   })
 
   it('shows the backend tie side score in the main row and lights tie simultaneously with main and other side actions', async () => {
@@ -101,9 +101,12 @@ describe('v98 frozen frontend release', () => {
 
   it('renders tie without an action as 不計算, but renders an evidenced tie action as AI預測和命中', async () => {
     await renderMember()
-    const rows = Array.from((await screen.findByRole('table', { name: '近十局預測紀錄' })).querySelectorAll('tr'))
-    expect(Array.from(rows[1].querySelectorAll('td')).map((node) => node.textContent)).toEqual(['莊', '和'])
-    expect(Array.from(rows[2].querySelectorAll('td')).map((node) => node.textContent)).toEqual(['和', '和'])
-    expect(Array.from(rows[3].querySelectorAll('td')).map((node) => node.textContent)).toEqual(['不計算', '命中'])
+    const table = await screen.findByRole('table', { name: '近十局預測紀錄' })
+    await waitFor(() => {
+      const rows = Array.from(table.querySelectorAll('tr'))
+      expect(Array.from(rows[1].querySelectorAll('td')).map((node) => node.textContent)).toEqual(['莊', '和'])
+      expect(Array.from(rows[2].querySelectorAll('td')).map((node) => node.textContent)).toEqual(['和', '和'])
+      expect(Array.from(rows[3].querySelectorAll('td')).map((node) => node.textContent)).toEqual(['不計算', '命中'])
+    })
   })
 })

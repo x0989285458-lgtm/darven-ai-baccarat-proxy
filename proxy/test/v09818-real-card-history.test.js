@@ -34,7 +34,7 @@ test('v098.18 settled prediction getter returns only immutable formal same-shoe 
   assert.equal(requestedUrl.pathname, '/rest/v1/daily_prediction_results')
   assert.equal(requestedUrl.searchParams.get('table_id'), 'eq.BAG01')
   assert.equal(requestedUrl.searchParams.get('shoe_no'), 'eq.88')
-  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'in.(v98,v098.20_六階段權重門檻整合版)')
+  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'in.(v100,v98)')
   assert.equal(requestedUrl.searchParams.get('order'), 'created_at.desc')
   assert.equal(requestedUrl.searchParams.get('limit'), '100')
 })

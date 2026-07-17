@@ -9,12 +9,12 @@ const INGEST_HEADERS = { 'x-worker-key': 'ingest-test-key', 'x-forwarded-proto':
 
 function ingestEnvelope(overrides = {}) {
   return {
-    protocolVersion: 'v098',
+    protocolVersion: 'v100',
     timestamp: NOW,
     sequence: 7,
     roundKeys: ['BAG01:88:21'],
     snapshot: {
-      buildVersion: '098',
+      buildVersion: '100',
       sessionId: 'worker-session-opaque',
       connected: true,
       authenticated: true,
@@ -60,7 +60,7 @@ test('v098 ingest rejects a missing or mismatched protocol version and marks sta
   assert.equal(JSON.parse(mismatch.body).error, 'version_mismatch')
 
   const status = JSON.parse((await app.inject({ url: '/api/status', headers: { 'x-forwarded-proto': 'https' } })).body)
-  assert.equal(status.buildVersion, 'v98')
+  assert.equal(status.buildVersion, 'v100')
   assert.equal(status.health, 'degraded')
   assert.equal(status.reason, 'version_mismatch')
 })
@@ -267,9 +267,9 @@ test('v098.23 internal state and public endpoints share build version 098.23', a
   const status = JSON.parse((await app.inject({ url: '/api/status' })).body)
   const snapshot = JSON.parse((await app.inject({ url: '/api/snapshot' })).body)
 
-  assert.equal(health.buildVersion, 'v98')
-  assert.equal(status.buildVersion, 'v98')
-  assert.equal(snapshot.status.version, 'v98')
+  assert.equal(health.buildVersion, 'v100')
+  assert.equal(status.buildVersion, 'v100')
+  assert.equal(snapshot.status.version, 'v100')
 })
 
 test('v098.23 every public table and durable prediction carries buildVersion 098.23 and targets the exact screen round', async () => {
@@ -283,13 +283,13 @@ test('v098.23 every public table and durable prediction carries buildVersion 098
 
   const tables = JSON.parse((await app.inject({ url: '/api/tables' })).body)
 
-  assert.equal(tables[0].buildVersion, 'v98')
-  assert.equal(tables[0].prediction.buildVersion, 'v98')
+  assert.equal(tables[0].buildVersion, 'v100')
+  assert.equal(tables[0].prediction.buildVersion, 'v100')
   assert.equal(tables[0].prediction.targetRound, 20)
 
   const snapshot = JSON.parse((await app.inject({ url: '/api/snapshot' })).body)
-  assert.equal(snapshot.tables[0].buildVersion, 'v98')
-  assert.equal(snapshot.tables[0].prediction.buildVersion, 'v98')
+  assert.equal(snapshot.tables[0].buildVersion, 'v100')
+  assert.equal(snapshot.tables[0].prediction.buildVersion, 'v100')
 })
 
 test('v098 production and cloud ingest without a key returns 503 and reports degraded health', async () => {

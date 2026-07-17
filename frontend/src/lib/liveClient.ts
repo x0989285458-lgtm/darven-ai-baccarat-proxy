@@ -1,4 +1,5 @@
 import { dravenApiBaseUrl } from './apiBase'
+import { frontendBuildMetadata } from './buildVersion'
 
 export type LiveTable = {
   id: string | number
@@ -89,8 +90,8 @@ const proxyApiUrl = dravenApiBaseUrl
 const pollIntervalMs = Number(import.meta.env.VITE_DRAVEN_PROXY_POLL_MS ?? 5000)
 const streamStaleMs = Number(import.meta.env.VITE_DRAVEN_STREAM_STALE_MS ?? 15000)
 const liveTableMaxAgeMs = Number(import.meta.env.VITE_DRAVEN_TABLE_MAX_AGE_MS ?? 120000)
-const CURRENT_STRATEGY_VERSION = 'v98'
-const CURRENT_BUILD_VERSION = 'v98'
+const CURRENT_STRATEGY_VERSION = frontendBuildMetadata.strategyVersion
+const CURRENT_BUILD_VERSION = frontendBuildMetadata.buildVersion
 const sidePredictionKeys: SidePredictionKey[] = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
 
 export async function fetchTableUiHistory(tableId: string, memberSessionToken: string, signal?: AbortSignal): Promise<TableUiHistory> {
@@ -283,7 +284,7 @@ async function readProxyStatus(memberSessionToken?: string): Promise<Status> {
     const response = await fetch(`${proxyApiUrl}/api/status`, { cache: 'no-store', headers })
     if (!response.ok) return { state: 'error', message: `proxy狀態讀取失敗 (${response.status})` }
     const status = await response.json()
-    if (status.buildVersion != null && String(status.buildVersion) !== CURRENT_BUILD_VERSION) {
+    if (String(status.buildVersion ?? '') !== CURRENT_BUILD_VERSION) {
       return { state: 'error', message: '建置版本不符，預測暫不可用' }
     }
     if (typeof status.statusText === 'string' && status.statusText) {

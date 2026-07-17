@@ -10,7 +10,7 @@ test('v098 production rejects HTTP and outbound capture forbids redirects', asyn
   assert.equal(response.headers.location, undefined)
   let init
   const client = createCloudCaptureClient({ url: 'https://worker.example/snapshot', state: { setStatus() {}, setTables() {}, upsertRoundEvent() {} }, requestRetries: 1,
-    fetchImpl: async (_url, options) => { init = options; return { ok: true, json: async () => ({ buildVersion: '098', tables: [], rounds: [] }) } },
+    fetchImpl: async (_url, options) => { init = options; return { ok: true, json: async () => ({ buildVersion: '100', tables: [], rounds: [] }) } },
   })
   await client.tick()
   assert.equal(init.redirect, 'error')

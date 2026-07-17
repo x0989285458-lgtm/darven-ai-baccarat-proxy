@@ -9,7 +9,7 @@ function identityKey(source, tableId, shoe) {
 }
 
 export function resolveV100ShadowEnabled(env = process.env) {
-  return env?.V100_SHADOW_ENABLED === 'true'
+  return env?.V100_RELEASE_ENABLED === 'true'
 }
 
 export function createV100ShadowRuntime({ enabled = false, writer = null, source = 'ofalive99' } = {}) {
@@ -70,15 +70,16 @@ export function createV100ShadowRuntime({ enabled = false, writer = null, source
     const side = {
       ...calculatedSide,
       hypotheticalActions,
-      actions: Object.fromEntries(Object.keys(hypotheticalActions).map((key) => [key, false])),
+      actions: structuredClone(hypotheticalActions),
     }
     const shadow = {
       targetTableId: String(formal.targetTableId ?? table.tableId ?? ''),
       targetShoe: String(formal.targetShoe ?? table.shoe ?? ''),
       targetRound,
       rankDataAvailable,
-      activationEligible: false,
-      activationBlockReason: 'prospective_shadow_validation_required',
+      activationEligible: rankDataAvailable,
+      activationBlockReason: rankDataAvailable ? null : 'rank_ledger_unavailable',
+      v100RankLedger,
       main,
       side,
     }
@@ -96,7 +97,17 @@ export function createV100ShadowRuntime({ enabled = false, writer = null, source
       for (const table of tables) await hydrateTable(table)
       await applyRounds(rounds)
       const shadows = tables.map(scoreTable).filter(Boolean)
-      return { enabled: true, shadows }
+      const shadowByIdentity = new Map(shadows.map((shadow) => [
+        identityKey(source, shadow.targetTableId, shadow.targetShoe),
+        shadow,
+      ]))
+      const formalTables = tables.map((table) => {
+        const shadow = shadowByIdentity.get(identityKey(source, table.tableId, table.shoe))
+        return shadow?.v100RankLedger
+          ? { ...structuredClone(table), v100RankLedger: structuredClone(shadow.v100RankLedger) }
+          : structuredClone(table)
+      })
+      return { enabled: true, shadows, tables: formalTables }
     },
     snapshot() {
       return { enabled: Boolean(enabled), shadows: [...latest.values()].map((value) => structuredClone(value)) }

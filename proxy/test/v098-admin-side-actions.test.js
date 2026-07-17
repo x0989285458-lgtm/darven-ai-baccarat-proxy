@@ -40,8 +40,8 @@ test('v098 admin requires complete boolean side_actions and side_hits before rep
   assert.match(sql, /jsonb_object_length\(coalesce\(side_hits,\s*prediction_features->'side_hits'\)\)\s*=\s*6/i)
   assert.equal((sql.match(/strategy_version\s*=\s*\$1/gi) ?? []).length, 3)
   assert.deepEqual(parameters, [
-    ['v98'],
-    ['v98'],
-    ['v98'],
+    ['v100'],
+    ['v100'],
+    ['v100'],
   ])
 })

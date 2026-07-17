@@ -8,7 +8,7 @@ const flags = (enabled = []) => Object.fromEntries(sideKeys.map((key) => [key, e
 const rows = [
   {
     source: 'ofalive99', table_id: 'BAG01', shoe_no: '101', round_no: 18,
-    strategy_version: 'v98',
+    strategy_version: 'v100',
     predicted_result: 'banker', actual_result: 'banker', is_hit: true,
     prediction_features: {
       side_actions: flags(['superSix', 'bankerPair', 'playerPair']),
@@ -17,13 +17,13 @@ const rows = [
   },
   {
     source: 'ofalive99', table_id: 'BAG01', shoe_no: '101', round_no: 19,
-    strategy_version: 'v98',
+    strategy_version: 'v100',
     predicted_result: 'player', actual_result: 'tie', is_hit: false,
     prediction_features: { side_actions: flags(['tie']), side_hits: flags(['tie']) },
   },
   {
     source: 'ofalive99', table_id: 'BAG01', shoe_no: '102', round_no: 1,
-    strategy_version: 'v98',
+    strategy_version: 'v100',
     predicted_result: 'banker', actual_result: 'banker', is_hit: true,
     prediction_features: { side_actions: flags(['bankerDragon']), side_hits: flags(['bankerDragon']) },
   },
@@ -31,7 +31,7 @@ const rows = [
 
 test('v098 stable report exactly aggregates immutable saved rows without recomputing predictions or actions', () => {
   assert.deepEqual(buildStableReportFromRows(rows), {
-    version: '098-row-contract',
+    version: '100-row-contract',
     invalidRows: [],
     tables: [{
       tableId: 'BAG01',
@@ -113,7 +113,7 @@ test('v098 stable report never counts a legacy strategy row', () => {
 test('v098 saved-row report formats without requiring a live predictor session status', () => {
   const text = formatReportText(buildStableReportFromRows(rows))
 
-  assert.match(text, /098/)
+  assert.match(text, /100/)
   assert.match(text, /BAG01/)
   assert.match(text, /100%/)
 })

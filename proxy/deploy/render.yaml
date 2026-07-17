@@ -20,6 +20,16 @@ services:
         sync: false
       - key: CLOUD_CAPTURE_POLL_MS
         value: "2000"
+      - key: AUTO_CONNECT
+        value: "true"
+      - key: V100_RELEASE_ENABLED
+        value: "true"
+      - key: INGEST_KEY
+        sync: false
+      - key: WORKER_ADMIN_KEY
+        sync: false
+      - key: PROXY_CONTROL_TOKEN
+        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY

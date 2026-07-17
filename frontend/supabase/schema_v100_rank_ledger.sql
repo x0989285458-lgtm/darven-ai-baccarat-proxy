@@ -1,4 +1,4 @@
--- v100 candidate: immutable verified-Final card events and a durable eight-deck
+-- v100 formal release: immutable verified-Final card events and a durable eight-deck
 -- observation-only rank ledger. Additive and NOT auto-executed.
 -- The database derives hashes, rank deltas and ledger counts from exact10; callers
 -- cannot supply authoritative counts. Apply only after dry-run and explicit approval.

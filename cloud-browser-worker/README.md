@@ -1,32 +1,43 @@
-# Darven Cloud Browser Worker v098
+# Darven Cloud Browser Worker v100
 
-Render 上的雲端瀏覽器抓牌 worker。它會打開 `MT_LOGIN_URL`，攔截頁面 JSON / WebSocket / localStorage 內容，整理成 proxy 需要的 `/snapshot` 格式。
+正式抓牌Worker部署於GCP台灣VM `darven-mt-taiwan-worker-5`，由systemd `darven-worker.service`與Docker維持。Worker攔截MT JSON／WebSocket／localStorage資料，保存未ACK FIFO Queue，並主動以HTTPS推送到Render Proxy。
 
-## Render 建立方式
-
-1. 把這個版本推到 GitHub。
-2. Render → **New +** → **Web Service**。
-3. 選 GitHub repo。
-4. Root Directory 填：
+## 正式架構
 
 ```text
-cloud-browser-worker
+GCP台灣VM Worker → HTTPS POST → Render Proxy → Supabase
 ```
 
-5. Runtime 選 **Docker**。
-6. Service name：
+- 正式Build：`100`
+- Push Protocol：`v100`
+- Image：每個Release使用不可變Tag `darven-worker:v100-<sha7>`
+- Queue／Cursor：Host bind mount `/var/lib/darven-worker:/app/data`
+- Runtime env：`/etc/darven-worker/worker.env`（mode 600）
+- Release image pointer：`/etc/darven-worker/release.env`
+- 正式桌台：BAG01、BAG02、BAG03、BAG03A、BAG05、BAG06、BAG07、BAG08、BAG09、BAG10
+- Render Worker與Docker Compose正式路徑已停用；不得把Worker部署到無persistent storage的服務。
+
+## GCP VM部署
+
+依照：
 
 ```text
-darven-cloud-browser-worker
+deploy/vm/RUNBOOK.md
 ```
 
-7. Environment 新增：
+正式systemd template：
+
+```text
+deploy/vm/darven-worker.service
+```
+
+VM的`worker.env`至少需要：
 
 ```env
-MT_LOGIN_URL=https://gsa.ofalive99.net/?token=你的MT_TOKEN&lang=zhtw
+MT_LOGIN_URL=後端安全設定
 NODE_ENV=production
-WORKER_ADMIN_KEY=在平台設定
-INGEST_KEY=在平台設定
+WORKER_ADMIN_KEY=後端安全設定
+INGEST_KEY=後端安全設定
 PUSH_TARGET_URL=https://darven-ai-baccarat-proxy.onrender.com/api/cloud-ingest/snapshot
 HEADLESS=true
 SNAPSHOT_PATH=/snapshot
@@ -34,64 +45,25 @@ INITIAL_SETTLE_MS=5000
 PAGE_TIMEOUT_MS=45000
 ```
 
-8. Deploy。
+不得提交或輸出上述secret值。
 
-## 部署成功後
+## 發布驗證
 
-Render 會給 worker 網址，例如：
+1. 從已審核Commit建立不可變Image。
+2. 保留現行Image tag作回滾點。
+3. 更新`release.env`後restart `darven-worker.service`。
+4. Container為running，systemd為active。
+5. `/health`回`buildVersion: "100"`。
+6. `/snapshot`只在帶`x-worker-admin-key`時可讀。
+7. Proxy `/api/status`為`buildVersion: "v100"`、10桌、Persistence正常。
+8. Worker取得精確`sequence`與`acceptedRoundKeys` ACK後才移除Queue head。
+9. 重啟服務後未ACK Queue仍存在並優先重送。
 
-```text
-https://darven-cloud-browser-worker.onrender.com
-```
+## 安全與資料完整性
 
-測試：
-
-```text
-https://darven-cloud-browser-worker.onrender.com/health
-curl -H "x-worker-admin-key: $WORKER_ADMIN_KEY" https://darven-cloud-browser-worker.onrender.com/snapshot
-```
-
-`snapshot` 應回傳：
-
-```json
-{
-  "connected": true,
-  "authenticated": true,
-  "sessionId": "darven-cloud-browser",
-  "tables": [],
-  "rounds": []
-}
-```
-
-如果 `tables` 還是空，代表 worker 已開網頁，但尚未攔到 MT 桌台資料；先保持服務運行 1-2 分鐘再刷新 `/snapshot`。
-
-## 接回 proxy
-
-到原本後端 `darven-ai-baccarat-proxy` 的 Render Environment：
-
-```env
-CAPTURE_SOURCE=cloud_browser
-CLOUD_BROWSER_URL=https://darven-cloud-browser-worker.onrender.com/snapshot
-```
-
-按 Save Changes，等 Render 重新部署。
-
-## 本機驗證
-
-```bash
-npm install
-npm test
-PORT=8798 npm start
-curl http://127.0.0.1:8798/health
-curl -H "x-worker-admin-key: $WORKER_ADMIN_KEY" http://127.0.0.1:8798/snapshot
-```
-
-## 注意
-
-- `MT_LOGIN_URL` 含 token，不要貼到公開 GitHub、截圖、群組。
-- production 缺少 `WORKER_ADMIN_KEY`、`INGEST_KEY` 或 `PUSH_TARGET_URL` 時會拒絕啟動。
-- `/snapshot` 與 `/reload` 只接受 `x-worker-admin-key` header，不接受 query token。
-- 主動推送只傳送 cursor 尚未確認的新 completed rounds；未收到 2xx 前，完整 envelope 會保留在 queue 並於重啟後優先重送。
-- VM 部署、回滾與驗證依 `deploy/vm/RUNBOOK.md`，不在開發流程直接部署。
-- 這版不改前端 UI。
-- 這版只新增 worker；原 proxy 已經支援 `CLOUD_BROWSER_URL`。
+- `MT_LOGIN_URL`含token，不得貼到Git、聊天、截圖或log。
+- production缺少`WORKER_ADMIN_KEY`、`INGEST_KEY`或`PUSH_TARGET_URL`時拒絕啟動。
+- `/snapshot`與`/reload`只接受Header，不接受query token。
+- 只推送已驗證Final；`show_poker`不得占用同局Identity。
+- 未收到成功且精確匹配的ACK前，完整Envelope持續保留在Durable FIFO。
+- 不得刪除`/var/lib/darven-worker`；回滾只切Image，不清Queue／Cursor。

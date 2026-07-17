@@ -1,0 +1,27 @@
+{
+  "product": "瑞文AI百家預測",
+  "release": "v100",
+  "packageVersion": "1.0.0",
+  "status": "formal",
+  "deployment": {
+    "frontend": "cloudflare-pages",
+    "proxy": "render",
+    "worker": "gcp-taiwan-vm-systemd",
+    "workerQueue": "/var/lib/darven-worker:/app/data"
+  },
+  "components": {
+    "frontend": "v100",
+    "proxy": "v100",
+    "workerBuild": "100",
+    "workerProtocol": "v100",
+    "strategy": "v100",
+    "database": "v100",
+    "monitoring": "v100"
+  },
+  "strategyComposition": {
+    "main": "v99_主預測靴內偏移去重版",
+    "side": "v100_主副訊號去重與8副牌階完整性版",
+    "rankLedger": "durable_eight_deck_exact_rank_ledger",
+    "historicalReadPredecessor": "v98"
+  }
+}

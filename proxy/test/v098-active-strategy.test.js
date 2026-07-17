@@ -11,7 +11,7 @@ test('v098 keeps every legacy initializer archived and only v097 formally active
   ], [
     ['v012_equal_weight_seed', 'archived'],
     ['v094_no_observe_confidence_30_70', 'archived'],
-    ['v98', 'active'],
+    ['v100', 'active'],
   ])
 })
 
@@ -37,7 +37,7 @@ test('v098.10 runtime archives the previous active row before read-back accepts 
   assert.deepEqual(await client.ensureInitialStrategy(), { ok: true, activeStrategyVersion: expected })
   assert.equal(requests[0].method, 'PATCH')
   assert.match(requests[0].url, /status=eq\.active/)
-  assert.match(requests[0].url, /version=neq\.v98/)
+  assert.match(requests[0].url, /version=neq\.v100/)
   assert.equal(requests[1].method, 'POST')
   assert.equal(requests[2].method, 'GET')
   assert.deepEqual(client.getRuntimeStatus(), { ready: true, degraded: false, reason: null, activeStrategyVersion: expected })

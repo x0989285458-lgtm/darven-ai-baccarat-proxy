@@ -210,7 +210,7 @@ test('pusher restores the queued envelope, keeps collecting, and only 2xx acknow
 
   assert.equal(await pusher.tick(), false, 'redirect is not an acknowledgement')
   assert.equal(snapshotCalls, 1)
-  assert.equal(sent[0].protocolVersion, 'v098')
+  assert.equal(sent[0].protocolVersion, 'v100')
   assert.equal(sent[0].sessionId, 'vm')
   assert.deepEqual(sent[0].roundKeys, ['BAG01:8:9'])
   assert.deepEqual(sent[0].snapshot, original.snapshot)

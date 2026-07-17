@@ -32,16 +32,13 @@ test('v100 shadow capture runs durably before formal state and never decorates v
   assert.equal(input.tables[0].v100RankLedger, undefined)
 })
 
-test('v100 shadow failure is isolated and formal capture still proceeds', async () => {
+test('v100 formal rank-ledger failure rejects capture before state or durable ACK work', async () => {
   const order = []
-  const result = await applyCloudCapturePayload({
-    parsed: structuredClone(parsed),
-    state: stateRecorder(order),
-    writer: { configured: false },
-    v100Shadow: { enabled: true, async processSnapshot() { throw new Error('candidate db unavailable') } },
-  })
+  await assert.rejects(() => applyCloudCapturePayload({
+    parsed: structuredClone(parsed), state: stateRecorder(order), writer: { configured: false },
+    v100Shadow: { enabled: true, async processSnapshot() { throw new Error('rank ledger unavailable') } },
+  }), /rank ledger unavailable/)
 
-  assert.deepEqual(order.map(([name]) => name), ['status', 'status', 'tables', 'round'])
-  assert.equal(order[0][1].v100ShadowStatus, 'error')
-  assert.equal(result.v100Shadow, null)
+  assert.deepEqual(order.map(([name]) => name), ['status'])
+  assert.equal(order[0][1].v100RuntimeStatus, 'error')
 })

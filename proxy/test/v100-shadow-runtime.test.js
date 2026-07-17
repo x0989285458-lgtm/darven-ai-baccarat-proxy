@@ -26,11 +26,12 @@ function durable(overrides = {}) {
   }
 }
 
-test('v100 shadow feature flag is exact opt-in only', () => {
+test('v100 release feature flag is exact opt-in only', () => {
   assert.equal(resolveV100ShadowEnabled({}), false)
-  assert.equal(resolveV100ShadowEnabled({ V100_SHADOW_ENABLED: 'false' }), false)
-  assert.equal(resolveV100ShadowEnabled({ V100_SHADOW_ENABLED: 'TRUE' }), false)
-  assert.equal(resolveV100ShadowEnabled({ V100_SHADOW_ENABLED: 'true' }), true)
+  assert.equal(resolveV100ShadowEnabled({ V100_RELEASE_ENABLED: 'false' }), false)
+  assert.equal(resolveV100ShadowEnabled({ V100_RELEASE_ENABLED: 'TRUE' }), false)
+  assert.equal(resolveV100ShadowEnabled({ V100_RELEASE_ENABLED: 'true' }), true)
+  assert.equal(resolveV100ShadowEnabled({ V100_SHADOW_ENABLED: 'true' }), false)
 })
 
 test('v100 shadow runtime is disabled by default and cannot touch writer or formal table', async () => {
@@ -62,10 +63,11 @@ test('enabled v100 runtime rehydrates, applies Final in round order, and scores 
   assert.equal(result.shadows[0].targetShoe, 'S100')
   assert.equal(result.shadows[0].targetRound, 2)
   assert.equal(result.shadows[0].side.strategyVersion.includes('v100'), true)
-  assert.equal(result.shadows[0].activationEligible, false)
-  assert.equal(Object.values(result.shadows[0].side.actions).every((value) => value === false), true)
+  assert.equal(result.shadows[0].activationEligible, true)
+  assert.deepEqual(result.shadows[0].side.actions, result.shadows[0].side.hypotheticalActions)
   assert.equal(Object.values(result.shadows[0].side.hypotheticalActions).some((value) => typeof value === 'boolean'), true)
-  assert.match(result.shadows[0].activationBlockReason, /prospective/i)
+  assert.equal(result.shadows[0].activationBlockReason, null)
+  assert.equal(result.tables[0].v100RankLedger.rankDataAvailable, true)
   assert.deepEqual(input, before, 'shadow runtime must not mutate the formal table')
 })
 

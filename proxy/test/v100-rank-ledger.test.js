@@ -147,7 +147,7 @@ test('state store mounts trusted ledger only under v100 namespace and gates next
   assert.equal(table.v100RankLedger.rankDataAvailable, false)
 })
 
-test('v100 state-store ledger is byte-isolated from the formal v98 runtime prediction', () => {
+test('v100 formal runtime consumes the trusted state-store rank ledger', () => {
   const state = createProxyState({ inferSnapshotRounds: false })
   state.setTables([{ tableId: 'BAG01', shoe: 'S100', round: 0, bankerCount: 0, playerCount: 0, tieCount: 0 }])
   state.upsertRoundEvent(finalRound())
@@ -155,7 +155,11 @@ test('v100 state-store ledger is byte-isolated from the formal v98 runtime predi
   const withoutCandidateNamespace = structuredClone(table)
   delete withoutCandidateNamespace.v100RankLedger
 
-  assert.deepEqual(buildLivePrediction(table), buildLivePrediction(withoutCandidateNamespace))
+  const withLedger = buildLivePrediction(table)
+  const withoutLedger = buildLivePrediction(withoutCandidateNamespace)
+  assert.notDeepEqual(withLedger.sidePredictions, withoutLedger.sidePredictions)
+  assert.equal(withLedger.predictionFeatures.v100_side_dedup.diagnostics.rank.available, true)
+  assert.equal(withoutLedger.predictionFeatures.v100_side_dedup.diagnostics.rank.available, false)
 })
 
 test('authoritative table snapshot switches shoe and delayed old-shoe Final cannot pollute active v100 ledger', () => {
