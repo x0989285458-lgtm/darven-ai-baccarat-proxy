@@ -8,6 +8,7 @@ from pathlib import Path
 
 QUEUE_NAME = "latest-snapshot.json"
 CURSOR_NAME = f"{QUEUE_NAME}.cursor.json"
+MAX_CURSOR_ENTRIES = 10000
 
 
 def read_json(path: Path):
@@ -44,8 +45,13 @@ def snapshot(state_dir: Path) -> dict:
 def verify(before: dict, after: dict) -> None:
     if after["last_sequence"] < before["last_sequence"]:
         raise RuntimeError("worker cursor lastSequence regressed")
-    if not set(before["acknowledged_round_keys"]).issubset(after["acknowledged_round_keys"]):
-        raise RuntimeError("worker acknowledged cursor regressed")
+    before_acknowledged = set(before["acknowledged_round_keys"])
+    after_acknowledged = set(after["acknowledged_round_keys"])
+    if len(before_acknowledged) < MAX_CURSOR_ENTRIES:
+        if not before_acknowledged.issubset(after_acknowledged):
+            raise RuntimeError("worker acknowledged cursor regressed")
+    elif len(after_acknowledged) < MAX_CURSOR_ENTRIES:
+        raise RuntimeError("worker capped acknowledged cursor shrank")
     new_corrupt = set(after["corrupt_files"]) - set(before["corrupt_files"])
     if new_corrupt:
         raise RuntimeError("worker created corrupt durable state")
@@ -53,7 +59,7 @@ def verify(before: dict, after: dict) -> None:
     previous_head_sequence = int(before.get("head_sequence") or 0)
     after_sequences = set(after["queue_sequences"])
     head_still_queued = previous_head_sequence > 0 and previous_head_sequence in after_sequences
-    head_acknowledged = previous_head.issubset(after["acknowledged_round_keys"])
+    head_acknowledged = previous_head.issubset(after_acknowledged)
     if previous_head and not head_still_queued and not head_acknowledged:
         raise RuntimeError("unacknowledged queue head disappeared across restart")
 

@@ -50,6 +50,7 @@ test('v100 worker image and systemd deployment fail closed and preserve durable 
 
   assert.match(continuity, /lastSequence regressed/)
   assert.match(continuity, /acknowledged cursor regressed/)
+  assert.match(continuity, /capped acknowledged cursor shrank/)
   assert.match(continuity, /previous_head_sequence in after_sequences/)
   assert.match(continuity, /unacknowledged queue head disappeared/)
 })

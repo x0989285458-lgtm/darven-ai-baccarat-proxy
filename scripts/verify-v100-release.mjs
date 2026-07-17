@@ -70,7 +70,7 @@ assert.match(runbook, /stat -c '%u:%g' \/etc\/darven-worker\/worker\.env[\s\S]*=
 assert.match(runbook, /verify-state-continuity\.py[\s\S]*capture[\s\S]*verify/)
 assert.doesNotMatch(runbook, /buildVersion!=='098'|buildVersion` 仍為 `098`/)
 const continuity = read('cloud-browser-worker/deploy/vm/verify-state-continuity.py')
-assert.match(continuity, /lastSequence regressed[\s\S]*acknowledged cursor regressed[\s\S]*previous_head_sequence[\s\S]*previous_head_sequence in after_sequences[\s\S]*unacknowledged queue head disappeared/)
+assert.match(continuity, /MAX_CURSOR_ENTRIES\s*=\s*10000[\s\S]*acknowledged cursor regressed[\s\S]*capped acknowledged cursor shrank[\s\S]*previous_head_sequence[\s\S]*previous_head_sequence in after_sequences[\s\S]*unacknowledged queue head disappeared/)
 assert.doesNotMatch(read('cloud-browser-worker/package.json'), /worker for Render|CLOUD_BROWSER_URL/i)
 assert.match(read('proxy/deploy/render.yaml'), /V100_RELEASE_ENABLED[\s\S]*value:\s*"true"/)
 assert.match(read('proxy/src/v100-shadow-runtime.js'), /V100_RELEASE_ENABLED/)
