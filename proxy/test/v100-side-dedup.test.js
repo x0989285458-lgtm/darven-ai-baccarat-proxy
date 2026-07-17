@@ -144,12 +144,12 @@ test('v100 shadow actions preserve formal thresholds ±1 and main-direction gate
   assert.equal(player.playerDragon, true)
 })
 
-test('v100 leaves the complete v98 buildLivePrediction fixture byte-for-byte unchanged', () => {
+test('v100 leaves the complete v98 buildLivePrediction fixture stable after the approved tie-risk dedup', () => {
   const table = {
     tableId: 'BAG100', shoe: 8, round: 20, bankerCount: 11, playerCount: 9, tieCount: 2,
     bankerPairCount: 1, playerPairCount: 2, nextBankerRaw: 'B', nextPlayerRaw: 'P',
     beadPlateRaw: '010203#020102', bigRoadRaw: 'BPBP', bigEyeRaw: '1212', smallRoadRaw: '1122', cockroachRaw: '1221',
   }
   const digest = createHash('sha256').update(JSON.stringify(buildLivePrediction(table))).digest('hex')
-  assert.equal(digest, 'cf0b1146c7a8d6d9c17d3d85ddae5179867a6eecadaafde45cf09c5c2fdd4d4a')
+  assert.equal(digest, 'b99af2714318eb7df0654b43eeb0e3109075dcb15f45cd7628cd75d98ee7c3dc')
 })

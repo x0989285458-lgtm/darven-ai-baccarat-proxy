@@ -1372,7 +1372,7 @@ function isAvailableRankValue(value) {
   return value != null && value !== '' && Number.isFinite(Number(value))
 }
 
-function buildSideFeatureScores(table = {}, round = {}) {
+export function buildSideFeatureScores(table = {}, round = {}) {
   const beadCells = parseBeadCells(table.beadPlateRaw)
   const recent = beadCells.slice(-24)
   const recentBanker = recent.filter((cell) => cell.outcome === 'banker').length
@@ -1426,7 +1426,7 @@ function buildSideFeatureScores(table = {}, round = {}) {
     banker_dragon: bankerDragon,
     player_dragon: playerDragon,
     super_six: clampPercent(bankerRate * 0.5, 0, 100),
-    tie_risk: clampPercent((tieRate * 1.6) + (roadChaos * 0.25), 0, 100),
+    tie_risk: clampPercent(tieRate * 1.6, 0, 100),
     pair_risk: clampPercent(Math.max(bankerPairRate, playerPairRate) * 2.4, 0, 100),
     ask_road_conflict: askConflict,
     road_chaos: roadChaos,
