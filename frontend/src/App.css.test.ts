@@ -33,5 +33,11 @@ describe('responsive history and road CSS', () => {
   it('uses the approved member-login artwork as the visual source of truth', () => {
     expect(css).toContain("url('/assets/ruiwen-member-login-approved.jpg')")
     expect(css).toMatch(/\.login-shell\s*\{[^}]*background:[^}]*100%\s+auto\s+no-repeat/s)
+    expect(css).toMatch(/@media\s*\(max-width:\s*720px\)[\s\S]*?\.login-shell\s*\{[^}]*background-position:\s*right\s+center\s*!important/s)
+  })
+
+  it('keeps the functional card locked to the approved artwork ratio on wide displays', () => {
+    expect(css).toMatch(/\.login-shell\[data-ui-theme='navy-gold'\]\s+\.member-login-card\s*\{[^}]*width:\s*32\.8vw[^}]*min-height:\s*33\.85vw/s)
+    expect(css).not.toMatch(/\.member-login-card\s*\{[^}]*width:\s*clamp\(/s)
   })
 })

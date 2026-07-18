@@ -1644,14 +1644,14 @@ body,
 
 /* Member login: approved large navy-gold identity card. */
 .login-shell[data-ui-theme='navy-gold'] .member-login-card {
-  width: clamp(400px, 32.8vw, 500px) !important;
-  min-height: clamp(420px, 33.85vw, 520px) !important;
-  padding: clamp(28px, 2.4vw, 38px) clamp(32px, 3vw, 44px) !important;
-  gap: clamp(10px, .9vw, 14px) !important;
+  width: 32.8vw !important;
+  min-height: 33.85vw !important;
+  padding: 2.4vw 3vw !important;
+  gap: .9vw !important;
   align-content: center !important;
   transform: translateX(-1.55vw);
   border-color: rgba(217, 177, 91, .72) !important;
-  border-radius: 24px !important;
+  border-radius: 1.875vw !important;
   background: linear-gradient(180deg, #061222, #020b17) !important;
   box-shadow: 0 32px 100px rgba(0, 0, 0, .64), inset 0 1px rgba(255, 255, 255, .1), 0 0 22px rgba(48, 141, 255, .12) !important;
 }
@@ -1858,10 +1858,83 @@ body,
   transform: translateY(31px);
 }
 
+@media (min-width: 721px) {
+  .member-login-card .login-eyebrow {
+    font-size: .85vw;
+    transform: translateY(-.78vw);
+  }
+
+  .login-card.member-login-card h1 {
+    font-size: 3.25vw !important;
+    transform: translateY(-.78vw);
+  }
+
+  .login-title-divider {
+    grid-template-columns: 1fr 1.1vw 1fr;
+    gap: .94vw;
+    width: 27vw;
+    transform: translateY(-.78vw);
+  }
+
+  .login-title-divider span {
+    width: .7vw;
+    height: .7vw;
+  }
+
+  .login-card.member-login-card .login-field-row {
+    min-height: 3.75vw;
+    grid-template-columns: 2.19vw 6.4vw minmax(0, 1fr) 1.88vw;
+    gap: .7vw;
+    padding: 0 1.1vw;
+    border-radius: .94vw;
+  }
+
+  .login-field-label { font-size: 1.17vw; }
+
+  .login-card.member-login-card .login-field-row input {
+    min-height: 3.125vw !important;
+    padding: 0 .625vw;
+    font-size: 1.09vw !important;
+  }
+
+  .login-field-icon {
+    width: 2.03vw;
+    height: 2.03vw;
+  }
+
+  .login-field-trailing {
+    width: 1.72vw;
+    height: 1.09vw;
+  }
+
+  .login-card.member-login-card > button {
+    min-height: 4.06vw !important;
+    border-radius: .94vw;
+    font-size: 1.56vw;
+    transform: translateY(1.17vw);
+  }
+
+  .login-card.member-login-card .system-status {
+    gap: .7vw;
+    font-size: 1.02vw;
+    transform: translateY(1.95vw);
+  }
+
+  .status-dot {
+    width: .7vw;
+    height: .7vw;
+  }
+
+  .login-card.member-login-card .login-security {
+    font-size: .94vw;
+    transform: translateY(2.42vw);
+  }
+}
+
 @media (max-width: 720px) {
   .login-shell {
     background-size: cover !important;
-    background-position: center center !important;
+    background-position: right center !important;
   }
 
   .login-shell[data-ui-theme='navy-gold'] .member-login-card {
