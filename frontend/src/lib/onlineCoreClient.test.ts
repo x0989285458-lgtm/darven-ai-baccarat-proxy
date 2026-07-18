@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { getOnlineStrategyAnalysis } from './onlineCoreClient'
 
 describe('onlineCoreClient strategy analysis', () => {
-  it('v035 reads strategy comparison and weak-table suggestions from proxy', async () => {
+  it('reads strategy comparison and weak-table suggestions from proxy', async () => {
     const fetchMock = vi.fn(() => Promise.resolve({
       ok: true,
       json: () => Promise.resolve({

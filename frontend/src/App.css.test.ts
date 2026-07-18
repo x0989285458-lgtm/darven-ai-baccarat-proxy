@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import css from './App.css?raw'
 
-describe('v098.18 responsive history and road CSS', () => {
+describe('responsive history and road CSS', () => {
   it('keeps the four-row B table horizontally scrollable on mobile', () => {
     expect(css).toMatch(/\.prediction-history-scroll\s*\{[^}]*overflow-x:\s*auto/s)
     expect(css).toMatch(/\.prediction-history\s*\{[^}]*min-width:\s*\d+px/s)

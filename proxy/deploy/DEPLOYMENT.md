@@ -1,123 +1,109 @@
-# v041 正式雲端前後台部署檢查表
+# v100.0.8 正式雲端部署檢查表
 
-## 1. Supabase
+## 單一正式拓撲
 
-1. 先在 Supabase SQL Editor 套用：
+- Frontend：Cloudflare Pages `darven-ai-baccarat.pages.dev`
+- Proxy：Render `darven-ai-baccarat-proxy.onrender.com`
+- Worker：GCP台灣VM `darven-mt-taiwan-worker-5`，由systemd管理Docker
+- Database：Supabase，只允許v100正式策略
+- Worker資料鏈：每5秒主動HTTPS Push到`/api/cloud-ingest/snapshot`
+
+## Database
+
+Fresh install只套用：
 
 ```text
-frontend/supabase/schema_v039_cloud_capture.sql
+frontend/supabase/schema_v100_baseline.sql
 ```
 
-2. 確認 RLS 已啟用，backend service role 才能寫入：
+既有正式環境只套用經審查的：
 
 ```text
-cloud_capture_status
-cloud_table_snapshots
-cloud_table_rounds
-cloud_strategy_reports
-cloud_strategy_adjustment_stats
+frontend/supabase/schema_v100_latest_only.sql
 ```
 
-## 2. Backend API
+回復時只使用：
 
-部署 `proxy/` 為 Node web service。
+```text
+frontend/supabase/rollback_v100_latest_only.sql
+```
 
-必要後端環境變數：
+要求：
+
+- `ai_strategy_versions`只能有一筆`v100:active`
+- 所有Public Schema函式不得授權`PUBLIC`、`anon`或`authenticated`
+- `service_role`保有正式RPC EXECUTE
+- Frontend只讀Proxy，不持有service role或DB連線
+
+## Proxy（Render）
+
+必要後端設定：
 
 ```text
 DEPLOY_MODE=cloud
 CAPTURE_SOURCE=cloud_browser
-PUBLIC_FRONTEND_ORIGIN=https://app.your-domain.com
-CLOUD_BROWSER_URL=https://cloud-worker.example/snapshot
-CLOUD_CAPTURE_POLL_MS=2000
-SUPABASE_URL=https://gscfexhsqxvtpyxudtza.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=後端專用，不可放前台
-SUPABASE_DB_CONNECTION_STRING=後端專用，可選
+V100_RELEASE_ENABLED=true
+PUBLIC_FRONTEND_ORIGIN=https://darven-ai-baccarat.pages.dev
+SUPABASE_URL=後端設定
+SUPABASE_SERVICE_ROLE_KEY=後端專用
+SUPABASE_DB_CONNECTION_STRING=後端專用
+WORKER_INGEST_KEY=後端與Worker共用，禁止輸出
 ```
 
-Smoke check：
+正式驗證：
 
 ```text
-GET  /health
-GET  /api/status
-GET  /api/tables
-GET  /api/cloud-capture/status
-POST /api/cloud-capture/tick
-POST /api/cloud-capture/start
-POST /api/cloud-capture/stop
+GET /health
+GET /api/status
+GET /api/tables
 ```
 
-## 3. Frontend / 後台
+要求：Release commit精確相符、`/health`為v100、`/api/status`只顯示v100、`/api/tables`只有核准10桌。
 
-部署 `frontend/` 為靜態網站。
+## Worker（GCP VM）
 
-正式前台環境變數：
+Worker使用：
 
 ```text
-VITE_DRAVEN_API_MODE=cloud
-VITE_DRAVEN_CLOUD_API_URL=https://api.your-domain.com
-VITE_SUPABASE_URL=https://gscfexhsqxvtpyxudtza.supabase.co
-VITE_SUPABASE_ANON_KEY=Supabase anon public key
+cloud-browser-worker/deploy/vm/darven-worker.service
+/etc/darven-worker/worker.env
+/etc/darven-worker/release.env
+/var/lib/darven-worker:/app/data
 ```
 
-前台不可放：
+切換前後必須驗證：
+
+- systemd為`active`
+- 連線及驗證成功
+- 10桌完整
+- Cursor high-water不倒退
+- 既有未ACK Queue head仍在Queue或進入ACK Cursor
+- Queue最終排空
+- DB Final資料持續前進
+
+## Frontend（Cloudflare Pages）
+
+只發布完整測試與Production Build產生的`frontend/dist`。正式環境不可包含：
 
 ```text
 SUPABASE_SERVICE_ROLE_KEY
 SUPABASE_DB_CONNECTION_STRING
+WORKER_INGEST_KEY
 MT_TOKEN
-CHROME_CAPTURE_URL
 ```
 
-## 4. Cloud worker
-
-`CLOUD_BROWSER_URL` 指向雲端抓取 worker 的 snapshot endpoint。
-
-worker 應回傳：
-
-```json
-{
-  "connected": true,
-  "authenticated": true,
-  "sessionId": "cloud-session-1",
-  "tables": [],
-  "rounds": []
-}
-```
-
-## 5. v042 smoke 實測
-
-沒有正式 worker 前可先啟動本機 mock worker：
+Canonical URL：
 
 ```text
-cd proxy
-npm.cmd run mock:cloud-worker
+https://darven-ai-baccarat.pages.dev/login
+https://darven-ai-baccarat.pages.dev/admin-login
 ```
 
-正式 API / worker 上線後執行：
+## v100.0.8 完成標準
 
-```text
-cd proxy
-set DRAVEN_API_BASE_URL=https://api.your-domain.com
-set CLOUD_BROWSER_URL=https://cloud-worker.example/snapshot
-npm.cmd run smoke:cloud
-```
-
-通過時會輸出：
-
-```json
-{"ok":true,"failures":[]}
-```
-
-## 6. 上線判定
-
-完成以下檢查才算正式可用：
-
-- `/health` 回 `version: 041`。
-- `/api/cloud-capture/status` 顯示 `workerConfigured: true`。
-- `/api/cloud-capture/tick` 能觸發 worker。
-- `cloud_capture_status` 有更新。
-- `cloud_table_snapshots` 有最新 snapshot。
-- 前台以 `VITE_DRAVEN_API_MODE=cloud` 開啟。
-- 後台登入/授權功能正常。
-- 若 MT 雲端 IP 被擋，不可假裝成功；改接登入 session flow 或保留 local bridge 備援。
+- Proxy、Worker、Frontend皆對應同一個Git commit及`v100.0.8` Tag
+- 10桌依序為BAG01、BAG02、BAG03、BAG03A、BAG05、BAG06、BAG07、BAG08、BAG09、BAG10
+- Push ACK成功且Queue排空
+- DB v100 Final筆數持續增加，無其他策略版本寫入
+- Frontend可讀到與Proxy相同桌號、靴、局
+- 唯一保留的監控為抓牌3分鐘中斷自動復原警告

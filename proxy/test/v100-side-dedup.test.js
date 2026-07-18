@@ -5,8 +5,8 @@ import {
   V100_SIDE_DEDUP_VERSION,
   V100_SIDE_SCORE_CALIBRATION_OFFSETS,
   buildLivePrediction,
-  buildV100SideShadowActions,
-  calculateV100SidePredictionShadow,
+  buildV100SideActions,
+  calculateV100SidePrediction,
 } from '../src/supabase-writer.js'
 
 const BASE = Object.freeze({
@@ -16,7 +16,7 @@ const BASE = Object.freeze({
 const closeTo = (actual, expected, epsilon = 1e-10) => assert.ok(Math.abs(actual - expected) <= epsilon, `${actual} != ${expected}`)
 
 function score(primitives = BASE, options = {}) {
-  return calculateV100SidePredictionShadow({
+  return calculateV100SidePrediction({
     primitives,
     rankAvailable: true,
     rankFallback: 'neutral',
@@ -86,7 +86,7 @@ test('v100 infers null rank primitives as unavailable instead of silently conver
 test('v100 table mode reads only an explicitly available table.cardShoe and rejects a gap even with 13 counts', () => {
   const counts = Object.fromEntries(['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'].map((face) => [face, 30]))
   const baseTable = { tableId: 'BAG01', round: 12, bankerCount: 6, playerCount: 5, tieCount: 1 }
-  const gap = calculateV100SidePredictionShadow({
+  const gap = calculateV100SidePrediction({
     table: { ...baseTable, v100RankLedger: { remainingRankCounts: counts, rankDataAvailable: false, status: 'gap' } },
     rankFallback: 'neutral',
     mainPrediction: 'banker',
@@ -94,7 +94,7 @@ test('v100 table mode reads only an explicitly available table.cardShoe and reje
   assert.equal(gap.diagnostics.rank.available, false)
   assert.deepEqual(gap.diagnostics.rank.substituted, { Q: 50, R: 50 })
 
-  const contiguous = calculateV100SidePredictionShadow({
+  const contiguous = calculateV100SidePrediction({
     table: { ...baseTable, v100RankLedger: { remainingRankCounts: counts, rankDataAvailable: true, status: 'contiguous' } },
     rankFallback: 'neutral',
     mainPrediction: 'banker',
@@ -108,6 +108,8 @@ test('v100 runtime calibration constants match the reproducible strict train art
   assert.equal(artifact.method, 'chronological_train_product_runtime_quantile')
   assert.equal(artifact.trainRows, 1182)
   assert.match(artifact.trainIdsSha256, /^[0-9a-f]{64}$/)
+  assert.equal(artifact.activationEligible, true)
+  assert.equal(artifact.activationBlockReason, null)
   assert.deepEqual(V100_SIDE_SCORE_CALIBRATION_OFFSETS, artifact.offsets)
 })
 
@@ -134,13 +136,13 @@ test('v100 clamps malformed primitives and keeps every numeric output finite in 
   assert.equal(numbers.every((value) => Number.isFinite(value) && value >= 0 && value <= 100), true)
 })
 
-test('v100 shadow actions preserve formal thresholds ±1 and main-direction gates', () => {
-  const below = buildV100SideShadowActions({ tie: 24, superSix: 44, bankerPair: 42, playerPair: 42, bankerDragon: 29, playerDragon: 29 }, 'banker')
+test('v100 formal actions preserve formal thresholds ±1 and main-direction gates', () => {
+  const below = buildV100SideActions({ tie: 24, superSix: 44, bankerPair: 42, playerPair: 42, bankerDragon: 29, playerDragon: 29 }, 'banker')
   assert.deepEqual(below, { tie: false, superSix: false, bankerPair: false, playerPair: false, bankerDragon: false, playerDragon: false })
 
-  const banker = buildV100SideShadowActions({ tie: 25, superSix: 45, bankerPair: 43, playerPair: 43, bankerDragon: 30, playerDragon: 100 }, 'banker')
+  const banker = buildV100SideActions({ tie: 25, superSix: 45, bankerPair: 43, playerPair: 43, bankerDragon: 30, playerDragon: 100 }, 'banker')
   assert.deepEqual(banker, { tie: true, superSix: true, bankerPair: true, playerPair: true, bankerDragon: true, playerDragon: false })
-  const player = buildV100SideShadowActions({ superSix: 100, bankerDragon: 100, playerDragon: 30 }, 'player')
+  const player = buildV100SideActions({ superSix: 100, bankerDragon: 100, playerDragon: 30 }, 'player')
   assert.equal(player.superSix, false)
   assert.equal(player.bankerDragon, false)
   assert.equal(player.playerDragon, true)

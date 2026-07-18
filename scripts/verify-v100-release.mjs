@@ -8,8 +8,8 @@ const read = (path) => readFileSync(resolve(root, path), 'utf8')
 const json = (path) => JSON.parse(read(path))
 const manifest = json('release/v100-manifest.json')
 
-assert.equal(manifest.release, 'v100')
-assert.equal(manifest.packageVersion, '1.0.0')
+assert.equal(manifest.release, 'v100.0.8')
+assert.equal(manifest.packageVersion, '1.0.8')
 assert.equal(manifest.status, 'formal')
 assert.deepEqual(manifest.deployment, {
   frontend: 'cloudflare-pages', proxy: 'render', worker: 'gcp-taiwan-vm-systemd',
@@ -19,21 +19,23 @@ assert.deepEqual(manifest.components, {
   frontend: 'v100', proxy: 'v100', workerBuild: '100', workerProtocol: 'v100',
   strategy: 'v100', database: 'v100', monitoring: 'v100',
 })
-assert.equal(manifest.strategyComposition.main, 'v99_主預測靴內偏移去重版')
-assert.equal(manifest.strategyComposition.side, 'v100_主副訊號去重與8副牌階完整性版')
+assert.equal(manifest.strategyComposition.main, '主預測靴內偏移去重版')
+assert.equal(manifest.strategyComposition.side, '主副訊號去重與8副牌階完整性版')
+assert.equal('historicalReadPredecessor' in manifest.strategyComposition, false)
 assert.doesNotMatch(JSON.stringify(manifest), /候選|candidate|shadow|release[ _-]?candidate|\brc\b/i)
 
 for (const path of ['frontend/package.json', 'proxy/package.json', 'cloud-browser-worker/package.json']) {
-  assert.equal(json(path).version, '1.0.0', `${path} package version`)
+  assert.equal(json(path).version, '1.0.8', `${path} package version`)
 }
 
 assert.match(read('frontend/src/lib/buildVersion.ts'), /buildVersion:\s*'v100'[\s\S]*strategyVersion:\s*'v100'/)
 assert.match(read('frontend/src/lib/liveClient.ts'), /import \{ frontendBuildMetadata \} from '\.\/buildVersion'[\s\S]*CURRENT_STRATEGY_VERSION\s*=\s*frontendBuildMetadata\.strategyVersion[\s\S]*CURRENT_BUILD_VERSION\s*=\s*frontendBuildMetadata\.buildVersion/)
 assert.match(read('proxy/src/build-version.js'), /BUILD_VERSION\s*=\s*'v100'/)
+assert.doesNotMatch(read('proxy/src/stable-report.js'), /legacy/i)
 const supabaseWriter = read('proxy/src/supabase-writer.js')
 assert.match(supabaseWriter, /ALL_MT_EQUAL_STRATEGY_VERSION\s*=\s*'v100'/)
 assert.match(supabaseWriter, /V100_SIDE_DEDUP_VERSION\s*=\s*'v100_主副訊號去重與8副牌階完整性版'/)
-assert.doesNotMatch(supabaseWriter, /COMPATIBLE_PREDECESSOR_STRATEGY_VERSION/)
+assert.doesNotMatch(supabaseWriter, /COMPATIBLE_PREDECESSOR_STRATEGY_VERSION|shadow/i)
 assert.match(supabaseWriter, /async getRecentPredictionRows[\s\S]*?strategy_version:\s*`eq\.\$\{ALL_MT_EQUAL_STRATEGY_VERSION\}`/)
 assert.match(supabaseWriter, /async getTableUiSettledPredictions[\s\S]*?strategy_version:\s*`eq\.\$\{ALL_MT_EQUAL_STRATEGY_VERSION\}`/)
 assert.doesNotMatch(supabaseWriter, /strategy_version:\s*`in\.\(\$\{ALL_MT_EQUAL_STRATEGY_VERSION\}/)
@@ -78,39 +80,39 @@ const continuity = read('cloud-browser-worker/deploy/vm/verify-state-continuity.
 assert.match(continuity, /MAX_CURSOR_ENTRIES\s*=\s*10000[\s\S]*acknowledged cursor regressed[\s\S]*capped acknowledged cursor shrank[\s\S]*previous_head_sequence[\s\S]*previous_head_sequence in after_sequences[\s\S]*unacknowledged queue head disappeared/)
 assert.doesNotMatch(read('cloud-browser-worker/package.json'), /worker for Render|CLOUD_BROWSER_URL/i)
 assert.match(read('proxy/deploy/render.yaml'), /V100_RELEASE_ENABLED[\s\S]*value:\s*"true"/)
-assert.match(read('proxy/src/v100-shadow-runtime.js'), /V100_RELEASE_ENABLED/)
-assert.doesNotMatch(read('proxy/src/v100-shadow-runtime.js'), /V100_SHADOW_ENABLED/)
+assert.match(read('proxy/src/v100-formal-runtime.js'), /V100_RELEASE_ENABLED/)
+assert.doesNotMatch(read('proxy/src/v100-formal-runtime.js'), /shadow/i)
+const strictBacktest = read('proxy/scripts/v100-strict-backtest.mjs')
+assert.doesNotMatch(strictBacktest, /shadow/i)
+assert.match(strictBacktest, /calculateV100SidePrediction/)
+assert.match(strictBacktest, /buildV100SideActions/)
+assert.equal(existsSync(resolve(root, 'proxy/scripts/validate_v100_sql_rollback.py')), false)
+assert.equal(existsSync(resolve(root, 'proxy/scripts/validate_v100_sql_concurrency.py')), false)
+const deploymentDoc = read('proxy/deploy/DEPLOYMENT.md')
+assert.match(deploymentDoc, /schema_v100_baseline\.sql[\s\S]*v100\.0\.8/)
+assert.doesNotMatch(deploymentDoc, /schema_v0|rollback_v0|version:\s*0?4[12]/i)
 
 for (const path of [
-  'frontend/supabase/schema_v100_rank_ledger.sql',
-  'frontend/supabase/rollback_v100_rank_ledger.sql',
-  'frontend/supabase/schema_v100_formal_release.sql',
-  'frontend/supabase/rollback_v100_formal_release.sql',
+  'frontend/supabase/schema_v100_baseline.sql',
+  'frontend/supabase/schema_v100_latest_only.sql',
+  'frontend/supabase/rollback_v100_latest_only.sql',
 ]) assert.equal(existsSync(resolve(root, path)), true, `${path} exists`)
 
-const formalSql = read('frontend/supabase/schema_v100_formal_release.sql')
-const formalRollback = read('frontend/supabase/rollback_v100_formal_release.sql')
-assert.match(formalSql, /v100_formal_release_previous_active[\s\S]*version\s*<>\s*'v100'/i)
-assert.match(formalSql, /enable row level security[\s\S]*revoke all[\s\S]*anon, authenticated, service_role/i)
-assert.match(formalSql, /not exists\s*\(select 1 from public\.v100_formal_release_previous_active\)/i)
-assert.doesNotMatch(formalSql, /delete\s+from\s+public\.v100_formal_release_previous_active/i)
-assert.match(formalSql, /to_regclass\('public\.shoe_round_card_events'\)[\s\S]*to_regclass\('public\.shoe_rank_ledgers'\)[\s\S]*to_regprocedure\('public\.apply_v100_rank_ledger_event\(jsonb,jsonb\)'\)/i)
-assert.doesNotMatch(formalSql, /get_v100_rank_ledger/i)
-assert.match(formalSql, /v100_主副訊號去重與8副牌階完整性版/)
-assert.doesNotMatch(formalSql, /候選|candidate|shadow|\brc\b/i)
-assert.match(formalSql, /status\s*=\s*'active'[\s\S]*version\s*=\s*'v100'/i)
-assert.match(formalSql, /count\(\*\)[\s\S]*status\s*=\s*'active'[\s\S]*<>\s*1/i)
-assert.match(formalRollback, /where version\s*=\s*'v100'/i)
-assert.match(formalRollback, /v100_formal_release_previous_active/i)
-assert.doesNotMatch(formalRollback, /drop\s+(?:table|column)|truncate|delete\s+from\s+public\.v100_(?:rank|shoe)/i)
-
-const watchdog = read('scripts/ai_baccarat_v100_3000_watchdog.py')
-assert.match(watchdog, /THRESHOLD\s*=\s*3000/)
-assert.match(watchdog, /STRATEGY_VERSION\s*=\s*"v100"/)
-assert.match(watchdog, /"strategy_version":\s*f"eq\.\{STRATEGY_VERSION\}"/)
-assert.match(watchdog, /"settlement_final":\s*"eq\.true"/)
-assert.match(watchdog, /"predicted_result":\s*"in\.\(banker,player\)"/)
-assert.match(watchdog, /"actual_result":\s*"in\.\(banker,player\)"/)
+const baselineSql = read('frontend/supabase/schema_v100_baseline.sql')
+const latestOnlySql = read('frontend/supabase/schema_v100_latest_only.sql')
+const latestRollback = read('frontend/supabase/rollback_v100_latest_only.sql')
+assert.match(baselineSql, /create table public\.shoe_round_card_events/i)
+assert.match(baselineSql, /create table public\.shoe_rank_ledgers/i)
+assert.match(baselineSql, /issue_v100_prediction[\s\S]*settle_v100_prediction[\s\S]*reconcile_v100_prediction_lifecycle/i)
+assert.match(baselineSql, /v100[\s\S]*active/i)
+assert.doesNotMatch(baselineSql, /v098|v097|v096|v094|v092|v091|v98|v99/i)
+assert.doesNotMatch(baselineSql, /^\\/m)
+assert.doesNotMatch(baselineSql, /ALTER DEFAULT PRIVILEGES[^;]*GRANT (?:ALL|EXECUTE) ON (?:FUNCTIONS|TABLES|SEQUENCES) TO (?:anon|authenticated);/i)
+assert.doesNotMatch(read('proxy/test/formal-release.test.js'), /schema_v98|rollback_v98/)
+assert.doesNotMatch(latestOnlySql, /drop function|drop table/i)
+assert.match(latestRollback, /revoke execute on function public\.issue_v100_prediction/i)
+assert.doesNotMatch(latestRollback, /drop\s+(?:table|function)|truncate|delete\s+from/i)
+assert.equal(existsSync(resolve(root, 'scripts/ai_baccarat_v100_3000_watchdog.py')), false, '3000-round watchdog removed')
 
 const captureWatchdog = read('scripts/ai_baccarat_data_watchdog.py')
 assert.match(captureWatchdog, /GCP_WORKER\s*=\s*'darven-mt-taiwan-worker-5'/)

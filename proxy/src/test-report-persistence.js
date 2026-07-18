@@ -1,5 +1,5 @@
 export function buildPersistableLiveReport(report = {}, {
-  strategyVersion = 'v034-auto-memory',
+  strategyVersion = 'v100',
   reportType = '300_round_live_test',
   reportPath = null,
   metadata = {},
@@ -20,7 +20,7 @@ export function buildPersistableLiveReport(report = {}, {
 export async function persistFinalLiveReport(report = {}, {
   onlineCoreClient,
   projectSlug = 'ai-baccarat',
-  strategyVersion = 'v034-auto-memory',
+  strategyVersion = 'v100',
   reportType = '300_round_live_test',
   reportPath = null,
   metadata = {},

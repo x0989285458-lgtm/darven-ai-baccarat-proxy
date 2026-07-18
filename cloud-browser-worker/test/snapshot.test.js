@@ -10,7 +10,7 @@ import {
   redactUrlSecrets,
 } from '../src/snapshot.js'
 
-test('v098.18 worker real-card gate requires exact legal integer ranges in all ten positions', () => {
+test('worker real-card gate requires exact legal integer ranges in all ten positions', () => {
   const exact = { rawResult: [11, 25, 7, 19, 0, 0, -1, -1, 4, 6] }
   assert.equal(hasRealCardCodes(exact), true)
   assert.equal(hasRealCardCodes({ rawResult: [...exact.rawResult, 99] }), false)
@@ -23,7 +23,7 @@ test('v098.18 worker real-card gate requires exact legal integer ranges in all t
   assert.equal(hasRealCardCodes({ rawResult: exact.rawResult.map((value, index) => index === 8 ? 10 : value) }), false)
 })
 
-test('v098.17 keeps only the approved ten tables and completed rounds in production order', () => {
+test('keeps only the approved ten tables and completed rounds in production order', () => {
   const tableIds = ['BAG15', 'BAG3A', 'BAG11', 'BAG02', 'BAG13A', 'BAG01', 'BAG12', 'BAG10', 'BAG09', 'BAG08', 'BAG07', 'BAG06', 'BAG05', 'BAG13', 'BAG03']
   const snapshot = extractSnapshotFromPayloads([
     { tables: tableIds.map((tableId) => ({ tableId, tableType: 'BAC', shoe: 1, round: 1, name: tableId })) },
@@ -36,7 +36,7 @@ test('v098.17 keeps only the approved ten tables and completed rounds in product
   assert.equal(snapshot.diagnostics.tableCount, 10)
 })
 
-test('v098.17 canonicalizes alias round IDs before dedupe', () => {
+test('canonicalizes alias round IDs before dedupe', () => {
   const round = { shoe: 1, round: 1, winner: 'banker', rawResult: [1, 2, 3, 4, 0, 0, -1, -1, 4, 6] }
   const snapshot = extractSnapshotFromPayloads([
     { action: { name: '/summary' }, body: { ...round, tableId: 'BAG3A' } },
@@ -60,7 +60,7 @@ test('annotates every object in a captured JSON round array with a distinct even
   )
 })
 
-test('v098.7 retains MT summary events with exact cards in the dedicated round buffer', () => {
+test('retains MT summary events with exact cards in the dedicated round buffer', () => {
   assert.equal(isRoundPayload(JSON.stringify({
     action: { name: '/api/v1/gametype/*/game/*/room/*/table/*/summary' },
     body: {
@@ -186,7 +186,7 @@ test('extracts verified MT summary result with banker/player points for Super Si
   assert.deepEqual(snapshot.rounds[0].rawResult, [11, 25, 7, 19, -1, -1, -1, -1, 4, 6])
 })
 
-test('v098 excludes completed-round candidates without an exact ten-value rawResult', () => {
+test('excludes completed-round candidates without an exact ten-value rawResult', () => {
   const snapshot = extractSnapshotFromPayloads([
     { event: 'roundResult', round: { table_id: 'BAG01', shoe: 7, round_no: 19, result: 'B' } },
     { event: 'roundResult', round: { table_id: 'BAG02', shoe: 8, round_no: 20, winner: 2, rawResult: [1, 2, 3] } },
@@ -226,7 +226,7 @@ test('fails closed when the completed round itself has no shoe', () => {
   assert.deepEqual(snapshot.rounds, [])
 })
 
-test('v098.19 keeps exact show_poker provisional while final summary wins the same round identity', () => {
+test('keeps exact show_poker provisional while final summary wins the same round identity', () => {
   const provisionalCards = [31, 51, 25, 52, 0, 0, -1, -1, 5, 0]
   const finalCards = [11, 25, 7, 19, -1, -1, -1, -1, 4, 6]
   const payload = (actionName, result) => JSON.stringify({
@@ -246,7 +246,7 @@ test('v098.19 keeps exact show_poker provisional while final summary wins the sa
   assert.deepEqual(finalized.rounds[0].rawResult, finalCards)
 })
 
-test('v098.19 keeps the verified final summary over a provisional same-identity candidate', () => {
+test('keeps the verified final summary over a provisional same-identity candidate', () => {
   const snapshot = extractSnapshotFromPayloads([
     { event: 'show_poker', round: { table_id: 'BAG06', shoe: 15669, round_no: 12, result: 'B' } },
     JSON.stringify({

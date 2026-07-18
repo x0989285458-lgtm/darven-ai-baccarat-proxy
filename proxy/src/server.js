@@ -8,7 +8,7 @@ import { applyCloudCapturePayload, canonicalProductionTableId, createCloudCaptur
 import { loadLocalEnv, maskToken, resolveDeployConfig } from './config.js'
 import { ALL_MT_EQUAL_STRATEGY_VERSION, buildLivePrediction, createSupabaseIngestionClient } from './supabase-writer.js'
 import { createRecentTablePerformanceStore } from './recent-table-performance.js'
-import { createV100ShadowRuntime, resolveV100ShadowEnabled } from './v100-shadow-runtime.js'
+import { createV100FormalRuntime, resolveV100FormalEnabled } from './v100-formal-runtime.js'
 import { createOnlineCoreClient } from './online-core.js'
 import { createLicenseAdminClient } from './license-admin.js'
 import { chooseCaptureSource, describeCaptureStatus } from './capture-source.js'
@@ -64,7 +64,7 @@ function rememberBounded(seen, order, value, limit) {
   while (order.length > limit) seen.delete(order.shift())
 }
 
-export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100ShadowRuntime = null } = {}) {
+export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null } = {}) {
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
     CAPTURE_SOURCE: requestedCaptureSource,
@@ -145,11 +145,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   state.setStatus({ deployMode: deployConfig.deployMode, captureSource, captureMode: captureSource, cloudReady: true, statusText: describeCaptureStatus({ captureSource }) })
   const mtClient = createMtClient({ token, state })
   const chromeClient = createChromeCaptureClient({ url: captureUrl, state })
-  const v100Shadow = v100ShadowRuntime ?? createV100ShadowRuntime({
-    enabled: resolveV100ShadowEnabled(),
+  const v100Formal = v100FormalRuntime ?? createV100FormalRuntime({
+    enabled: resolveV100FormalEnabled(),
     writer: supabaseClient,
   })
-  const cloudCaptureClient = createCloudCaptureClient({ url: cloudBrowserUrl, state, writer: supabaseClient, v100Shadow, fetchImpl, pollMs: deployConfig.cloudCapturePollMs, adminKey: process.env.WORKER_ADMIN_KEY })
+  const cloudCaptureClient = createCloudCaptureClient({ url: cloudBrowserUrl, state, writer: supabaseClient, v100Formal, fetchImpl, pollMs: deployConfig.cloudCapturePollMs, adminKey: process.env.WORKER_ADMIN_KEY })
 
   async function recordOperationalEvent({ component, kind, message, statusCode = null, metadata = {} }) {
     const event = buildOperationalEvent({ component, kind, message, statusCode, metadata })
@@ -268,7 +268,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           const parsed = parseCloudCapturePayload(envelope.snapshot)
           try {
             assertDurableIngestWriter(supabaseClient, parsed.rounds.length)
-            await applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Shadow })
+            await applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Formal })
           } catch (error) {
             const durableError = new Error(error?.message ?? String(error))
             durableError.statusCode = 503

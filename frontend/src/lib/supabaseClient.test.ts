@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { checkSupabaseConnection } from './supabaseClient'
 
-describe('supabaseClient v032 proxy-first status', () => {
+describe('supabaseClient proxy-first status', () => {
   it('uses backend online-license status so frontend does not fail only because anon key is test key', async () => {
     const fetchImpl = vi.fn((url: string) => {
       if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ configured: true, error: null }) })
@@ -23,7 +23,7 @@ describe('supabaseClient v032 proxy-first status', () => {
     expect(String((fetchImpl as any).mock.calls[0][0])).toContain('/api/online-license/status')
   })
 
-  it('v098 sends the opaque admin session when checking the protected license backend', async () => {
+  it('sends the opaque admin session when checking the protected license backend', async () => {
     const fetchImpl = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ configured: true, error: null }) })) as unknown as typeof fetch
 
     const result = await checkSupabaseConnection('opaque-admin-session', fetchImpl)

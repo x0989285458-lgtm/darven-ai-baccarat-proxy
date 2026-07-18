@@ -584,7 +584,7 @@ export function buildLivePrediction(table = {}) {
   const rankCardShoe = table.v100RankLedger ?? null
   const rankAvailable = rankCardShoe?.rankDataAvailable === true
     && hasCompleteRemainingRankCounts(rankCardShoe.remainingRankCounts)
-  const v100Side = calculateV100SidePredictionShadow({
+  const v100Side = calculateV100SidePrediction({
     table,
     round: { ...nextRound, v100RankLedger: rankCardShoe },
     rankAvailable,
@@ -1199,7 +1199,7 @@ function buildSidePredictions(table = {}, round = {}) {
   ]))
 }
 
-export function calculateV100SidePredictionShadow({
+export function calculateV100SidePrediction({
   table = {},
   round = {},
   primitives: primitiveOverrides = null,
@@ -1244,16 +1244,16 @@ export function calculateV100SidePredictionShadow({
   primitives.H6 = clampSideScore(Math.max(primitives.T, primitives.XB, primitives.XP, bankerDragonResidual, primitives.DP))
 
   const omitRank = !rankAvailable && rankFallback === 'renormalize'
-  const tie = weightedShadowScore({ T: primitives.T, A: primitives.A, S: primitives.S, R: primitives.R }, {
+  const tie = weightedSideScore({ T: primitives.T, A: primitives.A, S: primitives.S, R: primitives.R }, {
     T: 0.5068331143232588, A: 0.1931668856767411, S: 0.10, R: 0.20,
   }, omitRank ? ['R'] : [])
-  const bankerPair = weightedShadowScore({ Q: primitives.Q, S: primitives.S, XB: primitives.XB, RB: bankerPairResidual, Hpair: primitives.Hpair }, {
+  const bankerPair = weightedSideScore({ Q: primitives.Q, S: primitives.S, XB: primitives.XB, RB: bankerPairResidual, Hpair: primitives.Hpair }, {
     Q: 0.15, S: 0.20, XB: 0.20, RB: 0.35, Hpair: 0.10,
   }, omitRank ? ['Q'] : [])
-  const playerPair = weightedShadowScore({ Q: primitives.Q, S: primitives.S, XP: primitives.XP, RP: playerPairResidual, Hpair: primitives.Hpair }, {
+  const playerPair = weightedSideScore({ Q: primitives.Q, S: primitives.S, XP: primitives.XP, RP: playerPairResidual, Hpair: primitives.Hpair }, {
     Q: 0.20, S: 0.15, XP: 0.20, RP: 0.25, Hpair: 0.20,
   }, omitRank ? ['Q'] : [])
-  const superSix = weightedShadowScore({ B: primitives.B, H6: primitives.H6, R: primitives.R, S: primitives.S }, {
+  const superSix = weightedSideScore({ B: primitives.B, H6: primitives.H6, R: primitives.R, S: primitives.S }, {
     B: 0.35, H6: 0.35, R: 0.20, S: 0.10,
   }, omitRank ? ['R'] : [])
   const baseSidePredictions = baseOverrides ?? buildSidePredictions(table, round)
@@ -1270,7 +1270,7 @@ export function calculateV100SidePredictionShadow({
     clampSideScore(score + Number(V100_SIDE_SCORE_CALIBRATION_OFFSETS[key] ?? 0)),
   ]))
   const actions = rankAvailable
-    ? buildV100SideShadowActions(predictions, mainPrediction)
+    ? buildV100SideActions(predictions, mainPrediction)
     : { tie: false, superSix: false, bankerPair: false, playerPair: false, bankerDragon: false, playerDragon: false }
   return {
     strategyVersion: V100_SIDE_DEDUP_VERSION,
@@ -1308,11 +1308,11 @@ export function calculateV100SidePredictionShadow({
   }
 }
 
-export function buildV100SideShadowActions(predictions = {}, mainPrediction = null) {
+export function buildV100SideActions(predictions = {}, mainPrediction = null) {
   return buildSideActions(predictions, mainPrediction)
 }
 
-function weightedShadowScore(values, coefficients, omittedKeys = []) {
+function weightedSideScore(values, coefficients, omittedKeys = []) {
   const omitted = new Set(omittedKeys)
   const activeWeight = Object.entries(coefficients).reduce((sum, [key, weight]) => sum + (omitted.has(key) ? 0 : weight), 0)
   const effectiveCoefficients = Object.fromEntries(Object.entries(coefficients).map(([key, weight]) => [

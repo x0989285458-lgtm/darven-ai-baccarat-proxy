@@ -1,4 +1,4 @@
-export function buildMockCloudWorkerSnapshot({ sessionId = 'v042-mock-worker', tableCount = 9, round = 1 } = {}) {
+export function buildMockCloudWorkerSnapshot({ sessionId = 'mock-worker', tableCount = 9, round = 1 } = {}) {
   const tables = Array.from({ length: tableCount }, (_, index) => {
     const id = String(index + 1).padStart(2, '0')
     return {

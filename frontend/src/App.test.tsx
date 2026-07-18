@@ -131,7 +131,7 @@ describe('AI百家預測軟體', () => {
     expect(within(header).queryByText(/更新：/)).not.toBeInTheDocument()
   })
 
-  it('v093 shows stale data badge without treating old sourceUpdatedAt as realtime', async () => {
+  it('shows stale data badge without treating old sourceUpdatedAt as realtime', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table) => ({ ...table, sourceUpdatedAt: '2026-07-11T00:00:00.000Z' }))) })
       if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 9, statusText: '雲端資料過期，等待Worker重新抓牌', buildVersion: 'v100' }) })
@@ -142,7 +142,7 @@ describe('AI百家預測軟體', () => {
     expect(screen.queryByLabelText('AI預測結果')).not.toBeInTheDocument()
   })
 
-  it('v098 clears the member session and returns to login on backend 401', async () => {
+  it('clears the member session and returns to login on backend 401', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: false, status: 401 })))
     await renderApp('/', false)
     await waitFor(() => expect(window.sessionStorage.getItem('darven-member-session-token')).toBeNull())
@@ -207,7 +207,7 @@ describe('AI百家預測軟體', () => {
     expect(within(prediction).queryByText('近期莊閒趨勢相近，建議持續觀察。')).not.toBeInTheDocument()
   })
 
-  it('v098.18 keeps backend percentages without separate prediction or confidence copy', async () => {
+  it('keeps backend percentages without separate prediction or confidence copy', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table, index) => ({
         ...table,
@@ -224,7 +224,7 @@ describe('AI百家預測軟體', () => {
     expect(within(prediction).queryByText('AI預測:')).not.toBeInTheDocument()
   })
 
-  it('v098.18 renders the current-shoe latest predictions as a fixed four-row B table', async () => {
+  it('renders the current-shoe latest predictions as a fixed four-row B table', async () => {
     await renderApp()
     const history = await screen.findByLabelText('近十局預測紀錄')
     expect(screen.getByText('近十局預測紀錄')).toBeVisible()
@@ -263,7 +263,7 @@ describe('AI百家預測軟體', () => {
     expect(within(history).getByText('第22局')).toBeInTheDocument()
   })
 
-  it('v098.18 clears old B-table rows immediately and ignores a late prior-table response', async () => {
+  it('clears old B-table rows immediately and ignores a late prior-table response', async () => {
     let resolveBag01!: (value: Response) => void
     const bag01History = new Promise<Response>((resolve) => { resolveBag01 = resolve })
     vi.stubGlobal('fetch', vi.fn((url: string) => {
@@ -389,14 +389,14 @@ describe('AI百家預測軟體', () => {
     expect(screen.queryByText('第4局')).not.toBeInTheDocument()
   })
 
-  it('v096 displays backend side prediction values and actions without frontend recalculation', async () => {
+  it('displays backend side prediction values and actions without frontend recalculation', async () => {
     await renderApp()
     const sideRow = screen.getByLabelText('副項目預測機率')
     expect(Array.from(sideRow.querySelectorAll('.probability-value')).map((node) => node.textContent)).toEqual(['66%', '44%', '22%', '33%', '55%'])
     expect(Array.from(sideRow.querySelectorAll('.prediction-metric.active')).map((node) => node.textContent)).toEqual([expect.stringContaining('55%')])
   })
 
-  it('v98 displays normalized backend main score totals so banker and player sum to 100', async () => {
+  it('displays normalized backend main score totals so banker and player sum to 100', async () => {
     await renderApp()
 
     expect(screen.getByLabelText('莊預測')).toHaveTextContent('54%')
@@ -404,7 +404,7 @@ describe('AI百家預測軟體', () => {
     expect(screen.getByLabelText('和預測')).toHaveTextContent('11%')
   })
 
-  it('v098 disables all actions and warns when the backend strategy is not current', async () => {
+  it('disables all actions and warns when the backend strategy is not current', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table) => ({ ...table, prediction: { ...table.prediction, strategyVersion: 'v096_副預測權重與信心校準版' } }))) })
       if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) })
@@ -417,7 +417,7 @@ describe('AI百家預測軟體', () => {
     expect(screen.getByLabelText('AI預測結果').querySelectorAll('.prediction-metric.active')).toHaveLength(0)
   })
 
-  it('v096 waits and never takes side actions when backend side prediction data is missing', async () => {
+  it('waits and never takes side actions when backend side prediction data is missing', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table) => ({ ...table, prediction: { source: 'backend', strategyVersion: 'v100', predictedResult: 'banker', confidence: 34 } }))) })
       if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tables: [], statusText: '已抓到9桌', buildVersion: 'v100' }) })
@@ -430,7 +430,7 @@ describe('AI百家預測軟體', () => {
   })
 
 
-  it('v044 removes manual token connection controls and reads backend tables automatically', async () => {
+  it('removes manual token connection controls and reads backend tables automatically', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTables.map((table, index) => ({
         tableId: table.id,
@@ -492,7 +492,7 @@ describe('AI百家預測軟體', () => {
     expect(buttons[3]).toHaveTextContent('第3A桌 第115局')
   })
 
-  it('v098.19 renders the six-row big road directly from authoritative MT codes with points and no legends', async () => {
+  it('renders the six-row big road directly from authoritative MT codes with points and no legends', async () => {
     await renderApp()
     expect(screen.queryByText('珠盤路')).not.toBeInTheDocument()
     expect(document.querySelector('.bead-grid')).not.toBeInTheDocument()
@@ -512,7 +512,7 @@ describe('AI百家預測軟體', () => {
     expect(within(heading).getByText(`閒局數：${mockTables[0].trend.total_round_player}`)).toHaveClass('Player')
   })
 
-  it('v046 shows a formal waiting state instead of mock tables when cloud data is empty', async () => {
+  it('shows a formal waiting state instead of mock tables when cloud data is empty', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) })
       if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: false, authenticated: false, statusText: 'MT自動登入未啟用，等待手動或Worker資料來源', buildVersion: 'v100' }) })
@@ -525,7 +525,7 @@ describe('AI百家預測軟體', () => {
     expect(await screen.findByText(/MT自動登入未啟用/)).toBeInTheDocument()
   })
 
-  it('v046 admin create license and agent actions send real member/admin payloads to backend', async () => {
+  it('admin create license and agent actions send real member/admin payloads to backend', async () => {
     const calls: Array<{ url: string; body: any }> = []
     vi.stubGlobal('prompt', vi.fn()
       .mockReturnValueOnce('A1688')
@@ -549,7 +549,7 @@ describe('AI百家預測軟體', () => {
     expect(document.body.textContent).toMatch(/88/)
   })
 
-  it('v045 overlays a green tie slash on banker/player big-road cells when a tie appears', async () => {
+  it('overlays a green tie slash on banker/player big-road cells when a tie appears', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/ui-history')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
         ...tableUiHistory('BAG01', 1),
@@ -670,7 +670,7 @@ describe('AI百家預測軟體', () => {
     })).toEqual({ banker: 42, player: 48, tie: 10 })
   })
 
-  it('v016 predicts only Banker or Player with confidence varied within 30-70 and no observe recommendation', () => {
+  it('predicts only Banker or Player with confidence varied within 30-70 and no observe recommendation', () => {
     expect(calculatePrediction([])).toMatchObject({ recommendation: 'Player', confidence: 30 })
     expect(calculatePrediction([
       { code: '01', outcome: 'Player' },
@@ -686,7 +686,7 @@ describe('AI百家預測軟體', () => {
     expect(strongBanker.confidence).toBeLessThanOrEqual(70)
   })
 
-  it('v062 breaks exact main-score ties without defaulting to banker', () => {
+  it('breaks exact main-score ties without defaulting to banker', () => {
     expect(calculatePrediction([
       { code: '02', outcome: 'Banker' },
       { code: '01', outcome: 'Player' },
@@ -697,13 +697,13 @@ describe('AI百家預測軟體', () => {
     ])).toMatchObject({ recommendation: 'Player', confidence: 30 })
   })
 
-  it('v016 excludes ties from main prediction hit-rate scoring', () => {
+  it('excludes ties from main prediction hit-rate scoring', () => {
     expect(scoreMainPrediction('Banker', 'Banker')).toEqual({ evaluated: true, hit: true, push: false })
     expect(scoreMainPrediction('Banker', 'Player')).toEqual({ evaluated: true, hit: false, push: false })
     expect(scoreMainPrediction('Banker', 'Tie')).toEqual({ evaluated: false, hit: false, push: true })
   })
 
-  it('v051 records every side prediction for learning but only counts action when each threshold is reached', () => {
+  it('records every side prediction for learning but only counts action when each threshold is reached', () => {
     expect(SIDE_PREDICTION_THRESHOLDS).toEqual({
       tie: 25,
       superSix: 45,
@@ -757,7 +757,7 @@ describe('AI百家預測軟體', () => {
   })
 
 
-  it('v084 dragon bonus follows main side and threshold', () => {
+  it('dragon bonus follows main side and threshold', () => {
     expect(getSidePredictionActions({
       tie: 0,
       superSix: 0,
@@ -776,7 +776,7 @@ describe('AI百家預測軟體', () => {
     }, 'Banker')).toEqual(expect.objectContaining({ bankerDragon: true, playerDragon: false }))
   })
 
-  it('v084 gates super six and dragon bonus by main prediction', () => {
+  it('gates super six and dragon bonus by main prediction', () => {
     const bankerBonus = {
       tie: 0,
       superSix: 95,
@@ -806,7 +806,7 @@ describe('AI百家預測軟體', () => {
   })
 
 
-  it('v068 keeps side prediction weights independent per target with requested action rates', () => {
+  it('keeps side prediction weights independent per target with requested action rates', () => {
     expect(SIDE_PREDICTION_ACTION_RATE_TARGETS).toEqual({
       tie: 0.15,
       superSix: 0.10,
@@ -821,7 +821,7 @@ describe('AI百家預測軟體', () => {
     expect(SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair).not.toEqual(SIDE_PREDICTION_WEIGHT_PROFILES.bankerDragon)
   })
 
-  it('v017 detects road trends including single jump, double jump, long dragon, double dragon, and slopes', () => {
+  it('detects road trends including single jump, double jump, long dragon, double dragon, and slopes', () => {
     expect(detectRoadTrends(['Banker', 'Player', 'Banker', 'Player', 'Banker']).singleJump).toBe(true)
     expect(detectRoadTrends(['Banker', 'Banker', 'Player', 'Player', 'Banker', 'Banker']).doubleJump).toBe(true)
     expect(detectRoadTrends(['Player', 'Banker', 'Banker', 'Banker', 'Banker']).longDragon).toEqual({ side: 'Banker', length: 4 })
@@ -830,7 +830,7 @@ describe('AI百家預測軟體', () => {
     expect(detectRoadTrends(['Banker', 'Banker', 'Banker', 'Player', 'Player', 'Banker', 'Player']).downSlope).toBe(true)
   })
 
-  it('v067 uses high-hit weighted main and side prediction weights in the current frontend scorer', () => {
+  it('uses high-hit weighted main and side prediction weights in the current frontend scorer', () => {
     const prediction = evaluateFiveRoadPrediction({
       beadCells: [
         { code: '02', outcome: 'Banker' },
@@ -859,7 +859,7 @@ describe('AI百家預測軟體', () => {
     expect(prediction.confidence).toBeLessThanOrEqual(70)
   })
 
-  it('v064 main probability row uses five-road weighted score totals instead of mirroring confidence', () => {
+  it('main probability row uses five-road weighted score totals instead of mirroring confidence', () => {
     const prediction = evaluateFiveRoadPrediction({
       beadCells: [
         { code: '02', outcome: 'Banker' },
@@ -882,7 +882,7 @@ describe('AI百家預測軟體', () => {
     expect(row.banker + row.player + row.tie).toBe(100)
   })
 
-  it('v017 report-facing prediction still hides internal source-weight hit rates from UI text', async () => {
+  it('report-facing prediction still hides internal source-weight hit rates from UI text', async () => {
     await renderApp()
     const prediction = screen.getByLabelText('AI預測結果')
     expect(within(prediction).queryByText(/AI預測:/)).not.toBeInTheDocument()
@@ -890,7 +890,7 @@ describe('AI百家預測軟體', () => {
     expect(within(prediction).queryByText(/珠盤路|大眼仔|小路|蟑螂|單跳|雙跳|權重/)).not.toBeInTheDocument()
   })
 
-  it('v098.18 removes the free-version contact copy from member login', async () => {
+  it('removes the free-version contact copy from member login', async () => {
     await renderApp('/login', false)
     expect(screen.getByRole('heading', { name: '瑞文AI百家預測' })).toBeInTheDocument()
     expect(document.body.textContent).not.toContain('免費版請私訊官方賴@Dv1788')
@@ -931,7 +931,7 @@ describe('AI百家預測軟體', () => {
     expect(screen.getByLabelText('閒預測')).toHaveTextContent('46%')
   })
 
-  it('v030 member login calls online license API and enters frontend only after success', async () => {
+  it('member login calls online license API and enters frontend only after success', async () => {
     const fetchMock = vi.fn((url: string, options?: RequestInit) => {
       if (url.includes('/api/online-license/member-login')) {
         expect(options?.body).toBe(JSON.stringify({ memberAccount: 'User001', verificationPassword: 'DVAI1788_001' }))
@@ -957,7 +957,7 @@ describe('AI百家預測軟體', () => {
     expect(window.sessionStorage.getItem('darven-member-login')).toBeNull()
   })
 
-  it('v043 admin login calls online license API and enters backend dashboard after success', async () => {
+  it('admin login calls online license API and enters backend dashboard after success', async () => {
     const fetchMock = vi.fn((url: string, options?: RequestInit) => {
       if (url.includes('/api/online-license/agent-login')) {
         expect(options?.body).toBe(JSON.stringify({ agentAccount: 'DVAI' }))
@@ -976,7 +976,7 @@ describe('AI百家預測軟體', () => {
     expect(fetchMock.mock.calls.some(([url, options]) => String(url).includes('/api/online-license/agent-login') && (options as RequestInit)?.method === 'POST')).toBe(true)
   })
 
-  it('v030 admin loads real Supabase license rows instead of static placeholder agents and codes', async () => {
+  it('admin loads real Supabase license rows instead of static placeholder agents and codes', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({
         managers: [{ username: 'DV1788', role: 'total' }],
@@ -993,7 +993,7 @@ describe('AI百家預測軟體', () => {
     expect(screen.queryByText('Agent001_001')).not.toBeInTheDocument()
   })
 
-  it('v032 admin shows Supabase error message instead of staying at 檢查中', async () => {
+  it('admin shows Supabase error message instead of staying at 檢查中', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: [], reports: [], strategies: [] }) })
@@ -1004,7 +1004,7 @@ describe('AI百家預測軟體', () => {
     expect(screen.queryByText('檢查中')).not.toBeInTheDocument()
   })
 
-  it('v034 admin shows latest auto-synced 300-round test report metrics from memory center', async () => {
+  it('admin shows latest auto-synced 300-round test report metrics from memory center', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/online-core/memory-center')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, items: [], strategies: [], reports: [{ strategy_version: 'v034-auto-memory', report_type: '300_round_live_test', rounds: 300, main_hit_rate: '51.80', hits: 144, misses: 134, pushes: 22, report_path: 'proxy/reports/draven-v034-300-round-report.png' }] }) })
       if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ managers: [], agents: [], plans: [], licenses: [] }) })
@@ -1017,7 +1017,7 @@ describe('AI百家預測軟體', () => {
     expect(screen.getByText('莊命中率')).toBeInTheDocument()
   })
 
-  it('v035 admin shows strategy comparison, weak-table analysis, and next-version suggestions', async () => {
+  it('admin shows strategy comparison, weak-table analysis, and next-version suggestions', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/online-core/strategy-analysis')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, strategyRows: [{ strategy_version: 'v034-auto-memory', rounds: 300, main_hit_rate: '54.50', hits: 150, misses: 125, conclusion: '目前最佳' }], weakTables: [{ name: 'MT百家樂第5桌', hitRate: 38.5 }], strongTables: [{ name: 'MT百家樂第2桌', hitRate: 64 }], suggestions: ['第5桌低於45%，建議降低信心權重並啟用反向檢查'] }) })
       if (url.includes('/api/online-core/memory-center')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, items: [], strategies: [], reports: [{ strategy_version: 'v034-auto-memory', report_type: '300_round_live_test', rounds: 300, main_hit_rate: '54.50', hits: 150, misses: 125, pushes: 25 }] }) })
@@ -1066,7 +1066,7 @@ describe('AI百家預測軟體', () => {
     expect(grid).toHaveClass('v015-management-grid')
   })
 
-  it('v044 applies requested admin layout, search, checkbox, fixed-agent, and 30-day limit behavior', async () => {
+  it('applies requested admin layout, search, checkbox, fixed-agent, and 30-day limit behavior', async () => {
     window.sessionStorage.setItem('darven-admin-account', 'DVAI')
     await renderApp('/admin')
 
@@ -1117,7 +1117,7 @@ describe('AI百家預測軟體', () => {
     expect(screen.getByRole('button', { name: '刪除驗證碼' })).toBeInTheDocument()
   })
 
-  it('v098 keeps admin logout and changes member inactivity logout to 30 minutes', async () => {
+  it('keeps admin logout and changes member inactivity logout to 30 minutes', async () => {
     vi.useFakeTimers()
     window.sessionStorage.setItem('darven-admin-account', 'DVAI')
     window.sessionStorage.setItem('darven_admin_login', 'yes')
@@ -1138,7 +1138,7 @@ describe('AI百家預測軟體', () => {
     vi.useRealTimers()
   })
 
-  it('v098 clears a member session at the exact backend expiry even after recent activity', async () => {
+  it('clears a member session at the exact backend expiry even after recent activity', async () => {
     vi.useFakeTimers()
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000 + 500).toISOString()
     window.sessionStorage.setItem('darven-member-session-token', 'test-member-session')

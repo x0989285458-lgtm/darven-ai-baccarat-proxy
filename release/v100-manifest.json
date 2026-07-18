@@ -1,7 +1,7 @@
 {
   "product": "瑞文AI百家預測",
-  "release": "v100",
-  "packageVersion": "1.0.0",
+  "release": "v100.0.8",
+  "packageVersion": "1.0.8",
   "status": "formal",
   "deployment": {
     "frontend": "cloudflare-pages",
@@ -19,9 +19,8 @@
     "monitoring": "v100"
   },
   "strategyComposition": {
-    "main": "v99_主預測靴內偏移去重版",
-    "side": "v100_主副訊號去重與8副牌階完整性版",
-    "rankLedger": "durable_eight_deck_exact_rank_ledger",
-    "historicalReadPredecessor": "v98"
+    "main": "主預測靴內偏移去重版",
+    "side": "主副訊號去重與8副牌階完整性版",
+    "rankLedger": "durable_eight_deck_exact_rank_ledger"
   }
 }

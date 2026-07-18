@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import * as runtimeConfig from '../src/runtime-config.js'
 import { BUILD_VERSION, publicBuildInfo, validateProductionConfig } from '../src/runtime-config.js'
 
-test('v098 production refuses startup unless all worker security and push settings exist', () => {
+test('production refuses startup unless all worker security and push settings exist', () => {
   assert.throws(
     () => validateProductionConfig({ NODE_ENV: 'production' }),
     /WORKER_ADMIN_KEY, INGEST_KEY, PUSH_TARGET_URL/,

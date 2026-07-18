@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildDisplayedBigRoad, buildMtBigRoad, buildRealCardBigRoad } from './realCardRoad'
 
-describe('v098.19 authoritative MT big road', () => {
+describe('authoritative MT big road', () => {
   it('decodes exact MT columns, winner points, and tie slashes without rebuilding layout', () => {
     expect(buildMtBigRoad('0901,1601#0822,0702')).toEqual([
       { code: '0901', outcome: 'player', point: 9, row: 0, column: 0, hasTie: false },
@@ -18,7 +18,7 @@ describe('v098.19 authoritative MT big road', () => {
   })
 })
 
-describe('v098.18 real-card big road', () => {
+describe('real-card big road', () => {
   const rounds = [
     { round: 1, result: 'player' as const, bankerPoint: 2, playerPoint: 8 },
     { round: 2, result: 'player' as const, bankerPoint: 3, playerPoint: 7 },

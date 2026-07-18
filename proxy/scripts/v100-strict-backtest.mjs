@@ -1,8 +1,8 @@
 import fs from 'node:fs'
 import crypto from 'node:crypto'
 import {
-  buildV100SideShadowActions,
-  calculateV100SidePredictionShadow,
+  buildV100SideActions,
+  calculateV100SidePrediction,
 } from '../src/supabase-writer.js'
 import {
   buildStrictTemporalRankState,
@@ -73,20 +73,19 @@ function reconstructMain(row) {
 
 const prepared = []
 let baselineMainMismatches = 0
-let v99MainChanges = 0
+let formalMainChanges = 0
 for (const row of rows) {
   const main = reconstructMain(row)
   if (main.baseline !== row.predicted_result) baselineMainMismatches += 1
-  if (main.candidate !== row.predicted_result) v99MainChanges += 1
+  if (main.candidate !== row.predicted_result) formalMainChanges += 1
   const temporalRank = buildStrictTemporalRankState(row, eventsByIdentity.get(identityKey(row)) ?? [])
   const table = reconstructV100BacktestTable(row)
   if (temporalRank) table.v100RankLedger = temporalRank
-  const side = calculateV100SidePredictionShadow({
+  const side = calculateV100SidePrediction({
     table,
     rankAvailable: Boolean(temporalRank),
     rankFallback: 'renormalize',
     mainPrediction: main.candidate,
-    v98SidePredictions: row.prediction_features.side_predictions,
   })
   prepared.push({
     id: row.id,
@@ -98,7 +97,7 @@ for (const row of rows) {
     baselineActions: row.prediction_features.side_actions,
   })
 }
-if (baselineMainMismatches !== 0) throw new Error(`v98 main reconstruction mismatch: ${baselineMainMismatches}`)
+if (baselineMainMismatches !== 0) throw new Error(`baseline main reconstruction mismatch: ${baselineMainMismatches}`)
 
 const splitIndex = Math.floor(prepared.length * 0.70)
 const train = prepared.slice(0, splitIndex)
@@ -111,7 +110,7 @@ function evaluate(items) {
   for (const item of items) {
     rankAvailable += Number(item.rankAvailable)
     const predictions = Object.fromEntries(targets.map((key) => [key, clamp(Number(item.raw[key]) + Number(offsets[key] ?? 0))]))
-    const actions = buildV100SideShadowActions(predictions, item.main)
+    const actions = buildV100SideActions(predictions, item.main)
     for (const key of targets) {
       const target = stats[key]
       const actual = Boolean(item.actual?.[key])
@@ -166,7 +165,7 @@ const report = {
   fallback: 'renormalize',
   temporalRankRule: 'all rounds 1..target-1 must have received_at <= prediction.created_at',
   baselineMainMismatches,
-  v99MainChanges,
+  formalMainChanges,
   calibration,
   all: evaluate(prepared),
   train: evaluate(train),
@@ -175,4 +174,4 @@ const report = {
 fs.writeFileSync(outputPath, JSON.stringify(report, null, 2))
 const calibrationPath = outputPath.replace(/\.json$/i, '-calibration.json')
 fs.writeFileSync(calibrationPath, JSON.stringify(calibration, null, 2))
-console.log(JSON.stringify({ outputPath, calibrationPath, baselineMainMismatches, v99MainChanges, strictRankAvailable: report.all.rankAvailable, offsets, holdout: report.holdout }, null, 2))
+console.log(JSON.stringify({ outputPath, calibrationPath, baselineMainMismatches, formalMainChanges, strictRankAvailable: report.all.rankAvailable, offsets, holdout: report.holdout }, null, 2))

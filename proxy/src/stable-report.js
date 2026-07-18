@@ -16,7 +16,7 @@ export const SIDE_PREDICTION_THRESHOLDS = FORMAL_SIDE_PREDICTION_THRESHOLDS
 
 export const MAIN_ACTION_CONFIDENCE_THRESHOLD = 30
 
-export const LEGACY_REPORT_MAIN_WEIGHTS = {
+export const REPORT_MAIN_WEIGHTS = {
   shoeRoad: 0.30,
   askRoad: 0.18,
   recentTrend: 0.17,
@@ -26,7 +26,7 @@ export const LEGACY_REPORT_MAIN_WEIGHTS = {
 }
 
 export const FORMAL_MAIN_PREDICTION_WEIGHTS = ALL_MT_EQUAL_MAIN_WEIGHTS
-export const MAIN_PREDICTION_WEIGHTS = LEGACY_REPORT_MAIN_WEIGHTS
+export const MAIN_PREDICTION_WEIGHTS = REPORT_MAIN_WEIGHTS
 const SAVED_SIDE_KEYS = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
 
 export function buildStableReportFromRows(rows = []) {
@@ -206,7 +206,7 @@ export function createStableReportSession({ targetTableCount = 9, startedAt = ne
         lastPrediction: null,
         lastConfidence: null,
         lastPointText: null,
-        predictionWeights: { ...FORMAL_MAIN_PREDICTION_WEIGHTS, ...LEGACY_REPORT_MAIN_WEIGHTS },
+        predictionWeights: { ...FORMAL_MAIN_PREDICTION_WEIGHTS, ...REPORT_MAIN_WEIGHTS },
         sourceScores: {},
         patterns: detectRoadTrends([]),
         performanceTracker: createTablePerformanceTracker(),
@@ -269,7 +269,7 @@ export function createStableReportSession({ targetTableCount = 9, startedAt = ne
             item.lastSidePredictions = structuredClone(pending.sidePredictions)
             item.lastSideActions = structuredClone(pending.sideActions)
             const reportPrediction = pending.reportPrediction
-            item.predictionWeights = reportPrediction?.weights ?? { ...FORMAL_MAIN_PREDICTION_WEIGHTS, ...LEGACY_REPORT_MAIN_WEIGHTS }
+            item.predictionWeights = reportPrediction?.weights ?? { ...FORMAL_MAIN_PREDICTION_WEIGHTS, ...REPORT_MAIN_WEIGHTS }
             item.sourceScores = reportPrediction?.sourceScores ?? pending.scoreTotals ?? {}
             item.patterns = reportPrediction?.patterns ?? item.patterns
             item.cardShoeFeatures = reportPrediction?.cardShoeFeatures ?? item.cardShoeFeatures
@@ -355,15 +355,15 @@ export function createStableReportSession({ targetTableCount = 9, startedAt = ne
       }, { rounds: 0, hits: 0, misses: 0, pushes: 0, mainEvaluated: 0, sideLearningSamples: 0, sideActions: 0, sideHits: 0 })
       const strategyAdjustmentSummary = summarizeStrategyAdjustmentStats(reportTables)
       return {
-        version: '037',
-        title: 'Draven v037 策略調整成效統計與AB追蹤報表',
+        version: '100',
+        title: '瑞文AI百家策略調整成效統計與AB追蹤報表',
         startedAt,
         endedAt,
         lastSnapshotAt,
         targetTableCount,
         sidePredictionThresholds: SIDE_PREDICTION_THRESHOLDS,
         mainPredictionWeights: FORMAL_MAIN_PREDICTION_WEIGHTS,
-        legacyMainPredictionWeights: LEGACY_REPORT_MAIN_WEIGHTS,
+        reportMainPredictionWeights: REPORT_MAIN_WEIGHTS,
         displayOnly: { main: '主副預測命中率', hideSourceWeightHitRates: true },
         status: {
           connected: lastStatus.connected === true,
@@ -465,20 +465,20 @@ export function evaluateFiveRoadPrediction(table = {}, { globalStats = null, tab
     auxiliaryRoads,
     beadRoad: directionalScore(bead),
   }
-  const totalScore = combineWeightedScores(sourceScores, LEGACY_REPORT_MAIN_WEIGHTS)
+  const totalScore = combineWeightedScores(sourceScores, REPORT_MAIN_WEIGHTS)
   const rawMain = totalScore.banker >= totalScore.player ? '莊' : '閒'
   const strategyAdjustment = buildV036StrategyAdjustment(rawMain, performance, totalScore)
   const main = strategyAdjustment.adjustedMain
   const difference = Math.abs(totalScore.banker - totalScore.player)
-  const rawConfidence = difference < 1e-9 ? 30 : calculateConservativeMainConfidence(sourceScores, LEGACY_REPORT_MAIN_WEIGHTS)
+  const rawConfidence = difference < 1e-9 ? 30 : calculateConservativeMainConfidence(sourceScores, REPORT_MAIN_WEIGHTS)
   const confidenceCalibration = calibrateConfidenceForTablePerformance(rawConfidence, performance, strategyAdjustment)
   const confidence = confidenceCalibration.finalConfidence
   return {
     main,
     confidence,
-    weights: LEGACY_REPORT_MAIN_WEIGHTS,
+    weights: REPORT_MAIN_WEIGHTS,
     sourceScores,
-    weightAblation: buildWeightAblation(sourceScores, LEGACY_REPORT_MAIN_WEIGHTS, totalScore),
+    weightAblation: buildWeightAblation(sourceScores, REPORT_MAIN_WEIGHTS, totalScore),
     confidenceCalibration,
     strategyAdjustment,
     cardShoeFeatures: cardShoe.features,
@@ -655,11 +655,11 @@ function calibrateConfidenceForTablePerformance(confidence, performance, strateg
   if (strategyAdjustment?.mode === 'reverse-correction') {
     const cap = currentMissStreak >= 3 || (windowSize >= 5 && hitRate < 40) ? 40 : 55
     finalConfidence = clamp(Math.min(confidence - 18, cap), 30, cap)
-    reason = 'v036-reverse-correction-cap'
+    reason = 'reverse-correction-cap'
   } else if (strategyAdjustment?.mode === 'weak-table-deweight') {
     const cap = currentMissStreak >= 3 || (windowSize >= 5 && hitRate < 40) ? 40 : 46
     finalConfidence = clamp(Math.min(confidence - 14, cap), 30, cap)
-    reason = 'v036-weak-table-deweight-cap'
+    reason = 'weak-table-deweight-cap'
   } else if (currentMissStreak >= 3 || (windowSize >= 5 && hitRate < 40)) {
     finalConfidence = clamp(Math.min(confidence - 20, 40), 30, 40)
     reason = currentMissStreak >= 3 ? 'three-miss-cap' : 'very-low-hit-rate-cap'
@@ -668,7 +668,7 @@ function calibrateConfidenceForTablePerformance(confidence, performance, strateg
     reason = 'low-table-cap'
   } else if (strategyAdjustment?.mode === 'strong-table-boost' || tier === 'strong') {
     finalConfidence = clamp(confidence + 4, 30, 70)
-    reason = 'v036-strong-table-conservative-boost'
+    reason = 'strong-table-conservative-boost'
   }
   return { rawConfidence: confidence, finalConfidence, reason, tier, hitRate, currentMissStreak, windowSize, strategyMode: strategyAdjustment?.mode ?? 'normal' }
 }

@@ -1,109 +1,46 @@
-# Draven_代理_版本_001_MT資料代理伺服器測試
+# 瑞文AI百家 Proxy v100.0.8
 
-這是 MT 百家資料代理伺服器的第一個測試版本，放在哥指定的桌面資料夾：
+正式Proxy負責接收GCP台灣Worker的MT真牌Push、維護v100牌階Ledger、發行不可變預測、Final結算、授權及向Frontend提供API。
 
-```text
-C:\Users\童威仁\Desktop\百家AI軟體\Draven_代理_版本_001_MT資料代理伺服器測試
-```
-
-## 目的
+## 正式入口
 
 ```text
-MT百家 WebSocket
-  ↓
-Draven 代理伺服器
-  ↓
-整理成統一桌台資料
-  ↓
-提供 API 給後台 / 前台讀取
+GET  /health
+GET  /api/status
+GET  /api/tables
+POST /api/cloud-ingest/snapshot
 ```
 
-## 目前 v001 已完成
+Worker Push必須通過：
 
-- 建立 MT 驗證封包。
-- 建立 MT 桌台資料請求封包。
-- 正規化 BAC / BAS 百家桌台資料。
-- 建立記憶體狀態中心。
-- 建立本機 HTTP API。
-- 建立測試模式啟動檔。
-- 建立連線模式啟動檔。
-- 不把 MT_TOKEN 寫進 Git。
+- `WORKER_INGEST_KEY`
+- `protocolVersion=v100`
+- `buildVersion=100`
+- 核准10桌Allowlist
+- Exact round keys與Final schema
+- Durable DB write及精確ACK
 
-## 啟動測試模式
+## v100 Runtime
 
-雙擊：
+- 主策略：主預測靴內偏移去重版
+- 副策略：主副訊號去重與8副牌階完整性版
+- 固定8副牌牌階Ledger
+- 正式策略身份：`v100`
+- `V100_RELEASE_ENABLED=true`才啟用正式Runtime
 
-```text
-啟動代理伺服器_測試模式.bat
-```
+## 安全
 
-測試模式不會連接 MT，只會啟動本機 API。
+- Supabase Public函式只允許`service_role`執行。
+- Secret不得寫入Frontend、Git、Log或Report。
+- 未確認Final不得結算或ACK。
+- 缺少策略、Ledger、身份或Durable ACK時fail closed。
 
-## API
-
-| 用途 | URL |
-|---|---|
-| 健康檢查 | `http://127.0.0.1:8787/health` |
-| 資料來源狀態 | `http://127.0.0.1:8787/api/status` |
-| 桌台資料 | `http://127.0.0.1:8787/api/tables` |
-| 完整快照 | `http://127.0.0.1:8787/api/snapshot` |
-
-## 連線模式
-
-連線模式需要先設定環境變數：
-
-```bat
-set MT_TOKEN=你的MT_TOKEN
-```
-
-再雙擊：
-
-```text
-啟動代理伺服器_連線模式.bat
-```
-
-## 測試
+## 開發驗證
 
 ```bash
-npm.cmd test
+npm ci
+npm test
+node ../scripts/verify-v100-release.mjs
 ```
 
-目前測試內容：
-
-- MT 驗證封包。
-- MT 桌台請求封包。
-- MT 桌台資料正規化。
-- 代理狀態中心。
-- HTTP API。
-
-## Token 會變動的影響
-
-目前哥發現 MT 網址的 token 每次登入可能不同，這會有影響：
-
-- token 若過期或換新，代理伺服器會無法驗證資料來源。
-- token 不能寫死在前台，也不能提交到 Git。
-- v001 先支援把 token 放在本機 `.env` 或環境變數 `MT_TOKEN`。
-- 後續正式版建議做「後台更新 token」或「自動登入/自動刷新 token」流程。
-
-## 本次實測狀態
-
-使用哥提供的新 token 啟動代理後，本機 API 可以正常啟動：
-
-```text
-/health 正常回應
-/api/status 正常回應
-```
-
-但 MT WebSocket 目前回傳：
-
-```text
-Unexpected server response: 403
-```
-
-代表目前來源站拒絕 WebSocket 連線；原因可能是 token 已失效、來源站限制 IP/地區、需要瀏覽器 session/cookie，或需要更完整的登入流程。v001 已把狀態寫到 `/api/status`，方便後台之後顯示。
-
-## 注意
-
-- 這版是伺服器測試版，還沒有接到正式後台 UI。
-- 下一版可以把 `/admin` 改成讀取此代理 API 狀態。
-- MT token 只能放後端環境變數，不能放前台。
+部署與E2E標準見`deploy/DEPLOYMENT.md`。

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { setImmediate } from 'node:timers/promises'
 import { createApp } from '../src/server.js'
 
-test('v098.19 strict real-card mode persists only verified final summary cards', async () => {
+test('strict real-card mode persists only verified final summary cards', async () => {
   const previous = process.env.REQUIRE_REAL_CARD_ROUNDS
   process.env.REQUIRE_REAL_CARD_ROUNDS = 'true'
   const persisted = []

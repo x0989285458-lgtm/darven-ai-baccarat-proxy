@@ -100,7 +100,7 @@ test('same-session concurrent sequences are serialized and never regress or rewr
 
 test('v100 rank-ledger failure returns 503 without accepting the worker sequence', async () => {
   const app = createTestApp({
-    v100ShadowRuntime: { enabled: true, async processSnapshot() { throw new Error('rank ledger unavailable') } },
+    v100FormalRuntime: { enabled: true, async processSnapshot() { throw new Error('rank ledger unavailable') } },
     supabaseClient: { configured: true, writeCloudTableSnapshot: async () => assert.fail('must not write') },
   })
   const response = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': key }, body: body() })
@@ -111,13 +111,13 @@ test('v100 rank-ledger failure returns 503 without accepting the worker sequence
 test('v100 runtime mounts durable rank data before formal table state', async () => {
   const calls = []
   const app = createTestApp({
-    v100ShadowRuntime: {
+    v100FormalRuntime: {
       enabled: true,
       processSnapshot: async ({ tables, rounds }) => {
         calls.push(['shadow', tables[0].tableId, rounds.length, app.state.snapshot().tables.length])
         return {
           enabled: true,
-          shadows: [],
+          predictions: [],
           tables: [{ ...tables[0], v100RankLedger: { status: 'contiguous', rankDataAvailable: true } }],
         }
       },
@@ -130,7 +130,7 @@ test('v100 runtime mounts durable rank data before formal table state', async ()
   assert.equal(app.state.snapshot().tables[0].v100RankLedger.rankDataAvailable, true)
 })
 
-test('v098.19 cloud ingest rejects an exact-looking provisional show_poker before any durable write', async () => {
+test('cloud ingest rejects an exact-looking provisional show_poker before any durable write', async () => {
   const writes = []
   const provisional = {
     tableId: 'BAG01', shoe: 14509, round: 7, winner: 'player',

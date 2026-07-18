@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { createRecentTablePerformanceStore } from '../src/recent-table-performance.js'
 import { createApp } from '../src/server.js'
 
-test('v098.11 hydrates and updates an 18-round settled real-card performance window per table', () => {
+test('hydrates and updates an 18-round settled real-card performance window per table', () => {
   const store = createRecentTablePerformanceStore({ windowSize: 18 })
   const rows = Array.from({ length: 22 }, (_, index) => ({
     table_id: 'BAG01', shoe_no: '1', round_no: index + 1,
@@ -26,13 +26,13 @@ test('v098.11 hydrates and updates an 18-round settled real-card performance win
   assert.equal(store.summary('BAG01').recentHitRate < 2 / 3, true)
 })
 
-test('v098.11 returns an unavailable summary before a table has settled banker/player rows', () => {
+test('returns an unavailable summary before a table has settled banker/player rows', () => {
   const store = createRecentTablePerformanceStore()
   store.hydrate([{ table_id: 'BAG02', shoe_no: '1', round_no: 1, predicted_result: 'banker', actual_result: 'tie' }])
   assert.deepEqual(store.summary('BAG02'), { recentHitRate: null, recentPredictionCount: 0, source: 'settled_real_card_window' })
 })
 
-test('v098.11 proxy warms settled performance before creating a live prediction', async (t) => {
+test('proxy warms settled performance before creating a live prediction', async (t) => {
   const rows = Array.from({ length: 18 }, (_, index) => ({
     table_id: 'BAG01', shoe_no: '7', round_no: index + 1,
     strategy_version: 'v097_副預測命中校準與門檻降5版', predicted_result: 'banker',

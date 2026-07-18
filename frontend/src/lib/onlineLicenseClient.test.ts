@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { agentLogin, createOnlineLicense, deleteOnlineLicense, extendOnlineLicense, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, validateMemberSession } from './onlineLicenseClient'
 
-describe('onlineLicenseClient v030', () => {
+describe('onlineLicenseClient ', () => {
   it('posts member login using memberAccount and verificationPassword', async () => {
     const fetchImpl = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) })) as unknown as typeof fetch
     const result = await memberLogin({ memberAccount: 'User001', verificationPassword: 'DVAI1788_001' }, fetchImpl)
@@ -58,7 +58,7 @@ describe('onlineLicenseClient v030', () => {
     expect((fetchImpl as any).mock.calls[0][1]).toEqual(expect.objectContaining({ method: 'POST' }))
   })
 
-  it('v031 posts suspend extend and delete license operations with DV1788 admin permission', async () => {
+  it('posts suspend extend and delete license operations with DV1788 admin permission', async () => {
     const fetchImpl = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, row: { code: 'DVAI1788_001' } }) })) as unknown as typeof fetch
     await setOnlineLicenseStatus({ code: 'DVAI1788_001', status: 'suspended', adminSessionToken: 'session-1' }, fetchImpl)
     await extendOnlineLicense({ code: 'DVAI1788_001', days: 15, adminSessionToken: 'session-1' }, fetchImpl)

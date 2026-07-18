@@ -22,14 +22,14 @@ test('builds baccarat tables request packet for game type 3 room 1', () => {
   })
 })
 
-test('v002 builds member/me packet with Traditional Chinese language', () => {
+test('builds member/me packet with Traditional Chinese language', () => {
   assert.deepEqual(buildMemberMePacket(), {
     method: 'POST',
     action: { name: '/api/v1/member/me', lang: 'zhtw' },
   })
 })
 
-test('v002 builds 5-second heartbeat ping packet', () => {
+test('builds 5-second heartbeat ping packet', () => {
   assert.deepEqual(buildPingPacket(), {
     method: 'POST',
     action: { name: '/api/v1/ping' },

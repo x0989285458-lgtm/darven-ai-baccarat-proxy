@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createSnapshotPusher } from '../src/snapshot-pusher.js'
 
-test('v100 migration restamps a retained v098 snapshot so an empty head cannot block the v100 FIFO', async (t) => {
+test('v100 migration restamps a retained snapshot so an empty head cannot block the v100 FIFO', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-v100-build-migration-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
@@ -51,7 +51,7 @@ test('v100 migration restamps a retained v098 snapshot so an empty head cannot b
   await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
 })
 
-test('v098.17 pusher sanitizes tables and rounds before durable queue persistence', async (t) => {
+test('pusher sanitizes tables and rounds before durable queue persistence', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const sent = []
@@ -76,7 +76,7 @@ test('v098.17 pusher sanitizes tables and rounds before durable queue persistenc
   }
 })
 
-test('v098.19 seeds v3 observed identities from retained verified-final v2 queue entries', async (t) => {
+test('seeds v3 observed identities from retained verified-final v2 queue entries', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-final-cursor-migration-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
@@ -111,7 +111,7 @@ test('v098.19 seeds v3 observed identities from retained verified-final v2 queue
   assert.deepEqual(queued.entries.flatMap((entry) => entry.roundKeys), [key])
 })
 
-test('v098.19 migrates a provisional v2 queue head and observed-only cursor so the same-identity final can ACK', async (t) => {
+test('migrates a provisional v2 queue head and observed-only cursor so the same-identity final can ACK', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-final-migration-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
@@ -153,7 +153,7 @@ test('v098.19 migrates a provisional v2 queue head and observed-only cursor so t
   assert.deepEqual(cursor.acknowledgedRoundKeys, [key])
 })
 
-test('v098.17 pusher sanitizes legacy restored queue envelopes before replay', async (t) => {
+test('pusher sanitizes legacy restored queue envelopes before replay', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')

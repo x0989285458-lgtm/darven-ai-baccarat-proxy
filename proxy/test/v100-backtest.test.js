@@ -5,7 +5,7 @@ import {
   deriveTrainOnlyCalibrationOffsets,
   reconstructV100BacktestTable,
 } from '../src/v100-backtest.js'
-import { calculateV100SidePredictionShadow } from '../src/supabase-writer.js'
+import { calculateV100SidePrediction } from '../src/supabase-writer.js'
 
 const FINAL = '/api/v1/gametype/*/game/*/room/*/table/*/summary'
 
@@ -19,7 +19,7 @@ test('backtest table uses the product bead-road pair fallback when persisted pai
     },
   }
   const table = reconstructV100BacktestTable(row)
-  const scored = calculateV100SidePredictionShadow({
+  const scored = calculateV100SidePrediction({
     table,
     rankAvailable: false,
     rankFallback: 'renormalize',

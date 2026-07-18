@@ -15,6 +15,6 @@
     "bankerDragon": 0,
     "playerDragon": 0
   },
-  "activationEligible": false,
-  "activationBlockReason": "prospective_shadow_validation_required"
+  "activationEligible": true,
+  "activationBlockReason": null
 }

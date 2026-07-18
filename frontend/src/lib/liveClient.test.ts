@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fetchTableUiHistory, LiveRoadClient, isLiveTableStale } from './liveClient'
 
-describe('LiveRoadClient v032 status messages', () => {
+describe('LiveRoadClient status messages', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
-  it('v098.18 fetches one table ui-history with bearer auth and exposes 401/503 fail-closed status', async () => {
+  it('fetches one table ui-history with bearer auth and exposes 401/503 fail-closed status', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({
         ok: true,
@@ -63,7 +63,7 @@ describe('LiveRoadClient v032 status messages', () => {
     expect(statuses.some((status) => status.message === 'MT已驗證，等待桌況資料…')).toBe(true)
   })
 
-  it('surfaces proxy v033 capture source statusText when available', async () => {
+  it('surfaces proxy capture source statusText when available', async () => {
     vi.useFakeTimers()
     const statuses: Array<{ state: string; message: string }> = []
     vi.stubGlobal('fetch', vi.fn((url: string) => {
@@ -118,7 +118,7 @@ describe('LiveRoadClient v032 status messages', () => {
     })
   })
 
-  it('v093 marks source-updated tables as stale after the allowed live window', () => {
+  it('marks source-updated tables as stale after the allowed live window', () => {
     const now = Date.parse('2026-07-11T10:00:00.000Z')
     expect(isLiveTableStale({ sourceUpdatedAt: '2026-07-11T09:59:20.000Z' }, now, 60000)).toBe(false)
     expect(isLiveTableStale({ sourceUpdatedAt: '2026-07-11T09:58:00.000Z' }, now, 60000)).toBe(true)
@@ -126,7 +126,7 @@ describe('LiveRoadClient v032 status messages', () => {
     expect(isLiveTableStale({ sourceUpdatedAt: 'not-a-date' }, now, 60000)).toBe(true)
   })
 
-  it('v098.21 preserves accepted tables when a partial response omits them', async () => {
+  it('preserves accepted tables when a partial response omits them', async () => {
     vi.useFakeTimers()
     const received: any[][] = []
     let tableCalls = 0
@@ -174,7 +174,7 @@ describe('LiveRoadClient v032 status messages', () => {
     expect(statuses.at(-1)?.message).toMatch(/stale|過期/i)
   })
 
-  it('v093 throttles backup polling while SSE heartbeat is fresh', async () => {
+  it('throttles backup polling while SSE heartbeat is fresh', async () => {
     vi.useFakeTimers()
     let streamController: ReadableStreamDefaultController<Uint8Array>
     const fetchMock = vi.fn((url: string) => {
@@ -203,7 +203,7 @@ describe('LiveRoadClient v032 status messages', () => {
     expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/tables'))).toHaveLength(0)
   })
 
-  it('v098.21 retains the first durable prediction when equal-time same-id content conflicts', async () => {
+  it('retains the first durable prediction when equal-time same-id content conflicts', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-16T01:00:30.000Z'))
     const received: any[][] = []
@@ -250,7 +250,7 @@ describe('LiveRoadClient v032 status messages', () => {
     expect(received.at(-1)?.[0].dealerName).toBe('原始荷官')
   })
 
-  it('v098.21 prunes omitted tables by each table TTL without clearing fresh peers or changing order', () => {
+  it('prunes omitted tables by each table TTL without clearing fresh peers or changing order', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-16T01:00:00.000Z'))
     const received: any[][] = []

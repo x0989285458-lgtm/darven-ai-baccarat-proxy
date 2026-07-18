@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { resolveDravenApiBaseUrl } from './apiBase'
 
-describe('v038 cloud/local API base resolver', () => {
+describe('cloud/local API base resolver', () => {
   it('uses local API by default for development fallback', () => {
     expect(resolveDravenApiBaseUrl({})).toBe('http://127.0.0.1:8787')
   })
