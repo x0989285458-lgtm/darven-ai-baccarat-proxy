@@ -1000,7 +1000,7 @@ describe('AI百家預測軟體', () => {
     expect(screen.getByRole('heading', { name: '瑞文AI百家預測' })).toBeVisible()
     expect(loginRegion).toHaveClass('member-login-card')
     expect(loginRegion.querySelector('.login-header')).toBeInTheDocument()
-    expect(within(loginRegion).getByText('瑞', { selector: '.login-seal' })).toBeVisible()
+    expect(loginRegion.querySelector('.login-seal')).not.toBeInTheDocument()
     expect(within(loginRegion).getByText('登入會員決策中心，查看即時桌台、預測與路單資訊。')).toBeVisible()
     expect(loginRegion.querySelector('.login-fields')).toBeInTheDocument()
     expect(loginRegion.querySelectorAll('.login-field-row')).toHaveLength(2)

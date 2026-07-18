@@ -2056,7 +2056,7 @@ body,
 
 .member-login-shell .login-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 18px;
   align-items: flex-start;
   margin-bottom: 14px;
@@ -2078,19 +2078,6 @@ body,
   line-height: 1.15 !important;
   letter-spacing: .06em;
   transform: none;
-}
-
-.member-login-shell .login-seal {
-  flex: 0 0 42px;
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(201, 168, 95, .48);
-  border-radius: 50%;
-  color: #d6b96e;
-  background: #081625;
-  font: 700 18px Georgia, serif;
 }
 
 .member-login-shell .login-intro {

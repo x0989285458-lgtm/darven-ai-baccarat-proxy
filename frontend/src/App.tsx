@@ -439,7 +439,6 @@ function LoginApp() {
           <p className="login-eyebrow">AI BACCARAT INTELLIGENCE</p>
           <h1>瑞文AI百家預測</h1>
         </div>
-        <span className="login-seal" aria-hidden="true">瑞</span>
       </div>
       <p className="login-intro">登入會員決策中心，查看即時桌台、預測與路單資訊。</p>
       <div className="login-fields">
