@@ -417,14 +417,24 @@ function LoginApp() {
     }
   }
   return <main className="login-shell" data-ui-theme="navy-gold">
-    <section className="login-card" aria-label="前台登入驗證">
+    <section className="login-card member-login-card" aria-label="前台登入驗證">
       <span className="login-eyebrow">瑞文AI智能預測</span>
       <h1>瑞文AI百家預測</h1>
-      <div className="login-chip">前台登入驗證</div>
-      <input aria-label="會員帳號" placeholder="請輸入會員帳號" value={memberAccount} onChange={(event) => setMemberAccount(event.target.value)} />
-      <input aria-label="驗證密碼" placeholder="請輸入驗證密碼" type="password" value={verificationPassword} onChange={(event) => setVerificationPassword(event.target.value)} />
+      <div className="login-title-divider" aria-hidden="true"><span /></div>
+      <label className="login-field-row">
+        <span className="login-field-icon account-icon" aria-hidden="true" />
+        <span className="login-field-label">會員帳號</span>
+        <input aria-label="會員帳號" placeholder="請輸入會員帳號" value={memberAccount} onChange={(event) => setMemberAccount(event.target.value)} />
+      </label>
+      <label className="login-field-row">
+        <span className="login-field-icon lock-icon" aria-hidden="true" />
+        <span className="login-field-label">驗證密碼</span>
+        <input aria-label="驗證密碼" placeholder="請輸入驗證密碼" type="password" value={verificationPassword} onChange={(event) => setVerificationPassword(event.target.value)} />
+        <span className="login-field-trailing" aria-hidden="true" />
+      </label>
       <button onClick={submitLogin}>會員登入</button>
-      <em className={coreStatus.maintenanceMode ? 'system-status maintenance' : 'system-status normal'}>{loginMessage || (coreStatus.maintenanceMode ? '系統維護中' : '系統正常')}</em>
+      <em className={coreStatus.maintenanceMode ? 'system-status maintenance' : 'system-status normal'}><span className="status-dot" aria-hidden="true" />{loginMessage || (coreStatus.maintenanceMode ? '系統維護中' : '系統正常')}</em>
+      <p className="login-security"><span aria-hidden="true">◇</span> 安全連線・資料加密</p>
     </section>
   </main>
 }
