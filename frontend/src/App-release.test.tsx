@@ -103,10 +103,9 @@ describe('frozen frontend release', () => {
     await renderMember()
     const table = await screen.findByRole('table', { name: '近十局預測紀錄' })
     await waitFor(() => {
-      const rows = Array.from(table.querySelectorAll('tr'))
-      expect(Array.from(rows[1].querySelectorAll('td')).map((node) => node.textContent)).toEqual(['莊', '和'])
-      expect(Array.from(rows[2].querySelectorAll('td')).map((node) => node.textContent)).toEqual(['和', '和'])
-      expect(Array.from(rows[3].querySelectorAll('td')).map((node) => node.textContent)).toEqual(['不計算', '命中'])
+      const rows = Array.from(table.querySelectorAll('tbody tr'))
+      expect(Array.from(rows[0].querySelectorAll('td')).map((node) => node.textContent)).toEqual(['第11局', '莊', '和', '不計算'])
+      expect(Array.from(rows[1].querySelectorAll('td')).map((node) => node.textContent)).toEqual(['第12局', '和', '和', '命中'])
     })
   })
 })

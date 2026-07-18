@@ -291,8 +291,8 @@ export default function App() {
 
   if (!displaySelected) return <WaitingForCloudData status={status} supabaseStatus={supabaseStatus} />
 
-  return <main className="app-shell" data-ui-theme="navy-gold">
-    <header className="topbar">
+  return <main className="app-shell member-dashboard" data-ui-theme="navy-gold">
+    <header className="topbar member-dashboard-header">
       <div className="brand" aria-label="主標題">
         <span className="eyebrow">瑞文AI智能預測</span>
         <h1>瑞文AI百家預測</h1>
@@ -300,7 +300,7 @@ export default function App() {
       <div className="header-meta"><span className={`status ${supabaseStatus.state}`} title={supabaseConfig.projectRef}>{supabaseStatus.message}</span>{staleNotice ? <span className="status stale" title={staleNotice} aria-label={staleNotice}>資料過期</span> : null}</div>
     </header>
     <div className="workspace">
-      <aside className="sidebar balanced-sidebar-line" aria-label="桌號與資料選擇">
+      <aside className="sidebar balanced-sidebar-line dashboard-sidebar" aria-label="桌號與資料選擇">
         <nav className="table-list" aria-label="桌號選擇">
           {visibleTables.map((table, index) => {
             const tableId = canonicalMemberTableId(table)
@@ -310,12 +310,13 @@ export default function App() {
           })}
         </nav>
       </aside>
-      <section className="content">
-        <div className="stats-grid" aria-label="統計資訊">
+      <section className="content dashboard-main">
+        <div className="stats-grid dashboard-stats-row" aria-label="統計資訊">
           <Stat title="閒" value={String(displaySelected.trend.total_round_player ?? 0)} tone="Player" />
           <Stat title="和" value={String(displaySelected.trend.total_round_tie ?? 0)} tone="Tie" />
           <Stat title="莊" value={String(displaySelected.trend.total_round_banker ?? 0)} tone="Banker" />
         </div>
+        <div className="dashboard-middle-grid">
         <section className="prediction-card" aria-label="AI預測結果">
           <h2 className="prediction-title">即時預測</h2>
           <div className="prediction-row side-prediction-row" aria-label="副項目預測機率">
@@ -333,9 +334,12 @@ export default function App() {
               <PredictionMetric title="莊" value={mainScorePercentages?.banker ?? null} tone="Banker" active={predictionsActionable && prediction.recommendation === 'Banker'} />
             </div>
           : null}
+        </section>
+        <section className="dashboard-history-panel" aria-label="近十局預測紀錄區">
           <PredictionHistoryTable history={tableUiHistory} />
         </section>
-        <div className="roads-grid single-road">
+        </div>
+        <div className="roads-grid single-road dashboard-road-region">
           <RoadCard title="大路" subtitle={<div className="road-counts" aria-label="大路莊閒局數"><span className="Banker">莊局數：{displaySelected.trend.total_round_banker ?? 0}</span><span className="Player">閒局數：{displaySelected.trend.total_round_player ?? 0}</span></div>}>
             <div className="big-road classic-road" aria-label="傳統大路">
               {bigRoad.map((cell) => <div style={{ gridColumn: cell.column + 1, gridRow: cell.row + 1 }} title={`${cell.outcome === 'banker' ? '莊' : '閒'} ${cell.point}點`} className={`big-cell ${cell.outcome === 'banker' ? 'Banker' : 'Player'} ${cell.hasTie ? 'tie-mark' : ''}`} key={`${selectedShoe}:${cell.column}:${cell.row}:${cell.code}`}><span>{cell.point}</span></div>)}
@@ -1123,14 +1127,19 @@ function PredictionHistoryTable({ history }: { history: TableUiHistory | null })
     <h2 className="prediction-history-title">近十局預測紀錄</h2>
     <div className="prediction-history-scroll">
       <table className="prediction-history" aria-label="近十局預測紀錄">
+      <thead>
+        <tr><th scope="col">局數</th><th scope="col">AI預測</th><th scope="col">實際開獎</th><th scope="col">結果</th></tr>
+      </thead>
       <tbody>
-        <tr><th scope="row">局數</th>{predictions.map((item) => <td key={`${shoe}:${item.round}:round`}>第{item.round}局</td>)}</tr>
-        <tr><th scope="row">AI預測</th>{predictions.map((item) => <td className={item.predictedResult} key={`${shoe}:${item.round}:prediction`}>{outcomeLabel[item.predictedResult]}</td>)}</tr>
-        <tr><th scope="row">實際開獎</th>{predictions.map((item) => <td className={item.actualResult} key={`${shoe}:${item.round}:actual`}>{outcomeLabel[item.actualResult]}</td>)}</tr>
-        <tr><th scope="row">結果</th>{predictions.map((item) => {
+        {predictions.map((item) => {
           const result = item.result ?? (item.isHit ? 'hit' : 'miss')
-          return <td className={result === 'uncalculated' ? 'uncalculated' : result} key={`${shoe}:${item.round}:hit`}>{result === 'uncalculated' ? '不計算' : result === 'hit' ? '命中' : '未中'}</td>
-        })}</tr>
+          return <tr key={`${shoe}:${item.round}`}>
+            <td>第{item.round}局</td>
+            <td className={item.predictedResult}>{outcomeLabel[item.predictedResult]}</td>
+            <td className={item.actualResult}>{outcomeLabel[item.actualResult]}</td>
+            <td className={result === 'uncalculated' ? 'uncalculated' : result}>{result === 'uncalculated' ? '不計算' : result === 'hit' ? '命中' : '未中'}</td>
+          </tr>
+        })}
       </tbody>
     </table>
     </div>

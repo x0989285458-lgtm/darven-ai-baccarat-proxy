@@ -40,4 +40,16 @@ describe('responsive history and road CSS', () => {
     expect(css).toMatch(/\.login-shell\[data-ui-theme='navy-gold'\]\s+\.member-login-card\s*\{[^}]*width:\s*32\.8vw[^}]*min-height:\s*33\.85vw/s)
     expect(css).not.toMatch(/\.member-login-card\s*\{[^}]*width:\s*clamp\(/s)
   })
+
+  it('lays out the approved member dashboard shell before functional relocation', () => {
+    expect(css).toMatch(/\.member-dashboard\s+\.workspace\s*\{[^}]*width:\s*100%[^}]*max-width:\s*none[^}]*grid-template-columns:\s*clamp\(210px,\s*17\.2vw,\s*280px\)\s+minmax\(0,\s*1fr\)/s)
+    expect(css).toMatch(/\.dashboard-main\s*\{[^}]*display:\s*grid[^}]*grid-template-rows:[^}]*min-height:\s*0[^}]*overflow:\s*hidden/s)
+    expect(css).toMatch(/\.dashboard-middle-grid\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*minmax\(0,\s*1\.08fr\)\s+minmax\(0,\s*\.92fr\)[^}]*overflow:\s*hidden/s)
+    expect(css).toMatch(/\.dashboard-stats-row\s+\.result-stat\s+strong\s*\{[^}]*font-size:\s*34px/s)
+    expect(css).toMatch(/\.dashboard-middle-grid\s+\.prediction-card\s*\{[^}]*align-content:\s*start/s)
+    expect(css).toMatch(/\.dashboard-middle-grid\s+\.side-prediction-row\s+\.prediction-metric\s*\{[^}]*min-height:\s*62px/s)
+    expect(css).toMatch(/\.dashboard-middle-grid\s+\.main-probability-row\s+\.prediction-metric\s*\{[^}]*min-height:\s*122px/s)
+    expect(css).toMatch(/\.dashboard-road-region\s+\.road-card\s*\{[^}]*min-height:\s*165px/s)
+    expect(css).toMatch(/@media\s*\(max-width:\s*900px\)[\s\S]*?\.member-dashboard\s+\.workspace\s*\{[^}]*grid-template-columns:\s*1fr/s)
+  })
 })

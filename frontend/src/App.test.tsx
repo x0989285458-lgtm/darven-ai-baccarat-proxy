@@ -224,12 +224,15 @@ describe('AI百家預測軟體', () => {
     expect(within(prediction).queryByText('AI預測:')).not.toBeInTheDocument()
   })
 
-  it('renders the current-shoe latest predictions as a fixed four-row B table', async () => {
+  it('renders the current-shoe latest predictions as the approved four-column history table', async () => {
     await renderApp()
     const history = await screen.findByLabelText('近十局預測紀錄')
     expect(screen.getByText('近十局預測紀錄')).toBeVisible()
-    const rowLabels = Array.from(history.querySelectorAll('tr > th:first-child')).map((node) => node.textContent)
-    expect(rowLabels).toEqual(['局數', 'AI預測', '實際開獎', '結果'])
+    const columnLabels = Array.from(history.querySelectorAll('thead th')).map((node) => node.textContent)
+    expect(columnLabels).toEqual(['局數', 'AI預測', '實際開獎', '結果'])
+    const rows = history.querySelectorAll('tbody tr')
+    expect(rows).toHaveLength(3)
+    expect(Array.from(rows).every((row) => row.querySelectorAll('td').length === 4)).toBe(true)
     expect(await within(history).findByText('第1局')).toBeInTheDocument()
     expect(within(history).getByText('第2局')).toBeInTheDocument()
     expect(within(history).getByText('第3局')).toBeInTheDocument()
@@ -984,6 +987,32 @@ describe('AI百家預測軟體', () => {
     expect(screen.queryByText('AI BACCARAT INTELLIGENCE')).not.toBeInTheDocument()
     expect(Array.from(screen.getByLabelText('副項目預測機率').querySelectorAll('.prediction-metric span')).map((node) => node.textContent)).toEqual(['閒龍寶', '閒對', '超六', '莊對', '莊龍寶'])
     expect(Array.from(screen.getByLabelText('莊閒預測機率').querySelectorAll('.prediction-metric span')).map((node) => node.textContent)).toEqual(['閒', '和', '莊'])
+  })
+
+  it('renders the approved dashboard region hierarchy before functional relocation', async () => {
+    await renderApp()
+
+    const dashboard = document.querySelector('main.member-dashboard')
+    expect(dashboard).toBeInTheDocument()
+    expect(dashboard?.querySelector('.member-dashboard-header')).toBeInTheDocument()
+    expect(dashboard?.querySelector('.dashboard-sidebar')).toBeInTheDocument()
+    expect(dashboard?.querySelector('.dashboard-main')).toBeInTheDocument()
+    expect(dashboard?.querySelector('.dashboard-stats-row')).toBeInTheDocument()
+    expect(dashboard?.querySelector('.dashboard-middle-grid')).toBeInTheDocument()
+    expect(dashboard?.querySelector('.dashboard-road-region')).toBeInTheDocument()
+  })
+
+  it('relocates existing prediction history into the approved right panel without duplicating it', async () => {
+    await renderApp()
+
+    const middle = document.querySelector('.dashboard-middle-grid')
+    const prediction = screen.getByLabelText('AI預測結果')
+    const historyPanel = screen.getByLabelText('近十局預測紀錄區')
+    expect(middle?.children[0]).toBe(prediction)
+    expect(middle?.children[1]).toBe(historyPanel)
+    expect(prediction.querySelector('.prediction-history-block')).not.toBeInTheDocument()
+    expect(historyPanel.querySelectorAll('.prediction-history-block')).toHaveLength(1)
+    expect(document.querySelectorAll('.prediction-history-block')).toHaveLength(1)
   })
 
   it('admin login calls online license API and enters backend dashboard after success', async () => {
