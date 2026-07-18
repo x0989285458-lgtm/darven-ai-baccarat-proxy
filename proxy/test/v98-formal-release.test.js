@@ -41,7 +41,7 @@ test('v100 formal runtime exposes the exact release identity, approved main weig
   assert.equal(health.buildVersion, 'v100')
 })
 
-test('v98 history derives tie display only from complete persisted tie action/hit evidence and includes the compatible predecessor', async () => {
+test('v100 history derives tie display only from complete persisted v100 evidence and rejects predecessors', async () => {
   const requests = []
   const rows = [
     {
@@ -55,12 +55,12 @@ test('v98 history derives tie display only from complete persisted tie action/hi
       side_hits: { tie: false }, prediction_features: { prediction_timing: 'pre_result_context', side_actions: { tie: false }, side_hits: { tie: false } },
     },
     {
-      id: 'tie-action', table_id: 'BAG01', shoe_no: '88', round_no: 12, strategy_version: 'v98',
+      id: 'tie-action', table_id: 'BAG01', shoe_no: '88', round_no: 12, strategy_version: 'v100',
       predicted_result: 'player', actual_result: 'tie', is_hit: false, settlement_final: true,
       side_hits: { tie: true }, prediction_features: { prediction_timing: 'pre_result_context', side_actions: { tie: true }, side_hits: { tie: true } },
     },
     {
-      id: 'tie-no-action', table_id: 'BAG01', shoe_no: '88', round_no: 11, strategy_version: 'v98',
+      id: 'tie-no-action', table_id: 'BAG01', shoe_no: '88', round_no: 11, strategy_version: 'v100',
       predicted_result: 'banker', actual_result: 'tie', is_hit: false, settlement_final: true,
       side_hits: { tie: false }, prediction_features: { prediction_timing: 'pre_result_context', side_actions: { tie: false }, side_hits: { tie: false } },
     },
@@ -76,7 +76,7 @@ test('v98 history derives tie display only from complete persisted tie action/hi
   })
 
   const history = await client.getTableUiSettledPredictions({ tableId: 'BAG01', shoe: 88, limit: 10 })
-  assert.match(decodeURIComponent(requests[0]), /strategy_version=in\.\(v100,v98\)/)
+  assert.match(decodeURIComponent(requests[0]), /strategy_version=eq\.v100/)
   assert.deepEqual(history, [
     { round: 13, mainPredictedResult: 'banker', predictedResult: 'banker', actualResult: 'banker', isHit: true, result: 'hit' },
     { round: 12, mainPredictedResult: 'player', predictedResult: 'tie', actualResult: 'tie', isHit: true, result: 'hit' },
@@ -85,7 +85,7 @@ test('v98 history derives tie display only from complete persisted tie action/hi
   ])
 })
 
-test('v98 recent calibration hydration includes the formal release and compatible predecessor rows', async () => {
+test('v100 recent calibration hydration queries only the current formal release', async () => {
   let requestedUrl = ''
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
@@ -94,7 +94,7 @@ test('v98 recent calibration hydration includes the formal release and compatibl
 
   await client.getRecentPredictionRows({ limit: 18 })
 
-  assert.match(requestedUrl, /strategy_version=in\.\([^)]*v100[^)]*v98/)
+  assert.match(requestedUrl, /strategy_version=eq\.v100/)
 })
 
 test('v98 additive migration activates exactly one formal strategy with rollback metadata', () => {

@@ -16,8 +16,6 @@ export const V100_SIDE_SCORE_CALIBRATION_OFFSETS = Object.freeze({
   bankerDragon: 0,
   playerDragon: 0,
 })
-const COMPATIBLE_PREDECESSOR_STRATEGY_VERSION = 'v98'
-
 function buildEqualWeights(keys) {
   const weight = Number((1 / keys.length).toFixed(12))
   const weights = Object.fromEntries(keys.map((key) => [key, weight]))
@@ -2084,11 +2082,13 @@ export function createSupabaseIngestionClient({
       const rows = await getRest('daily_prediction_results', {
         select: 'id,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,side_hits,prediction_features,created_at',
         or: '(settlement_final.eq.true,prediction_features->>settlement_final.eq.true)',
-        strategy_version: `in.(${ALL_MT_EQUAL_STRATEGY_VERSION},${COMPATIBLE_PREDECESSOR_STRATEGY_VERSION},v098_主信心實際命中校準版,v097_副預測命中校準與門檻降5版)`,
+        strategy_version: `eq.${ALL_MT_EQUAL_STRATEGY_VERSION}`,
         order: 'created_at.desc',
         limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
       })
-      return (Array.isArray(rows) ? rows : []).filter(isFinalPredictionSettlement)
+      return (Array.isArray(rows) ? rows : [])
+        .filter((row) => row?.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION)
+        .filter(isFinalPredictionSettlement)
     },
     async getTableUiSettledPredictions({ tableId, shoe, limit = 10 } = {}) {
       const boundedLimit = Math.min(10, Math.max(1, Number(limit) || 10))
@@ -2097,7 +2097,7 @@ export function createSupabaseIngestionClient({
         select: 'id,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,side_hits,prediction_features,created_at',
         table_id: `eq.${tableId}`,
         shoe_no: `eq.${shoe}`,
-        strategy_version: `in.(${ALL_MT_EQUAL_STRATEGY_VERSION},${COMPATIBLE_PREDECESSOR_STRATEGY_VERSION})`,
+        strategy_version: `eq.${ALL_MT_EQUAL_STRATEGY_VERSION}`,
         or: '(settlement_final.eq.true,prediction_features->>settlement_final.eq.true)',
         order: 'created_at.desc',
         limit: String(fetchLimit),
@@ -2106,7 +2106,7 @@ export function createSupabaseIngestionClient({
         .filter((row) => (
           String(row?.table_id ?? '') === String(tableId)
           && String(row?.shoe_no ?? '') === String(shoe)
-          && [ALL_MT_EQUAL_STRATEGY_VERSION, COMPATIBLE_PREDECESSOR_STRATEGY_VERSION].includes(row?.strategy_version)
+          && row?.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION
           && row?.prediction_features?.prediction_timing === 'pre_result_context'
           && isFinalPredictionSettlement(row)
           && Number.isSafeInteger(Number(row?.round_no))

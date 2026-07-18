@@ -13,11 +13,11 @@ function rawEvent(round, rawResult, winner, sourceAction = '/api/v1/gametype/*/g
 test('v098.18 settled prediction getter returns only immutable formal same-shoe rows newest first and keeps tie misses', async () => {
   let requestedUrl
   const rows = [
-    { table_id: 'BAG01', shoe_no: '88', round_no: 5, strategy_version: 'v98', predicted_result: 'player', actual_result: 'banker', is_hit: false, prediction_features: { prediction_timing: 'pre_result_context' }, created_at: '2026-07-15T05:00:00Z' },
-    { table_id: 'BAG01', shoe_no: '88', round_no: 4, strategy_version: 'v98', predicted_result: 'banker', actual_result: 'tie', is_hit: false, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true }, created_at: '2026-07-15T04:00:00Z' },
-    { table_id: 'BAG01', shoe_no: '88', round_no: 3, strategy_version: 'v98', predicted_result: 'player', actual_result: 'player', is_hit: true, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true }, created_at: '2026-07-15T03:00:00Z' },
+    { table_id: 'BAG01', shoe_no: '88', round_no: 5, strategy_version: 'v100', predicted_result: 'player', actual_result: 'banker', is_hit: false, prediction_features: { prediction_timing: 'pre_result_context' }, created_at: '2026-07-15T05:00:00Z' },
+    { table_id: 'BAG01', shoe_no: '88', round_no: 4, strategy_version: 'v100', predicted_result: 'banker', actual_result: 'tie', is_hit: false, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true }, created_at: '2026-07-15T04:00:00Z' },
+    { table_id: 'BAG01', shoe_no: '88', round_no: 3, strategy_version: 'v100', predicted_result: 'player', actual_result: 'player', is_hit: true, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true }, created_at: '2026-07-15T03:00:00Z' },
     { table_id: 'BAG01', shoe_no: '88', round_no: 2, strategy_version: 'v097_副預測命中校準與門檻降5版', predicted_result: 'banker', actual_result: 'banker', is_hit: true, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true }, created_at: '2026-07-15T02:00:00Z' },
-    { table_id: 'BAG01', shoe_no: '88', round_no: 1, strategy_version: 'v98', predicted_result: 'banker', actual_result: 'banker', is_hit: true, prediction_features: { prediction_timing: 'post_result_context' }, created_at: '2026-07-15T01:00:00Z' },
+    { table_id: 'BAG01', shoe_no: '88', round_no: 1, strategy_version: 'v100', predicted_result: 'banker', actual_result: 'banker', is_hit: true, prediction_features: { prediction_timing: 'post_result_context' }, created_at: '2026-07-15T01:00:00Z' },
   ]
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co',
@@ -34,19 +34,41 @@ test('v098.18 settled prediction getter returns only immutable formal same-shoe 
   assert.equal(requestedUrl.pathname, '/rest/v1/daily_prediction_results')
   assert.equal(requestedUrl.searchParams.get('table_id'), 'eq.BAG01')
   assert.equal(requestedUrl.searchParams.get('shoe_no'), 'eq.88')
-  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'in.(v100,v98)')
+  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v100')
   assert.equal(requestedUrl.searchParams.get('order'), 'created_at.desc')
   assert.equal(requestedUrl.searchParams.get('limit'), '100')
 })
 
+test('v100 table UI history reads and accepts only v100 settlements', async () => {
+  let requestedUrl
+  const v100Row = {
+    table_id: 'BAG01', shoe_no: '100', round_no: 2, strategy_version: 'v100',
+    predicted_result: 'player', actual_result: 'player', is_hit: true, settlement_final: true,
+    prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true },
+    created_at: '2026-07-18T08:02:00Z',
+  }
+  const v98Row = {
+    ...v100Row, round_no: 1, strategy_version: 'v98', created_at: '2026-07-18T08:01:00Z',
+  }
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-service-key',
+    fetchImpl: async (url) => { requestedUrl = new URL(url); return response([v100Row, v98Row]) },
+  })
+
+  assert.deepEqual(await client.getTableUiSettledPredictions({ tableId: 'BAG01', shoe: 100, limit: 10 }), [
+    { round: 2, predictedResult: 'player', actualResult: 'player', isHit: true },
+  ])
+  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v100')
+})
+
 test('v098.18 settled prediction getter fetches enough rows to return ten valid latest settlements', async () => {
   const invalid = [
-    { table_id: 'BAG01', shoe_no: '88', round_no: 12, strategy_version: 'v98', predicted_result: 'banker', actual_result: 'banker', is_hit: true, prediction_features: { prediction_timing: 'post_result_context' }, created_at: '2026-07-15T12:00:00Z' },
-    { table_id: 'BAG01', shoe_no: '88', round_no: 11, strategy_version: 'v98', predicted_result: 'player', actual_result: 'player', is_hit: null, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true }, created_at: '2026-07-15T11:00:00Z' },
+    { table_id: 'BAG01', shoe_no: '88', round_no: 12, strategy_version: 'v100', predicted_result: 'banker', actual_result: 'banker', is_hit: true, prediction_features: { prediction_timing: 'post_result_context' }, created_at: '2026-07-15T12:00:00Z' },
+    { table_id: 'BAG01', shoe_no: '88', round_no: 11, strategy_version: 'v100', predicted_result: 'player', actual_result: 'player', is_hit: null, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true }, created_at: '2026-07-15T11:00:00Z' },
   ]
   const valid = Array.from({ length: 10 }, (_, index) => {
     const round = 10 - index
-    return { table_id: 'BAG01', shoe_no: '88', round_no: round, strategy_version: 'v98', predicted_result: 'banker', actual_result: 'banker', is_hit: true, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true }, created_at: `2026-07-15T${String(round).padStart(2, '0')}:00:00Z` }
+    return { table_id: 'BAG01', shoe_no: '88', round_no: round, strategy_version: 'v100', predicted_result: 'banker', actual_result: 'banker', is_hit: true, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true }, created_at: `2026-07-15T${String(round).padStart(2, '0')}:00:00Z` }
   })
   let requestedLimit = 0
   const client = createSupabaseIngestionClient({
@@ -66,7 +88,7 @@ test('v098.18 settled prediction getter fetches enough rows to return ten valid 
 })
 
 test('v098.18 settled prediction getter dedupes identical same-round rows and rejects conflicts', async () => {
-  const base = { table_id: 'BAG01', shoe_no: '88', round_no: 7, strategy_version: 'v98', predicted_result: 'banker', actual_result: 'banker', is_hit: true, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true }, created_at: '2026-07-15T07:00:00Z' }
+  const base = { table_id: 'BAG01', shoe_no: '88', round_no: 7, strategy_version: 'v100', predicted_result: 'banker', actual_result: 'banker', is_hit: true, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true }, created_at: '2026-07-15T07:00:00Z' }
   const identicalClient = createSupabaseIngestionClient({
     url: 'https://example.supabase.co',
     serviceKey: 'test-service-key',
