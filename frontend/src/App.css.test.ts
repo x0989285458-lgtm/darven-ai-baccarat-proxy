@@ -36,11 +36,18 @@ describe('responsive history and road CSS', () => {
   })
 
   it('keeps the member floating portal within 1440px and 390px viewports without horizontal overflow', () => {
-    expect(css).toMatch(/\.login-shell\.member-login-shell\[data-ui-theme='navy-gold'\]\s+\.member-login-card\s*\{[^}]*width:\s*min\(460px,\s*calc\(100vw\s*-\s*32px\)\)[^}]*max-width:\s*100%/s)
+    expect(css).toMatch(/\.login-shell\.member-login-shell\[data-ui-theme='navy-gold'\]\s+\.member-login-card\s*\{[^}]*width:\s*min\(460px,\s*calc\(100vw\s*-\s*32px\)\)[^}]*max-width:\s*100%[^}]*min-height:\s*0\s*!important[^}]*padding:\s*34px\s+34px\s+28px\s*!important/s)
     expect(css).toMatch(/@media\s*\(max-width:\s*700px\)[\s\S]*?\.member-login-shell\s*\{[^}]*padding:\s*116px\s+16px\s+40px[^}]*background-position:\s*67%\s+center/s)
     expect(css).toMatch(/@media\s*\(max-width:\s*700px\)[\s\S]*?\.login-shell\.member-login-shell\[data-ui-theme='navy-gold'\]\s+\.member-login-card\s*\{[^}]*width:\s*100%[^}]*margin:\s*0/s)
-    expect(css).toMatch(/@media\s*\(max-width:\s*700px\)[\s\S]*?\.member-login-shell\s+\.login-card\.member-login-card\s+\.login-field-label,[\s\S]*?\.member-login-shell\s+\.login-card\.member-login-card\s+\.login-field-row\s+input\s*\{[^}]*grid-column:\s*auto[^}]*grid-row:\s*auto[^}]*align-self:\s*center/s)
-    expect(css).toMatch(/@media\s*\(max-width:\s*700px\)[\s\S]*?\.member-login-shell\s+\.login-card\.member-login-card\s+\.login-field-icon\s*\{[^}]*grid-column:\s*auto[^}]*grid-row:\s*auto/s)
+    expect(css).toMatch(/\.member-login-shell\s+\.login-intro\s*\{[^}]*text-wrap:\s*balance/s)
+    expect(css).toMatch(/\.member-login-shell\s+\.member-login-card\s+\.system-status\s*\{[^}]*font-size:\s*12px/s)
+    expect(css).toMatch(/\.member-login-shell\s+\.member-login-card\s+\.login-security\s*\{[^}]*color:\s*#9babbd[^}]*font-size:\s*12px/s)
+    expect(css).toMatch(/\.member-login-shell\s+\.login-fields\s*\{[^}]*display:\s*grid[^}]*width:\s*100%[^}]*max-width:\s*none/s)
+    expect(css).toMatch(/\.member-login-shell\s+\.member-login-card\s+\.login-field-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)[^}]*padding:\s*0\s+18px/s)
+    expect(css).toMatch(/\.member-login-shell\s+\.member-login-card\s+\.login-field-row\s+input\s*\{[^}]*grid-column:\s*auto[^}]*grid-row:\s*auto[^}]*align-self:\s*center/s)
+    expect(css).not.toMatch(/\.member-login-shell\s+\.login-field-(?:icon|label)/s)
+    expect(css).not.toMatch(/\.login-field-(?:icon|label|trailing)|\.account-icon|\.lock-icon|\.login-card\.member-login-card\s+\.login-field-row/s)
+    expect(css).toMatch(/@media\s*\(max-width:\s*700px\)[\s\S]*?\.member-login-shell\s+\.member-login-card\s+\.login-field-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)[^}]*padding:\s*0\s+16px/s)
   })
 
   it('uses the untouched pure background asset and approved command-deck geometry', () => {

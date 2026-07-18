@@ -443,13 +443,9 @@ function LoginApp() {
       <p className="login-intro">登入會員決策中心，查看即時桌台、預測與路單資訊。</p>
       <div className="login-fields">
         <label className="login-field-row">
-          <span className="login-field-icon account-icon" aria-hidden="true" />
-          <span className="login-field-label">會員帳號</span>
           <input aria-label="會員帳號" placeholder="請輸入會員帳號" value={memberAccount} onChange={(event) => setMemberAccount(event.target.value)} />
         </label>
         <label className="login-field-row">
-          <span className="login-field-icon lock-icon" aria-hidden="true" />
-          <span className="login-field-label">驗證密碼</span>
           <input aria-label="驗證密碼" placeholder="請輸入驗證密碼" type="password" value={verificationPassword} onChange={(event) => setVerificationPassword(event.target.value)} />
         </label>
       </div>
