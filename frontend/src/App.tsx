@@ -310,7 +310,7 @@ export default function App() {
     </header>
     <div className="workspace">
       <aside className="sidebar balanced-sidebar-line dashboard-sidebar" aria-label="桌號與資料選擇">
-        <div className="dashboard-sidebar-heading"><strong>桌台</strong><span>10 桌在線</span></div>
+        <div className="dashboard-sidebar-heading"><strong>桌台</strong><span>{visibleTables.length} 桌已載入</span></div>
         <nav className="table-list" aria-label="桌號選擇">
           {visibleTables.map((table, index) => {
             const tableId = canonicalMemberTableId(table)

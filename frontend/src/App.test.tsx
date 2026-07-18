@@ -504,6 +504,24 @@ describe('AI百家預測軟體', () => {
     expect(buttons[3]).not.toHaveTextContent('BAG03A')
   })
 
+  it('reports the loaded table count without claiming every table is online', async () => {
+    const ids = ['BAG01', 'BAG02']
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(ids.map((tableId, index) => ({
+        tableId, displayName: tableId, tableType: 'BAC', shoe: 1, round: 100 + index,
+        bankerCount: 1, playerCount: 1, tieCount: 0, beadPlateRaw: '0102', bigRoadRaw: '01#02',
+      }))) })
+      if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ configured: true }) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, buildVersion: 'v100' }) })
+    }))
+
+    await renderApp('/', false)
+
+    const sidebar = await screen.findByLabelText('桌號與資料選擇')
+    expect(within(sidebar).getByText('2 桌已載入')).toBeInTheDocument()
+    expect(within(sidebar).queryByText(/桌在線/)).not.toBeInTheDocument()
+  })
+
   it('renders the six-row big road directly from authoritative MT codes with winner labels and point metadata', async () => {
     await renderApp()
     expect(screen.queryByText('珠盤路')).not.toBeInTheDocument()

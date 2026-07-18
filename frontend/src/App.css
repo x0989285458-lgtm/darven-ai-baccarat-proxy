@@ -2894,6 +2894,7 @@ body,
   font-size: 18px;
   font-weight: 800;
   letter-spacing: .08em;
+  white-space: nowrap;
 }
 
 .member-dashboard .dashboard-side-brand::after { display: none; }
@@ -3145,7 +3146,7 @@ body,
 .member-dashboard .dashboard-road-region .big-cell.Banker { color: #d2767f; border-color: #d2767f; }
 .member-dashboard .dashboard-road-region .big-cell.Player { color: #78aee8; border-color: #78aee8; }
 
-@media (max-width: 720px) {
+@media (max-width: 900px) {
   .member-dashboard { min-height: 100vh; height: auto; padding: 9px; background-position: 66% center; }
   .member-dashboard .member-dashboard-header { height: 52px; min-height: 52px; padding: 0 12px; }
   .member-dashboard .dashboard-side-brand { font-size: 16px; }
