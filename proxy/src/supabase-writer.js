@@ -3,10 +3,8 @@ import { BUILD_VERSION } from './build-version.js'
 import { isVerifiedFinalRoundAction, normalizeExactRealCardEvent } from '../../shared/real-card-validator.js'
 
 const SOURCE = 'ofalive99'
-const DEFAULT_STRATEGY_VERSION = 'v012_equal_weight_seed'
-export const SHORT_RUN_STRATEGY_VERSION = 'v094_no_observe_confidence_30_70'
 export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v100'
-export const V99_MAIN_SIGNAL_DEDUP_VERSION = 'v99_主預測靴內偏移去重版'
+export const V100_MAIN_SIGNAL_DEDUP_VERSION = 'v100_主預測靴內偏移去重版'
 export const V100_SIDE_DEDUP_VERSION = 'v100_主副訊號去重與8副牌階完整性版'
 export const V100_SIDE_SCORE_CALIBRATION_OFFSETS = Object.freeze({
   tie: -13.867936925098554,
@@ -60,7 +58,7 @@ export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildWeightedProfile(MAIN_WEIGHT_KEYS, 
   shoe_banker_player_bias: 0.10,
 })
 
-export const V99_MAIN_SIGNAL_DEDUP_WEIGHTS = ALL_MT_EQUAL_MAIN_WEIGHTS
+export const V100_MAIN_SIGNAL_DEDUP_WEIGHTS = ALL_MT_EQUAL_MAIN_WEIGHTS
 
 export const SIDE_PREDICTION_ACTION_RATE_TARGETS = Object.freeze({
   tie: 0.15,
@@ -105,78 +103,25 @@ export const SIDE_PREDICTION_THRESHOLDS = {
   playerDragon: 30,
 }
 
-const DEFAULT_EQUAL_WEIGHTS = Object.freeze({
-  bead_road: 0.125,
-  big_road: 0.125,
-  derived_roads: 0.125,
-  ask_road: 0.125,
-  card_points: 0.125,
-  shoe_remaining_points: 0.125,
-  pattern_tags: 0.125,
-  historical_backtest: 0.125,
-})
-
-export const SHORT_RUN_WEIGHTS = Object.freeze({
-  bead_road: 0.15,
-  big_road: 0.15,
-  derived_roads: 0.12,
-  ask_road: 0.15,
-  card_points: 0.10,
-  shoe_remaining_points: 0.08,
-  pattern_tags: 0.10,
-  table_recent_hit_rate: 0.15,
-})
-
-export function buildDefaultEqualStrategy() {
-  return {
-    version: DEFAULT_STRATEGY_VERSION,
-    status: 'archived',
-    sample_count: 0,
-    weights: { ...DEFAULT_EQUAL_WEIGHTS },
-    metrics: {
-      mode: 'equal_weight_seed',
-      auto_adjust: true,
-      description: '初始平均權重；後續由資料庫回測學習結果自動調整。',
-    },
-    notes: 'v012 seed strategy: all judgement feature groups start equally weighted.',
-  }
-}
-
-export function buildShortRunAdjustedStrategy() {
-  return {
-    version: SHORT_RUN_STRATEGY_VERSION,
-    status: 'archived',
-    sample_count: 0,
-    weights: { ...SHORT_RUN_WEIGHTS },
-    metrics: {
-      mode: 'short_run_adjusted',
-      auto_adjust: true,
-      low_performance_threshold: 0.45,
-      high_performance_threshold: 0.65,
-      description: '短測桌況加權；低表現桌保留莊/閒方向但降信心，高表現桌小幅加信心且信心限制30-70，路單與問路權重小幅提高。',
-    },
-    notes: 'v049 no-observe confidence calibration for live round learning: every main row remains banker/player and confidence stays 30-70.',
-  }
-}
 
 export function buildFormalActiveStrategy() {
   return {
     version: ALL_MT_EQUAL_STRATEGY_VERSION,
     status: 'active',
     sample_count: 0,
-    weights: { ...V99_MAIN_SIGNAL_DEDUP_WEIGHTS },
+    weights: { ...V100_MAIN_SIGNAL_DEDUP_WEIGHTS },
     metrics: {
       mode: 'formal_live_prediction',
       auto_adjust: false,
-      main_strategy: V99_MAIN_SIGNAL_DEDUP_VERSION,
+      main_strategy: V100_MAIN_SIGNAL_DEDUP_VERSION,
       side_strategy: V100_SIDE_DEDUP_VERSION,
-      main_weights: { ...V99_MAIN_SIGNAL_DEDUP_WEIGHTS },
+      main_weights: { ...V100_MAIN_SIGNAL_DEDUP_WEIGHTS },
       side_weights: Object.fromEntries(Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES).map(([key, profile]) => [key, { ...profile }])),
       side_thresholds: { ...SIDE_PREDICTION_THRESHOLDS },
       rank_ledger: 'durable_eight_deck_exact_rank_ledger',
       description: 'v100正式整合包；主預測採靴內偏移去重，副預測採訊號去重與固定8副牌牌階Ledger，沿用核准門檻。',
     },
-    notes: 'Only active runtime strategy for formal release v100; v98 remains read-only history.',
+    notes: 'Only active runtime strategy and history source for formal release v100.',
   }
 }
 
@@ -492,12 +437,12 @@ function calculateAllMtEqualMainPrediction({ round = {}, table = {}, facts = {},
   return { predictedResult, confidence: confidenceCalibration.finalConfidence, confidenceCalibration, scores, total }
 }
 
-export function calculateV99MainPredictionShadow({ round = {}, table = {}, facts = {}, probabilities = {}, tablePerformance = {} } = {}) {
-  const prepared = prepareV99SignalInputs(table)
+export function calculateV100MainPrediction({ round = {}, table = {}, facts = {}, probabilities = {}, tablePerformance = {} } = {}) {
+  const prepared = prepareCurrentSignalInputs(table)
   const safeTable = prepared.table
   const derived = buildDerivedMainFeatures(round, safeTable, facts, probabilities, tablePerformance)
   const roadFeatures = buildRoadFeatures(safeTable)
-  const scores = Object.fromEntries(Object.keys(V99_MAIN_SIGNAL_DEDUP_WEIGHTS).map((key) => [key, scoreAllMtFeature(key, { round, facts, table: safeTable, probabilities, tablePerformance, derived, roadFeatures })]))
+  const scores = Object.fromEntries(Object.keys(V100_MAIN_SIGNAL_DEDUP_WEIGHTS).map((key) => [key, scoreAllMtFeature(key, { round, facts, table: safeTable, probabilities, tablePerformance, derived, roadFeatures })]))
   const originalShoeScore = scores.shoe_banker_player_bias
   const askRoadScore = scores.ask_road_signals
   const adjustment = deduplicateShoeBankerPlayerBias(
@@ -505,7 +450,7 @@ export function calculateV99MainPredictionShadow({ round = {}, table = {}, facts
     prepared.shoeBiasValid ? originalShoeScore : { banker: Number.NaN, player: Number.NaN },
   )
   scores.shoe_banker_player_bias = adjustment.adjustedScore
-  const total = Object.entries(V99_MAIN_SIGNAL_DEDUP_WEIGHTS).reduce((acc, [key, weight]) => {
+  const total = Object.entries(V100_MAIN_SIGNAL_DEDUP_WEIGHTS).reduce((acc, [key, weight]) => {
     const score = scores[key] ?? neutralScore()
     acc.banker += score.banker * weight
     acc.player += score.player * weight
@@ -513,16 +458,16 @@ export function calculateV99MainPredictionShadow({ round = {}, table = {}, facts
   }, { banker: 0, player: 0 })
   const difference = Math.abs(total.banker - total.player)
   const predictedResult = difference < 1e-9 ? breakAllMtMainTie({ round, table: safeTable, facts, probabilities }) : (total.banker > total.player ? 'banker' : 'player')
-  const rawSignalConfidence = difference < 1e-9 ? 30 : calculateConservativeMainConfidence(scores, V99_MAIN_SIGNAL_DEDUP_WEIGHTS)
+  const rawSignalConfidence = difference < 1e-9 ? 30 : calculateConservativeMainConfidence(scores, V100_MAIN_SIGNAL_DEDUP_WEIGHTS)
   const confidenceCalibration = calibrateMainConfidenceByHitRate(rawSignalConfidence, tablePerformance)
   return {
-    strategyVersion: V99_MAIN_SIGNAL_DEDUP_VERSION,
+    strategyVersion: V100_MAIN_SIGNAL_DEDUP_VERSION,
     predictedResult,
     confidence: confidenceCalibration.finalConfidence,
     confidenceCalibration,
     scores,
     total,
-    featureWeights: { ...V99_MAIN_SIGNAL_DEDUP_WEIGHTS },
+    featureWeights: { ...V100_MAIN_SIGNAL_DEDUP_WEIGHTS },
     diagnostics: {
       shoeBankerPlayerBias: {
         originalScore: { ...originalShoeScore },
@@ -537,7 +482,7 @@ export function calculateV99MainPredictionShadow({ round = {}, table = {}, facts
   }
 }
 
-function prepareV99SignalInputs(table) {
+function prepareCurrentSignalInputs(table) {
   const tableIsObject = Boolean(table) && typeof table === 'object' && !Array.isArray(table)
   const safeTable = tableIsObject ? { ...table } : {}
   const askRoadValid = tableIsObject
@@ -628,14 +573,14 @@ export function buildLivePrediction(table = {}) {
     lastRound: table.lastRound ?? null,
     cardShoe: table.cardShoe ?? null,
   }
-  const prediction = calculateV99MainPredictionShadow({
+  const prediction = calculateV100MainPrediction({
     round: nextRound,
     table,
     facts: {},
     probabilities,
     tablePerformance,
   })
-  const v98SidePredictions = buildSidePredictions(table, nextRound)
+  const baseSidePredictions = buildSidePredictions(table, nextRound)
   const rankCardShoe = table.v100RankLedger ?? null
   const rankAvailable = rankCardShoe?.rankDataAvailable === true
     && hasCompleteRemainingRankCounts(rankCardShoe.remainingRankCounts)
@@ -645,7 +590,7 @@ export function buildLivePrediction(table = {}) {
     rankAvailable,
     rankFallback: 'renormalize',
     mainPrediction: prediction.predictedResult,
-    v98SidePredictions,
+    baseSidePredictions,
   })
   const sidePredictions = v100Side.predictions
   const sideActions = v100Side.actions
@@ -676,7 +621,7 @@ export function buildLivePrediction(table = {}) {
     table_performance: structuredClone(tablePerformance),
     confidence_calibration: structuredClone(prediction.confidenceCalibration),
     v100_main_signal_dedup: {
-      strategyVersion: V99_MAIN_SIGNAL_DEDUP_VERSION,
+      strategyVersion: V100_MAIN_SIGNAL_DEDUP_VERSION,
       diagnostics: structuredClone(prediction.diagnostics),
     },
     v100_side_dedup: structuredClone(v100Side),
@@ -1261,7 +1206,7 @@ export function calculateV100SidePredictionShadow({
   rankAvailable: rankAvailableOverride,
   rankFallback,
   mainPrediction = null,
-  v98SidePredictions: v98Overrides = null,
+  baseSidePredictions: baseOverrides = null,
 } = {}) {
   const rankCardShoe = round.v100RankLedger ?? table.v100RankLedger ?? null
   const featureScores = primitiveOverrides == null ? buildSideFeatureScores(table, { ...round, cardShoe: rankCardShoe }) : null
@@ -1311,14 +1256,14 @@ export function calculateV100SidePredictionShadow({
   const superSix = weightedShadowScore({ B: primitives.B, H6: primitives.H6, R: primitives.R, S: primitives.S }, {
     B: 0.35, H6: 0.35, R: 0.20, S: 0.10,
   }, omitRank ? ['R'] : [])
-  const v98SidePredictions = v98Overrides ?? buildSidePredictions(table, round)
+  const baseSidePredictions = baseOverrides ?? buildSidePredictions(table, round)
   const rawPredictions = {
     tie: tie.score,
     superSix: superSix.score,
     bankerPair: bankerPair.score,
     playerPair: playerPair.score,
-    bankerDragon: clampSideScore(v98SidePredictions.bankerDragon),
-    playerDragon: clampSideScore(v98SidePredictions.playerDragon),
+    bankerDragon: clampSideScore(baseSidePredictions.bankerDragon),
+    playerDragon: clampSideScore(baseSidePredictions.playerDragon),
   }
   const predictions = Object.fromEntries(Object.entries(rawPredictions).map(([key, score]) => [
     key,
@@ -1972,7 +1917,7 @@ export function createSupabaseIngestionClient({
       if (!source || !tableId || !normalizedShoe || !Number.isSafeInteger(visibleRound) || visibleRound < 1) {
         throw new Error('prediction lifecycle reconciliation identity is incomplete')
       }
-      const acknowledgement = await enqueueWrite(() => postRest('rpc/reconcile_v09823_prediction_lifecycle', {
+      const acknowledgement = await enqueueWrite(() => postRest('rpc/reconcile_v100_prediction_lifecycle', {
         p_source: String(source),
         p_table_id: String(tableId),
         p_current_shoe: normalizedShoe,
@@ -2002,7 +1947,7 @@ export function createSupabaseIngestionClient({
         || !row.strategy_version || !['banker', 'player'].includes(row.predicted_result)) {
         throw new Error('prediction issuance payload is incomplete')
       }
-      const acknowledgement = await enqueueWrite(() => postRest('rpc/issue_v09821_prediction', { p_prediction: row }, undefined, { requireObject: true }))
+      const acknowledgement = await enqueueWrite(() => postRest('rpc/issue_v100_prediction', { p_prediction: row }, undefined, { requireObject: true }))
       const prediction = acknowledgement?.prediction
       if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
         || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at
@@ -2070,18 +2015,21 @@ export function createSupabaseIngestionClient({
     async getStablePredictionRows({ since = null, limit = 10000 } = {}) {
       const query = {
         select: 'id,source,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,side_hits,prediction_features,created_at',
-        or: '(settlement_final.eq.true,prediction_features->>settlement_final.eq.true)',
+        strategy_version: `eq.${ALL_MT_EQUAL_STRATEGY_VERSION}`,
+        settlement_final: 'eq.true',
         order: 'created_at.asc',
         limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
       }
       if (since) query.created_at = `gte.${since}`
       const rows = await getRest('daily_prediction_results', query)
-      return (Array.isArray(rows) ? rows : []).filter(isFinalPredictionSettlement)
+      return (Array.isArray(rows) ? rows : [])
+        .filter((row) => row?.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION)
+        .filter(isFinalPredictionSettlement)
     },
     async getRecentPredictionRows({ limit = 10000 } = {}) {
       const rows = await getRest('daily_prediction_results', {
         select: 'id,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,side_hits,prediction_features,created_at',
-        or: '(settlement_final.eq.true,prediction_features->>settlement_final.eq.true)',
+        settlement_final: 'eq.true',
         strategy_version: `eq.${ALL_MT_EQUAL_STRATEGY_VERSION}`,
         order: 'created_at.desc',
         limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
@@ -2098,7 +2046,7 @@ export function createSupabaseIngestionClient({
         table_id: `eq.${tableId}`,
         shoe_no: `eq.${shoe}`,
         strategy_version: `eq.${ALL_MT_EQUAL_STRATEGY_VERSION}`,
-        or: '(settlement_final.eq.true,prediction_features->>settlement_final.eq.true)',
+        settlement_final: 'eq.true',
         order: 'created_at.desc',
         limit: String(fetchLimit),
       })
@@ -2221,7 +2169,7 @@ export function createSupabaseIngestionClient({
           throw new Error('prediction identity is required for production settlement')
         }
         const acknowledgement = hasPredictionIdentity
-          ? await postRest('rpc/settle_v09821_prediction', {
+          ? await postRest('rpc/settle_v100_prediction', {
               p_roadmap: compactEvent,
               p_settlement: {
                 prediction_id: precomputedPrediction.predictionId,
@@ -2239,7 +2187,7 @@ export function createSupabaseIngestionClient({
                 side_hits: compactPrediction.prediction_features?.side_hits ?? {},
               },
             }, undefined, { requireObject: true })
-          : await postRest('rpc/persist_v098_settled_round', {
+          : await postRest('rpc/persist_v100_settled_round', {
               p_roadmap: compactEvent,
               p_prediction: compactPrediction,
             }, undefined, { requireObject: true })
@@ -2308,14 +2256,17 @@ export function createSupabaseIngestionClient({
       const since = new Date()
       since.setHours(0, 0, 0, 0)
       const rows = await getRest('daily_prediction_results', {
-        select: 'id,settlement_final,prediction_features',
+        select: 'id,strategy_version,settlement_final',
         created_at: `gte.${since.toISOString()}`,
-        or: '(settlement_final.eq.true,prediction_features->>settlement_final.eq.true)',
+        strategy_version: `eq.${ALL_MT_EQUAL_STRATEGY_VERSION}`,
+        settlement_final: 'eq.true',
       })
-      return (Array.isArray(rows) ? rows : []).filter(isFinalPredictionSettlement).length
+      return (Array.isArray(rows) ? rows : [])
+        .filter((row) => row?.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION)
+        .filter(isFinalPredictionSettlement).length
     },
     async getPredictionLifecycleStats() {
-      const acknowledgement = await postRest('rpc/get_v09823_prediction_lifecycle_stats', {}, undefined, { requireObject: true })
+      const acknowledgement = await postRest('rpc/get_v100_prediction_lifecycle_stats', {}, undefined, { requireObject: true })
       const stats = {
         activePending: Number(acknowledgement?.active_pending),
         settled: Number(acknowledgement?.settled),
@@ -2410,7 +2361,6 @@ function buildRoundDedupeKey(event = {}, prediction = {}) {
 
 function isFinalPredictionSettlement(row = {}) {
   return row?.settlement_final === true
-    || (row?.settlement_final == null && row?.prediction_features?.settlement_final === true)
 }
 
 function isRetryableError(error) {

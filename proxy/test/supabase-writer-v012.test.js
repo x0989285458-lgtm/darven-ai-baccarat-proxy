@@ -1,7 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  buildDefaultEqualStrategy,
   buildLivePrediction,
   buildRoadmapEventRow,
   createSupabaseIngestionClient,
@@ -38,23 +37,7 @@ const table = {
   playerPairCount: 1,
 }
 
-test('v012 builds equal default strategy weights for every judgement feature group', () => {
-  const strategy = buildDefaultEqualStrategy()
-  assert.equal(strategy.version, 'v012_equal_weight_seed')
-  assert.equal(strategy.status, 'archived')
-  assert.deepEqual(strategy.weights, {
-    bead_road: 0.125,
-    big_road: 0.125,
-    derived_roads: 0.125,
-    ask_road: 0.125,
-    card_points: 0.125,
-    shoe_remaining_points: 0.125,
-    pattern_tags: 0.125,
-    historical_backtest: 0.125,
-  })
-})
-
-test('v012 derives card points, draw/natural flags, super six and dragon-bonus booleans from round result', () => {
+test('v100 derives card points, draw and natural flags, super six and dragon bonus facts', () => {
   const facts = deriveBaccaratRoundFacts(round)
   assert.deepEqual(facts.playerCardCodes, [26, 39, 14])
   assert.deepEqual(facts.bankerCardCodes, [20, 23, 0])
@@ -107,7 +90,7 @@ test('v012 Supabase client posts strategy, roadmap event and prediction result w
       if (init.method === 'GET') {
         return { ok: true, json: async () => [{ version: buildLivePrediction(table).strategyVersion, status: 'active' }], text: async () => '' }
       }
-      return String(url).includes('/rpc/persist_v098_settled_round')
+      return String(url).includes('/rpc/persist_v100_settled_round')
         ? { ok: true, status: 200, text: async () => JSON.stringify({ persisted: true, roadmapDurable: true, predictionDurable: true }) }
         : { ok: true, status: 201, text: async () => '' }
     },
@@ -123,6 +106,6 @@ test('v012 Supabase client posts strategy, roadmap event and prediction result w
   assert.equal(requests[1].init.method, 'POST')
   assert.equal(requests[2].url.includes('/rest/v1/ai_strategy_versions'), true)
   assert.equal(requests[2].init.method, 'GET')
-  assert.equal(requests[3].url.includes('/rest/v1/rpc/persist_v098_settled_round'), true)
+  assert.equal(requests[3].url.includes('/rest/v1/rpc/persist_v100_settled_round'), true)
   assert.equal(requests[3].init.headers.Authorization, 'Bearer sb_secret_test_key')
 })

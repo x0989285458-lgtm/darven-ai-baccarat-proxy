@@ -5,10 +5,8 @@ import {
   SIDE_PREDICTION_THRESHOLDS,
   SIDE_PREDICTION_WEIGHT_PROFILES,
   SIDE_WEIGHT_KEYS,
-  buildDefaultEqualStrategy,
   buildFormalActiveStrategy,
   buildLivePrediction,
-  buildShortRunAdjustedStrategy,
   buildSideActions,
 } from '../src/supabase-writer.js'
 
@@ -45,11 +43,6 @@ test('v097 formal strategy identity is the only live strategy version', () => {
   assert.equal(buildLivePrediction({ tableId: 'BAG97', shoe: 97, round: 0 }).strategyVersion, approvedStrategyVersion)
   assert.equal(buildFormalActiveStrategy().version, approvedStrategyVersion)
   assert.equal(buildFormalActiveStrategy().status, 'active')
-
-  for (const legacyStrategy of [buildDefaultEqualStrategy(), buildShortRunAdjustedStrategy()]) {
-    assert.notEqual(legacyStrategy.status, 'active', `${legacyStrategy.version} must not remain an active fallback strategy`)
-    assert.doesNotMatch(legacyStrategy.version, /^v096\b|^v096_/)
-  }
 })
 
 test('v097 side prediction weights use exactly the approved existing factors', () => {

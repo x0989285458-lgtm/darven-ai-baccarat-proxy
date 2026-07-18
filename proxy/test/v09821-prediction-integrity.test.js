@@ -71,7 +71,7 @@ test('v098.21 writer issuance returns the first durable immutable payload and pr
   const issued = await client.issuePrediction(candidate)
   assert.equal(issued.predictionId, first.predictionId)
   assert.deepEqual(issued, first)
-  assert.match(requests[0].url, /\/rpc\/issue_v09821_prediction$/)
+  assert.match(requests[0].url, /\/rpc\/issue_v100_prediction$/)
   assert.equal(requests[0].body.p_prediction.actual_result, null)
   assert.equal(requests[0].body.p_prediction.is_hit, null)
   assert.equal(requests[0].body.p_prediction.resolved_at, null)
@@ -113,7 +113,7 @@ test('v098.21 writer settles by prediction_id and suppresses an identical duplic
   const duplicate = await client.persistRound(completed, baseTable, pending)
   assert.equal(duplicate.reason, 'duplicate_round')
   assert.equal(requests.length, 1)
-  assert.match(requests[0].url, /\/rpc\/settle_v09821_prediction$/)
+  assert.match(requests[0].url, /\/rpc\/settle_v100_prediction$/)
   assert.equal(requests[0].body.p_settlement.prediction_id, pending.predictionId)
   assert.equal(requests[0].body.p_settlement.settlement_final, true)
 })
@@ -234,21 +234,21 @@ test('v098.21 rollback preserves evidence and requires app-first order before RP
   assert.match(migration, /grant execute on function public\.settle_v09821_prediction/i)
 })
 
-test('v098.21 readers include new final columns, retain legacy fallback, and exclude pending issuance', async () => {
+test('v100 readers require complete current final columns and exclude compatibility and pending rows', async () => {
   const requests = []
-  const legacy = { id: 'legacy', table_id: 'BAG01', shoe_no: '88', round_no: 3, strategy_version: 'v100', predicted_result: 'banker', actual_result: 'banker', is_hit: true, settlement_final: null, side_hits: null, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true, side_hits: { tie: false } }, created_at: '2026-07-16T01:00:00Z' }
-  const modern = { ...legacy, id: 'modern', round_no: 4, settlement_final: true, side_hits: { tie: true }, prediction_features: { prediction_timing: 'pre_result_context' }, created_at: '2026-07-16T01:01:00Z' }
+  const compatibility = { id: 'compatibility', table_id: 'BAG01', shoe_no: '88', round_no: 3, strategy_version: 'v100', predicted_result: 'banker', actual_result: 'banker', is_hit: true, settlement_final: null, side_hits: null, prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true, side_hits: { tie: false } }, created_at: '2026-07-16T01:00:00Z' }
+  const modern = { ...compatibility, id: 'modern', round_no: 4, settlement_final: true, side_hits: { tie: true }, prediction_features: { prediction_timing: 'pre_result_context' }, created_at: '2026-07-16T01:01:00Z' }
   const pending = { ...modern, id: 'pending', round_no: 5, actual_result: null, is_hit: null, settlement_final: false }
-  const client = createSupabaseIngestionClient({ url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false, fetchImpl: async (url) => { requests.push(new URL(url)); return response([modern, legacy, pending]) } })
-  assert.deepEqual((await client.getStablePredictionRows()).map((row) => row.id), ['modern', 'legacy'])
-  assert.deepEqual((await client.getRecentPredictionRows()).map((row) => row.id), ['modern', 'legacy'])
-  assert.deepEqual((await client.getTableUiSettledPredictions({ tableId: 'BAG01', shoe: 88 })).map((row) => row.round), [4, 3])
-  assert.equal(await client.countTodayPredictionRounds(), 2)
+  const client = createSupabaseIngestionClient({ url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false, fetchImpl: async (url) => { requests.push(new URL(url)); return response([modern, compatibility, pending]) } })
+  assert.deepEqual((await client.getStablePredictionRows()).map((row) => row.id), ['modern'])
+  assert.deepEqual((await client.getRecentPredictionRows()).map((row) => row.id), ['modern'])
+  assert.deepEqual((await client.getTableUiSettledPredictions({ tableId: 'BAG01', shoe: 88 })).map((row) => row.round), [4])
+  assert.equal(await client.countTodayPredictionRounds(), 1)
   for (const url of requests) {
     assert.match(url.searchParams.get('select') ?? '', /settlement_final/)
-    assert.match(url.searchParams.get('select') ?? '', /prediction_features/)
-    assert.match(url.searchParams.get('or') ?? '', /settlement_final\.eq\.true/)
-    assert.match(url.searchParams.get('or') ?? '', /prediction_features->>settlement_final\.eq\.true/)
+    assert.equal(url.searchParams.get('strategy_version'), 'eq.v100')
+    assert.equal(url.searchParams.get('settlement_final'), 'eq.true')
+    assert.equal(url.searchParams.has('or'), false)
   }
 })
 

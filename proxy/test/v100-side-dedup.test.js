@@ -21,7 +21,7 @@ function score(primitives = BASE, options = {}) {
     rankAvailable: true,
     rankFallback: 'neutral',
     mainPrediction: 'banker',
-    v98SidePredictions: { bankerDragon: 67, playerDragon: 33 },
+    baseSidePredictions: { bankerDragon: 67, playerDragon: 33 },
     ...options,
   })
 }

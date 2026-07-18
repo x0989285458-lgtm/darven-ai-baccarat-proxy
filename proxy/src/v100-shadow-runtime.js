@@ -1,6 +1,6 @@
 import {
   buildLivePrediction,
-  calculateV99MainPredictionShadow,
+  calculateV100MainPrediction,
   calculateV100SidePredictionShadow,
 } from './supabase-writer.js'
 
@@ -57,14 +57,14 @@ export function createV100ShadowRuntime({ enabled = false, writer = null, source
     const v100RankLedger = durable ? { ...structuredClone(durable), rankDataAvailable, targetRound } : null
     const candidateTable = v100RankLedger ? { ...structuredClone(table), v100RankLedger } : structuredClone(table)
     const roundContext = { round: targetRound, v100RankLedger }
-    const main = calculateV99MainPredictionShadow({ round: roundContext, table: candidateTable })
+    const main = calculateV100MainPrediction({ round: roundContext, table: candidateTable })
     const calculatedSide = calculateV100SidePredictionShadow({
       round: roundContext,
       table: candidateTable,
       rankAvailable: rankDataAvailable,
       rankFallback: 'renormalize',
       mainPrediction: main.predictedResult,
-      v98SidePredictions: formal.sidePredictions,
+      baseSidePredictions: formal.sidePredictions,
     })
     const hypotheticalActions = structuredClone(calculatedSide.actions)
     const side = {

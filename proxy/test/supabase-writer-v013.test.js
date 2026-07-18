@@ -1,11 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  SHORT_RUN_STRATEGY_VERSION,
-  SHORT_RUN_WEIGHTS,
   ALL_MT_EQUAL_MAIN_WEIGHTS,
   ALL_MT_EQUAL_SIDE_WEIGHTS,
-  buildShortRunAdjustedStrategy,
 } from '../src/supabase-writer.js'
 import { buildPredictionResultRow } from './helpers/prediction-result.js'
 
@@ -33,24 +30,6 @@ const bankerLeaningTable = {
   nextPlayerRaw: 'player-bad',
 }
 
-test('v049 short-run strategy weights sum to 1 and match required proportions', () => {
-  const strategy = buildShortRunAdjustedStrategy()
-  assert.equal(SHORT_RUN_STRATEGY_VERSION, 'v094_no_observe_confidence_30_70')
-  assert.equal(strategy.version, 'v094_no_observe_confidence_30_70')
-  assert.equal(strategy.status, 'archived')
-  assert.deepEqual(strategy.weights, {
-    bead_road: 0.15,
-    big_road: 0.15,
-    derived_roads: 0.12,
-    ask_road: 0.15,
-    card_points: 0.10,
-    shoe_remaining_points: 0.08,
-    pattern_tags: 0.10,
-    table_recent_hit_rate: 0.15,
-  })
-  const total = Object.values(SHORT_RUN_WEIGHTS).reduce((sum, value) => sum + value, 0)
-  assert.equal(Number(total.toFixed(10)), 1)
-})
 
 test('v050 low-performing table keeps banker/player prediction and records all-MT equal strategy', () => {
   const prediction = buildPredictionResultRow(baseRound, {

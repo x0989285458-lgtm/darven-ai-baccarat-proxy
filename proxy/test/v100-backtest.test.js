@@ -24,7 +24,7 @@ test('backtest table uses the product bead-road pair fallback when persisted pai
     rankAvailable: false,
     rankFallback: 'renormalize',
     mainPrediction: 'banker',
-    v98SidePredictions: row.prediction_features.side_predictions,
+    baseSidePredictions: row.prediction_features.side_predictions,
   })
   assert.equal(table.bankerPairCount, 0)
   assert.equal(scored.diagnostics.primitives.XB > 0, true, 'must use bead-road pair fallback instead of hard-coded zero')

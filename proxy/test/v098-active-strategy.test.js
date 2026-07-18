@@ -1,18 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { buildDefaultEqualStrategy, buildFormalActiveStrategy, buildLivePrediction, buildShortRunAdjustedStrategy, createSupabaseIngestionClient } from '../src/supabase-writer.js'
+import { buildFormalActiveStrategy, buildLivePrediction, createSupabaseIngestionClient } from '../src/supabase-writer.js'
 
-test('v098 keeps every legacy initializer archived and only v097 formally active', () => {
-  assert.deepEqual([
-    [buildDefaultEqualStrategy().version, buildDefaultEqualStrategy().status],
-    [buildShortRunAdjustedStrategy().version, buildShortRunAdjustedStrategy().status],
-    [buildFormalActiveStrategy().version, buildFormalActiveStrategy().status],
-  ], [
-    ['v012_equal_weight_seed', 'archived'],
-    ['v094_no_observe_confidence_30_70', 'archived'],
-    ['v100', 'active'],
-  ])
+test('v100 exposes exactly one formal active strategy identity', () => {
+  assert.deepEqual([buildFormalActiveStrategy().version, buildFormalActiveStrategy().status], ['v100', 'active'])
 })
 
 test('v098.10 migration archives all non-v098 active rows and enforces one active strategy', () => {

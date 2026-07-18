@@ -14,32 +14,37 @@ test('v098.19 migration indexes verified-final prediction history before PostgRE
   assert.match(sql, /where\s*\(prediction_features\s*->>\s*'settlement_final'\)\s*=\s*'true'/i)
 })
 
-test('v098.19 today prediction fallback count queries only verified final settlements', async () => {
+test('v100 today prediction count queries and accepts only v100 final settlements', async () => {
   let requestedUrl
+  const v100Row = { id: 'v100-final', strategy_version: 'v100', settlement_final: true, prediction_features: { settlement_final: true } }
+  const oldRow = { id: 'v98-final', strategy_version: 'v98', settlement_final: true, prediction_features: { settlement_final: true } }
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-service-key',
-    fetchImpl: async (url) => { requestedUrl = new URL(url); return response([]) },
+    fetchImpl: async (url) => { requestedUrl = new URL(url); return response([v100Row, oldRow]) },
   })
 
-  assert.equal(await client.countTodayPredictionRounds(), 0)
+  assert.equal(await client.countTodayPredictionRounds(), 1)
   assert.match(requestedUrl.searchParams.get('select') ?? '', /settlement_final/)
-  assert.match(requestedUrl.searchParams.get('or') ?? '', /settlement_final\.eq\.true/)
-  assert.match(requestedUrl.searchParams.get('or') ?? '', /prediction_features->>settlement_final\.eq\.true/)
+  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v100')
+  assert.equal(requestedUrl.searchParams.get('settlement_final'), 'eq.true')
+  assert.equal(requestedUrl.searchParams.has('or'), false)
 })
 
-test('v098.19 stable report rows quarantine predictions without a verified final settlement marker', async () => {
+test('v100 stable report reads and accepts only complete v100 final settlements', async () => {
   let requestedUrl
-  const finalRow = { table_id: 'BAG01', prediction_features: { settlement_final: true }, created_at: '2026-07-15T08:03:00Z' }
-  const legacyRow = { table_id: 'BAG01', prediction_features: {}, created_at: '2026-07-15T08:02:00Z' }
+  const finalRow = { table_id: 'BAG01', strategy_version: 'v100', settlement_final: true, prediction_features: { settlement_final: true }, created_at: '2026-07-15T08:03:00Z' }
+  const oldVersionRow = { ...finalRow, strategy_version: 'v98', created_at: '2026-07-15T08:02:00Z' }
+  const compatibilityRow = { ...finalRow, settlement_final: null, prediction_features: { settlement_final: true }, created_at: '2026-07-15T08:01:00Z' }
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-service-key',
-    fetchImpl: async (url) => { requestedUrl = new URL(url); return response([finalRow, legacyRow]) },
+    fetchImpl: async (url) => { requestedUrl = new URL(url); return response([finalRow, oldVersionRow, compatibilityRow]) },
   })
 
   assert.deepEqual(await client.getStablePredictionRows({ limit: 100 }), [finalRow])
   assert.match(requestedUrl.searchParams.get('select') ?? '', /settlement_final/)
-  assert.match(requestedUrl.searchParams.get('or') ?? '', /settlement_final\.eq\.true/)
-  assert.match(requestedUrl.searchParams.get('or') ?? '', /prediction_features->>settlement_final\.eq\.true/)
+  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v100')
+  assert.equal(requestedUrl.searchParams.get('settlement_final'), 'eq.true')
+  assert.equal(requestedUrl.searchParams.has('or'), false)
 })
 
 test('v098.19 recent calibration rows quarantine predictions without a verified final settlement marker', async () => {
@@ -47,11 +52,11 @@ test('v098.19 recent calibration rows quarantine predictions without a verified 
   const finalRow = {
     table_id: 'BAG01', shoe_no: '8', round_no: 3,
     strategy_version: 'v100', predicted_result: 'banker', actual_result: 'banker', is_hit: true,
-    prediction_features: { settlement_final: true }, created_at: '2026-07-15T08:03:00Z',
+    settlement_final: true, prediction_features: { settlement_final: true }, created_at: '2026-07-15T08:03:00Z',
   }
   const legacyRow = {
     ...finalRow, round_no: 2, actual_result: 'player', is_hit: false,
-    prediction_features: {}, created_at: '2026-07-15T08:02:00Z',
+    settlement_final: null, prediction_features: { settlement_final: true }, created_at: '2026-07-15T08:02:00Z',
   }
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-service-key',
@@ -60,8 +65,9 @@ test('v098.19 recent calibration rows quarantine predictions without a verified 
 
   assert.deepEqual(await client.getRecentPredictionRows({ limit: 100 }), [finalRow])
   assert.match(requestedUrl.searchParams.get('select') ?? '', /settlement_final/)
-  assert.match(requestedUrl.searchParams.get('or') ?? '', /settlement_final\.eq\.true/)
-  assert.match(requestedUrl.searchParams.get('or') ?? '', /prediction_features->>settlement_final\.eq\.true/)
+  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v100')
+  assert.equal(requestedUrl.searchParams.get('settlement_final'), 'eq.true')
+  assert.equal(requestedUrl.searchParams.has('or'), false)
 })
 
 test('v100 recent calibration reads and accepts only v100 settlements', async () => {

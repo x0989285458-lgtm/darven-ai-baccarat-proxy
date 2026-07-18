@@ -2,14 +2,14 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   ALL_MT_EQUAL_MAIN_WEIGHTS,
-  V99_MAIN_SIGNAL_DEDUP_VERSION,
-  V99_MAIN_SIGNAL_DEDUP_WEIGHTS,
+  V100_MAIN_SIGNAL_DEDUP_VERSION,
+  V100_MAIN_SIGNAL_DEDUP_WEIGHTS,
   buildLivePrediction,
-  calculateV99MainPredictionShadow,
+  calculateV100MainPrediction,
 } from '../src/supabase-writer.js'
 
 test('v99 deduplicates a same-direction shoe margin when ask-road is stronger', () => {
-  const prediction = calculateV99MainPredictionShadow({
+  const prediction = calculateV100MainPrediction({
     table: {
       tableId: 'BAG99',
       shoe: 1,
@@ -20,7 +20,7 @@ test('v99 deduplicates a same-direction shoe margin when ask-road is stronger', 
     },
   })
 
-  assert.equal(V99_MAIN_SIGNAL_DEDUP_VERSION, 'v99_主預測靴內偏移去重版')
+  assert.equal(V100_MAIN_SIGNAL_DEDUP_VERSION, 'v100_主預測靴內偏移去重版')
   assert.deepEqual(prediction.scores.shoe_banker_player_bias, { banker: 0.5, player: 0.5 })
   assert.deepEqual(prediction.diagnostics.shoeBankerPlayerBias, {
     originalScore: { banker: 0.55, player: 0.45 },
@@ -34,7 +34,7 @@ test('v99 deduplicates a same-direction shoe margin when ask-road is stronger', 
 })
 
 test('v99 keeps only the same-direction shoe margin beyond ask-road', () => {
-  const prediction = calculateV99MainPredictionShadow({
+  const prediction = calculateV100MainPrediction({
     table: {
       tableId: 'BAG99',
       shoe: 1,
@@ -58,7 +58,7 @@ test('v99 keeps only the same-direction shoe margin beyond ask-road', () => {
 })
 
 test('v99 preserves an opposite-direction shoe margin but clips it to 55/45', () => {
-  const prediction = calculateV99MainPredictionShadow({
+  const prediction = calculateV100MainPrediction({
     table: {
       tableId: 'BAG99',
       shoe: 1,
@@ -76,7 +76,7 @@ test('v99 preserves an opposite-direction shoe margin but clips it to 55/45', ()
 })
 
 test('v99 fails closed to a finite neutral shoe score for invalid signal input', () => {
-  const prediction = calculateV99MainPredictionShadow({
+  const prediction = calculateV100MainPrediction({
     table: {
       tableId: 'BAG99',
       shoe: 1,
@@ -122,7 +122,7 @@ test('v100 formal prediction uses the approved deduplicated main score', () => {
 })
 
 test('v99 keeps the exact approved four non-zero main weights', () => {
-  const activeWeights = Object.fromEntries(Object.entries(V99_MAIN_SIGNAL_DEDUP_WEIGHTS)
+  const activeWeights = Object.fromEntries(Object.entries(V100_MAIN_SIGNAL_DEDUP_WEIGHTS)
     .filter(([, weight]) => weight > 0))
 
   assert.deepEqual(activeWeights, {
@@ -131,6 +131,6 @@ test('v99 keeps the exact approved four non-zero main weights', () => {
     recent_practical_calibration: 0.20,
     shoe_banker_player_bias: 0.10,
   })
-  assert.equal(V99_MAIN_SIGNAL_DEDUP_WEIGHTS, ALL_MT_EQUAL_MAIN_WEIGHTS)
-  assert.ok(Math.abs(Object.values(V99_MAIN_SIGNAL_DEDUP_WEIGHTS).reduce((sum, weight) => sum + weight, 0) - 1) < 1e-12)
+  assert.equal(V100_MAIN_SIGNAL_DEDUP_WEIGHTS, ALL_MT_EQUAL_MAIN_WEIGHTS)
+  assert.ok(Math.abs(Object.values(V100_MAIN_SIGNAL_DEDUP_WEIGHTS).reduce((sum, weight) => sum + weight, 0) - 1) < 1e-12)
 })
