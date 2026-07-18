@@ -44,7 +44,7 @@ describe('responsive history and road CSS', () => {
     expect(css).toMatch(/\.member-login-shell\s+\.member-login-card\s+\.login-security\s*\{[^}]*color:\s*#9babbd[^}]*font-size:\s*12px/s)
     expect(css).toMatch(/\.member-login-shell\s+\.login-fields\s*\{[^}]*display:\s*grid[^}]*width:\s*100%[^}]*max-width:\s*none/s)
     expect(css).toMatch(/\.member-login-shell\s+\.member-login-card\s+\.login-field-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)[^}]*padding:\s*0\s+18px/s)
-    expect(css).toMatch(/\.member-login-shell\s+\.member-login-card\s+\.login-field-row\s+input\s*\{[^}]*grid-column:\s*auto[^}]*grid-row:\s*auto[^}]*align-self:\s*center/s)
+    expect(css).toMatch(/\.member-login-shell\s+\.member-login-card\s+\.login-field-row\s+input\s*\{[^}]*text-align:\s*center[^}]*grid-column:\s*auto[^}]*grid-row:\s*auto[^}]*align-self:\s*center/s)
     expect(css).not.toMatch(/\.member-login-shell\s+\.login-field-(?:icon|label)/s)
     expect(css).not.toMatch(/\.login-field-(?:icon|label|trailing)|\.account-icon|\.lock-icon|\.login-card\.member-login-card\s+\.login-field-row/s)
     expect(css).toMatch(/@media\s*\(max-width:\s*700px\)[\s\S]*?\.member-login-shell\s+\.member-login-card\s+\.login-field-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)[^}]*padding:\s*0\s+16px/s)
