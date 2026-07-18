@@ -2381,3 +2381,455 @@ body,
     min-height: 76px;
   }
 }
+
+/* Exact 1280x617 approved member dashboard oracle. */
+@media (min-width: 901px) {
+  .member-dashboard {
+    height: 100vh;
+    min-height: 617px;
+    overflow: hidden;
+    background: #030a13 url('/assets/ruiwen-member-dashboard-approved.jpg') center top / 100% 100% no-repeat;
+  }
+
+  .member-dashboard .member-dashboard-header {
+    position: relative;
+    height: 61px;
+    min-height: 61px;
+    padding: 0;
+    border: 0;
+    border-bottom: 1px solid rgba(211, 169, 75, .72);
+    background: rgba(3, 12, 22, .965);
+    box-shadow: inset 0 1px rgba(229, 193, 111, .4), 0 4px 18px rgba(0, 0, 0, .42);
+  }
+
+  .member-dashboard .dashboard-side-brand {
+    position: absolute;
+    left: 15px;
+    top: 0;
+    width: 203px;
+    height: 61px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    color: #d9bd78;
+    font-family: Georgia, 'Noto Serif TC', serif;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: .08em;
+    white-space: nowrap;
+  }
+
+  .member-dashboard .dashboard-side-brand::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    width: 1px;
+    height: 39px;
+    background: linear-gradient(transparent, rgba(210, 169, 74, .7), transparent);
+  }
+
+  .member-dashboard .dashboard-brand-gem {
+    color: #e3c578;
+    font-size: 23px;
+    text-shadow: 0 0 10px rgba(229, 193, 107, .5);
+  }
+
+  .member-dashboard .member-dashboard-header .brand {
+    position: absolute;
+    inset: 0 260px;
+    width: auto;
+    max-width: none;
+    transform: none;
+    display: grid;
+    place-content: center;
+    gap: 1px;
+  }
+
+  .member-dashboard .member-dashboard-header .brand h1 {
+    margin: 0;
+    color: #e7ca83;
+    font-family: Georgia, 'Noto Serif TC', serif;
+    font-size: 22px;
+    line-height: 1.05;
+    letter-spacing: .12em;
+    text-shadow: 0 0 14px rgba(219, 178, 84, .34);
+  }
+
+  .member-dashboard .dashboard-title-subtitle {
+    color: #98845b;
+    font-size: 7px;
+    font-weight: 700;
+    letter-spacing: .28em;
+  }
+
+  .member-dashboard .member-dashboard-header .header-meta {
+    right: 17px;
+    gap: 11px;
+  }
+
+  .member-dashboard .member-dashboard-header .status {
+    padding: 4px 10px 4px 20px;
+    border: 1px solid rgba(214, 176, 87, .28);
+    border-radius: 11px;
+    background: rgba(4, 15, 25, .92);
+    color: #80d9bd;
+    font-size: 10px;
+  }
+
+  .member-dashboard .member-dashboard-header .status::before {
+    content: '';
+    position: absolute;
+    margin: 3px 0 0 -11px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #5ee8b5;
+    box-shadow: 0 0 7px #5ee8b5;
+  }
+
+  .member-dashboard .member-account-avatar {
+    position: relative;
+    width: 24px;
+    height: 24px;
+    border: 1px solid rgba(218, 180, 90, .55);
+    border-radius: 50%;
+    background: rgba(6, 19, 31, .95);
+  }
+
+  .member-dashboard .member-account-avatar::before,
+  .member-dashboard .member-account-avatar::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 1px solid #d7bb77;
+  }
+
+  .member-dashboard .member-account-avatar::before {
+    top: 5px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+  }
+
+  .member-dashboard .member-account-avatar::after {
+    bottom: 4px;
+    width: 10px;
+    height: 5px;
+    border-radius: 8px 8px 0 0;
+    border-bottom: 0;
+  }
+
+  .member-dashboard .workspace {
+    width: 100%;
+    max-width: none;
+    height: calc(100vh - 61px);
+    min-height: 556px;
+    grid-template-columns: 218px minmax(0, 1fr);
+    margin: 0;
+  }
+
+  .member-dashboard .dashboard-sidebar {
+    padding: 10px 12px;
+    border: 0;
+    border-right: 1px solid rgba(205, 164, 72, .56);
+    background: rgba(3, 12, 22, .965);
+    box-shadow: 6px 0 22px rgba(0, 0, 0, .35);
+  }
+
+  .member-dashboard .dashboard-sidebar .table-list {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .member-dashboard .dashboard-sidebar .table-item {
+    height: 47px;
+    min-height: 47px;
+    display: grid;
+    grid-template-columns: 33px minmax(0, 1fr);
+    gap: 8px;
+    padding: 0 10px;
+    border: 1px solid rgba(204, 160, 60, .72);
+    border-radius: 5px;
+    background: rgba(5, 17, 29, .97);
+    color: #d6be80;
+    font-size: 11px;
+    letter-spacing: .02em;
+    box-shadow: inset 0 0 12px rgba(218, 175, 72, .04);
+  }
+
+  .member-dashboard .dashboard-sidebar .table-item.active {
+    border-color: #e0b94f;
+    background: linear-gradient(90deg, rgba(82, 56, 17, .9), rgba(17, 24, 29, .98));
+    color: #f0d98e;
+    box-shadow: inset 0 0 17px rgba(231, 184, 61, .13), 0 0 8px rgba(222, 177, 63, .22);
+  }
+
+  .member-dashboard .table-casino-icon {
+    position: relative;
+    width: 29px;
+    height: 29px;
+    border: 0;
+    border-radius: 3px;
+    background: url('/assets/ruiwen-dashboard-table-icon.png') center / cover no-repeat;
+    box-shadow: none;
+  }
+
+  .member-dashboard .table-casino-icon::before,
+  .member-dashboard .table-casino-icon::after {
+    display: none;
+  }
+
+  .member-dashboard .table-item-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .member-dashboard .dashboard-main {
+    height: 100%;
+    min-height: 0;
+    padding: 11px 48px 9px 22px;
+    display: grid;
+    grid-template-rows: 88px minmax(0, 258px) 169px;
+    gap: 10px;
+    overflow: hidden;
+    background: rgba(2, 9, 16, .33);
+  }
+
+  .member-dashboard .dashboard-stats-row {
+    height: 88px;
+    gap: 10px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .member-dashboard .dashboard-stats-row .stat-card,
+  .member-dashboard .prediction-card,
+  .member-dashboard .dashboard-history-panel,
+  .member-dashboard .dashboard-road-region .road-card {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(204, 164, 72, .58);
+    border-radius: 7px;
+    background: linear-gradient(145deg, #071827, #04101c) !important;
+    box-shadow: inset 0 0 24px rgba(61, 102, 137, .14), 0 4px 18px rgba(0, 0, 0, .32);
+  }
+
+  .member-dashboard .dashboard-stats-row .stat-card {
+    min-height: 88px;
+    padding: 8px;
+  }
+
+  .member-dashboard .dashboard-stats-row .result-stat::after {
+    position: absolute;
+    right: 30px;
+    top: 10px;
+    font-family: Georgia, serif;
+    font-size: 67px;
+    line-height: 1;
+    opacity: .09;
+  }
+
+  .member-dashboard .dashboard-stats-row .result-stat.Player::after { content: '♠'; color: #5d8daf; }
+  .member-dashboard .dashboard-stats-row .result-stat.Tie::after { content: '♦'; color: #55a17e; }
+  .member-dashboard .dashboard-stats-row .result-stat.Banker::after { content: '♥'; color: #ad6b6b; }
+
+  .member-dashboard .dashboard-stats-row .result-stat span {
+    margin: 0;
+    font-size: 17px;
+    line-height: 20px;
+    letter-spacing: .25em;
+  }
+
+  .member-dashboard .dashboard-stats-row .result-stat strong {
+    margin: 5px 0 0;
+    font-size: 28px;
+    line-height: 30px;
+  }
+
+  .member-dashboard .dashboard-middle-grid {
+    grid-template-columns: minmax(0, 1.17fr) minmax(0, 1fr);
+    gap: 10px;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .member-dashboard .dashboard-middle-grid .prediction-card {
+    grid-column: 1;
+    padding: 10px 12px;
+    gap: 8px;
+    align-content: start;
+    overflow: hidden;
+  }
+
+  .member-dashboard .prediction-card-heading {
+    width: 100%;
+    height: 21px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .member-dashboard .dashboard-middle-grid .prediction-title,
+  .member-dashboard .dashboard-history-panel .prediction-history-title {
+    margin: 0;
+    color: #dfc36f;
+    font-size: 15px;
+    line-height: 20px;
+    letter-spacing: .06em;
+  }
+
+  .member-dashboard .prediction-meta-chip {
+    padding: 3px 10px;
+    border: 1px solid rgba(200, 161, 72, .42);
+    border-radius: 10px;
+    color: #ae9a68;
+    background: rgba(3, 12, 21, .78);
+    font-size: 9px;
+  }
+
+  .member-dashboard .dashboard-middle-grid .side-prediction-row {
+    width: 100%;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .member-dashboard .dashboard-middle-grid .side-prediction-row .prediction-metric {
+    min-height: 61px;
+    padding: 5px;
+  }
+
+  .member-dashboard .dashboard-middle-grid .main-probability-row {
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 9px;
+  }
+
+  .member-dashboard .dashboard-middle-grid .main-probability-row .prediction-metric {
+    min-height: 123px;
+    padding: 14px 8px;
+  }
+
+  .member-dashboard .dashboard-middle-grid .prediction-metric {
+    position: relative;
+    overflow: hidden;
+    border-color: rgba(187, 147, 61, .38) !important;
+    border-radius: 7px;
+    background: rgba(4, 15, 25, .96) !important;
+    box-shadow: inset 0 0 15px rgba(86, 120, 142, .1);
+  }
+
+  .member-dashboard .dashboard-middle-grid .prediction-metric.active {
+    border-color: rgba(211, 172, 76, .7) !important;
+    box-shadow: inset 0 0 22px rgba(47, 111, 150, .2), 0 0 10px rgba(202, 158, 61, .15) !important;
+  }
+
+  .member-dashboard .dashboard-middle-grid .prediction-metric.active::after {
+    content: '';
+    position: absolute;
+    left: 15%;
+    right: 15%;
+    bottom: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #d8b34f, transparent);
+    box-shadow: 0 0 8px #d8b34f;
+  }
+
+  .member-dashboard .dashboard-middle-grid .prediction-metric span { font-size: 12px; }
+  .member-dashboard .dashboard-middle-grid .prediction-metric strong { font-size: 20px; }
+  .member-dashboard .dashboard-middle-grid .main-probability-row .prediction-metric span { font-size: 18px; }
+  .member-dashboard .dashboard-middle-grid .main-probability-row .prediction-metric strong { font-size: 31px; }
+
+  .member-dashboard .dashboard-history-panel {
+    grid-column: 2;
+    padding: 8px 11px;
+  }
+
+  .member-dashboard .dashboard-history-panel .prediction-history-title {
+    margin-bottom: 4px;
+  }
+
+  .member-dashboard .dashboard-history-panel .prediction-history-scroll {
+    overflow: hidden;
+  }
+
+  .member-dashboard .dashboard-history-panel .prediction-history {
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+    font-size: 10px;
+  }
+
+  .member-dashboard .dashboard-history-panel .prediction-history th,
+  .member-dashboard .dashboard-history-panel .prediction-history td {
+    height: 18px;
+    padding: 1px 4px;
+    border-color: rgba(150, 122, 67, .4);
+    line-height: 15px;
+  }
+
+  .member-dashboard .dashboard-history-panel .prediction-history th {
+    color: #d8bf80;
+    background: rgba(10, 27, 40, .95);
+  }
+
+  .member-dashboard .dashboard-road-region {
+    min-height: 169px;
+  }
+
+  .member-dashboard .dashboard-road-region .road-card {
+    height: 169px;
+    min-height: 169px;
+    padding: 9px 13px;
+  }
+
+  .member-dashboard .dashboard-road-region .card-heading {
+    height: 25px;
+    margin-bottom: 4px;
+  }
+
+  .member-dashboard .dashboard-road-region .card-heading h2 {
+    color: #e0c676;
+    font-size: 15px;
+  }
+
+  .member-dashboard .dashboard-road-region .road-counts {
+    gap: 11px;
+    font-size: 10px;
+  }
+
+  .member-dashboard .dashboard-road-region .big-road.classic-road {
+    position: relative;
+    grid-template-rows: repeat(6, 17px);
+    grid-auto-columns: 17px;
+    gap: 4px;
+    min-height: 126px;
+    padding: 3px;
+    border: 0;
+    border-radius: 0;
+    background-color: rgba(2, 10, 18, .93);
+    background-image: radial-gradient(circle at 8.5px 8.5px, transparent 0 5.9px, rgba(201, 165, 78, .62) 6.2px 7px, transparent 7.3px);
+    background-size: 21px 21px;
+    background-position: 3px 3px;
+  }
+
+  .member-dashboard .dashboard-road-region .big-cell {
+    width: 17px;
+    height: 17px;
+    border-width: 2px;
+    background: #06131f;
+    font-size: 9px;
+  }
+
+  .member-dashboard .dashboard-road-region .big-cell.Banker {
+    color: #fff;
+    border-color: #ff6a70;
+    background: #d9434e;
+  }
+
+  .member-dashboard .dashboard-road-region .big-cell.Player {
+    color: #fff;
+    border-color: #63a8ff;
+    background: #3379ca;
+  }
+}

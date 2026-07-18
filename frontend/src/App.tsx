@@ -293,11 +293,15 @@ export default function App() {
 
   return <main className="app-shell member-dashboard" data-ui-theme="navy-gold">
     <header className="topbar member-dashboard-header">
-      <div className="brand" aria-label="主標題">
-        <span className="eyebrow">瑞文AI智能預測</span>
-        <h1>瑞文AI百家預測</h1>
+      <div className="dashboard-side-brand" aria-label="瑞文AI百家品牌">
+        <span className="dashboard-brand-gem" aria-hidden="true">◇</span>
+        <span>瑞文 AI 百家</span>
       </div>
-      <div className="header-meta"><span className={`status ${supabaseStatus.state}`} title={supabaseConfig.projectRef}>{supabaseStatus.message}</span>{staleNotice ? <span className="status stale" title={staleNotice} aria-label={staleNotice}>資料過期</span> : null}</div>
+      <div className="brand" aria-label="主標題">
+        <h1>AI百家預測軟體</h1>
+        <span className="dashboard-title-subtitle">AI BACCARAT INTELLIGENCE</span>
+      </div>
+      <div className="header-meta"><span className={`status ${supabaseStatus.state}`} title={supabaseConfig.projectRef}>{supabaseStatus.message}</span>{staleNotice ? <span className="status stale" title={staleNotice} aria-label={staleNotice}>資料過期</span> : null}<span className="member-account-avatar" aria-label="會員帳號"><i aria-hidden="true" /></span></div>
     </header>
     <div className="workspace">
       <aside className="sidebar balanced-sidebar-line dashboard-sidebar" aria-label="桌號與資料選擇">
@@ -305,7 +309,8 @@ export default function App() {
           {visibleTables.map((table, index) => {
             const tableId = canonicalMemberTableId(table)
             return <button className={`table-item ${tableId === selectedCanonicalId ? 'active' : ''}`} key={tableId} onClick={() => { setTableUiHistory(null); setSelectedTableId(tableId) }}>
-              MT百家樂第{tableNumber(table, index)}桌 第{table.trend.current_round ?? 0}局
+              <span className="table-casino-icon" aria-hidden="true"><i /></span>
+              <span className="table-item-label">MT百家樂第{tableNumber(table, index)}桌 第{table.trend.current_round ?? 0}局</span>
             </button>
           })}
         </nav>
@@ -318,7 +323,7 @@ export default function App() {
         </div>
         <div className="dashboard-middle-grid">
         <section className="prediction-card" aria-label="AI預測結果">
-          <h2 className="prediction-title">即時預測</h2>
+          <div className="prediction-card-heading"><h2 className="prediction-title">即時預測</h2><span className="prediction-meta-chip">{selectedShoe || '—'} - {displaySelected.trend.current_round ?? 0}</span></div>
           <div className="prediction-row side-prediction-row" aria-label="副項目預測機率">
             <PredictionMetric title="閒龍寶" value={bonusPredictions?.playerDragon ?? null} tone="Player" active={predictionsActionable && (sideActions?.playerDragon ?? false)} />
             <PredictionMetric title="閒對" value={bonusPredictions?.playerPair ?? null} tone="Player" active={predictionsActionable && (sideActions?.playerPair ?? false)} />
@@ -342,7 +347,7 @@ export default function App() {
         <div className="roads-grid single-road dashboard-road-region">
           <RoadCard title="大路" subtitle={<div className="road-counts" aria-label="大路莊閒局數"><span className="Banker">莊局數：{displaySelected.trend.total_round_banker ?? 0}</span><span className="Player">閒局數：{displaySelected.trend.total_round_player ?? 0}</span></div>}>
             <div className="big-road classic-road" aria-label="傳統大路">
-              {bigRoad.map((cell) => <div style={{ gridColumn: cell.column + 1, gridRow: cell.row + 1 }} title={`${cell.outcome === 'banker' ? '莊' : '閒'} ${cell.point}點`} className={`big-cell ${cell.outcome === 'banker' ? 'Banker' : 'Player'} ${cell.hasTie ? 'tie-mark' : ''}`} key={`${selectedShoe}:${cell.column}:${cell.row}:${cell.code}`}><span>{cell.point}</span></div>)}
+              {bigRoad.map((cell) => <div style={{ gridColumn: cell.column + 1, gridRow: cell.row + 1 }} title={`${cell.outcome === 'banker' ? '莊' : '閒'} ${cell.point}點`} className={`big-cell ${cell.outcome === 'banker' ? 'Banker' : 'Player'} ${cell.hasTie ? 'tie-mark' : ''}`} key={`${selectedShoe}:${cell.column}:${cell.row}:${cell.code}`}><span>{cell.outcome === 'banker' ? '莊' : '閒'}</span></div>)}
             </div>
           </RoadCard>
         </div>

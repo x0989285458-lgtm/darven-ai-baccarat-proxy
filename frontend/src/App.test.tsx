@@ -119,7 +119,7 @@ describe('AI百家預測軟體', () => {
 
   it('keeps the approved top design without the 瑞文AI版 010 subtitle', async () => {
     await renderApp()
-    expect(screen.getByRole('heading', { name: '瑞文AI百家預測' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'AI百家預測軟體' })).toBeInTheDocument()
     expect(screen.queryByText('瑞文AI版 010')).not.toBeInTheDocument()
   })
 
@@ -495,7 +495,7 @@ describe('AI百家預測軟體', () => {
     expect(buttons[3]).toHaveTextContent('第3A桌 第115局')
   })
 
-  it('renders the six-row big road directly from authoritative MT codes with points and no legends', async () => {
+  it('renders the six-row big road directly from authoritative MT codes with winner labels and point metadata', async () => {
     await renderApp()
     expect(screen.queryByText('珠盤路')).not.toBeInTheDocument()
     expect(document.querySelector('.bead-grid')).not.toBeInTheDocument()
@@ -503,12 +503,13 @@ describe('AI百家預測軟體', () => {
     const road = screen.getByLabelText('傳統大路')
     const mtCodes = mockTables[0].trend.big2.split('#').flatMap((column) => column.split(',').map((code) => code.trim()).filter((code) => /^\d{4}$/.test(code)))
     await waitFor(() => expect(document.querySelectorAll('.big-cell')).toHaveLength(mtCodes.length))
-    expect(within(road).queryByText('和')).not.toBeInTheDocument()
     expect(screen.queryByText(/紅圈＝莊|藍圈＝閒|tie/i)).not.toBeInTheDocument()
     expect(document.querySelector('.big-cell.Tie')).not.toBeInTheDocument()
     expect(document.querySelectorAll('.big-cell.Banker')).toHaveLength(mtCodes.filter((code) => code[3] === '2').length)
     expect(document.querySelectorAll('.big-cell.Player')).toHaveLength(mtCodes.filter((code) => code[3] === '1').length)
-    expect(within(road).getAllByText(mtCodes[0][1]).length).toBeGreaterThan(0)
+    const firstOutcome = mtCodes[0][3] === '2' ? '莊' : '閒'
+    expect(within(road).getAllByText(firstOutcome).length).toBeGreaterThan(0)
+    expect(road.querySelector(`[title="${firstOutcome} ${mtCodes[0][1]}點"]`)).toBeInTheDocument()
     expect(document.querySelectorAll('.big-cell.tie-mark')).toHaveLength(mtCodes.filter((code) => Number(code[0]) > 0).length)
     const heading = screen.getByRole('heading', { name: '大路' }).parentElement!
     expect(within(heading).getByText(`莊局數：${mockTables[0].trend.total_round_banker}`)).toHaveClass('Banker')
@@ -978,13 +979,17 @@ describe('AI百家預測軟體', () => {
     expect(screen.getByLabelText('驗證密碼')).toHaveAttribute('type', 'password')
   })
 
-  it('renders the approved navy-gold member dashboard identity and fixed prediction rows', async () => {
+  it('renders the exact approved dashboard identity and ornamental controls', async () => {
     await renderApp()
 
-    expect(document.querySelector('main.app-shell')).toHaveAttribute('data-ui-theme', 'navy-gold')
-    expect(screen.getByRole('heading', { name: '瑞文AI百家預測' })).toBeVisible()
-    expect(screen.getByText('瑞文AI智能預測')).toBeVisible()
-    expect(screen.queryByText('AI BACCARAT INTELLIGENCE')).not.toBeInTheDocument()
+    const dashboard = document.querySelector('main.member-dashboard')
+    expect(dashboard).toHaveAttribute('data-ui-theme', 'navy-gold')
+    expect(screen.getByRole('heading', { name: 'AI百家預測軟體' })).toBeVisible()
+    expect(screen.getByText('瑞文 AI 百家')).toBeVisible()
+    expect(screen.getByText('AI BACCARAT INTELLIGENCE')).toBeVisible()
+    expect(dashboard?.querySelector('.member-account-avatar')).toBeInTheDocument()
+    expect(dashboard?.querySelectorAll('.table-casino-icon')).toHaveLength(10)
+    expect(dashboard?.querySelector('.prediction-meta-chip')).toBeInTheDocument()
     expect(Array.from(screen.getByLabelText('副項目預測機率').querySelectorAll('.prediction-metric span')).map((node) => node.textContent)).toEqual(['閒龍寶', '閒對', '超六', '莊對', '莊龍寶'])
     expect(Array.from(screen.getByLabelText('莊閒預測機率').querySelectorAll('.prediction-metric span')).map((node) => node.textContent)).toEqual(['閒', '和', '莊'])
   })

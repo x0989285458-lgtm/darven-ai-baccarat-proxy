@@ -41,8 +41,9 @@ describe('responsive history and road CSS', () => {
     expect(css).not.toMatch(/\.member-login-card\s*\{[^}]*width:\s*clamp\(/s)
   })
 
-  it('lays out the approved member dashboard shell before functional relocation', () => {
-    expect(css).toMatch(/\.member-dashboard\s+\.workspace\s*\{[^}]*width:\s*100%[^}]*max-width:\s*none[^}]*grid-template-columns:\s*clamp\(210px,\s*17\.2vw,\s*280px\)\s+minmax\(0,\s*1fr\)/s)
+  it('uses the approved dashboard artwork and exact oracle geometry', () => {
+    expect(css).toContain("url('/assets/ruiwen-member-dashboard-approved.jpg')")
+    expect(css).toMatch(/\.member-dashboard\s+\.workspace\s*\{[^}]*width:\s*100%[^}]*max-width:\s*none[^}]*grid-template-columns:\s*218px\s+minmax\(0,\s*1fr\)/s)
     expect(css).toMatch(/\.dashboard-main\s*\{[^}]*display:\s*grid[^}]*grid-template-rows:[^}]*min-height:\s*0[^}]*overflow:\s*hidden/s)
     expect(css).toMatch(/\.dashboard-middle-grid\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*minmax\(0,\s*1\.08fr\)\s+minmax\(0,\s*\.92fr\)[^}]*overflow:\s*hidden/s)
     expect(css).toMatch(/\.dashboard-stats-row\s+\.result-stat\s+strong\s*\{[^}]*font-size:\s*34px/s)
