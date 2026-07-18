@@ -1090,23 +1090,51 @@ describe('AI百家預測軟體', () => {
     await renderApp('/admin-login', false)
 
     expect(screen.getByRole('heading', { name: '瑞文AI百家管理後台' })).toBeInTheDocument()
-    fireEvent.change(screen.getByPlaceholderText('請輸入帳號'), { target: { value: 'DVAI' } })
-    fireEvent.click(screen.getByRole('button', { name: '登入' }))
+    fireEvent.change(screen.getByPlaceholderText('請輸入管理員或代理帳號'), { target: { value: 'DVAI' } })
+    fireEvent.click(screen.getByRole('button', { name: '進入管理後台' }))
 
     expect(await screen.findByText('登入成功，正在進入後台')).toBeInTheDocument()
     expect(fetchMock.mock.calls.some(([url, options]) => String(url).includes('/api/online-license/agent-login') && (options as RequestInit)?.method === 'POST')).toBe(true)
   })
 
-  it('keeps admin login as one account field in the approved navy-gold identity', async () => {
+  it('renders the approved centered admin access gateway without adding auth fields', async () => {
     await renderApp('/admin-login', false)
 
-    expect(screen.getByLabelText('管理後台登入').closest('main')).toHaveAttribute('data-ui-theme', 'navy-gold')
-    expect(screen.getByText('管理控制中心')).toBeVisible()
-    expect(screen.queryByText('ADMIN CONTROL')).not.toBeInTheDocument()
+    const card = screen.getByLabelText('管理後台登入')
+    expect(card.closest('main')).toHaveClass('admin-login-shell')
+    expect(card).toHaveClass('admin-login-card')
+    expect(card.closest('main')).toHaveAttribute('data-ui-theme', 'navy-gold')
+    expect(screen.getByText('ADMINISTRATIVE ACCESS')).toBeVisible()
     expect(screen.getByRole('heading', { name: '瑞文AI百家管理後台' })).toBeVisible()
-    expect(screen.getByText('管理員安全登入')).toBeVisible()
+    expect(screen.queryByText('管理控制中心')).not.toBeInTheDocument()
+    expect(screen.queryByText('管理員安全登入')).not.toBeInTheDocument()
+    expect(screen.queryByText('權限閘門')).not.toBeInTheDocument()
+    expect(screen.queryByText('管理員與代理專用入口，登入後依帳號權限進入管理控制中心。')).not.toBeInTheDocument()
+    expect(screen.queryByText('RUIWEN AI · ADMIN ACCESS')).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText('請輸入管理員或代理帳號')).toBeVisible()
+    expect(screen.getByRole('button', { name: '進入管理後台' })).toBeVisible()
+    expect(screen.getByText('安全連線・權限驗證')).toBeVisible()
     expect(screen.getAllByRole('textbox')).toHaveLength(1)
     expect(document.querySelector('input[type="password"]')).not.toBeInTheDocument()
+  })
+
+  it('shows maintenance truthfully and blocks non-super admin login before the API call', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes('/api/online-core/status')) return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ connected: true, settings: { frontend: { maintenance: { enabled: true } } } }),
+      })
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    await renderApp('/admin-login', false)
+
+    expect(await screen.findByText('系統維護中')).toHaveClass('maintenance')
+    fireEvent.change(screen.getByLabelText('管理員或代理帳號'), { target: { value: 'Admin001' } })
+    fireEvent.click(screen.getByRole('button', { name: '進入管理後台' }))
+
+    expect(screen.getByText('系統維護中，僅超級管理員可登入')).toBeVisible()
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/online-license/agent-login'))).toBe(false)
   })
 
   it('renders the formal admin title and all 10 dynamic table-analysis cards', async () => {

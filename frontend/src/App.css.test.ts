@@ -50,6 +50,15 @@ describe('responsive history and road CSS', () => {
     expect(css).toMatch(/@media\s*\(max-width:\s*700px\)[\s\S]*?\.member-login-shell\s+\.member-login-card\s+\.login-field-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)[^}]*padding:\s*0\s+16px/s)
   })
 
+  it('uses the approved centered admin access gateway without the removed red-box elements', () => {
+    expect(css).toMatch(/\.admin-login-shell\s*\{[^}]*url\('\/assets\/ruiwen-login-bg-hq\.png'\)[^}]*place-items:\s*center/s)
+    expect(css).toMatch(/\.admin-login-shell\s+\.admin-login-card\s*\{[^}]*width:\s*min\(468px,\s*calc\(100vw\s*-\s*32px\)\)[^}]*text-align:\s*center/s)
+    expect(css).toMatch(/\.admin-login-shell\s+\.admin-login-card\s+input\s*\{[^}]*height:\s*58px[^}]*text-align:\s*center/s)
+    expect(css).toMatch(/\.admin-login-shell\s+\.admin-login-card\s+button\s*\{[^}]*height:\s*56px/s)
+    expect(css).toMatch(/@media\s*\(max-width:\s*700px\)[\s\S]*?\.admin-login-shell\s*\{[^}]*padding:\s*40px\s+16px[^}]*background-position:\s*67%\s+center/s)
+    expect(css).not.toMatch(/\.admin-login-(?:gate|intro|corner)/s)
+  })
+
   it('uses the untouched pure background asset and approved command-deck geometry', () => {
     expect(css).toContain("url('/assets/ruiwen-login-bg-hq.png')")
     expect(css).toMatch(/\.app-shell\.member-dashboard\[data-ui-theme='navy-gold'\]\s*\{[^}]*url\('\/assets\/ruiwen-login-bg-hq\.png'\)/s)

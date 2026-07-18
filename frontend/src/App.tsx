@@ -484,14 +484,17 @@ function AdminLoginApp() {
       setLoginMessage('登入失敗，請確認後端 API 是否上線')
     }
   }
-  return <main className="login-shell" data-ui-theme="navy-gold">
-    <section className="login-card" aria-label="管理後台登入">
-      <span className="login-eyebrow">管理控制中心</span>
-      <h1 className="admin-login-title">瑞文AI百家管理後台</h1>
-      <strong>管理員安全登入</strong>
-      <input aria-label="帳號" placeholder="請輸入帳號" value={agentAccount} onChange={(event) => setAgentAccount(event.target.value)} />
-      <button onClick={submitLogin}>登入</button>
-      {loginMessage ? <em>{loginMessage}</em> : null}
+  return <main className="login-shell admin-login-shell" data-ui-theme="navy-gold">
+    <section className="login-card admin-login-card" aria-label="管理後台登入">
+      <span className="login-eyebrow">ADMINISTRATIVE ACCESS</span>
+      <h1>瑞文AI百家管理後台</h1>
+      <input aria-label="管理員或代理帳號" placeholder="請輸入管理員或代理帳號" value={agentAccount} onChange={(event) => setAgentAccount(event.target.value)} />
+      <button className="admin-login-submit" onClick={submitLogin}>進入管理後台</button>
+      <em className="login-message" aria-live="polite">{loginMessage}</em>
+      <footer className="login-footer">
+        <span className={coreStatus.maintenanceMode ? 'system-status maintenance' : `system-status ${coreStatus.state}`}>{coreStatus.maintenanceMode ? '系統維護中' : coreStatus.message}</span>
+        <span className="login-security">安全連線・權限驗證</span>
+      </footer>
     </section>
   </main>
 }

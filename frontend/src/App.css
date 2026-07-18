@@ -2417,6 +2417,137 @@ body,
   }
 }
 
+/* Approved A centered admin login. Keep these rules isolated from member login and admin dashboard. */
+.admin-login-shell {
+  min-height: 100vh;
+  display: grid;
+  padding: 32px 16px;
+  background: #030a12 url('/assets/ruiwen-login-bg-hq.png') center / cover fixed no-repeat !important;
+  place-items: center;
+}
+
+.admin-login-shell .admin-login-card {
+  width: min(468px, calc(100vw - 32px)) !important;
+  min-height: 0 !important;
+  display: grid;
+  place-items: center;
+  gap: 18px !important;
+  padding: 42px 38px 32px !important;
+  border: 1px solid rgba(194, 155, 82, .48) !important;
+  border-radius: 22px !important;
+  background: linear-gradient(150deg, rgba(6, 18, 31, .94), rgba(3, 12, 22, .91)) !important;
+  text-align: center;
+}
+
+.admin-login-shell .admin-login-card .login-eyebrow {
+  margin: 0;
+  color: #c9ad6c;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .19em;
+  transform: none;
+}
+
+.admin-login-shell .admin-login-card h1 {
+  width: 100%;
+  margin: 0;
+  color: #f3f5f8;
+  font-size: clamp(28px, 5vw, 38px) !important;
+  line-height: 1.15 !important;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+.admin-login-shell .admin-login-card input {
+  width: 100%;
+  height: 58px;
+  min-height: 58px !important;
+  margin: 6px 0 0;
+  padding: 0 18px;
+  border: 1px solid rgba(112, 143, 172, .3);
+  border-radius: 13px;
+  outline: 0;
+  background: rgba(2, 10, 19, .76) !important;
+  color: #fff;
+  text-align: center;
+}
+
+.admin-login-shell .admin-login-card input:focus {
+  border-color: rgba(205, 169, 87, .75);
+  box-shadow: 0 0 0 3px rgba(205, 169, 87, .08);
+}
+
+.admin-login-shell .admin-login-card button {
+  width: 100%;
+  height: 56px;
+  min-height: 56px !important;
+  border: 1px solid #6da9f0 !important;
+  border-radius: 13px;
+  background: linear-gradient(180deg, #2e79d8, #1353af) !important;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: .12em;
+  cursor: pointer;
+}
+
+.admin-login-shell .admin-login-card .login-message {
+  min-height: 18px;
+  margin: -2px 0;
+  color: #d7bd76;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.admin-login-shell .admin-login-card .login-footer {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #8fa0b3;
+  font-size: 12px;
+}
+
+.admin-login-shell .admin-login-card .system-status {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent !important;
+  color: #8ebaa9;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.admin-login-shell .admin-login-card .system-status.maintenance,
+.admin-login-shell .admin-login-card .system-status.error {
+  color: #d7bd76;
+}
+
+.admin-login-shell .admin-login-card .login-security {
+  color: #9babbd;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .admin-login-shell {
+    padding: 40px 16px;
+    background-position: 67% center !important;
+  }
+
+  .admin-login-shell .admin-login-card {
+    width: 100% !important;
+    padding: 32px 20px 27px !important;
+    border-radius: 18px !important;
+  }
+
+  .admin-login-shell .admin-login-card h1 {
+    font-size: clamp(24px, 7vw, 30px) !important;
+  }
+}
+
 @media (max-width: 560px) {
   .member-dashboard .member-dashboard-header .header-meta {
     width: auto;
