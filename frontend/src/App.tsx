@@ -418,7 +418,7 @@ function LoginApp() {
   }
   return <main className="login-shell" data-ui-theme="navy-gold">
     <section className="login-card member-login-card" aria-label="前台登入驗證">
-      <span className="login-eyebrow">瑞文AI智能預測</span>
+      <span className="login-eyebrow">AI BACCARAT INTELLIGENCE</span>
       <h1>瑞文AI百家預測</h1>
       <div className="login-title-divider" aria-hidden="true"><span /></div>
       <label className="login-field-row">

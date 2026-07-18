@@ -29,4 +29,9 @@ describe('responsive history and road CSS', () => {
     expect(css).toMatch(/\.side-prediction-row\s*\{[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(/s)
     expect(css).not.toMatch(/\.side-prediction-row\s*\{[^}]*grid-template-columns:\s*repeat\(3,/s)
   })
+
+  it('uses the approved member-login artwork as the visual source of truth', () => {
+    expect(css).toContain("url('/assets/ruiwen-member-login-approved.jpg')")
+    expect(css).toMatch(/\.login-shell\s*\{[^}]*background:[^}]*100%\s+auto\s+no-repeat/s)
+  })
 })

@@ -962,8 +962,8 @@ describe('AI百家預測軟體', () => {
     await renderApp('/login', false)
 
     expect(screen.getByLabelText('前台登入驗證').closest('main')).toHaveAttribute('data-ui-theme', 'navy-gold')
-    expect(screen.getByText('瑞文AI智能預測')).toBeVisible()
-    expect(screen.queryByText('AI BACCARAT INTELLIGENCE')).not.toBeInTheDocument()
+    expect(screen.getByText('AI BACCARAT INTELLIGENCE')).toBeVisible()
+    expect(screen.queryByText('瑞文AI智能預測')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '瑞文AI百家預測' })).toBeVisible()
     const loginRegion = screen.getByLabelText('前台登入驗證')
     expect(loginRegion).toHaveClass('member-login-card')

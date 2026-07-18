@@ -1538,7 +1538,7 @@ body,
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  background: #06101d url('/assets/ruiwen-login-bg-hq.png') center center / cover no-repeat !important;
+  background: #020812 url('/assets/ruiwen-member-login-approved.jpg') center center / 100% auto no-repeat !important;
 }
 .login-shell::before {
   content: '';
@@ -1644,14 +1644,15 @@ body,
 
 /* Member login: approved large navy-gold identity card. */
 .login-shell[data-ui-theme='navy-gold'] .member-login-card {
-  width: min(450px, calc(100vw - 80px)) !important;
-  min-height: min(490px, calc(100vh - 80px)) !important;
-  padding: clamp(34px, 3.4vw, 44px) clamp(34px, 3.5vw, 40px) !important;
-  gap: clamp(16px, 1.35vw, 22px) !important;
+  width: clamp(400px, 32.8vw, 500px) !important;
+  min-height: clamp(420px, 33.85vw, 520px) !important;
+  padding: clamp(28px, 2.4vw, 38px) clamp(32px, 3vw, 44px) !important;
+  gap: clamp(10px, .9vw, 14px) !important;
   align-content: center !important;
+  transform: translateX(-1.55vw);
   border-color: rgba(217, 177, 91, .72) !important;
   border-radius: 24px !important;
-  background: linear-gradient(180deg, rgba(6, 18, 34, .86), rgba(2, 11, 23, .82)) !important;
+  background: linear-gradient(180deg, #061222, #020b17) !important;
   box-shadow: 0 32px 100px rgba(0, 0, 0, .64), inset 0 1px rgba(255, 255, 255, .1), 0 0 22px rgba(48, 141, 255, .12) !important;
 }
 
@@ -1662,12 +1663,14 @@ body,
 .member-login-card .login-eyebrow {
   font-size: clamp(11px, .85vw, 14px);
   letter-spacing: .24em;
+  transform: translateY(-10px);
 }
 
 .login-card.member-login-card h1 {
   font-size: clamp(38px, 3.25vw, 54px) !important;
   letter-spacing: .045em;
   line-height: 1.08 !important;
+  transform: translateY(-10px);
 }
 
 .login-title-divider {
@@ -1677,6 +1680,7 @@ body,
   gap: 12px;
   width: min(100%, 360px);
   color: #d1a858;
+  transform: translateY(-10px);
 }
 
 .login-title-divider::before,
@@ -1700,12 +1704,12 @@ body,
 
 .login-card.member-login-card .login-field-row {
   width: 100%;
-  min-height: 72px;
+  min-height: 48px;
   display: grid;
-  grid-template-columns: 34px 112px minmax(0, 1fr) 28px;
+  grid-template-columns: 28px 82px minmax(0, 1fr) 24px;
   align-items: center;
-  gap: 12px;
-  padding: 0 18px;
+  gap: 9px;
+  padding: 0 14px;
   border: 1px solid rgba(108, 145, 181, .32);
   border-radius: 12px;
   background: rgba(2, 10, 22, .72);
@@ -1727,7 +1731,7 @@ body,
 
 .login-card.member-login-card .login-field-row input {
   min-width: 0;
-  min-height: 46px !important;
+  min-height: 40px !important;
   padding: 0 8px;
   border: 0 !important;
   border-radius: 0;
@@ -1813,11 +1817,12 @@ body,
 }
 
 .login-card.member-login-card > button {
-  min-height: 68px !important;
+  min-height: 52px !important;
   margin-top: 2px;
   border-radius: 12px;
   font-size: clamp(20px, 1.45vw, 25px);
   letter-spacing: .08em;
+  transform: translateY(15px);
 }
 
 .login-card.member-login-card .system-status {
@@ -1831,6 +1836,7 @@ body,
   background: transparent !important;
   color: #50e095;
   font-size: clamp(13px, 1vw, 16px);
+  transform: translateY(25px);
 }
 
 .login-card.member-login-card .system-status.maintenance {
@@ -1849,14 +1855,30 @@ body,
   margin: -4px 0 0;
   color: #718096;
   font-size: clamp(12px, .9vw, 15px);
+  transform: translateY(31px);
 }
 
 @media (max-width: 720px) {
+  .login-shell {
+    background-size: cover !important;
+    background-position: center center !important;
+  }
+
   .login-shell[data-ui-theme='navy-gold'] .member-login-card {
     width: min(440px, 92vw) !important;
     min-height: auto !important;
     padding: 32px 20px !important;
     gap: 14px !important;
+    transform: none;
+  }
+
+  .member-login-card .login-eyebrow,
+  .login-card.member-login-card h1,
+  .login-title-divider,
+  .login-card.member-login-card > button,
+  .login-card.member-login-card .system-status,
+  .login-card.member-login-card .login-security {
+    transform: none;
   }
 
   .login-card.member-login-card h1 {
