@@ -9,7 +9,7 @@ import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents,
 const SUPER_ADMIN = 'dv1788'
 const MEMBER_SESSION_TOKEN_KEY = 'darven-member-session-token'
 const MEMBER_SESSION_EXPIRES_KEY = 'darven-member-session-expires-at'
-const tableDisplayOrder = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
+const tableDisplayOrder = ['1', '2', '3', '3A', '5', '6', '7', '8', '9', '10']
 const MEMBER_TABLE_IDS = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10'] as const
 const memberTableLabels: ReadonlyMap<string, string> = new Map(MEMBER_TABLE_IDS.map((tableId, index) => [tableId, ['1', '2', '3', '3A', '5', '6', '7', '8', '9', '10'][index]]))
 const HISTORY_RETRY_DELAYS_MS = [150, 400] as const
@@ -291,10 +291,11 @@ export default function App() {
 
   if (!displaySelected) return <WaitingForCloudData status={status} supabaseStatus={supabaseStatus} />
 
-  return <main className="app-shell">
+  return <main className="app-shell" data-ui-theme="navy-gold">
     <header className="topbar">
       <div className="brand" aria-label="主標題">
-        <h1>AI百家預測軟體</h1>
+        <span className="eyebrow">瑞文AI智能預測</span>
+        <h1>瑞文AI百家預測</h1>
       </div>
       <div className="header-meta"><span className={`status ${supabaseStatus.state}`} title={supabaseConfig.projectRef}>{supabaseStatus.message}</span>{staleNotice ? <span className="status stale" title={staleNotice} aria-label={staleNotice}>資料過期</span> : null}</div>
     </header>
@@ -316,6 +317,7 @@ export default function App() {
           <Stat title="莊" value={String(displaySelected.trend.total_round_banker ?? 0)} tone="Banker" />
         </div>
         <section className="prediction-card" aria-label="AI預測結果">
+          <h2 className="prediction-title">即時預測</h2>
           <div className="prediction-row side-prediction-row" aria-label="副項目預測機率">
             <PredictionMetric title="閒龍寶" value={bonusPredictions?.playerDragon ?? null} tone="Player" active={predictionsActionable && (sideActions?.playerDragon ?? false)} />
             <PredictionMetric title="閒對" value={bonusPredictions?.playerPair ?? null} tone="Player" active={predictionsActionable && (sideActions?.playerPair ?? false)} />
@@ -369,13 +371,13 @@ function enforceMaintenanceLogout(status: OnlineCoreStatus, path: string, liveCl
 }
 
 function SessionChecking() {
-  return <main className="login-shell"><section className="login-card" aria-label="會員Session驗證中"><h1>瑞文AI百家預測</h1><strong>會員 Session 驗證中</strong></section></main>
+  return <main className="login-shell" data-ui-theme="navy-gold"><section className="login-card" aria-label="會員Session驗證中"><span className="login-eyebrow">瑞文AI智能預測</span><h1>瑞文AI百家預測</h1><strong>會員 Session 驗證中</strong></section></main>
 }
 
 function WaitingForCloudData({ status, supabaseStatus }: { status: { state: string; message: string }; supabaseStatus: { state: string; message: string } }) {
-  return <main className="app-shell waiting-shell">
+  return <main className="app-shell waiting-shell" data-ui-theme="navy-gold">
     <header className="topbar">
-      <div className="brand" aria-label="主標題"><h1>AI百家預測軟體</h1></div>
+      <div className="brand" aria-label="主標題"><h1>瑞文AI百家預測</h1></div>
       <div className="header-meta"><span className={`status ${supabaseStatus.state}`} title={supabaseConfig.projectRef}>{supabaseStatus.message}</span></div>
     </header>
     <section className="waiting-card" aria-label="等待雲端資料">
@@ -414,8 +416,9 @@ function LoginApp() {
       setLoginMessage('登入失敗，請重新整理後再試')
     }
   }
-  return <main className="login-shell">
+  return <main className="login-shell" data-ui-theme="navy-gold">
     <section className="login-card" aria-label="前台登入驗證">
+      <span className="login-eyebrow">瑞文AI智能預測</span>
       <h1>瑞文AI百家預測</h1>
       <div className="login-chip">前台登入驗證</div>
       <input aria-label="會員帳號" placeholder="請輸入會員帳號" value={memberAccount} onChange={(event) => setMemberAccount(event.target.value)} />
@@ -450,10 +453,11 @@ function AdminLoginApp() {
       setLoginMessage('登入失敗，請確認後端 API 是否上線')
     }
   }
-  return <main className="login-shell">
+  return <main className="login-shell" data-ui-theme="navy-gold">
     <section className="login-card" aria-label="管理後台登入">
+      <span className="login-eyebrow">管理控制中心</span>
       <h1 className="admin-login-title">瑞文AI百家管理後台</h1>
-      <strong>瑞文AI後台管理</strong>
+      <strong>管理員安全登入</strong>
       <input aria-label="帳號" placeholder="請輸入帳號" value={agentAccount} onChange={(event) => setAgentAccount(event.target.value)} />
       <button onClick={submitLogin}>登入</button>
       {loginMessage ? <em>{loginMessage}</em> : null}
@@ -745,11 +749,12 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const canOnlyObserve = loginRoleName === 'viewer'
   const roleOptions = allowedChildRoles(isSuper ? 'super' : loginRoleName)
 
-  return <main className="admin-shell admin-v015-shell" style={{ width: '100%', maxWidth: 'none' }}>
+  return <main className="admin-shell admin-v015-shell" data-ui-theme="navy-gold" style={{ width: '100%', maxWidth: 'none' }}>
     {toast ? <div className="toast">{toast}</div> : null}
     <header className="admin-hero clean-hero v015-hero" style={{ width: '100%', maxWidth: 'none' }}>
       <div className="admin-title-block">
-        <h1>AI百家預測後台</h1>
+        <span className="eyebrow">管理控制中心</span>
+        <h1>瑞文AI百家管理後台</h1>
         <span>授權序號 / 會員帳號 / 代理管理 / 驗證碼管理</span>
       </div>
       <button className="admin-logout" onClick={logoutAdmin}>登出</button>

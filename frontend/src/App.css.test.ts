@@ -18,4 +18,15 @@ describe('responsive history and road CSS', () => {
     expect(css).toMatch(/\.big-cell\s*>\s*span\s*\{[^}]*z-index:\s*2/s)
     expect(css).toMatch(/\.big-cell\.tie-mark::after\s*\{[^}]*z-index:\s*1/s)
   })
+
+  it('prevents page-level horizontal overflow while keeping wide data regions internally scrollable', () => {
+    expect(css).toMatch(/html,\s*body,\s*#root\s*\{[^}]*max-width:\s*100%[^}]*overflow-x:\s*hidden/s)
+    expect(css).toMatch(/\.report-panel\s*\{[^}]*overflow-x:\s*auto/s)
+    expect(css).toMatch(/\.scroll-list\s*\{[^}]*overflow-x:\s*auto/s)
+  })
+
+  it('keeps all five side predictions on one responsive row', () => {
+    expect(css).toMatch(/\.side-prediction-row\s*\{[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(/s)
+    expect(css).not.toMatch(/\.side-prediction-row\s*\{[^}]*grid-template-columns:\s*repeat\(3,/s)
+  })
 })

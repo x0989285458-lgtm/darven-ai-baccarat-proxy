@@ -119,7 +119,7 @@ describe('AI百家預測軟體', () => {
 
   it('keeps the approved top design without the 瑞文AI版 010 subtitle', async () => {
     await renderApp()
-    expect(screen.getByRole('heading', { name: 'AI百家預測軟體' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '瑞文AI百家預測' })).toBeInTheDocument()
     expect(screen.queryByText('瑞文AI版 010')).not.toBeInTheDocument()
   })
 
@@ -521,6 +521,7 @@ describe('AI百家預測軟體', () => {
     }))
     await renderApp('/', false)
     expect(await screen.findByRole('heading', { name: '等待雲端資料' })).toBeInTheDocument()
+    expect(document.querySelector('main.waiting-shell')).toHaveAttribute('data-ui-theme', 'navy-gold')
     expect(screen.queryByRole('button', { name: /MT百家樂第1桌/ })).not.toBeInTheDocument()
     expect(await screen.findByText(/MT自動登入未啟用/)).toBeInTheDocument()
   })
@@ -957,6 +958,28 @@ describe('AI百家預測軟體', () => {
     expect(window.sessionStorage.getItem('darven-member-login')).toBeNull()
   })
 
+  it('renders the approved navy-gold member login identity without changing its two-field contract', async () => {
+    await renderApp('/login', false)
+
+    expect(screen.getByLabelText('前台登入驗證').closest('main')).toHaveAttribute('data-ui-theme', 'navy-gold')
+    expect(screen.getByText('瑞文AI智能預測')).toBeVisible()
+    expect(screen.queryByText('AI BACCARAT INTELLIGENCE')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '瑞文AI百家預測' })).toBeVisible()
+    expect(screen.getAllByRole('textbox')).toHaveLength(1)
+    expect(screen.getByLabelText('驗證密碼')).toHaveAttribute('type', 'password')
+  })
+
+  it('renders the approved navy-gold member dashboard identity and fixed prediction rows', async () => {
+    await renderApp()
+
+    expect(document.querySelector('main.app-shell')).toHaveAttribute('data-ui-theme', 'navy-gold')
+    expect(screen.getByRole('heading', { name: '瑞文AI百家預測' })).toBeVisible()
+    expect(screen.getByText('瑞文AI智能預測')).toBeVisible()
+    expect(screen.queryByText('AI BACCARAT INTELLIGENCE')).not.toBeInTheDocument()
+    expect(Array.from(screen.getByLabelText('副項目預測機率').querySelectorAll('.prediction-metric span')).map((node) => node.textContent)).toEqual(['閒龍寶', '閒對', '超六', '莊對', '莊龍寶'])
+    expect(Array.from(screen.getByLabelText('莊閒預測機率').querySelectorAll('.prediction-metric span')).map((node) => node.textContent)).toEqual(['閒', '和', '莊'])
+  })
+
   it('admin login calls online license API and enters backend dashboard after success', async () => {
     const fetchMock = vi.fn((url: string, options?: RequestInit) => {
       if (url.includes('/api/online-license/agent-login')) {
@@ -974,6 +997,31 @@ describe('AI百家預測軟體', () => {
 
     expect(await screen.findByText('登入成功，正在進入後台')).toBeInTheDocument()
     expect(fetchMock.mock.calls.some(([url, options]) => String(url).includes('/api/online-license/agent-login') && (options as RequestInit)?.method === 'POST')).toBe(true)
+  })
+
+  it('keeps admin login as one account field in the approved navy-gold identity', async () => {
+    await renderApp('/admin-login', false)
+
+    expect(screen.getByLabelText('管理後台登入').closest('main')).toHaveAttribute('data-ui-theme', 'navy-gold')
+    expect(screen.getByText('管理控制中心')).toBeVisible()
+    expect(screen.queryByText('ADMIN CONTROL')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '瑞文AI百家管理後台' })).toBeVisible()
+    expect(screen.getByText('管理員安全登入')).toBeVisible()
+    expect(screen.getAllByRole('textbox')).toHaveLength(1)
+    expect(document.querySelector('input[type="password"]')).not.toBeInTheDocument()
+  })
+
+  it('renders the formal admin title and all 10 dynamic table-analysis cards', async () => {
+    await renderApp('/admin')
+
+    expect(document.querySelector('main.admin-v015-shell')).toHaveAttribute('data-ui-theme', 'navy-gold')
+    expect(screen.getByRole('heading', { name: '瑞文AI百家管理後台' })).toBeVisible()
+    expect(screen.getByText('管理控制中心')).toBeVisible()
+    expect(screen.queryByText('ADMIN CONTROL CENTER')).not.toBeInTheDocument()
+    const weakPanel = screen.getByLabelText('弱桌分析')
+    const cards = weakPanel.querySelectorAll('.weak-card')
+    expect(cards).toHaveLength(10)
+    expect(Array.from(cards).map((card) => card.querySelector('strong')?.textContent)).toEqual(['1桌', '2桌', '3桌', '3A桌', '5桌', '6桌', '7桌', '8桌', '9桌', '10桌'])
   })
 
   it('admin loads real Supabase license rows instead of static placeholder agents and codes', async () => {

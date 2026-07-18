@@ -524,7 +524,7 @@ h1 {
   .result-stat span { font-size: clamp(18px, 5vw, 24px); letter-spacing: .08em; }
   .result-stat strong { font-size: clamp(26px, 7vw, 36px); }
   .prediction-card { padding: 16px 12px; }
-  .side-prediction-row { grid-template-columns: repeat(3, minmax(72px, 1fr)); gap: 6px; }
+  .side-prediction-row { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
   .main-probability-row { grid-template-columns: repeat(3, minmax(72px, 1fr)); gap: 8px; }
   .prediction-metric { min-height: 50px; padding: 7px 5px; border-radius: 11px; }
   .prediction-metric span { font-size: clamp(11px, 3.15vw, 14px); letter-spacing: -.04em; }
@@ -1023,6 +1023,175 @@ h1 {
 @media (max-width: 720px) {
   .v015-summary, .v015-form-grid, .v015-result-grid, .v015-copy-row, .v015-date-grid { grid-template-columns: 1fr; }
   .agent-row, .list-head { grid-template-columns: 1fr; }
+}
+
+/* Approved navy-gold responsive visual contract. */
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+[data-ui-theme='navy-gold'] {
+  --navy-950: #030b16;
+  --navy-900: #061422;
+  --navy-800: #0a2033;
+  --gold-500: #cfa85d;
+  --gold-300: #efd497;
+  --line-gold: rgba(207, 168, 93, .42);
+}
+
+.app-shell[data-ui-theme='navy-gold'],
+.admin-shell[data-ui-theme='navy-gold'] {
+  background:
+    radial-gradient(circle at 75% 0, rgba(26, 85, 125, .2), transparent 34rem),
+    linear-gradient(145deg, var(--navy-900), var(--navy-950) 72%);
+  color: #f4f7fb;
+}
+
+.app-shell .topbar,
+.admin-v015-shell .admin-hero {
+  border-color: var(--line-gold);
+  background: rgba(4, 17, 30, .92);
+  box-shadow: inset 0 1px rgba(239, 212, 151, .08), 0 16px 42px rgba(0, 0, 0, .22);
+}
+
+.app-shell .topbar {
+  border-top: 1px solid var(--line-gold);
+}
+
+.brand .eyebrow,
+.admin-title-block .eyebrow,
+.login-eyebrow {
+  color: var(--gold-300);
+  font-size: clamp(10px, .85vw, 13px);
+  font-weight: 800;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+}
+
+.brand h1,
+.admin-title-block h1,
+.login-card h1 {
+  color: #f7f8fa;
+  text-shadow: 0 2px 22px rgba(51, 153, 255, .16);
+}
+
+.workspace {
+  width: 100%;
+  max-width: 1720px;
+}
+
+.app-shell[data-ui-theme='navy-gold'] .sidebar,
+.app-shell[data-ui-theme='navy-gold'] .prediction-card,
+.app-shell[data-ui-theme='navy-gold'] .road-card,
+.app-shell[data-ui-theme='navy-gold'] .stat-card,
+.admin-shell[data-ui-theme='navy-gold'] .admin-panel,
+.admin-shell[data-ui-theme='navy-gold'] .list-panel,
+.admin-shell[data-ui-theme='navy-gold'] .admin-metric,
+.admin-shell[data-ui-theme='navy-gold'] .weak-card {
+  border-color: var(--line-gold) !important;
+  background: rgba(5, 22, 36, .92) !important;
+  box-shadow: inset 0 1px rgba(239, 212, 151, .045);
+}
+
+.table-item {
+  border-color: rgba(207, 168, 93, .24);
+  background: rgba(5, 20, 34, .92);
+}
+
+.table-item.active {
+  border-color: var(--gold-500);
+  background: linear-gradient(100deg, rgba(118, 83, 24, .42), rgba(8, 29, 46, .96));
+  box-shadow: inset 3px 0 var(--gold-300), 0 0 16px rgba(207, 168, 93, .18);
+}
+
+.prediction-title {
+  width: min(100%, 900px);
+  margin: 0;
+  color: var(--gold-300);
+  font-size: clamp(16px, 1.4vw, 22px);
+  letter-spacing: .08em;
+  text-align: left;
+}
+
+.prediction-title::before,
+.admin-panel > h2::before {
+  content: '◆';
+  margin-right: 8px;
+  color: var(--gold-500);
+  font-size: .62em;
+  vertical-align: middle;
+}
+
+.app-shell[data-ui-theme='navy-gold'] .prediction-metric {
+  border-color: rgba(207, 168, 93, .34) !important;
+  background: rgba(3, 17, 30, .9) !important;
+}
+
+.login-shell[data-ui-theme='navy-gold'] {
+  width: 100%;
+  max-width: 100%;
+}
+
+.login-shell[data-ui-theme='navy-gold'] .login-card {
+  border: 1px solid rgba(207, 168, 93, .62) !important;
+  border-radius: 22px !important;
+  background: rgba(3, 13, 26, .72) !important;
+  box-shadow: 0 30px 100px rgba(0, 0, 0, .62), inset 0 1px rgba(255, 255, 255, .08) !important;
+}
+
+.login-shell[data-ui-theme='navy-gold'] .login-card::before {
+  content: '';
+  width: 82px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold-300), transparent);
+}
+
+.login-shell[data-ui-theme='navy-gold'] .login-chip,
+.login-shell[data-ui-theme='navy-gold'] .login-card > strong {
+  color: var(--gold-300);
+}
+
+.login-shell[data-ui-theme='navy-gold'] .login-card input {
+  border-color: rgba(121, 157, 188, .34) !important;
+  background: rgba(2, 9, 19, .82) !important;
+}
+
+.login-shell[data-ui-theme='navy-gold'] .login-card button,
+.admin-shell[data-ui-theme='navy-gold'] .create-auth {
+  border-color: #6eb4ff !important;
+  background: linear-gradient(180deg, #1465cb, #0e45a5) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .2), 0 8px 24px rgba(15, 91, 204, .28);
+}
+
+.scroll-list {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.report-panel {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+@media (max-width: 720px) {
+  .login-shell { padding: 16px; }
+  .login-card { width: min(440px, 100%) !important; }
+  .workspace { grid-template-columns: minmax(0, 1fr); }
+  .table-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .side-prediction-row { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .side-prediction-row .prediction-metric { min-width: 0; padding-inline: 2px; }
+  .side-prediction-row .prediction-metric span { font-size: clamp(9px, 2.6vw, 12px); letter-spacing: -.06em; }
+  .side-prediction-row .prediction-metric strong { font-size: clamp(14px, 4vw, 18px); }
+  .admin-v015-shell { padding: 12px; }
+  .admin-v015-shell .admin-hero,
+  .admin-v015-shell .admin-panel,
+  .admin-v015-shell .list-panel { border-radius: 14px; }
 }
 
 
