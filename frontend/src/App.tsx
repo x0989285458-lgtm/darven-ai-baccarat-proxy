@@ -432,26 +432,36 @@ function LoginApp() {
       setLoginMessage('登入失敗，請重新整理後再試')
     }
   }
-  return <main className="login-shell" data-ui-theme="navy-gold">
+  return <main className="login-shell member-login-shell" data-ui-theme="navy-gold">
     <section className="login-card member-login-card" aria-label="前台登入驗證">
-      <span className="login-eyebrow">AI BACCARAT INTELLIGENCE</span>
-      <h1>瑞文AI百家預測</h1>
-      <div className="login-title-divider" aria-hidden="true"><span /></div>
-      <label className="login-field-row">
-        <span className="login-field-icon account-icon" aria-hidden="true" />
-        <span className="login-field-label">會員帳號</span>
-        <input aria-label="會員帳號" placeholder="請輸入會員帳號" value={memberAccount} onChange={(event) => setMemberAccount(event.target.value)} />
-      </label>
-      <label className="login-field-row">
-        <span className="login-field-icon lock-icon" aria-hidden="true" />
-        <span className="login-field-label">驗證密碼</span>
-        <input aria-label="驗證密碼" placeholder="請輸入驗證密碼" type="password" value={verificationPassword} onChange={(event) => setVerificationPassword(event.target.value)} />
-        <span className="login-field-trailing" aria-hidden="true" />
-      </label>
-      <button onClick={submitLogin}>會員登入</button>
-      <em className={coreStatus.maintenanceMode ? 'system-status maintenance' : 'system-status normal'}><span className="status-dot" aria-hidden="true" />{loginMessage || (coreStatus.maintenanceMode ? '系統維護中' : '系統正常')}</em>
-      <p className="login-security"><span aria-hidden="true">◇</span> 安全連線・資料加密</p>
+      <div className="login-header">
+        <div>
+          <p className="login-eyebrow">AI BACCARAT INTELLIGENCE</p>
+          <h1>瑞文AI百家預測</h1>
+        </div>
+        <span className="login-seal" aria-hidden="true">瑞</span>
+      </div>
+      <p className="login-intro">登入會員決策中心，查看即時桌台、預測與路單資訊。</p>
+      <div className="login-fields">
+        <label className="login-field-row">
+          <span className="login-field-icon account-icon" aria-hidden="true" />
+          <span className="login-field-label">會員帳號</span>
+          <input aria-label="會員帳號" placeholder="請輸入會員帳號" value={memberAccount} onChange={(event) => setMemberAccount(event.target.value)} />
+        </label>
+        <label className="login-field-row">
+          <span className="login-field-icon lock-icon" aria-hidden="true" />
+          <span className="login-field-label">驗證密碼</span>
+          <input aria-label="驗證密碼" placeholder="請輸入驗證密碼" type="password" value={verificationPassword} onChange={(event) => setVerificationPassword(event.target.value)} />
+        </label>
+      </div>
+      <button className="login-submit" onClick={submitLogin}>會員登入</button>
+      <div className="login-message" aria-live="polite">{loginMessage}</div>
+      <div className="login-footer">
+        <em className={coreStatus.maintenanceMode ? 'system-status maintenance' : `system-status ${coreStatus.state}`}><span className="status-dot" aria-hidden="true" />{coreStatus.message || (coreStatus.maintenanceMode ? '系統維護中' : '系統狀態檢查中')}</em>
+        <p className="login-security">安全連線・資料加密</p>
+      </div>
     </section>
+    <span className="login-corner" aria-hidden="true">RUIWEN AI · MEMBER ACCESS</span>
   </main>
 }
 

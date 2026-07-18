@@ -30,15 +30,17 @@ describe('responsive history and road CSS', () => {
     expect(css).not.toMatch(/\.side-prediction-row\s*\{[^}]*grid-template-columns:\s*repeat\(3,/s)
   })
 
-  it('uses the approved member-login artwork as the visual source of truth', () => {
-    expect(css).toContain("url('/assets/ruiwen-member-login-approved.jpg')")
-    expect(css).toMatch(/\.login-shell\s*\{[^}]*background:[^}]*100%\s+auto\s+no-repeat/s)
-    expect(css).toMatch(/@media\s*\(max-width:\s*720px\)[\s\S]*?\.login-shell\s*\{[^}]*background-position:\s*right\s+center\s*!important/s)
+  it('uses the untouched formal background for the floating-portal member login only', () => {
+    expect(css).toMatch(/\.member-login-shell\s*\{[^}]*url\('\/assets\/ruiwen-login-bg-hq\.png'\)[^}]*overflow-x:\s*hidden/s)
+    expect(css).toMatch(/\.member-login-shell\s+\.member-login-card\s*\{[^}]*background:\s*linear-gradient\(150deg,[^}]*backdrop-filter:\s*blur\(14px\)/s)
   })
 
-  it('keeps the functional card locked to the approved artwork ratio on wide displays', () => {
-    expect(css).toMatch(/\.login-shell\[data-ui-theme='navy-gold'\]\s+\.member-login-card\s*\{[^}]*width:\s*32\.8vw[^}]*min-height:\s*33\.85vw/s)
-    expect(css).not.toMatch(/\.member-login-card\s*\{[^}]*width:\s*clamp\(/s)
+  it('keeps the member floating portal within 1440px and 390px viewports without horizontal overflow', () => {
+    expect(css).toMatch(/\.login-shell\.member-login-shell\[data-ui-theme='navy-gold'\]\s+\.member-login-card\s*\{[^}]*width:\s*min\(460px,\s*calc\(100vw\s*-\s*32px\)\)[^}]*max-width:\s*100%/s)
+    expect(css).toMatch(/@media\s*\(max-width:\s*700px\)[\s\S]*?\.member-login-shell\s*\{[^}]*padding:\s*116px\s+16px\s+40px[^}]*background-position:\s*67%\s+center/s)
+    expect(css).toMatch(/@media\s*\(max-width:\s*700px\)[\s\S]*?\.login-shell\.member-login-shell\[data-ui-theme='navy-gold'\]\s+\.member-login-card\s*\{[^}]*width:\s*100%[^}]*margin:\s*0/s)
+    expect(css).toMatch(/@media\s*\(max-width:\s*700px\)[\s\S]*?\.member-login-shell\s+\.login-card\.member-login-card\s+\.login-field-label,[\s\S]*?\.member-login-shell\s+\.login-card\.member-login-card\s+\.login-field-row\s+input\s*\{[^}]*grid-column:\s*auto[^}]*grid-row:\s*auto[^}]*align-self:\s*center/s)
+    expect(css).toMatch(/@media\s*\(max-width:\s*700px\)[\s\S]*?\.member-login-shell\s+\.login-card\.member-login-card\s+\.login-field-icon\s*\{[^}]*grid-column:\s*auto[^}]*grid-row:\s*auto/s)
   })
 
   it('uses the untouched pure background asset and approved command-deck geometry', () => {

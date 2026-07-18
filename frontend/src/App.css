@@ -2007,6 +2007,250 @@ body,
   }
 }
 
+/* Approved A floating-portal member login. Scoped away from admin login. */
+.member-login-shell {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: #030a12 url('/assets/ruiwen-login-bg-hq.png') center / cover fixed no-repeat !important;
+  overflow-x: hidden;
+}
+
+.member-login-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(2, 8, 15, .55), rgba(2, 8, 15, .18) 48%, rgba(2, 8, 15, .4)), linear-gradient(0deg, rgba(2, 8, 15, .75), transparent 35%);
+}
+
+.member-login-shell .member-login-card {
+  position: relative;
+  z-index: 1;
+  width: min(460px, calc(100vw - 32px)) !important;
+  max-width: 100%;
+  min-height: 0 !important;
+  margin-left: 2vw;
+  padding: 34px 34px 28px !important;
+  display: block;
+  border: 1px solid rgba(194, 155, 82, .48) !important;
+  border-radius: 22px !important;
+  background: linear-gradient(150deg, rgba(6, 18, 31, .94), rgba(3, 12, 22, .91)) !important;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .6), inset 0 1px rgba(255, 255, 255, .05) !important;
+  backdrop-filter: blur(14px);
+  transform: none;
+  text-align: left;
+}
+
+.member-login-shell .member-login-card::before { display: none; }
+
+/* Override the earlier approved-artwork ratio without touching admin login. */
+.login-shell.member-login-shell[data-ui-theme='navy-gold'] .member-login-card {
+  width: min(460px, calc(100vw - 32px)) !important;
+  max-width: 100%;
+}
+
+.member-login-shell .login-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.member-login-shell .login-eyebrow {
+  margin: 0 0 8px;
+  color: #c9ad6c;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .19em;
+  transform: none;
+}
+
+.member-login-shell .member-login-card h1 {
+  margin: 0;
+  color: #f3f5f8;
+  font-size: 30px !important;
+  line-height: 1.15 !important;
+  letter-spacing: .06em;
+  transform: none;
+}
+
+.member-login-shell .login-seal {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(201, 168, 95, .48);
+  border-radius: 50%;
+  color: #d6b96e;
+  background: #081625;
+  font: 700 18px Georgia, serif;
+}
+
+.member-login-shell .login-intro {
+  margin: 0 0 24px;
+  color: #8394a8;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.member-login-shell .login-fields { display: grid; gap: 12px; }
+
+.member-login-shell .member-login-card .login-field-row {
+  width: 100%;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 28px 86px minmax(0, 1fr);
+  align-items: center;
+  gap: 0;
+  padding: 0 14px;
+  border: 1px solid rgba(112, 143, 172, .3);
+  border-radius: 13px;
+  background: rgba(2, 10, 19, .76);
+}
+
+.member-login-shell .member-login-card .login-field-row:focus-within {
+  border-color: rgba(205, 169, 87, .75);
+  box-shadow: 0 0 0 3px rgba(205, 169, 87, .08);
+}
+
+.member-login-shell .login-field-icon { color: #d5bd7e; }
+.member-login-shell .login-field-label { color: #d9e1ea; font-size: 13px; font-weight: 800; }
+
+.member-login-shell .member-login-card .login-field-row input {
+  min-width: 0;
+  min-height: 40px !important;
+  padding: 0;
+  border: 0 !important;
+  outline: 0;
+  background: transparent !important;
+  color: #fff;
+  font-size: 14px !important;
+  text-align: left;
+  box-shadow: none !important;
+}
+
+.member-login-shell .member-login-card .login-field-row input::placeholder { color: #64778e; }
+
+.member-login-shell .member-login-card > .login-submit {
+  width: 100%;
+  min-height: 56px !important;
+  margin-top: 18px;
+  border: 1px solid #6da9f0 !important;
+  border-radius: 13px;
+  background: linear-gradient(180deg, #2e79d8, #1353af) !important;
+  box-shadow: 0 10px 28px rgba(19, 83, 175, .28), inset 0 1px rgba(255, 255, 255, .25);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: .12em;
+  transform: none;
+}
+
+.member-login-shell .login-message {
+  min-height: 18px;
+  margin-top: 12px;
+  color: #d7bd76;
+  font-size: 12px;
+  text-align: center;
+}
+
+.member-login-shell .login-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  color: #71859b;
+  font-size: 11px;
+}
+
+.member-login-shell .member-login-card .system-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  margin: 0;
+  color: #8ebaa9;
+  font-size: 11px;
+  font-style: normal;
+  transform: none;
+}
+
+.member-login-shell .member-login-card .system-status.maintenance,
+.member-login-shell .member-login-card .system-status.error { color: #d7bd76; }
+
+.member-login-shell .status-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: none;
+}
+
+.member-login-shell .member-login-card .login-security {
+  margin: 0;
+  color: #71859b;
+  font-size: 11px;
+  white-space: nowrap;
+  transform: none;
+}
+
+.member-login-shell .login-corner {
+  position: fixed;
+  left: 28px;
+  bottom: 24px;
+  z-index: 1;
+  color: #6f8296;
+  font-size: 11px;
+  letter-spacing: .08em;
+}
+
+@media (max-width: 700px) {
+  .member-login-shell {
+    align-items: flex-start;
+    padding: 116px 16px 40px;
+    background-position: 67% center !important;
+  }
+
+  .member-login-shell .member-login-card {
+    width: 100% !important;
+    margin: 0;
+    padding: 28px 20px 23px !important;
+    border-radius: 18px !important;
+  }
+
+  .login-shell.member-login-shell[data-ui-theme='navy-gold'] .member-login-card {
+    width: 100% !important;
+    margin: 0;
+  }
+
+  .member-login-shell .login-card.member-login-card .login-field-label,
+  .member-login-shell .login-card.member-login-card .login-field-row input {
+    grid-column: auto;
+    grid-row: auto;
+    align-self: center;
+  }
+
+  .member-login-shell .login-card.member-login-card .login-field-icon {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .member-login-shell .member-login-card h1 { font-size: 26px !important; }
+  .member-login-shell .login-intro { font-size: 12px; }
+  .member-login-shell .member-login-card .login-field-row { grid-template-columns: 25px 78px minmax(0, 1fr); padding: 0 12px; }
+  .member-login-shell .login-footer { align-items: flex-start; }
+  .member-login-shell .login-corner { display: none; }
+}
+
 /* Member dashboard phase 1: approved 1280 x 617 shell. */
 .member-dashboard {
   min-height: 100vh;
