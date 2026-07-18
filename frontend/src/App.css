@@ -2530,45 +2530,63 @@ body,
   }
 
   .member-dashboard .dashboard-sidebar {
-    padding: 10px 12px;
+    position: relative;
+    padding: 10px 10px 10px 22px;
     border: 0;
     border-right: 1px solid rgba(205, 164, 72, .56);
-    background: rgba(3, 12, 22, .965);
+    background:
+      linear-gradient(rgba(3, 12, 22, .34), rgba(3, 12, 22, .12)),
+      url('/assets/ruiwen-member-dashboard-approved.jpg') 0 -61px / 1280px 617px no-repeat;
     box-shadow: 6px 0 22px rgba(0, 0, 0, .35);
   }
 
+  .member-dashboard .dashboard-sidebar::after {
+    content: '';
+    position: absolute;
+    z-index: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 117px;
+    pointer-events: none;
+    background: url('/assets/ruiwen-dashboard-sidebar-wave.png') center bottom / 218px 117px no-repeat;
+  }
+
   .member-dashboard .dashboard-sidebar .table-list {
+    position: relative;
+    z-index: 1;
     grid-template-columns: 1fr;
     gap: 5px;
   }
 
   .member-dashboard .dashboard-sidebar .table-item {
-    height: 47px;
-    min-height: 47px;
+    height: 40px;
+    min-height: 40px;
     display: grid;
-    grid-template-columns: 33px minmax(0, 1fr);
+    grid-template-columns: 22px minmax(0, 1fr);
     gap: 8px;
-    padding: 0 10px;
-    border: 1px solid rgba(204, 160, 60, .72);
+    padding: 0 8px;
+    border: 1px solid rgba(150, 128, 78, .28);
     border-radius: 5px;
-    background: rgba(5, 17, 29, .97);
-    color: #d6be80;
-    font-size: 11px;
-    letter-spacing: .02em;
-    box-shadow: inset 0 0 12px rgba(218, 175, 72, .04);
+    background: rgba(4, 16, 28, .94);
+    color: #a49a82;
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: 0;
+    box-shadow: inset 0 0 10px rgba(218, 175, 72, .025);
   }
 
   .member-dashboard .dashboard-sidebar .table-item.active {
-    border-color: #e0b94f;
-    background: linear-gradient(90deg, rgba(82, 56, 17, .9), rgba(17, 24, 29, .98));
-    color: #f0d98e;
-    box-shadow: inset 0 0 17px rgba(231, 184, 61, .13), 0 0 8px rgba(222, 177, 63, .22);
+    border-color: #d7ae51;
+    background: linear-gradient(90deg, rgba(103, 72, 22, .42), rgba(5, 17, 29, .96) 45%);
+    color: #c7bea8;
+    box-shadow: inset 2px 0 #e0b851, inset 0 0 14px rgba(231, 184, 61, .11), 0 0 7px rgba(222, 177, 63, .15);
   }
 
   .member-dashboard .table-casino-icon {
     position: relative;
-    width: 29px;
-    height: 29px;
+    width: 22px;
+    height: 22px;
     border: 0;
     border-radius: 3px;
     background: url('/assets/ruiwen-dashboard-table-icon.png') center / cover no-repeat;
@@ -2584,6 +2602,7 @@ body,
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    text-align: left;
   }
 
   .member-dashboard .dashboard-main {
