@@ -11,7 +11,7 @@ const MEMBER_SESSION_TOKEN_KEY = 'darven-member-session-token'
 const MEMBER_SESSION_EXPIRES_KEY = 'darven-member-session-expires-at'
 const tableDisplayOrder = ['1', '2', '3', '3A', '5', '6', '7', '8', '9', '10']
 const MEMBER_TABLE_IDS = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10'] as const
-const memberTableLabels: ReadonlyMap<string, string> = new Map(MEMBER_TABLE_IDS.map((tableId, index) => [tableId, ['1', '2', '3', '3A', '5', '6', '7', '8', '9', '10'][index]]))
+const memberTableLabels: ReadonlyMap<string, string> = new Map(MEMBER_TABLE_IDS.map((tableId, index) => [tableId, ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'][index]]))
 const HISTORY_RETRY_DELAYS_MS = [150, 400] as const
 type BackendScoreTotals = NonNullable<NonNullable<LiveTable['prediction']>['scoreTotals']>
 const sidePredictionKeys: SidePredictionKey[] = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
@@ -39,6 +39,11 @@ export function selectMemberTable(tables: LiveTable[], selectedTableId: string) 
 
 function tableNumber(table: LiveTable, index: number) {
   return memberTableLabels.get(canonicalMemberTableId(table)) ?? tableDisplayOrder[index] ?? String(index + 1)
+}
+
+function memberTableDisplayId(table: LiveTable) {
+  const tableId = canonicalMemberTableId(table)
+  return tableId === 'BAG03A' ? 'BAG04' : tableId
 }
 
 function backendPredictionFromTable(table?: LiveTable | null): Prediction | null {
@@ -140,6 +145,13 @@ export default function App() {
   const mainScorePercentages = useMemo(() => backendMainScorePercentagesFromTable(displaySelected), [displaySelected])
   const predictionIssue = useMemo(() => getBackendPredictionIssue(displaySelected), [displaySelected])
   const predictionsActionable = !predictionIssue && !staleNotice
+  const memberHeaderStatus = staleNotice
+    ? { state: 'stale', message: staleNotice }
+    : supabaseStatus.state === 'error'
+      ? supabaseStatus
+      : status.state === 'connected'
+        ? { state: 'connected', message: '資料同步正常' }
+        : status
 
   useEffect(() => () => client.current?.disconnect(false), [])
   useEffect(() => {
@@ -293,37 +305,32 @@ export default function App() {
 
   return <main className="app-shell member-dashboard" data-ui-theme="navy-gold">
     <header className="topbar member-dashboard-header">
-      <div className="dashboard-side-brand" aria-label="瑞文AI百家品牌">
-        <span className="dashboard-brand-gem" aria-hidden="true">◇</span>
-        <span>瑞文 AI 百家</span>
-      </div>
-      <div className="brand" aria-label="主標題">
-        <h1>AI百家預測軟體</h1>
-        <span className="dashboard-title-subtitle">AI BACCARAT INTELLIGENCE</span>
-      </div>
-      <div className="header-meta"><span className={`status ${supabaseStatus.state}`} title={supabaseConfig.projectRef}>{supabaseStatus.message}</span>{staleNotice ? <span className="status stale" title={staleNotice} aria-label={staleNotice}>資料過期</span> : null}<span className="member-account-avatar" aria-label="會員帳號"><i aria-hidden="true" /></span></div>
+      <div className="dashboard-side-brand">AI瑞文百家</div>
+      <div className="header-meta"><span className={`status ${memberHeaderStatus.state}`} title={memberHeaderStatus.message}>{memberHeaderStatus.message}</span></div>
     </header>
     <div className="workspace">
       <aside className="sidebar balanced-sidebar-line dashboard-sidebar" aria-label="桌號與資料選擇">
+        <div className="dashboard-sidebar-heading"><strong>桌台</strong><span>10 桌在線</span></div>
         <nav className="table-list" aria-label="桌號選擇">
           {visibleTables.map((table, index) => {
             const tableId = canonicalMemberTableId(table)
-            return <button className={`table-item ${tableId === selectedCanonicalId ? 'active' : ''}`} key={tableId} onClick={() => { setTableUiHistory(null); setSelectedTableId(tableId) }}>
+            const displayNumber = tableNumber(table, index)
+            return <button className={`table-item ${tableId === selectedCanonicalId ? 'active' : ''}`} data-table-id={tableId} aria-label={`MT百家樂第${displayNumber}桌 第${table.trend.current_round ?? 0}局`} key={tableId} onClick={() => { setTableUiHistory(null); setSelectedTableId(tableId) }}>
               <span className="table-casino-icon" aria-hidden="true"><i /></span>
-              <span className="table-item-label">MT百家樂第{tableNumber(table, index)}桌 第{table.trend.current_round ?? 0}局</span>
+              <span className="table-item-label"><strong>MT 真人百家 第{displayNumber}桌</strong><small>第{table.trend.current_shoe ?? '—'}靴 · 第{table.trend.current_round ?? 0}局</small><small>{memberTableDisplayId(table)}</small></span>
             </button>
           })}
         </nav>
       </aside>
       <section className="content dashboard-main">
-        <div className="stats-grid dashboard-stats-row" aria-label="統計資訊">
-          <Stat title="閒" value={String(displaySelected.trend.total_round_player ?? 0)} tone="Player" />
-          <Stat title="和" value={String(displaySelected.trend.total_round_tie ?? 0)} tone="Tie" />
-          <Stat title="莊" value={String(displaySelected.trend.total_round_banker ?? 0)} tone="Banker" />
-        </div>
         <div className="dashboard-middle-grid">
         <section className="prediction-card" aria-label="AI預測結果">
-          <div className="prediction-card-heading"><h2 className="prediction-title">即時預測</h2><span className="prediction-meta-chip">{selectedShoe || '—'} - {displaySelected.trend.current_round ?? 0}</span></div>
+          <div className="prediction-card-heading"><div><h2 className="prediction-title">MT 真人百家 第{tableNumber(displaySelected, visibleTables.indexOf(displaySelected))}桌</h2><p>第{selectedShoe || '—'}靴 · 第{displaySelected.trend.current_round ?? 0}局</p></div><span className="prediction-meta-chip">{memberTableDisplayId(displaySelected)}</span></div>
+          <div className="stats-grid dashboard-stats-row" aria-label="統計資訊">
+            <Stat title="閒總數" value={String(displaySelected.trend.total_round_player ?? 0)} tone="Player" />
+            <Stat title="和總數" value={String(displaySelected.trend.total_round_tie ?? 0)} tone="Tie" />
+            <Stat title="莊總數" value={String(displaySelected.trend.total_round_banker ?? 0)} tone="Banker" />
+          </div>
           <div className="prediction-row side-prediction-row" aria-label="副項目預測機率">
             <PredictionMetric title="閒龍寶" value={bonusPredictions?.playerDragon ?? null} tone="Player" active={predictionsActionable && (sideActions?.playerDragon ?? false)} />
             <PredictionMetric title="閒對" value={bonusPredictions?.playerPair ?? null} tone="Player" active={predictionsActionable && (sideActions?.playerPair ?? false)} />
@@ -331,7 +338,6 @@ export default function App() {
             <PredictionMetric title="莊對" value={bonusPredictions?.bankerPair ?? null} tone="Banker" active={predictionsActionable && (sideActions?.bankerPair ?? false)} />
             <PredictionMetric title="莊龍寶" value={bonusPredictions?.bankerDragon ?? null} tone="Banker" active={predictionsActionable && (sideActions?.bankerDragon ?? false)} />
           </div>
-          {predictionIssue ? <strong className="status stale">{predictionIssue}，預測暫不可用，已停止出手</strong> : null}
           {prediction ?
             <div className="prediction-row main-probability-row" aria-label="莊閒預測機率">
               <PredictionMetric title="閒" value={mainScorePercentages?.player ?? null} tone="Player" active={predictionsActionable && prediction.recommendation === 'Player'} />
@@ -339,13 +345,14 @@ export default function App() {
               <PredictionMetric title="莊" value={mainScorePercentages?.banker ?? null} tone="Banker" active={predictionsActionable && prediction.recommendation === 'Banker'} />
             </div>
           : null}
+          {predictionIssue ? <strong className="status stale">{predictionIssue}，預測暫不可用，已停止出手</strong> : null}
         </section>
         <section className="dashboard-history-panel" aria-label="近十局預測紀錄區">
           <PredictionHistoryTable history={tableUiHistory} />
         </section>
         </div>
         <div className="roads-grid single-road dashboard-road-region">
-          <RoadCard title="大路" subtitle={<div className="road-counts" aria-label="大路莊閒局數"><span className="Banker">莊局數：{displaySelected.trend.total_round_banker ?? 0}</span><span className="Player">閒局數：{displaySelected.trend.total_round_player ?? 0}</span></div>}>
+          <RoadCard title="路單">
             <div className="big-road classic-road" aria-label="傳統大路">
               {bigRoad.map((cell) => <div style={{ gridColumn: cell.column + 1, gridRow: cell.row + 1 }} title={`${cell.outcome === 'banker' ? '莊' : '閒'} ${cell.point}點`} className={`big-cell ${cell.outcome === 'banker' ? 'Banker' : 'Player'} ${cell.hasTie ? 'tie-mark' : ''}`} key={`${selectedShoe}:${cell.column}:${cell.row}:${cell.code}`}><span>{cell.outcome === 'banker' ? '莊' : '閒'}</span></div>)}
             </div>
@@ -1151,4 +1158,4 @@ function PredictionHistoryTable({ history }: { history: TableUiHistory | null })
   </div>
 }
 
-function RoadCard({ title, subtitle, children }: { title: string; subtitle: React.ReactNode; children: React.ReactNode }) { return <section className="road-card"><div className="card-heading"><h2>{title}</h2><span>{subtitle}</span></div>{children}</section> }
+function RoadCard({ title, subtitle, children }: { title: string; subtitle?: React.ReactNode; children: React.ReactNode }) { return <section className="road-card"><div className="card-heading"><h2>{title}</h2>{subtitle ? <span>{subtitle}</span> : null}</div>{children}</section> }

@@ -34,7 +34,7 @@ async function renderApp(path = '/', waitForConnected = true) {
   }))
   const result = render(<App />)
   if (waitForConnected && path !== '/admin') {
-    await waitFor(() => expect(screen.getByText(/已連線/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('資料同步正常')).toBeInTheDocument())
   }
   return result
 }
@@ -117,16 +117,22 @@ describe('AI百家預測軟體', () => {
     vi.unstubAllGlobals()
   })
 
-  it('keeps the approved top design without the 瑞文AI版 010 subtitle', async () => {
+  it('renders only the approved member brand and truthful healthy status in the header', async () => {
     await renderApp()
-    expect(screen.getByRole('heading', { name: 'AI百家預測軟體' })).toBeInTheDocument()
+    const header = screen.getByRole('banner')
+    expect(within(header).getByText('AI瑞文百家')).toBeInTheDocument()
+    expect(within(header).getByText('資料同步正常')).toBeInTheDocument()
+    expect(within(header).queryByText('AI百家預測軟體')).not.toBeInTheDocument()
+    expect(within(header).queryByText('AI BACCARAT INTELLIGENCE')).not.toBeInTheDocument()
+    expect(within(header).queryByLabelText('會員帳號')).not.toBeInTheDocument()
     expect(screen.queryByText('瑞文AI版 010')).not.toBeInTheDocument()
   })
 
-  it('shows only Supabase connection status in the header and removes live status/update time', async () => {
+  it('shows one normalized healthy status and removes raw duplicate connection status', async () => {
     await renderApp()
     const header = screen.getByRole('banner')
-    expect(within(header).getByText('授權後端已連線')).toBeInTheDocument()
+    expect(within(header).getAllByText('資料同步正常')).toHaveLength(1)
+    expect(within(header).queryByText('授權後端已連線')).not.toBeInTheDocument()
     expect(within(header).queryByText('未連線')).not.toBeInTheDocument()
     expect(within(header).queryByText(/更新：/)).not.toBeInTheDocument()
   })
@@ -164,15 +170,15 @@ describe('AI百家預測軟體', () => {
     const stats = screen.getByLabelText('統計資訊')
     const statCards = stats.querySelectorAll('.stat-card.result-stat')
     expect(statCards).toHaveLength(3)
-    expect(within(stats).getByText('莊')).toBeInTheDocument()
-    expect(within(stats).getByText('和')).toBeInTheDocument()
-    expect(within(stats).getByText('閒')).toBeInTheDocument()
+    expect(within(stats).getByText('莊總數')).toBeInTheDocument()
+    expect(within(stats).getByText('和總數')).toBeInTheDocument()
+    expect(within(stats).getByText('閒總數')).toBeInTheDocument()
     expect(within(stats).queryByText('AI信心值')).not.toBeInTheDocument()
     expect(within(stats).queryByText('局數')).not.toBeInTheDocument()
     statCards.forEach((card) => expect(card).toHaveClass('centered-stat'))
-    expect(within(stats).getByText('莊').closest('.stat-card')).toHaveClass('Banker')
-    expect(within(stats).getByText('和').closest('.stat-card')).toHaveClass('Tie')
-    expect(within(stats).getByText('閒').closest('.stat-card')).toHaveClass('Player')
+    expect(within(stats).getByText('莊總數').closest('.stat-card')).toHaveClass('Banker')
+    expect(within(stats).getByText('和總數').closest('.stat-card')).toHaveClass('Tie')
+    expect(within(stats).getByText('閒總數').closest('.stat-card')).toHaveClass('Player')
   })
 
   it('keeps five approved side metrics on row one and 閒和莊 on row two', async () => {
@@ -465,13 +471,13 @@ describe('AI百家預測軟體', () => {
     expect(within(sidebar).queryByText('百家樂桌')).not.toBeInTheDocument()
     expect(within(sidebar).queryByText('Cloudflare Turnstile')).not.toBeInTheDocument()
     expect(within(sidebar).queryByRole('heading', { name: '連線控制' })).not.toBeInTheDocument()
-    expect(within(sidebar).queryByText(/BAG/)).not.toBeInTheDocument()
+    expect(within(sidebar).getAllByText(/^BAG\d+$/)).toHaveLength(10)
 
-    const expectedLabels = ['1', '2', '3', '3A', '5', '6', '7', '8', '9', '10']
+    const expectedLabels = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']
     const tableButtons = within(sidebar).getAllByRole('button', { name: /MT百家樂第.+桌 第\d+局/ })
     expect(tableButtons).toHaveLength(expectedLabels.length)
     expectedLabels.forEach((tableLabel, index) => {
-      expect(tableButtons[index]).toHaveTextContent(`MT百家樂第${tableLabel}桌`)
+      expect(tableButtons[index]).toHaveTextContent(`MT 真人百家 第${tableLabel}桌`)
     })
   })
 
@@ -491,8 +497,11 @@ describe('AI百家預測軟體', () => {
     const sidebar = await screen.findByLabelText('桌號與資料選擇')
     const buttons = within(sidebar).getAllByRole('button', { name: /MT百家樂第.+桌 第\d+局/ })
     expect(buttons).toHaveLength(10)
-    expect(buttons.map((button) => button.textContent?.match(/第(.+?)桌/)?.[1])).toEqual(['1', '2', '3', '3A', '5', '6', '7', '8', '9', '10'])
-    expect(buttons[3]).toHaveTextContent('第3A桌 第115局')
+    expect(buttons.map((button) => button.textContent?.match(/第(.+?)桌/)?.[1])).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'])
+    expect(buttons[3]).toHaveAttribute('data-table-id', 'BAG03A')
+    expect(buttons[3]).toHaveTextContent('第4桌')
+    expect(buttons[3]).toHaveTextContent('BAG04')
+    expect(buttons[3]).not.toHaveTextContent('BAG03A')
   })
 
   it('renders the six-row big road directly from authoritative MT codes with winner labels and point metadata', async () => {
@@ -511,9 +520,9 @@ describe('AI百家預測軟體', () => {
     expect(within(road).getAllByText(firstOutcome).length).toBeGreaterThan(0)
     expect(road.querySelector(`[title="${firstOutcome} ${mtCodes[0][1]}點"]`)).toBeInTheDocument()
     expect(document.querySelectorAll('.big-cell.tie-mark')).toHaveLength(mtCodes.filter((code) => Number(code[0]) > 0).length)
-    const heading = screen.getByRole('heading', { name: '大路' }).parentElement!
-    expect(within(heading).getByText(`莊局數：${mockTables[0].trend.total_round_banker}`)).toHaveClass('Banker')
-    expect(within(heading).getByText(`閒局數：${mockTables[0].trend.total_round_player}`)).toHaveClass('Player')
+    expect(screen.getByRole('heading', { name: '路單' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '大路' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/莊局數：|閒局數：/)).not.toBeInTheDocument()
   })
 
   it('shows a formal waiting state instead of mock tables when cloud data is empty', async () => {
@@ -979,15 +988,17 @@ describe('AI百家預測軟體', () => {
     expect(screen.getByLabelText('驗證密碼')).toHaveAttribute('type', 'password')
   })
 
-  it('renders the exact approved dashboard identity and ornamental controls', async () => {
+  it('renders the approved prediction order with no duplicate history or removed header ornaments', async () => {
     await renderApp()
 
     const dashboard = document.querySelector('main.member-dashboard')
     expect(dashboard).toHaveAttribute('data-ui-theme', 'navy-gold')
-    expect(screen.getByRole('heading', { name: 'AI百家預測軟體' })).toBeVisible()
-    expect(screen.getByText('瑞文 AI 百家')).toBeVisible()
-    expect(screen.getByText('AI BACCARAT INTELLIGENCE')).toBeVisible()
-    expect(dashboard?.querySelector('.member-account-avatar')).toBeInTheDocument()
+    expect(screen.getByText('AI瑞文百家')).toBeVisible()
+    expect(screen.queryByText('即時預測')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'MT 真人百家 第1桌' })).toBeVisible()
+    expect(screen.queryByRole('heading', { name: 'AI百家預測軟體' })).not.toBeInTheDocument()
+    expect(screen.queryByText('AI BACCARAT INTELLIGENCE')).not.toBeInTheDocument()
+    expect(dashboard?.querySelector('.member-account-avatar')).not.toBeInTheDocument()
     expect(dashboard?.querySelectorAll('.table-casino-icon')).toHaveLength(10)
     expect(dashboard?.querySelector('.prediction-meta-chip')).toBeInTheDocument()
     expect(Array.from(screen.getByLabelText('副項目預測機率').querySelectorAll('.prediction-metric span')).map((node) => node.textContent)).toEqual(['閒龍寶', '閒對', '超六', '莊對', '莊龍寶'])
@@ -1002,9 +1013,28 @@ describe('AI百家預測軟體', () => {
     expect(dashboard?.querySelector('.member-dashboard-header')).toBeInTheDocument()
     expect(dashboard?.querySelector('.dashboard-sidebar')).toBeInTheDocument()
     expect(dashboard?.querySelector('.dashboard-main')).toBeInTheDocument()
-    expect(dashboard?.querySelector('.dashboard-stats-row')).toBeInTheDocument()
+    const prediction = screen.getByLabelText('AI預測結果')
+    const stats = screen.getByLabelText('統計資訊')
+    expect(prediction).toContainElement(stats)
+    expect(dashboard?.querySelectorAll('.dashboard-stats-row')).toHaveLength(1)
     expect(dashboard?.querySelector('.dashboard-middle-grid')).toBeInTheDocument()
     expect(dashboard?.querySelector('.dashboard-road-region')).toBeInTheDocument()
+  })
+
+  it('keeps the exact prediction DOM order and unique major regions', async () => {
+    await renderApp()
+
+    const prediction = screen.getByLabelText('AI預測結果')
+    const directRegions = Array.from(prediction.children)
+    expect(directRegions.map((node) => node.className)).toEqual([
+      'prediction-card-heading',
+      'stats-grid dashboard-stats-row',
+      'prediction-row side-prediction-row',
+      'prediction-row main-probability-row',
+    ])
+    expect(document.querySelectorAll('[aria-label="AI預測結果"]')).toHaveLength(1)
+    expect(document.querySelectorAll('.prediction-history-block')).toHaveLength(1)
+    expect(document.querySelectorAll('.dashboard-road-region')).toHaveLength(1)
   })
 
   it('relocates existing prediction history into the approved right panel without duplicating it', async () => {
