@@ -37,7 +37,12 @@ test('admin requires complete boolean side_actions and side_hits before reportin
     assert.match(sql, new RegExp(`side_actions'->>'${key}'[\\s\\S]*in \\('true','false'\\)`, 'i'))
     assert.match(sql, new RegExp(`coalesce\\(side_hits,\\s*prediction_features->'side_hits'\\)->>'${key}'[\\s\\S]*in \\('true','false'\\)`, 'i'))
   }
-  assert.match(sql, /jsonb_object_length\(coalesce\(side_hits,\s*prediction_features->'side_hits'\)\)\s*=\s*6/i)
+  assert.doesNotMatch(sql, /jsonb_object_length/i)
+  assert.match(sql, /jsonb_object_keys\(\s*case\s+when\s+jsonb_typeof\(prediction_features->'side_actions'\)\s*=\s*'object'\s+then\s+prediction_features->'side_actions'\s+else\s+'\{\}'::jsonb\s+end\s*\)\)\s*=\s*6/i)
+  assert.match(sql, /jsonb_object_keys\(\s*case\s+when\s+jsonb_typeof\(coalesce\(side_hits,\s*prediction_features->'side_hits'\)\)\s*=\s*'object'\s+then\s+coalesce\(side_hits,\s*prediction_features->'side_hits'\)\s+else\s+'\{\}'::jsonb\s+end\s*\)\)\s*=\s*6/i)
+  assert.deepEqual(analytics.tableStats.map((row) => row.tableId), ['BAG01','BAG02','BAG03','BAG03A','BAG05','BAG06','BAG07','BAG08','BAG09','BAG10'])
+  assert.match(queries[2], /created_at\s*>=\s*\(current_date\s*-\s*interval\s*'6 days'\)/i)
+  assert.doesNotMatch(queries[2], /created_at\s*<\s*current_date/i)
   assert.equal((sql.match(/strategy_version\s*=\s*\$1/gi) ?? []).length, 3)
   assert.deepEqual(parameters, [
     ['v101'],

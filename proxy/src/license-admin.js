@@ -323,7 +323,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
           and (prediction_features->'side_actions' ? 'playerPair')
           and (prediction_features->'side_actions' ? 'bankerDragon')
           and (prediction_features->'side_actions' ? 'playerDragon')
-          and jsonb_object_length(prediction_features->'side_actions') = 6
+          and (select count(*) from jsonb_object_keys(case when jsonb_typeof(prediction_features->'side_actions') = 'object' then prediction_features->'side_actions' else '{}'::jsonb end)) = 6
           and (prediction_features->'side_actions'->>'tie') in ('true','false')
           and (prediction_features->'side_actions'->>'superSix') in ('true','false')
           and (prediction_features->'side_actions'->>'bankerPair') in ('true','false')
@@ -337,7 +337,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
           and (coalesce(side_hits, prediction_features->'side_hits') ? 'playerPair')
           and (coalesce(side_hits, prediction_features->'side_hits') ? 'bankerDragon')
           and (coalesce(side_hits, prediction_features->'side_hits') ? 'playerDragon')
-          and jsonb_object_length(coalesce(side_hits, prediction_features->'side_hits')) = 6
+          and (select count(*) from jsonb_object_keys(case when jsonb_typeof(coalesce(side_hits, prediction_features->'side_hits')) = 'object' then coalesce(side_hits, prediction_features->'side_hits') else '{}'::jsonb end)) = 6
           and (coalesce(side_hits, prediction_features->'side_hits')->>'tie') in ('true','false')
           and (coalesce(side_hits, prediction_features->'side_hits')->>'superSix') in ('true','false')
           and (coalesce(side_hits, prediction_features->'side_hits')->>'bankerPair') in ('true','false')
@@ -377,7 +377,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
     const reportRows = await db.query(`with scoped as (
         select created_at::date as day, table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, settlement_final, side_hits, prediction_features
         from public.daily_prediction_results
-        where created_at >= (current_date - interval '7 days') and created_at < current_date and strategy_version = $1
+        where created_at >= (current_date - interval '6 days') and strategy_version = $1
           and (settlement_final is true or (settlement_final is null and prediction_features->>'settlement_final' = 'true'))
       ), validated as (
         select *,
@@ -388,7 +388,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
           and (prediction_features->'side_actions' ? 'playerPair')
           and (prediction_features->'side_actions' ? 'bankerDragon')
           and (prediction_features->'side_actions' ? 'playerDragon')
-          and jsonb_object_length(prediction_features->'side_actions') = 6
+          and (select count(*) from jsonb_object_keys(case when jsonb_typeof(prediction_features->'side_actions') = 'object' then prediction_features->'side_actions' else '{}'::jsonb end)) = 6
           and (prediction_features->'side_actions'->>'tie') in ('true','false')
           and (prediction_features->'side_actions'->>'superSix') in ('true','false')
           and (prediction_features->'side_actions'->>'bankerPair') in ('true','false')
@@ -402,7 +402,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
           and (coalesce(side_hits, prediction_features->'side_hits') ? 'playerPair')
           and (coalesce(side_hits, prediction_features->'side_hits') ? 'bankerDragon')
           and (coalesce(side_hits, prediction_features->'side_hits') ? 'playerDragon')
-          and jsonb_object_length(coalesce(side_hits, prediction_features->'side_hits')) = 6
+          and (select count(*) from jsonb_object_keys(case when jsonb_typeof(coalesce(side_hits, prediction_features->'side_hits')) = 'object' then coalesce(side_hits, prediction_features->'side_hits') else '{}'::jsonb end)) = 6
           and (coalesce(side_hits, prediction_features->'side_hits')->>'tie') in ('true','false')
           and (coalesce(side_hits, prediction_features->'side_hits')->>'superSix') in ('true','false')
           and (coalesce(side_hits, prediction_features->'side_hits')->>'bankerPair') in ('true','false')
@@ -436,11 +436,11 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
           case when not side_actions_available then 'unavailable' when six_total>0 then round((six_hits::numeric/six_total)*100,1)::text || '%' else '-' end as six_hit_rate
         from grouped order by day desc limit 7`, [ALL_MT_EQUAL_STRATEGY_VERSION])
     const rowsByTable = new Map(tableRows.rows.map((row) => [row.table_id, row]))
-    const order = ['BAG01','BAG02','BAG03','BAG04','BAG05','BAG06','BAG07','BAG08','BAG09']
+    const order = ['BAG01','BAG02','BAG03','BAG03A','BAG05','BAG06','BAG07','BAG08','BAG09','BAG10']
     return {
       todayRoundCount: Number(todayCount.rows[0]?.rounds ?? 0),
       tableStats: order.map((tableId) => {
-        const row = rowsByTable.get(tableId) ?? (tableId === 'BAG04' ? rowsByTable.get('BAG3A') ?? rowsByTable.get('BAG03A') : null) ?? {}
+        const row = rowsByTable.get(tableId) ?? {}
         const sideActionsAvailable = row.side_actions_available === true
         return { tableId, tableName: tableLabel(tableId), rounds: Number(row.rounds ?? 0), mainHitRate: pctText(Number(row.main_hits ?? 0), Number(row.main_total ?? 0)), sideHitRate: sideActionsAvailable ? pctText(Number(row.side_hits ?? 0), Number(row.side_actions ?? 0)) : 'unavailable', sideActionsAvailable }
       }),
@@ -597,13 +597,13 @@ function sideActionStats(rows, keys) {
   return { actions, hits, rate: pctText(hits, actions), available: true }
 }
 function tableLabel(tableId) {
-  const map = { BAG01:'1桌', BAG02:'2桌', BAG03:'3桌', BAG04:'4桌', BAG05:'5桌', BAG06:'6桌', BAG07:'7桌', BAG08:'8桌', BAG09:'9桌' }
+  const map = { BAG01:'1桌', BAG02:'2桌', BAG03:'3桌', BAG03A:'3A桌', BAG05:'5桌', BAG06:'6桌', BAG07:'7桌', BAG08:'8桌', BAG09:'9桌', BAG10:'10桌' }
   return map[tableId] ?? String(tableId ?? '')
 }
 export function buildTableStats(rows) {
-  const order = ['BAG01','BAG02','BAG03','BAG04','BAG05','BAG06','BAG07','BAG08','BAG09']
+  const order = ['BAG01','BAG02','BAG03','BAG03A','BAG05','BAG06','BAG07','BAG08','BAG09','BAG10']
   return order.map((tableId) => {
-    const list = rows.filter((r) => isFinalSettlementRow(r) && (r.table_id === tableId || (tableId === 'BAG04' && r.table_id === 'BAG03A')))
+    const list = rows.filter((r) => isFinalSettlementRow(r) && r.table_id === tableId)
     const mainRows = list.filter((r) => ['banker', 'player'].includes(r.predicted_result) && ['banker', 'player'].includes(r.actual_result))
     const mainTotal = mainRows.length
     const mainHits = mainRows.filter((r) => r.is_hit === true).length
