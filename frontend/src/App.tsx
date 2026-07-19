@@ -1139,7 +1139,11 @@ function formatConnectionMetric(status: { state: string; message: string }, labe
 
 function AdminMetric({ title, value, tone }: { title: string; value: string; tone: 'green' | 'cyan' | 'purple' | 'yellow' }) { return <article className={`admin-metric ${tone}`}><span>{title}</span><strong>{value}</strong></article> }
 function Stat({ title, value, tone, accent = false }: { title: string; value: string; tone?: 'Banker' | 'Player' | 'Tie'; accent?: boolean }) { return <article className={`stat-card result-stat centered-stat ${tone ?? ''} ${accent ? 'accent' : ''}`}><span>{title}</span><strong>{value}</strong></article> }
-function PredictionMetric({ title, value, tone, active = false }: { title: string; value: number | null; tone: 'Banker' | 'Player' | 'Tie'; active?: boolean }) { return <article className={`prediction-metric ${tone} ${active ? 'active' : ''}`} aria-label={`${title}預測`}><span>{title}</span><strong className="probability-value">{value == null ? '等待' : `${value}%`}</strong></article> }
+function formatPredictionMetricValue(value: number | null) {
+  return value == null ? '等待' : `${Math.round(value)}%`
+}
+
+function PredictionMetric({ title, value, tone, active = false }: { title: string; value: number | null; tone: 'Banker' | 'Player' | 'Tie'; active?: boolean }) { return <article className={`prediction-metric ${tone} ${active ? 'active' : ''}`} aria-label={`${title}預測`}><span>{title}</span><strong className="probability-value">{formatPredictionMetricValue(value)}</strong></article> }
 function PredictionHistoryTable({ history }: { history: TableUiHistory | null }) {
   const predictions = [...(history?.settledPredictions ?? [])].sort((left, right) => left.round - right.round).slice(-10)
   const outcomeLabel = { banker: '莊', player: '閒', tie: '和' } as const

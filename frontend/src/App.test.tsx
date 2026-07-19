@@ -68,7 +68,7 @@ function proxyTablesFromMocks() {
       confidence: 34,
       probabilities: { banker: 12.5, player: 77.25, tie: 10.25 },
       scoreTotals: { banker: 38, player: 33 },
-      sidePredictions: { tie: 11, superSix: 22, bankerPair: 33, playerPair: 44, bankerDragon: 55, playerDragon: 66 },
+      sidePredictions: { tie: 11, superSix: 56.6375, bankerPair: 39.82764705882353, playerPair: 40.175, bankerDragon: 55.5, playerDragon: 66.49 },
       sideActions: { tie: false, superSix: false, bankerPair: false, playerPair: false, bankerDragon: true, playerDragon: false },
     },
   }))
@@ -401,8 +401,8 @@ describe('AI百家預測軟體', () => {
   it('displays backend side prediction values and actions without frontend recalculation', async () => {
     await renderApp()
     const sideRow = screen.getByLabelText('副項目預測機率')
-    expect(Array.from(sideRow.querySelectorAll('.probability-value')).map((node) => node.textContent)).toEqual(['66%', '44%', '22%', '33%', '55%'])
-    expect(Array.from(sideRow.querySelectorAll('.prediction-metric.active')).map((node) => node.textContent)).toEqual([expect.stringContaining('55%')])
+    expect(Array.from(sideRow.querySelectorAll('.probability-value')).map((node) => node.textContent)).toEqual(['66%', '40%', '57%', '40%', '56%'])
+    expect(Array.from(sideRow.querySelectorAll('.prediction-metric.active')).map((node) => node.textContent)).toEqual([expect.stringContaining('56%')])
   })
 
   it('displays normalized backend main score totals so banker and player sum to 100', async () => {
