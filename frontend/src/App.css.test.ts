@@ -59,6 +59,15 @@ describe('responsive history and road CSS', () => {
     expect(css).not.toMatch(/\.admin-login-(?:gate|intro|corner)/s)
   })
 
+  it('uses the approved original-parity layout for verification controls and weak-table cards', () => {
+    expect(css).toMatch(/Approved original-parity admin dashboard[\s\S]*?\.admin-v015-shell\s+\.code-action-row\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s)
+    expect(css).toMatch(/Approved original-parity admin dashboard[\s\S]*?\.admin-v015-shell\s+\.weak-grid\s*\{[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)\s*!important/s)
+    expect(css).toMatch(/@media\s*\(max-width:\s*520px\)[\s\S]*?\.admin-v015-shell\s+\.code-action-row\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)\s*!important/s)
+    expect(css).toMatch(/@media\s*\(max-width:\s*520px\)[\s\S]*?\.admin-v015-shell\s+\.code-list-head\s*\{[^}]*display:\s*none/s)
+    expect(css).toMatch(/@media\s*\(max-width:\s*520px\)[\s\S]*?\.admin-v015-shell\s+\.code-list\s+\.code-row:not\(\.code-list-head\)\s*\{[^}]*grid-template-columns:\s*28px\s+minmax\(0,\s*1fr\)/s)
+    expect(css).toMatch(/@media\s*\(max-width:\s*520px\)[\s\S]*?\.admin-v015-shell\s+\.weak-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)\s*!important/s)
+  })
+
   it('uses the untouched pure background asset and approved command-deck geometry', () => {
     expect(css).toContain("url('/assets/ruiwen-login-bg-hq.png')")
     expect(css).toMatch(/\.app-shell\.member-dashboard\[data-ui-theme='navy-gold'\]\s*\{[^}]*url\('\/assets\/ruiwen-login-bg-hq\.png'\)/s)

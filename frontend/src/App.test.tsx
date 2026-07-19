@@ -1222,15 +1222,19 @@ describe('AI百家預測軟體', () => {
     })
   })
 
-  it('admin moves verification-code actions to the top of the right panel as three equal controls', async () => {
+  it('admin keeps all four verification-code actions above a labeled five-column list', async () => {
     await renderApp('/admin')
 
     const codePanel = screen.getByLabelText('已建立驗證碼')
     expect(within(codePanel).getByRole('button', { name: '刪除驗證碼' })).toBeInTheDocument()
     expect(within(codePanel).getByRole('button', { name: '暫停驗證碼' })).toBeInTheDocument()
+    expect(within(codePanel).getByRole('button', { name: '開啟驗證碼' })).toBeInTheDocument()
     expect(within(codePanel).getByRole('button', { name: '延長驗證碼' })).toBeInTheDocument()
     expect(within(codePanel).queryByRole('button', { name: '刪除 User001 驗證碼' })).not.toBeInTheDocument()
     expect(within(codePanel).getByLabelText('勾選 Agent001_001')).toHaveAttribute('type', 'checkbox')
+    const header = codePanel.querySelector('.code-list-head')
+    expect(header).toBeInTheDocument()
+    expect(header).toHaveTextContent('選取會員帳號驗證碼狀態／期限延長天數')
   })
 
   it('admin narrow/scaled list rows use the dedicated readable list class so text does not squeeze together', async () => {

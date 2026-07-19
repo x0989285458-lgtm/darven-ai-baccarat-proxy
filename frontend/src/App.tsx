@@ -857,6 +857,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
           <button className="extend" disabled={!canManageCodes || codeActionBusy} onClick={extendSelectedCodes}>延長驗證碼</button>
         </div>
         <div className="scroll-list code-list">
+          <div className="list-head code-row code-list-head"><span>選取</span><span>會員帳號</span><span>驗證碼</span><span>狀態／期限</span><span>延長天數</span></div>
           {filteredCodes.map((row) => <div className="list-row code-row" key={row.code}>
             <input aria-label={`勾選 ${row.code}`} type="checkbox" checked={selectedCodeMembers.includes(row.code)} onChange={() => toggleCode(row.code)} />
             <span>{row.member}</span><b>{row.code}</b><em>{row.status}｜{row.remain}</em>

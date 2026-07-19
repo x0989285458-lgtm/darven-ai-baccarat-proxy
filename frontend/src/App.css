@@ -3351,3 +3351,125 @@ body,
   .member-dashboard .dashboard-road-region { margin-top: 9px; }
   .member-dashboard .dashboard-road-region .big-road.classic-road { overflow-x: auto; overflow-y: hidden; }
 }
+
+/* Approved original-parity admin dashboard */
+.admin-v015-shell {
+  min-height: 100vh;
+  padding: 18px;
+  color: #eef3f8;
+  background: linear-gradient(rgba(3, 11, 20, .92), rgba(3, 11, 20, .92)), url('/assets/ruiwen-login-bg-hq.png') center / cover fixed no-repeat;
+}
+
+.admin-v015-shell .admin-hero,
+.admin-v015-shell .admin-metric,
+.admin-v015-shell .admin-panel,
+.admin-v015-shell .weak-card {
+  border: 1px solid rgba(197, 160, 79, .48);
+  background: rgba(4, 16, 28, .94) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .025);
+}
+
+.admin-v015-shell .admin-hero {
+  min-height: 190px;
+  display: grid;
+  place-items: center;
+  position: relative;
+  padding: 30px;
+  border-radius: 18px;
+  text-align: center;
+}
+
+.admin-v015-shell .admin-title-block .eyebrow { color: #d2af5b; font-size: 10px; font-weight: 900; letter-spacing: .2em; }
+.admin-v015-shell .admin-title-block h1 { margin-top: 12px; font-family: Georgia, "Noto Serif TC", serif; font-size: clamp(34px, 4vw, 54px); letter-spacing: .06em; }
+.admin-v015-shell .admin-title-block > span:last-child { display: block; margin-top: 7px; color: #7892ab; font-size: 11px; }
+.admin-v015-shell .admin-logout { position: static; margin-top: 18px; min-height: 36px; padding: 0 22px; border: 1px solid #3e7892; border-radius: 9px; background: #061b2a; color: #e8f1f7; }
+
+.admin-v015-shell .admin-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.admin-v015-shell .admin-metric { min-height: 105px; border-radius: 14px; }
+.admin-v015-shell .admin-panel { margin-top: 12px; padding: 20px 22px; border-radius: 16px; }
+.admin-v015-shell .admin-panel h2 { margin-bottom: 16px; color: #eef3f8; font-size: 25px; text-align: center; }
+
+.admin-v015-shell .v015-form-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.admin-v015-shell .v015-form-grid label { padding: 11px; border: 1px solid #213e55; border-radius: 11px; background: #071827; color: #8ea8c2; font-size: 11px; }
+.admin-v015-shell .v015-form-grid input,
+.admin-v015-shell .search-input,
+.admin-v015-shell .agent-action-form input,
+.admin-v015-shell .agent-action-form select,
+.admin-v015-shell .code-row input:not([type="checkbox"]) { border: 1px solid #2e506c; border-radius: 8px; background: #030e1b; color: #eaf2f8; }
+.admin-v015-shell .create-auth { width: 100%; margin-top: 12px; border-color: #6caaf0; border-radius: 9px; background: linear-gradient(#2c7bdd, #1555b3); }
+.admin-v015-shell .v015-result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.admin-v015-shell .v015-copy-row { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; max-width: 720px; margin: 10px auto 0; }
+.admin-v015-shell .v015-date-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+
+.admin-v015-shell .v015-management-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.admin-v015-shell .v015-management-grid .admin-panel { min-width: 0; }
+.admin-v015-shell .code-action-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.admin-v015-shell .code-list { border: 1px solid #26465d; border-radius: 9px; overflow: auto; }
+.admin-v015-shell .code-row {
+  grid-template-columns: 32px minmax(0, .8fr) minmax(0, 1.2fr) minmax(0, .9fr) minmax(0, .8fr) !important;
+  min-width: 0;
+}
+.admin-v015-shell .code-list-head { min-height: 40px; background: #0c263b; color: #75cdf5; font-weight: 800; }
+
+.admin-v015-shell .weak-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 10px;
+}
+.admin-v015-shell .weak-card { min-height: 112px; border-radius: 13px; }
+.admin-v015-shell .report-wide-row { border-color: #294a62; border-radius: 10px; background: #0a2032; }
+
+@media (max-width: 900px) {
+  .admin-v015-shell { padding: 10px; }
+  .admin-v015-shell .admin-summary-grid { grid-template-columns: 1fr; }
+  .admin-v015-shell .v015-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-v015-shell .v015-management-grid { grid-template-columns: 1fr; }
+  .admin-v015-shell .weak-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .admin-v015-shell { padding: 12px; }
+  .admin-v015-shell .admin-hero { min-height: 226px; padding: 24px 15px; }
+  .admin-v015-shell .admin-title-block h1 { font-size: 35px; line-height: 1.15; }
+  .admin-v015-shell .admin-panel { padding: 18px 16px; }
+  .admin-v015-shell .v015-form-grid,
+  .admin-v015-shell .v015-result-grid,
+  .admin-v015-shell .v015-copy-row,
+  .admin-v015-shell .v015-date-grid { grid-template-columns: 1fr; }
+  .admin-v015-shell .code-action-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .admin-v015-shell .code-list-head {
+    display: none;
+  }
+  .admin-v015-shell .code-list .code-row:not(.code-list-head) {
+    grid-template-columns: 28px minmax(0, 1fr) !important;
+    min-width: 0;
+    padding: 11px 10px;
+    row-gap: 8px;
+  }
+  .admin-v015-shell .code-list .code-row:not(.code-list-head) > input[type="checkbox"] { grid-column: 1; grid-row: 1 / 5; align-self: start; }
+  .admin-v015-shell .code-list .code-row:not(.code-list-head) > span,
+  .admin-v015-shell .code-list .code-row:not(.code-list-head) > b,
+  .admin-v015-shell .code-list .code-row:not(.code-list-head) > em,
+  .admin-v015-shell .code-list .code-row:not(.code-list-head) > input:not([type="checkbox"]) { display: block; grid-column: 2; width: 100%; min-width: 0; }
+  .admin-v015-shell .code-list .code-row:not(.code-list-head) > span::before,
+  .admin-v015-shell .code-list .code-row:not(.code-list-head) > b::before,
+  .admin-v015-shell .code-list .code-row:not(.code-list-head) > em::before { display: block; margin-bottom: 3px; color: #7792a9; font-size: 8px; font-style: normal; font-weight: 700; }
+  .admin-v015-shell .code-list .code-row:not(.code-list-head) > span::before { content: '會員帳號'; }
+  .admin-v015-shell .code-list .code-row:not(.code-list-head) > b::before { content: '驗證碼'; }
+  .admin-v015-shell .code-list .code-row:not(.code-list-head) > em::before { content: '狀態／期限'; }
+  .admin-v015-shell .weak-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
