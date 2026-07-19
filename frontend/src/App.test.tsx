@@ -35,7 +35,7 @@ async function renderApp(path = '/', waitForConnected = true) {
   }))
   const result = render(<App />)
   if (waitForConnected && path !== '/admin') {
-    await waitFor(() => expect(screen.getByText('資料同步正常')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('status', { name: '資料同步正常' })).toBeInTheDocument())
   }
   return result
 }
@@ -118,21 +118,23 @@ describe('AI百家預測軟體', () => {
     vi.unstubAllGlobals()
   })
 
-  it('renders only the approved member brand and truthful healthy status in the header', async () => {
+  it('renders only the approved member brand and a truthful accessible health light in the header', async () => {
     await renderApp()
     const header = screen.getByRole('banner')
     expect(within(header).getByText('AI瑞文百家')).toBeInTheDocument()
-    expect(within(header).getByText('資料同步正常')).toBeInTheDocument()
+    expect(within(header).getByRole('status', { name: '資料同步正常' })).toBeEmptyDOMElement()
+    expect(within(header).queryByText('資料同步正常')).not.toBeInTheDocument()
     expect(within(header).queryByText('AI百家預測軟體')).not.toBeInTheDocument()
     expect(within(header).queryByText('AI BACCARAT INTELLIGENCE')).not.toBeInTheDocument()
     expect(within(header).queryByLabelText('會員帳號')).not.toBeInTheDocument()
     expect(screen.queryByText('瑞文AI版 010')).not.toBeInTheDocument()
   })
 
-  it('shows one normalized healthy status and removes raw duplicate connection status', async () => {
+  it('shows one normalized healthy status light and removes raw duplicate connection text', async () => {
     await renderApp()
     const header = screen.getByRole('banner')
-    expect(within(header).getAllByText('資料同步正常')).toHaveLength(1)
+    expect(within(header).getAllByRole('status', { name: '資料同步正常' })).toHaveLength(1)
+    expect(within(header).queryByText('資料同步正常')).not.toBeInTheDocument()
     expect(within(header).queryByText('授權後端已連線')).not.toBeInTheDocument()
     expect(within(header).queryByText('未連線')).not.toBeInTheDocument()
     expect(within(header).queryByText(/更新：/)).not.toBeInTheDocument()
@@ -147,7 +149,7 @@ describe('AI百家預測軟體', () => {
 
     await renderApp()
 
-    expect(screen.getByText('資料同步正常')).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: '資料同步正常' })).toBeInTheDocument()
     expect(screen.queryByText(/授權後端連線失敗/)).not.toBeInTheDocument()
     const requestedUrls = (fetch as any).mock.calls.map((call: any[]) => String(call[0]))
     expect(requestedUrls.some((url: string) => url.includes('/api/online-license/health'))).toBe(true)

@@ -306,7 +306,7 @@ export default function App() {
   return <main className="app-shell member-dashboard" data-ui-theme="navy-gold">
     <header className="topbar member-dashboard-header">
       <div className="dashboard-side-brand">AI瑞文百家</div>
-      <div className="header-meta"><span className={`status ${memberHeaderStatus.state}`} title={memberHeaderStatus.message}>{memberHeaderStatus.message}</span></div>
+      <div className="header-meta"><span className={`status ${memberHeaderStatus.state}`} role="status" aria-label={memberHeaderStatus.message} title={memberHeaderStatus.message} /></div>
     </header>
     <div className="workspace">
       <aside className="sidebar balanced-sidebar-line dashboard-sidebar" aria-label="桌號與資料選擇">
