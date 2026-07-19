@@ -22,6 +22,7 @@ async function renderApp(path = '/', waitForConnected = true) {
   const currentFetch = fetch
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, sessionExpiresAt: memberSessionExpiresAt }) })
+    if (url.includes('/api/online-license/health')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ configured: true, connected: true }) })
     const response = await currentFetch(url, init)
     if (!url.includes('/api/tables') || !response.ok) return response
     return {
@@ -135,6 +136,22 @@ describe('AI百家預測軟體', () => {
     expect(within(header).queryByText('授權後端已連線')).not.toBeInTheDocument()
     expect(within(header).queryByText('未連線')).not.toBeInTheDocument()
     expect(within(header).queryByText(/更新：/)).not.toBeInTheDocument()
+  })
+
+  it('does not treat the protected admin status 401 as a member-page backend failure', async () => {
+    const defaultFetch = fetch
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({ error: 'admin session is required' }) })
+      return defaultFetch(url, init)
+    }))
+
+    await renderApp()
+
+    expect(screen.getByText('資料同步正常')).toBeInTheDocument()
+    expect(screen.queryByText(/授權後端連線失敗/)).not.toBeInTheDocument()
+    const requestedUrls = (fetch as any).mock.calls.map((call: any[]) => String(call[0]))
+    expect(requestedUrls.some((url: string) => url.includes('/api/online-license/health'))).toBe(true)
+    expect(requestedUrls.some((url: string) => url.includes('/api/online-license/status'))).toBe(false)
   })
 
   it('shows stale data badge without treating old sourceUpdatedAt as realtime', async () => {

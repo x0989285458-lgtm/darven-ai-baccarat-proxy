@@ -550,7 +550,13 @@ async function dbQueryAgentRole(code) {
   }
 }
 
-  return { configured, getStatus, bootstrap, createAgent, deleteAgents, createLicense, setLicenseStatus, extendLicense, deleteLicense, validateMemberLogin, validateMemberSession, validateAgentLogin, getCloudDataStatus, getDailyAnalytics }
+  async function checkConnection() {
+    if (!configured) return false
+    await db.query('select 1 as ok')
+    return true
+  }
+
+  return { configured, checkConnection, getStatus, bootstrap, createAgent, deleteAgents, createLicense, setLicenseStatus, extendLicense, deleteLicense, validateMemberLogin, validateMemberSession, validateAgentLogin, getCloudDataStatus, getDailyAnalytics }
 }
 
 

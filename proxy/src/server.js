@@ -397,6 +397,15 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         return jsonResponse(error?.statusCode ?? 400, { ok: false, error: error?.message ?? String(error) }, frontendOrigin)
       }
     }
+    if (pathname === '/api/online-license/health') {
+      try {
+        const configured = Boolean(licenseAdminClient?.configured)
+        const connected = configured && await licenseAdminClient.checkConnection?.() === true
+        return jsonResponse(connected ? 200 : 503, { configured, connected }, frontendOrigin)
+      } catch {
+        return jsonResponse(503, { configured: Boolean(licenseAdminClient?.configured), connected: false }, frontendOrigin)
+      }
+    }
     if (pathname === '/api/online-license/status') {
       try {
         const session = requireAdminSession({}, requestUrl, headers)

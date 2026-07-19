@@ -14,10 +14,12 @@ export async function checkSupabaseConnection(adminSessionToken?: string, fetchI
   try {
     const requestOptions: RequestInit = { cache: 'no-store' }
     if (adminSessionToken) requestOptions.headers = { Authorization: `Bearer ${adminSessionToken}` }
-    const backendResponse = await fetchImpl(`${proxyApiUrl}/api/online-license/status`, requestOptions)
+    const endpoint = adminSessionToken ? '/api/online-license/status' : '/api/online-license/health'
+    const backendResponse = await fetchImpl(`${proxyApiUrl}${endpoint}`, requestOptions)
     if (backendResponse.ok) {
       const backendStatus = await backendResponse.json().catch(() => ({}))
       if (backendStatus.error) return { ok: false, message: `授權後端連線失敗：${backendStatus.error}` }
+      if (!adminSessionToken && (backendStatus.configured !== true || backendStatus.connected !== true)) return { ok: false, message: '授權後端未連線' }
       return { ok: true, message: '授權後端已連線' }
     }
     return { ok: false, message: `授權後端連線失敗 (${backendResponse.status})` }
