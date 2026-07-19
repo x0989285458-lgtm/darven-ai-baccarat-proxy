@@ -259,14 +259,24 @@ test('v101 Supabase client rehydrates only one exact durable ledger identity and
   assert.equal(result.rankDataAvailable, true)
   assert.equal(result.completeThroughRound, 1)
 
+  const gapRow = {
+    ...row,
+    complete_through_round: 0,
+    seen_dealt_rank_counts: Object.fromEntries(RANKS.map((rank) => [rank, 0])),
+    seen_dealt_code_counts: Object.fromEntries(Array.from({ length: 52 }, (_, index) => [index + 1, 0])),
+    undealt_after_observed_deals: Object.fromEntries(RANKS.map((rank) => [rank, 0])),
+    cards_seen_dealt: 0,
+    status: 'gap',
+    ledger_checksum: '0'.repeat(64),
+  }
   const gapClient = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
-    fetchImpl: async () => new Response(JSON.stringify([{ ...row, status: 'gap' }]), { status: 200 }),
+    fetchImpl: async () => new Response(JSON.stringify([gapRow]), { status: 200 }),
   })
   const gap = await gapClient.readV100RankLedger({ source: 'mt-cloud', tableId: 'BAG01', shoe: 'S100' })
   assert.equal(gap.status, 'gap')
   assert.equal(gap.rankDataAvailable, false)
-  assert.equal(gap.completeThroughRound, 1)
+  assert.equal(gap.completeThroughRound, 0)
 
   const mismatch = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,

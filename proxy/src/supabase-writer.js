@@ -1695,7 +1695,7 @@ function normalizeV100DurableRankLedger(row = {}, expectedIdentity = {}) {
   const validRanks = seen && undealt && RANK_REMAINING_FACES.every((rank) => Number.isInteger(Number(seen[rank]))
     && Number(seen[rank]) >= 0 && Number(seen[rank]) <= 32
     && Number.isInteger(Number(undealt[rank])) && Number(undealt[rank]) >= 0 && Number(undealt[rank]) <= 32
-    && Number(seen[rank]) + Number(undealt[rank]) === 32)
+    && (status !== 'contiguous' || Number(seen[rank]) + Number(undealt[rank]) === 32))
   const validCodes = codes && Array.from({ length: 52 }, (_, index) => String(index + 1)).every((code) => Number.isInteger(Number(codes[code]))
     && Number(codes[code]) >= 0 && Number(codes[code]) <= 8)
   const ranksFromCodes = Object.fromEntries(RANK_REMAINING_FACES.map((rank) => [rank, 0]))
