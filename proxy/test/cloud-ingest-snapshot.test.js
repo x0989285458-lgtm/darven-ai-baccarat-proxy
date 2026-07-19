@@ -62,9 +62,12 @@ test('valid cloud ingest updates tables and uses existing Supabase capture flow'
       writeCloudTableSnapshot: async (value) => calls.push(['tables', value]),
     },
   })
+  app.state.setStatus({ eventLayer: 'monitor_error', eventSeverity: 'error', eventComponent: 'cloud_status', eventMessage: 'Cloud snapshot is stale', eventKind: 'stale_data', eventAt: '2026-07-12T07:50:00.000Z' })
   const response = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': key }, body: body() })
   assert.equal(response.statusCode, 200)
   assert.equal(app.state.snapshot().tables[0].tableId, 'BAG01')
+  assert.equal(app.state.snapshot().status.eventMessage, null)
+  assert.equal(app.state.snapshot().status.eventKind, null)
   assert.deepEqual(calls.map(([name]) => name), ['status', 'tables'])
 })
 

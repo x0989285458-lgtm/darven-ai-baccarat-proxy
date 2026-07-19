@@ -41,7 +41,8 @@ test('admin requires complete boolean side_actions and side_hits before reportin
   assert.match(sql, /jsonb_object_keys\(\s*case\s+when\s+jsonb_typeof\(prediction_features->'side_actions'\)\s*=\s*'object'\s+then\s+prediction_features->'side_actions'\s+else\s+'\{\}'::jsonb\s+end\s*\)\)\s*=\s*6/i)
   assert.match(sql, /jsonb_object_keys\(\s*case\s+when\s+jsonb_typeof\(coalesce\(side_hits,\s*prediction_features->'side_hits'\)\)\s*=\s*'object'\s+then\s+coalesce\(side_hits,\s*prediction_features->'side_hits'\)\s+else\s+'\{\}'::jsonb\s+end\s*\)\)\s*=\s*6/i)
   assert.deepEqual(analytics.tableStats.map((row) => row.tableId), ['BAG01','BAG02','BAG03','BAG03A','BAG05','BAG06','BAG07','BAG08','BAG09','BAG10'])
-  assert.match(queries[2], /created_at\s*>=\s*\(current_date\s*-\s*interval\s*'6 days'\)/i)
+  assert.match(sql, /created_at\s*>=\s*\(\(timezone\('Asia\/Taipei',\s*now\(\)\)::date\s*-\s*6\)::timestamp\s+at\s+time\s+zone\s+'Asia\/Taipei'\)/i)
+  assert.match(sql, /\(created_at\s+at\s+time\s+zone\s+'Asia\/Taipei'\)::date\s+as\s+day/i)
   assert.doesNotMatch(queries[2], /created_at\s*<\s*current_date/i)
   assert.equal((sql.match(/strategy_version\s*=\s*\$1/gi) ?? []).length, 3)
   assert.deepEqual(parameters, [
@@ -49,4 +50,25 @@ test('admin requires complete boolean side_actions and side_hits before reportin
     ['v101'],
     ['v101'],
   ])
+})
+
+test('admin analytics shares one in-flight load and reuses the successful cache', async () => {
+  let calls = 0
+  const pool = {
+    async query(sql) {
+      calls += 1
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      const text = String(sql)
+      if (/select count\(distinct table_id/.test(text) && !/group by s\.table_id/.test(text)) return { rows: [{ rounds: 2 }] }
+      if (/group by s\.table_id/.test(text)) return { rows: [] }
+      return { rows: [] }
+    },
+  }
+  const client = createLicenseAdminClient({ pool })
+  const [first, second] = await Promise.all([client.getDailyAnalytics(), client.getDailyAnalytics()])
+  assert.equal(first.todayRoundCount, 2)
+  assert.deepEqual(second, first)
+  assert.equal(calls, 3)
+  await client.getDailyAnalytics()
+  assert.equal(calls, 3)
 })

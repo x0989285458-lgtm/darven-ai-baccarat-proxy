@@ -284,7 +284,13 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             acceptedRoundKeys: validatedRoundKeys,
           }
           ingestSequences.set(sessionId, { sequence: envelope.sequence, ack })
-          state.setStatus({ health: 'ok', reason: null, expectedProtocolVersion: WORKER_PROTOCOL_VERSION, receivedProtocolVersion: WORKER_PROTOCOL_VERSION })
+          state.setStatus({
+            health: 'ok', reason: null,
+            expectedProtocolVersion: WORKER_PROTOCOL_VERSION,
+            receivedProtocolVersion: WORKER_PROTOCOL_VERSION,
+            eventLayer: null, eventSeverity: null, eventComponent: null,
+            eventMessage: null, eventStatusCode: null, eventKind: null, eventAt: null,
+          })
           return jsonResponse(200, ack, frontendOrigin)
         })
       } catch (error) {

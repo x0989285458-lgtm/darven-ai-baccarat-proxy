@@ -6,6 +6,10 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
   const resolvedConnectionString = dbConnectionString ?? process.env.SUPABASE_DB_CONNECTION_STRING
   const configured = Boolean(pool || resolvedConnectionString)
   const db = pool ?? (resolvedConnectionString ? new pg.Pool({ connectionString: resolvedConnectionString, ssl: { rejectUnauthorized: false }, max: 2 }) : null)
+  const dailyAnalyticsCacheMs = 60_000
+  let dailyAnalyticsCache = null
+  let dailyAnalyticsCacheAt = 0
+  let dailyAnalyticsInFlight = null
 
   async function getStatus({ adminAccount = null } = {}) {
     if (!configured) return { configured: false, managers: [], agents: [], plans: [], licenses: [], agentRows: [], licenseRows: [], usedLicenseCodes: [] }
@@ -305,14 +309,31 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
 
   async function getDailyAnalytics() {
     if (!configured) return { todayRoundCount: 0, tableStats: [], dailyReports: [] }
-    const todayCount = await db.query(`select count(distinct table_id || ':' || shoe_no || ':' || round_no)::int as rounds
+    if (dailyAnalyticsCache && Date.now() - dailyAnalyticsCacheAt < dailyAnalyticsCacheMs) return dailyAnalyticsCache
+    if (dailyAnalyticsInFlight) return dailyAnalyticsInFlight
+    dailyAnalyticsInFlight = loadDailyAnalytics()
+    try {
+      const result = await dailyAnalyticsInFlight
+      dailyAnalyticsCache = result
+      dailyAnalyticsCacheAt = Date.now()
+      return result
+    } catch (error) {
+      if (dailyAnalyticsCache) return dailyAnalyticsCache
+      throw error
+    } finally {
+      dailyAnalyticsInFlight = null
+    }
+  }
+
+  async function loadDailyAnalytics() {
+    const todayCountPromise = db.query(`select count(distinct table_id || ':' || shoe_no || ':' || round_no)::int as rounds
       from public.daily_prediction_results
-      where created_at >= date_trunc('day', now()) and strategy_version = $1
+      where created_at >= ((timezone('Asia/Taipei', now())::date)::timestamp at time zone 'Asia/Taipei') and strategy_version = $1
         and (settlement_final is true or (settlement_final is null and prediction_features->>'settlement_final' = 'true'))`, [ALL_MT_EQUAL_STRATEGY_VERSION])
-    const tableRows = await db.query(`with scoped as (
+    const tableRowsPromise = db.query(`with scoped as (
         select table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, settlement_final, side_hits, prediction_features
         from public.daily_prediction_results
-        where created_at >= date_trunc('day', now()) and strategy_version = $1
+        where created_at >= ((timezone('Asia/Taipei', now())::date)::timestamp at time zone 'Asia/Taipei') and strategy_version = $1
           and (settlement_final is true or (settlement_final is null and prediction_features->>'settlement_final' = 'true'))
       ), validated as (
         select *,
@@ -374,10 +395,10 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
           coalesce(side.side_actions_available, false) as side_actions_available
         from scoped s left join side on side.table_id=s.table_id
         group by s.table_id, side.side_actions, side.side_hits, side.side_actions_available`, [ALL_MT_EQUAL_STRATEGY_VERSION])
-    const reportRows = await db.query(`with scoped as (
-        select created_at::date as day, table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, settlement_final, side_hits, prediction_features
+    const reportRowsPromise = db.query(`with scoped as (
+        select (created_at at time zone 'Asia/Taipei')::date as day, table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, settlement_final, side_hits, prediction_features
         from public.daily_prediction_results
-        where created_at >= (current_date - interval '6 days') and strategy_version = $1
+        where created_at >= ((timezone('Asia/Taipei', now())::date - 6)::timestamp at time zone 'Asia/Taipei') and strategy_version = $1
           and (settlement_final is true or (settlement_final is null and prediction_features->>'settlement_final' = 'true'))
       ), validated as (
         select *,
@@ -435,6 +456,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null } = {
           case when not side_actions_available then 'unavailable' when pair_total>0 then round((pair_hits::numeric/pair_total)*100,1)::text || '%' else '-' end as pair_hit_rate,
           case when not side_actions_available then 'unavailable' when six_total>0 then round((six_hits::numeric/six_total)*100,1)::text || '%' else '-' end as six_hit_rate
         from grouped order by day desc limit 7`, [ALL_MT_EQUAL_STRATEGY_VERSION])
+    const [todayCount, tableRows, reportRows] = await Promise.all([todayCountPromise, tableRowsPromise, reportRowsPromise])
     const rowsByTable = new Map(tableRows.rows.map((row) => [row.table_id, row]))
     const order = ['BAG01','BAG02','BAG03','BAG03A','BAG05','BAG06','BAG07','BAG08','BAG09','BAG10']
     return {
