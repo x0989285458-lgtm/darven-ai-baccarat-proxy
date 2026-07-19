@@ -3280,7 +3280,17 @@ body,
   border-bottom: 1px solid rgba(198, 164, 99, .18);
 }
 
-.member-dashboard .dashboard-history-panel .prediction-history-scroll { padding: 4px 8px 8px; overflow: auto; }
+.member-dashboard .dashboard-history-panel .prediction-history-scroll {
+  padding: 4px 8px 8px;
+  overflow: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.member-dashboard .dashboard-history-panel .prediction-history-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
 .member-dashboard .dashboard-history-panel .prediction-history { width: 100%; min-width: 0; font-size: 12px; }
 .member-dashboard .dashboard-history-panel .prediction-history th,
 .member-dashboard .dashboard-history-panel .prediction-history td { height: 23px; padding: 2px 5px; }

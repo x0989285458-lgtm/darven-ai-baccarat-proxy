@@ -13,6 +13,11 @@ describe('responsive history and road CSS', () => {
     expect(css).toMatch(/\.prediction-history-scroll\s*\{[^}]*min-width:\s*0[^}]*max-width:\s*100%[^}]*overflow-x:\s*auto/s)
   })
 
+  it('hides the history scrollbar without disabling scrolling', () => {
+    expect(css).toMatch(/\.member-dashboard\s+\.dashboard-history-panel\s+\.prediction-history-scroll\s*\{[^}]*overflow:\s*auto[^}]*scrollbar-width:\s*none[^}]*-ms-overflow-style:\s*none/s)
+    expect(css).toMatch(/\.member-dashboard\s+\.dashboard-history-panel\s+\.prediction-history-scroll::\-webkit-scrollbar\s*\{[^}]*display:\s*none[^}]*width:\s*0[^}]*height:\s*0/s)
+  })
+
   it('wraps road counts and keeps the tie slash behind the winning point', () => {
     expect(css).toMatch(/\.road-counts\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*wrap/s)
     expect(css).toMatch(/\.big-cell\s*>\s*span\s*\{[^}]*z-index:\s*2/s)
