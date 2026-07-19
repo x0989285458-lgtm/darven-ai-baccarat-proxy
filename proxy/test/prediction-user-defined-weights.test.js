@@ -14,7 +14,7 @@ const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Num
 const nonZero = (weights) => Object.fromEntries(Object.entries(weights).filter(([, value]) => Number(value) !== 0))
 
 test('uses only the user-defined main weights and ignores previous main weights', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v100')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v101')
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
   assert.deepEqual(nonZero(ALL_MT_EQUAL_MAIN_WEIGHTS), {
     ask_road_signals: 0.25,
@@ -29,12 +29,12 @@ test('uses only the user-defined main weights and ignores previous main weights'
 
 test('uses user-defined side thresholds and independent side weight profiles', () => {
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
-    tie: 25,
-    superSix: 45,
-    bankerPair: 43,
-    playerPair: 43,
-    bankerDragon: 30,
-    playerDragon: 30,
+    tie: 30,
+    superSix: 50,
+    bankerPair: 50,
+    playerPair: 50,
+    bankerDragon: 40,
+    playerDragon: 40,
   })
 
   assert.deepEqual(nonZero(SIDE_PREDICTION_WEIGHT_PROFILES.tie), {

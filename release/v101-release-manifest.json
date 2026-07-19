@@ -1,0 +1,22 @@
+{
+  "identity": {
+    "productVersion": "v101",
+    "proxyBuildVersion": "v101",
+    "workerBuildVersion": "101",
+    "protocolVersion": "v101",
+    "strategyVersion": "v101",
+    "packageVersion": "1.0.9"
+  },
+  "sideThresholds": {
+    "tie": 30,
+    "superSix": 50,
+    "bankerPair": 50,
+    "playerPair": 50,
+    "bankerDragon": 40,
+    "playerDragon": 40
+  },
+  "mainPrediction": "unchanged-from-v100",
+  "sideWeights": "unchanged-from-v100",
+  "rolloutOrder": ["database", "render-proxy", "gcp-worker", "cloudflare-frontend"],
+  "rollback": "frontend/supabase/rollback_v101_to_v100.sql"
+}

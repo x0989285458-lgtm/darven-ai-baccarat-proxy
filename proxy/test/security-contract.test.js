@@ -9,12 +9,12 @@ const INGEST_HEADERS = { 'x-worker-key': 'ingest-test-key', 'x-forwarded-proto':
 
 function ingestEnvelope(overrides = {}) {
   return {
-    protocolVersion: 'v100',
+    protocolVersion: 'v101',
     timestamp: NOW,
     sequence: 7,
     roundKeys: ['BAG01:88:21'],
     snapshot: {
-      buildVersion: '100',
+      buildVersion: '101',
       sessionId: 'worker-session-opaque',
       connected: true,
       authenticated: true,
@@ -60,9 +60,11 @@ test('ingest rejects a missing or mismatched protocol version and marks status d
   assert.equal(JSON.parse(mismatch.body).error, 'version_mismatch')
 
   const status = JSON.parse((await app.inject({ url: '/api/status', headers: { 'x-forwarded-proto': 'https' } })).body)
-  assert.equal(status.buildVersion, 'v100')
+  assert.equal(status.buildVersion, 'v101')
   assert.equal(status.health, 'degraded')
   assert.equal(status.reason, 'version_mismatch')
+  assert.equal(status.expectedProtocolVersion, 'v101')
+  assert.equal(status.receivedProtocolVersion, 'v097')
 })
 
 test('ingest fails closed when the worker snapshot build version is not 098', async () => {
@@ -140,6 +142,9 @@ test('ingest ACK is emitted only after all durable writes and contains accepted 
     sequence: 7,
     acceptedRoundKeys: ['BAG01:88:21'],
   })
+  const status = app.state.snapshot().status
+  assert.equal(status.expectedProtocolVersion, 'v101')
+  assert.equal(status.receivedProtocolVersion, 'v101')
 })
 
 test('ingest never acknowledges or advances sequence when a durable write fails', async () => {
@@ -267,9 +272,9 @@ test('internal state and public endpoints share build version 098.23', async () 
   const status = JSON.parse((await app.inject({ url: '/api/status' })).body)
   const snapshot = JSON.parse((await app.inject({ url: '/api/snapshot' })).body)
 
-  assert.equal(health.buildVersion, 'v100')
-  assert.equal(status.buildVersion, 'v100')
-  assert.equal(snapshot.status.version, 'v100')
+  assert.equal(health.buildVersion, 'v101')
+  assert.equal(status.buildVersion, 'v101')
+  assert.equal(snapshot.status.version, 'v101')
 })
 
 test('every public table and durable prediction carries buildVersion 098.23 and targets the exact screen round', async () => {
@@ -283,13 +288,13 @@ test('every public table and durable prediction carries buildVersion 098.23 and 
 
   const tables = JSON.parse((await app.inject({ url: '/api/tables' })).body)
 
-  assert.equal(tables[0].buildVersion, 'v100')
-  assert.equal(tables[0].prediction.buildVersion, 'v100')
+  assert.equal(tables[0].buildVersion, 'v101')
+  assert.equal(tables[0].prediction.buildVersion, 'v101')
   assert.equal(tables[0].prediction.targetRound, 20)
 
   const snapshot = JSON.parse((await app.inject({ url: '/api/snapshot' })).body)
-  assert.equal(snapshot.tables[0].buildVersion, 'v100')
-  assert.equal(snapshot.tables[0].prediction.buildVersion, 'v100')
+  assert.equal(snapshot.tables[0].buildVersion, 'v101')
+  assert.equal(snapshot.tables[0].prediction.buildVersion, 'v101')
 })
 
 test('production and cloud ingest without a key returns 503 and reports degraded health', async () => {

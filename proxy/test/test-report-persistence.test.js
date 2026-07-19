@@ -37,4 +37,5 @@ test('persists final report to online memory center when client is configured', 
   assert.equal(calls.length, 1)
   assert.equal(calls[0].slug, 'ai-baccarat')
   assert.equal(calls[0].report.reportType, '300_round_live_test')
+  assert.equal(calls[0].report.strategyVersion, 'v101')
 })

@@ -56,12 +56,12 @@ export type BonusPredictions = {
 }
 
 export const SIDE_PREDICTION_THRESHOLDS = {
-  tie: 25,
-  superSix: 45,
-  bankerPair: 43,
-  playerPair: 43,
-  bankerDragon: 30,
-  playerDragon: 30,
+  tie: 30,
+  superSix: 50,
+  bankerPair: 50,
+  playerPair: 50,
+  bankerDragon: 40,
+  playerDragon: 40,
 } as const
 
 function buildEqualWeights<const T extends readonly string[]>(keys: T) {

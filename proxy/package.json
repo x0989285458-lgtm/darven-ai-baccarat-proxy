@@ -1,9 +1,9 @@
 {
-  "name": "draven-mt-data-proxy-v100",
-  "version": "1.0.8",
+  "name": "draven-mt-data-proxy-v101",
+  "version": "1.0.9",
   "private": true,
   "type": "module",
-  "description": "Draven MT百家資料代理伺服器 v100：正式整合發布版。",
+  "description": "Draven MT百家資料代理伺服器 v101：副預測門檻調整正式版。",
   "scripts": {
     "start": "node src/server.js",
     "dev": "node src/server.js",

@@ -19,12 +19,12 @@ test('tie risk uses tie rate only and is invariant to road chaos', () => {
 
 test('tie-risk dedup keeps every formal side threshold and tie weight unchanged', () => {
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
-    tie: 25,
-    superSix: 45,
-    bankerPair: 43,
-    playerPair: 43,
-    bankerDragon: 30,
-    playerDragon: 30,
+    tie: 30,
+    superSix: 50,
+    bankerPair: 50,
+    playerPair: 50,
+    bankerDragon: 40,
+    playerDragon: 40,
   })
   assert.deepEqual(
     Object.fromEntries(Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES.tie).filter(([, value]) => value !== 0)),

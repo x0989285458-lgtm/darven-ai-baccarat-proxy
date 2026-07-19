@@ -18,8 +18,8 @@ import { hasExactRealCardCodes, isExactTenRawResult, isVerifiedFinalRoundAction 
 
 const VERSION = BUILD_VERSION
 const SERVICE = 'Draven MT資料代理伺服器'
-const WORKER_PROTOCOL_BUILD_VERSION = '100'
-const WORKER_PROTOCOL_VERSION = 'v100'
+const WORKER_PROTOCOL_BUILD_VERSION = '101'
+const WORKER_PROTOCOL_VERSION = 'v101'
 const LIFECYCLE_IDENTITIES_PER_TABLE = 256
 const LIFECYCLE_SHOES_PER_TABLE = 64
 
@@ -284,12 +284,12 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             acceptedRoundKeys: validatedRoundKeys,
           }
           ingestSequences.set(sessionId, { sequence: envelope.sequence, ack })
-          state.setStatus({ health: 'ok', reason: null, expectedProtocolVersion: 'v100', receivedProtocolVersion: 'v100' })
+          state.setStatus({ health: 'ok', reason: null, expectedProtocolVersion: WORKER_PROTOCOL_VERSION, receivedProtocolVersion: WORKER_PROTOCOL_VERSION })
           return jsonResponse(200, ack, frontendOrigin)
         })
       } catch (error) {
         if (error?.versionMismatch) {
-          state.setStatus({ health: 'degraded', reason: 'version_mismatch', expectedProtocolVersion: 'v100', receivedProtocolVersion: error.receivedProtocolVersion ?? null })
+          state.setStatus({ health: 'degraded', reason: 'version_mismatch', expectedProtocolVersion: WORKER_PROTOCOL_VERSION, receivedProtocolVersion: error.receivedProtocolVersion ?? null })
         }
         return jsonResponse(error?.statusCode ?? 400, {
           ok: false,

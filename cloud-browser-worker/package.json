@@ -1,9 +1,9 @@
 {
   "name": "darven-cloud-browser-worker",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "type": "module",
-  "description": "Darven AI baccarat v100 GCP VM browser worker with durable HTTPS push to the Render proxy.",
+  "description": "Darven AI baccarat v101 GCP VM browser worker with durable HTTPS push to the Render proxy.",
   "scripts": {
     "start": "node src/server.js",
     "test": "node --test"

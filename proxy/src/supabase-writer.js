@@ -3,9 +3,9 @@ import { BUILD_VERSION } from './build-version.js'
 import { isVerifiedFinalRoundAction, normalizeExactRealCardEvent } from '../../shared/real-card-validator.js'
 
 const SOURCE = 'ofalive99'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v100'
-export const V100_MAIN_SIGNAL_DEDUP_VERSION = 'v100_主預測靴內偏移去重版'
-export const V100_SIDE_DEDUP_VERSION = 'v100_主副訊號去重與8副牌階完整性版'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v101'
+export const V100_MAIN_SIGNAL_DEDUP_VERSION = 'v101_主預測沿用v100正式版'
+export const V100_SIDE_DEDUP_VERSION = 'v101_副預測門檻調整版'
 export const V100_SIDE_SCORE_CALIBRATION_OFFSETS = Object.freeze({
   tie: -13.867936925098554,
   superSix: -1.8125,
@@ -95,12 +95,12 @@ export const SIDE_PREDICTION_WEIGHT_PROFILES = Object.freeze({
 export const ALL_MT_EQUAL_SIDE_WEIGHTS = SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair
 
 export const SIDE_PREDICTION_THRESHOLDS = {
-  tie: 25,
-  superSix: 45,
-  bankerPair: 43,
-  playerPair: 43,
-  bankerDragon: 30,
-  playerDragon: 30,
+  tie: 30,
+  superSix: 50,
+  bankerPair: 50,
+  playerPair: 50,
+  bankerDragon: 40,
+  playerDragon: 40,
 }
 
 
@@ -119,9 +119,9 @@ export function buildFormalActiveStrategy() {
       side_weights: Object.fromEntries(Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES).map(([key, profile]) => [key, { ...profile }])),
       side_thresholds: { ...SIDE_PREDICTION_THRESHOLDS },
       rank_ledger: 'durable_eight_deck_exact_rank_ledger',
-      description: 'v100正式整合包；主預測採靴內偏移去重，副預測採訊號去重與固定8副牌牌階Ledger，沿用核准門檻。',
+      description: 'v101正式策略；主預測與權重沿用v100，副預測門檻依核准值調整。',
     },
-    notes: 'Only active runtime strategy and history source for formal release v100.',
+    notes: 'Only active runtime strategy and history source for formal release v101.',
   }
 }
 
@@ -581,12 +581,12 @@ export function buildLivePrediction(table = {}) {
     tablePerformance,
   })
   const baseSidePredictions = buildSidePredictions(table, nextRound)
-  const rankCardShoe = table.v100RankLedger ?? null
+  const rankCardShoe = table.v101RankLedger ?? null
   const rankAvailable = rankCardShoe?.rankDataAvailable === true
     && hasCompleteRemainingRankCounts(rankCardShoe.remainingRankCounts)
   const v100Side = calculateV100SidePrediction({
     table,
-    round: { ...nextRound, v100RankLedger: rankCardShoe },
+    round: { ...nextRound, v101RankLedger: rankCardShoe },
     rankAvailable,
     rankFallback: 'renormalize',
     mainPrediction: prediction.predictedResult,
@@ -620,11 +620,11 @@ export function buildLivePrediction(table = {}) {
     side_results: { superSix: false, bankerDragon: false, playerDragon: false, bankerPair: false, playerPair: false },
     table_performance: structuredClone(tablePerformance),
     confidence_calibration: structuredClone(prediction.confidenceCalibration),
-    v100_main_signal_dedup: {
+    v101_main_signal_dedup: {
       strategyVersion: V100_MAIN_SIGNAL_DEDUP_VERSION,
       diagnostics: structuredClone(prediction.diagnostics),
     },
-    v100_side_dedup: structuredClone(v100Side),
+    v101_side_policy: structuredClone(v100Side),
   }
   return {
     source: 'backend',
@@ -1208,7 +1208,7 @@ export function calculateV100SidePrediction({
   mainPrediction = null,
   baseSidePredictions: baseOverrides = null,
 } = {}) {
-  const rankCardShoe = round.v100RankLedger ?? table.v100RankLedger ?? null
+  const rankCardShoe = round.v101RankLedger ?? table.v101RankLedger ?? null
   const featureScores = primitiveOverrides == null ? buildSideFeatureScores(table, { ...round, cardShoe: rankCardShoe }) : null
   const sourcePrimitives = primitiveOverrides ?? {
     T: featureScores.tie_count,
@@ -1865,9 +1865,9 @@ export function createSupabaseIngestionClient({
       const round = Number(event.round)
       if (!isVerifiedFinalRoundAction(event.sourceAction) || !normalized || !source || !tableId || !shoe
         || !Number.isSafeInteger(round) || round < 1) {
-        throw new Error('v100 durable rank event is invalid')
+        throw new Error('v101 durable rank event is invalid')
       }
-      const acknowledgement = await enqueueWrite(() => postRest('rpc/apply_v100_rank_ledger_event', {
+      const acknowledgement = await enqueueWrite(() => postRest('rpc/apply_v101_rank_ledger_event', {
         p_event: {
           source,
           table_id: tableId,
@@ -1917,7 +1917,7 @@ export function createSupabaseIngestionClient({
       if (!source || !tableId || !normalizedShoe || !Number.isSafeInteger(visibleRound) || visibleRound < 1) {
         throw new Error('prediction lifecycle reconciliation identity is incomplete')
       }
-      const acknowledgement = await enqueueWrite(() => postRest('rpc/reconcile_v100_prediction_lifecycle', {
+      const acknowledgement = await enqueueWrite(() => postRest('rpc/reconcile_v101_prediction_lifecycle', {
         p_source: String(source),
         p_table_id: String(tableId),
         p_current_shoe: normalizedShoe,
@@ -1947,7 +1947,7 @@ export function createSupabaseIngestionClient({
         || !row.strategy_version || !['banker', 'player'].includes(row.predicted_result)) {
         throw new Error('prediction issuance payload is incomplete')
       }
-      const acknowledgement = await enqueueWrite(() => postRest('rpc/issue_v100_prediction', { p_prediction: row }, undefined, { requireObject: true }))
+      const acknowledgement = await enqueueWrite(() => postRest('rpc/issue_v101_prediction', { p_prediction: row }, undefined, { requireObject: true }))
       const prediction = acknowledgement?.prediction
       if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
         || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at
@@ -2169,7 +2169,7 @@ export function createSupabaseIngestionClient({
           throw new Error('prediction identity is required for production settlement')
         }
         const acknowledgement = hasPredictionIdentity
-          ? await postRest('rpc/settle_v100_prediction', {
+          ? await postRest('rpc/settle_v101_prediction', {
               p_roadmap: compactEvent,
               p_settlement: {
                 prediction_id: precomputedPrediction.predictionId,
@@ -2187,7 +2187,7 @@ export function createSupabaseIngestionClient({
                 side_hits: compactPrediction.prediction_features?.side_hits ?? {},
               },
             }, undefined, { requireObject: true })
-          : await postRest('rpc/persist_v100_settled_round', {
+          : await postRest('rpc/persist_v101_settled_round', {
               p_roadmap: compactEvent,
               p_prediction: compactPrediction,
             }, undefined, { requireObject: true })
@@ -2266,7 +2266,7 @@ export function createSupabaseIngestionClient({
         .filter(isFinalPredictionSettlement).length
     },
     async getPredictionLifecycleStats() {
-      const acknowledgement = await postRest('rpc/get_v100_prediction_lifecycle_stats', {}, undefined, { requireObject: true })
+      const acknowledgement = await postRest('rpc/get_v101_prediction_lifecycle_stats', {}, undefined, { requireObject: true })
       const stats = {
         activePending: Number(acknowledgement?.active_pending),
         settled: Number(acknowledgement?.settled),

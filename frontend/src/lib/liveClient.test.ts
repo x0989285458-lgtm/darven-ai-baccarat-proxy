@@ -35,7 +35,7 @@ describe('LiveRoadClient status messages', () => {
     vi.useFakeTimers()
     const statuses: Array<{ state: string; message: string }> = []
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: false, authenticated: null, tables: [], buildVersion: 'v100' }) })
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: false, authenticated: null, tables: [], buildVersion: 'v101' }) })
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
     }))
 
@@ -51,7 +51,7 @@ describe('LiveRoadClient status messages', () => {
     vi.useFakeTimers()
     const statuses: Array<{ state: string; message: string }> = []
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, tables: [], buildVersion: 'v100' }) })
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, tables: [], buildVersion: 'v101' }) })
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
     }))
 
@@ -67,7 +67,7 @@ describe('LiveRoadClient status messages', () => {
     vi.useFakeTimers()
     const statuses: Array<{ state: string; message: string }> = []
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, statusText: 'Chrome已連接，等待MT登入驗證', buildVersion: 'v100' }) })
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, statusText: 'Chrome已連接，等待MT登入驗證', buildVersion: 'v101' }) })
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
     }))
 
@@ -83,7 +83,7 @@ describe('LiveRoadClient status messages', () => {
     vi.useFakeTimers()
     const received: any[] = []
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v100' }) })
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v101' }) })
       return Promise.resolve({ ok: true, json: () => Promise.resolve([{
         tableId: 'BAG01', displayName: 'MT百家樂第1桌', tableType: 'BAC', shoe: 12, round: 34,
         bankerCount: 11, playerCount: 10, tieCount: 2, bankerPairCount: 3, playerPairCount: 4,
@@ -131,7 +131,7 @@ describe('LiveRoadClient status messages', () => {
     const received: any[][] = []
     let tableCalls = 0
     vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
-      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v100' }) })
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v101' }) })
       if (url.endsWith('/api/tables/stream')) return Promise.resolve({ ok: false, status: 503, body: null })
       tableCalls += 1
       const rows = tableCalls === 1 ? [{
@@ -158,7 +158,7 @@ describe('LiveRoadClient status messages', () => {
     const received: any[][] = []
     const statuses: Array<{ state: string; message: string }> = []
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, statusText: '雲端資料 stale，等待Worker更新', buildVersion: 'v100' }) })
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, statusText: '雲端資料 stale，等待Worker更新', buildVersion: 'v101' }) })
       return Promise.resolve({ ok: true, json: () => Promise.resolve([{
         tableId: 'BAG01', displayName: 'MT百家樂第1桌', tableType: 'BAC', round: 1,
         beadPlateRaw: '0102', bigRoadRaw: '0102', sourceUpdatedAt: new Date().toISOString(),
@@ -225,7 +225,7 @@ describe('LiveRoadClient status messages', () => {
     }
     let tableCalls = 0
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v100' }) })
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v101' }) })
       if (url.endsWith('/api/tables/stream')) return Promise.resolve({ ok: false, status: 503, body: null })
       tableCalls += 1
       const firstPayload = tableCalls === 1

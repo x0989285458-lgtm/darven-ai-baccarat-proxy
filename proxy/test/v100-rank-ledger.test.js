@@ -128,41 +128,41 @@ test('snapshot checksum and rehydrate rebuild exactly and preserve pending gap i
   assert.throws(() => rehydrateRankLedger({ ...snapshot, checksum: 'tampered' }), /checksum/i)
 })
 
-test('state store mounts trusted ledger only under v100 namespace and gates next-round rank data on exact continuity', () => {
+test('state store mounts trusted ledger only under v101 namespace and gates next-round rank data on exact continuity', () => {
   const state = createProxyState({ inferSnapshotRounds: false })
   state.setTables([{ tableId: 'BAG01', shoe: 'S100', round: 0 }])
   state.upsertRoundEvent(finalRound())
   let table = state.snapshot().tables[0]
 
-  assert.equal(table.cardShoe, undefined, 'v100 must not override the formal v98 table.cardShoe input')
-  assert.equal(table.v100RankLedger.status, 'contiguous')
-  assert.equal(table.v100RankLedger.complete_through_round, 1)
-  assert.equal(table.v100RankLedger.rankDataAvailable, true)
-  assert.equal(table.v100RankLedger.targetRound, 2)
+  assert.equal(table.cardShoe, undefined, 'v101 must not override the formal v98 table.cardShoe input')
+  assert.equal(table.v101RankLedger.status, 'contiguous')
+  assert.equal(table.v101RankLedger.complete_through_round, 1)
+  assert.equal(table.v101RankLedger.rankDataAvailable, true)
+  assert.equal(table.v101RankLedger.targetRound, 2)
   assert.equal(table.lastRound.cardShoe.cardsSeenTotal, 6, 'legacy v98 lastRound cardShoe remains compatible')
 
   state.upsertRoundEvent(finalRound({ round: 3, rawResult: [5, 6, 18, 19, -1, -1, -1, -1, 0, 2] }))
   table = state.snapshot().tables[0]
-  assert.equal(table.v100RankLedger.status, 'gap')
-  assert.equal(table.v100RankLedger.rankDataAvailable, false)
+  assert.equal(table.v101RankLedger.status, 'gap')
+  assert.equal(table.v101RankLedger.rankDataAvailable, false)
 })
 
-test('v100 formal runtime consumes the trusted state-store rank ledger', () => {
+test('v101 formal runtime consumes the trusted state-store rank ledger', () => {
   const state = createProxyState({ inferSnapshotRounds: false })
   state.setTables([{ tableId: 'BAG01', shoe: 'S100', round: 0, bankerCount: 0, playerCount: 0, tieCount: 0 }])
   state.upsertRoundEvent(finalRound())
   const table = state.snapshot().tables[0]
   const withoutCandidateNamespace = structuredClone(table)
-  delete withoutCandidateNamespace.v100RankLedger
+  delete withoutCandidateNamespace.v101RankLedger
 
   const withLedger = buildLivePrediction(table)
   const withoutLedger = buildLivePrediction(withoutCandidateNamespace)
   assert.notDeepEqual(withLedger.sidePredictions, withoutLedger.sidePredictions)
-  assert.equal(withLedger.predictionFeatures.v100_side_dedup.diagnostics.rank.available, true)
-  assert.equal(withoutLedger.predictionFeatures.v100_side_dedup.diagnostics.rank.available, false)
+  assert.equal(withLedger.predictionFeatures.v101_side_policy.diagnostics.rank.available, true)
+  assert.equal(withoutLedger.predictionFeatures.v101_side_policy.diagnostics.rank.available, false)
 })
 
-test('authoritative table snapshot switches shoe and delayed old-shoe Final cannot pollute active v100 ledger', () => {
+test('authoritative table snapshot switches shoe and delayed old-shoe Final cannot pollute active v101 ledger', () => {
   const state = createProxyState({ inferSnapshotRounds: false })
   state.setTables([{ tableId: 'BAG01', shoe: 'S100', round: 0 }])
   state.upsertRoundEvent(finalRound())
@@ -170,13 +170,13 @@ test('authoritative table snapshot switches shoe and delayed old-shoe Final cann
   state.upsertRoundEvent(finalRound({ shoe: 'S101', round: 1, rawResult: [3, 4, 16, 17, -1, -1, -1, -1, 6, 8] }))
   const activeBeforeDelay = state.snapshot().tables[0]
   assert.equal(activeBeforeDelay.shoe, 'S101')
-  assert.equal(activeBeforeDelay.v100RankLedger.identity.shoe, 'S101')
+  assert.equal(activeBeforeDelay.v101RankLedger.identity.shoe, 'S101')
 
   state.upsertRoundEvent(finalRound({ shoe: 'S100', round: 2, rawResult: [5, 6, 18, 19, -1, -1, -1, -1, 0, 2] }))
   const activeAfterDelay = state.snapshot().tables[0]
   assert.equal(activeAfterDelay.shoe, 'S101')
-  assert.equal(activeAfterDelay.v100RankLedger.identity.shoe, 'S101')
-  assert.equal(activeAfterDelay.v100RankLedger.cards_seen_dealt, 4)
+  assert.equal(activeAfterDelay.v101RankLedger.identity.shoe, 'S101')
+  assert.equal(activeAfterDelay.v101RankLedger.cards_seen_dealt, 4)
 })
 
 test('after restart an old-shoe round one cannot regress the authoritative active shoe', () => {
@@ -187,10 +187,10 @@ test('after restart an old-shoe round one cannot regress the authoritative activ
   const table = restarted.snapshot().tables[0]
   assert.equal(table.shoe, 'S101')
   assert.equal(table.round, 10)
-  assert.equal(table.v100RankLedger, undefined)
+  assert.equal(table.v101RankLedger, undefined)
 })
 
-test('v100 Supabase client sends only immutable Final evidence and verifies a complete DB-derived ledger ACK', async () => {
+test('v101 Supabase client sends only immutable Final evidence and verifies a complete DB-derived ledger ACK', async () => {
   const calls = []
   const dbState = createRankLedger().recordFinal(finalRound())
   const fetchImpl = async (url, options = {}) => {
@@ -219,14 +219,14 @@ test('v100 Supabase client sends only immutable Final evidence and verifies a co
   assert.equal(duplicateResult.targetRound, 2)
   assert.equal(result.targetRound, 2)
   const body = JSON.parse(calls[0].options.body)
-  assert.equal(calls[0].url.endsWith('/rest/v1/rpc/apply_v100_rank_ledger_event'), true)
+  assert.equal(calls[0].url.endsWith('/rest/v1/rpc/apply_v101_rank_ledger_event'), true)
   assert.deepEqual(Object.keys(body.p_event).sort(), ['raw_result_exact10', 'round_no', 'shoe_no', 'source', 'source_action', 'table_id'])
   assert.equal(body.p_event.event_hash, undefined)
   assert.equal(body.p_event.dealt_rank_delta, undefined)
   assert.equal(body.p_ledger, null)
 })
 
-test('v100 Supabase client rejects a DB ACK whose code counts do not aggregate to its rank counts', async () => {
+test('v101 Supabase client rejects a DB ACK whose code counts do not aggregate to its rank counts', async () => {
   const seen = Object.fromEntries(RANKS.map((rank) => [rank, rank === 'A' || rank === '2' ? 3 : 0]))
   const undealt = Object.fromEntries(RANKS.map((rank) => [rank, 32 - seen[rank]]))
   const mismatchedCodes = Object.fromEntries(Array.from({ length: 52 }, (_, index) => [index + 1, [1, 14, 27, 40, 2, 15].includes(index + 1) ? 1 : 0]))
@@ -242,7 +242,7 @@ test('v100 Supabase client rejects a DB ACK whose code counts do not aggregate t
   await assert.rejects(() => client.applyV100RankLedgerEvent(finalRound()), /acknowledgement failed/i)
 })
 
-test('v100 Supabase client rehydrates only one exact durable ledger identity and rejects mismatches', async () => {
+test('v101 Supabase client rehydrates only one exact durable ledger identity and rejects mismatches', async () => {
   const row = {
     source: 'mt-cloud', table_id: 'BAG01', shoe_no: 'S100', complete_through_round: 1,
     seen_dealt_rank_counts: Object.fromEntries(RANKS.map((rank) => [rank, rank === 'A' || rank === '2' ? 3 : 0])),
@@ -293,31 +293,34 @@ test('fixed eight-deck ledger accepts contiguous verified Final exact10 and expo
   assert.deepEqual(result.identity, { source: 'mt-cloud', table_id: 'BAG01', shoe: 'S100' })
 })
 
-test('v100 baseline is conflict-safe and service-only while rollback preserves evidence', () => {
-  const schema = readFileSync(new URL('../../frontend/supabase/schema_v100_baseline.sql', import.meta.url), 'utf8')
-  const rollback = readFileSync(new URL('../../frontend/supabase/rollback_v100_latest_only.sql', import.meta.url), 'utf8')
+test('v101 migration is conflict-safe and service-only while rollback preserves evidence', () => {
+  const baseline = readFileSync(new URL('../../frontend/supabase/schema_v100_baseline.sql', import.meta.url), 'utf8')
+  const migration = readFileSync(new URL('../../frontend/supabase/schema_v101_latest_only.sql', import.meta.url), 'utf8')
+  const rollback = readFileSync(new URL('../../frontend/supabase/rollback_v101_to_v100.sql', import.meta.url), 'utf8')
 
-  assert.match(schema, /create table public\.shoe_round_card_events/i)
-  assert.match(schema, /unique \(source, table_id, shoe_no, round_no\)/i)
-  assert.match(schema, /create table public\.shoe_rank_ledgers/i)
-  assert.match(schema, /deck_count integer[^;]+default 8/i)
-  assert.match(schema, /status = 'conflicted'/i)
-  assert.match(schema, /conflicting_round_identity/i)
-  assert.match(schema, /pg_advisory_xact_lock/i)
-  assert.match(schema, /extensions\.digest/i)
-  assert.match(schema, /reject_v100_rank_event_evidence_mutation/i)
-  assert.match(schema, /grant select on table public\.shoe_round_card_events to service_role/i)
-  assert.doesNotMatch(schema, /grant[^;]*insert[^;]*shoe_round_card_events[^;]*service_role/i)
-  assert.doesNotMatch(schema, /grant[^;]*update[^;]*shoe_round_card_events[^;]*service_role/i)
-  assert.doesNotMatch(schema, /p_ledger\s*->/i)
-  assert.match(schema, /values \(v_source, v_table, v_shoe, v_round, v_raw, v_delta, v_action, v_hash, false\)/i)
-  assert.doesNotMatch(schema, /v_raw, '\{\}'::jsonb, v_action, v_hash, false/i)
+  assert.match(baseline, /create table public\.shoe_round_card_events/i)
+  assert.match(baseline, /unique \(source, table_id, shoe_no, round_no\)/i)
+  assert.match(baseline, /create table public\.shoe_rank_ledgers/i)
+  assert.match(baseline, /deck_count integer[^;]+default 8/i)
+  assert.match(baseline, /status = 'conflicted'/i)
+  assert.match(baseline, /conflicting_round_identity/i)
+  assert.match(baseline, /reject_v100_rank_event_evidence_mutation/i)
+  assert.match(baseline, /grant select on table public\.shoe_round_card_events to service_role/i)
+  assert.doesNotMatch(baseline, /grant[^;]*insert[^;]*shoe_round_card_events[^;]*service_role/i)
+  assert.doesNotMatch(baseline, /grant[^;]*update[^;]*shoe_round_card_events[^;]*service_role/i)
 
-  assert.match(schema, /enable row level security/i)
-  assert.match(schema, /revoke all on function public\.apply_v100_rank_ledger_event/i)
-  assert.match(schema, /grant all on function public\.apply_v100_rank_ledger_event\(p_event jsonb, p_ledger jsonb\) to service_role/i)
-  assert.match(schema, /position between 1 and 4[^\n]*not between 1 and 52/i)
-  assert.doesNotMatch(schema, /set\s+raw_result_exact10\s*=/i)
-  assert.match(rollback, /revoke execute on function public\.apply_v100_rank_ledger_event/i)
+  assert.match(migration, /create or replace function public\.apply_v101_rank_ledger_event/i)
+  assert.match(migration, /pg_advisory_xact_lock/i)
+  assert.match(migration, /extensions\.digest/i)
+  assert.doesNotMatch(migration, /p_ledger\s*->/i)
+  assert.match(migration, /values \(v_source, v_table, v_shoe, v_round, v_raw, v_delta, v_action, v_hash, false\)/i)
+  assert.doesNotMatch(migration, /v_raw, '\{\}'::jsonb, v_action, v_hash, false/i)
+  assert.match(migration, /revoke all on function public\.apply_v101_rank_ledger_event/i)
+  assert.match(migration, /grant execute on function public\.apply_v101_rank_ledger_event\(jsonb, jsonb\) to service_role/i)
+  assert.match(migration, /position between 1 and 4[^\n]*not between 1 and 52/i)
+  assert.doesNotMatch(migration, /set\s+raw_result_exact10\s*=/i)
+
+  assert.match(rollback, /status\s*=\s*'archived'/i)
+  assert.match(rollback, /version\s*=\s*'v100'/i)
   assert.doesNotMatch(rollback, /drop\s+(table|function)/i)
 })

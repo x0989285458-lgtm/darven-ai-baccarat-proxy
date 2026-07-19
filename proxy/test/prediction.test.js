@@ -18,14 +18,14 @@ const expectedProfiles = {
 }
 
 test('uses the approved Traditional Chinese strategy name and side thresholds', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v100')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v101')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
-    tie: 25,
-    superSix: 45,
-    bankerPair: 43,
-    playerPair: 43,
-    bankerDragon: 30,
-    playerDragon: 30,
+    tie: 30,
+    superSix: 50,
+    bankerPair: 50,
+    playerPair: 50,
+    bankerDragon: 40,
+    playerDragon: 40,
   })
 })
 
@@ -40,7 +40,7 @@ test('side profiles keep only the approved existing weighted items and each sum 
 
 test('live prediction emits only the approved strategy instead of a fallback', () => {
   const prediction = buildLivePrediction({ tableId: 'BAG97', shoe: 1, round: 0 })
-  assert.equal(prediction.strategyVersion, 'v100')
+  assert.equal(prediction.strategyVersion, 'v101')
   assert.equal(prediction.strategyVersion.includes('v096'), false)
 })
 

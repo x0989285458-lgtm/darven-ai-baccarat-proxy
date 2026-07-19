@@ -26,12 +26,12 @@ function score(primitives = BASE, options = {}) {
   })
 }
 
-test('v100 audit matrix applies each approved deduplicated side formula exactly once', () => {
+test('v101 audit matrix applies each approved deduplicated side formula exactly once', () => {
   const shadow = score()
   const A = 100 - Math.abs(BASE.B - BASE.P)
   const expectedTie = 0.5068331143232588 * BASE.T + 0.1931668856767411 * A + 0.10 * BASE.S + 0.20 * BASE.R
 
-  assert.equal(V100_SIDE_DEDUP_VERSION, 'v100_主副訊號去重與8副牌階完整性版')
+  assert.equal(V100_SIDE_DEDUP_VERSION, 'v101_副預測門檻調整版')
   closeTo(shadow.diagnostics.rawPredictions.tie, expectedTie)
   closeTo(shadow.diagnostics.rawPredictions.bankerPair, 40.3)
   closeTo(shadow.diagnostics.rawPredictions.playerPair, 34.5)
@@ -47,7 +47,7 @@ test('v100 audit matrix applies each approved deduplicated side formula exactly 
   assert.deepEqual(shadow.diagnostics.primitives, { ...BASE, A: 80, Hpair: 50, H6: 30 })
 })
 
-test('v100 diagnostics expose rank availability, fallback, and effective coefficients', () => {
+test('v101 diagnostics expose rank availability, fallback, and effective coefficients', () => {
   const neutral = score({ ...BASE, Q: Number.NaN, R: undefined }, { rankAvailable: false, rankFallback: 'neutral' })
   assert.deepEqual(neutral.diagnostics.rank, {
     available: false,
@@ -76,18 +76,18 @@ test('v100 diagnostics expose rank availability, fallback, and effective coeffic
   assert.throws(() => score(BASE, { rankAvailable: false, rankFallback: undefined }), /rankFallback/)
 })
 
-test('v100 infers null rank primitives as unavailable instead of silently converting unknown to zero', () => {
+test('v101 infers null rank primitives as unavailable instead of silently converting unknown to zero', () => {
   const shadow = score({ ...BASE, Q: null, R: null }, { rankAvailable: undefined, rankFallback: 'neutral' })
   assert.equal(shadow.diagnostics.rank.available, false)
   assert.equal(shadow.diagnostics.primitives.Q, 50)
   assert.equal(shadow.diagnostics.primitives.R, 50)
 })
 
-test('v100 table mode reads only an explicitly available table.cardShoe and rejects a gap even with 13 counts', () => {
+test('v101 table mode reads only an explicitly available table.cardShoe and rejects a gap even with 13 counts', () => {
   const counts = Object.fromEntries(['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'].map((face) => [face, 30]))
   const baseTable = { tableId: 'BAG01', round: 12, bankerCount: 6, playerCount: 5, tieCount: 1 }
   const gap = calculateV100SidePrediction({
-    table: { ...baseTable, v100RankLedger: { remainingRankCounts: counts, rankDataAvailable: false, status: 'gap' } },
+    table: { ...baseTable, v101RankLedger: { remainingRankCounts: counts, rankDataAvailable: false, status: 'gap' } },
     rankFallback: 'neutral',
     mainPrediction: 'banker',
   })
@@ -95,7 +95,7 @@ test('v100 table mode reads only an explicitly available table.cardShoe and reje
   assert.deepEqual(gap.diagnostics.rank.substituted, { Q: 50, R: 50 })
 
   const contiguous = calculateV100SidePrediction({
-    table: { ...baseTable, v100RankLedger: { remainingRankCounts: counts, rankDataAvailable: true, status: 'contiguous' } },
+    table: { ...baseTable, v101RankLedger: { remainingRankCounts: counts, rankDataAvailable: true, status: 'contiguous' } },
     rankFallback: 'neutral',
     mainPrediction: 'banker',
   })
@@ -103,8 +103,8 @@ test('v100 table mode reads only an explicitly available table.cardShoe and reje
   assert.equal(contiguous.diagnostics.rank.fallback, null)
 })
 
-test('v100 runtime calibration constants match the reproducible strict train artifact', () => {
-  const artifact = JSON.parse(readFileSync(new URL('../config/v100-side-calibration.json', import.meta.url), 'utf8'))
+test('v101 runtime calibration constants match the reproducible strict train artifact', () => {
+  const artifact = JSON.parse(readFileSync(new URL('../config/v101-side-calibration.json', import.meta.url), 'utf8'))
   assert.equal(artifact.method, 'chronological_train_product_runtime_quantile')
   assert.equal(artifact.trainRows, 1182)
   assert.match(artifact.trainIdsSha256, /^[0-9a-f]{64}$/)
@@ -113,7 +113,7 @@ test('v100 runtime calibration constants match the reproducible strict train art
   assert.deepEqual(V100_SIDE_SCORE_CALIBRATION_OFFSETS, artifact.offsets)
 })
 
-test('v100 applies fixed train-only score calibration without changing thresholds or raw formula lineage', () => {
+test('v101 applies fixed train-only score calibration without changing thresholds or raw formula lineage', () => {
   const shadow = score()
   for (const key of ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']) {
     closeTo(shadow.predictions[key], Math.max(0, Math.min(100,
@@ -126,7 +126,7 @@ test('v100 applies fixed train-only score calibration without changing threshold
   })
 })
 
-test('v100 clamps malformed primitives and keeps every numeric output finite in 0..100', () => {
+test('v101 clamps malformed primitives and keeps every numeric output finite in 0..100', () => {
   const shadow = score({ T: Number.NaN, B: Infinity, P: -20, R: 200, S: 'bad', Q: -1, XB: 500, XP: undefined, DB: -Infinity, DP: 101 })
   const numbers = [
     ...Object.values(shadow.predictions),
@@ -136,30 +136,30 @@ test('v100 clamps malformed primitives and keeps every numeric output finite in 
   assert.equal(numbers.every((value) => Number.isFinite(value) && value >= 0 && value <= 100), true)
 })
 
-test('v100 formal actions preserve formal thresholds ±1 and main-direction gates', () => {
-  const below = buildV100SideActions({ tie: 24, superSix: 44, bankerPair: 42, playerPair: 42, bankerDragon: 29, playerDragon: 29 }, 'banker')
+test('v101 formal actions preserve formal thresholds ±1 and main-direction gates', () => {
+  const below = buildV100SideActions({ tie: 29, superSix: 49, bankerPair: 49, playerPair: 49, bankerDragon: 39, playerDragon: 39 }, 'banker')
   assert.deepEqual(below, { tie: false, superSix: false, bankerPair: false, playerPair: false, bankerDragon: false, playerDragon: false })
 
-  const banker = buildV100SideActions({ tie: 25, superSix: 45, bankerPair: 43, playerPair: 43, bankerDragon: 30, playerDragon: 100 }, 'banker')
+  const banker = buildV100SideActions({ tie: 30, superSix: 50, bankerPair: 50, playerPair: 50, bankerDragon: 40, playerDragon: 100 }, 'banker')
   assert.deepEqual(banker, { tie: true, superSix: true, bankerPair: true, playerPair: true, bankerDragon: true, playerDragon: false })
-  const player = buildV100SideActions({ superSix: 100, bankerDragon: 100, playerDragon: 30 }, 'player')
+  const player = buildV100SideActions({ superSix: 100, bankerDragon: 100, playerDragon: 40 }, 'player')
   assert.equal(player.superSix, false)
   assert.equal(player.bankerDragon, false)
   assert.equal(player.playerDragon, true)
 })
 
-test('v100 formal buildLivePrediction packages the approved side dedup and live actions', () => {
+test('v101 formal buildLivePrediction packages the approved side dedup and live actions', () => {
   const table = {
     tableId: 'BAG100', shoe: 8, round: 20, bankerCount: 11, playerCount: 9, tieCount: 2,
     bankerPairCount: 1, playerPairCount: 2, nextBankerRaw: 'B', nextPlayerRaw: 'P',
     beadPlateRaw: '010203#020102', bigRoadRaw: 'BPBP', bigEyeRaw: '1212', smallRoadRaw: '1122', cockroachRaw: '1221',
   }
   const prediction = buildLivePrediction(table)
-  assert.equal(prediction.strategyVersion, 'v100')
-  assert.equal(prediction.predictionFeatures.v100_side_dedup.strategyVersion, V100_SIDE_DEDUP_VERSION)
-  assert.deepEqual(prediction.sideActions, prediction.predictionFeatures.v100_side_dedup.actions)
+  assert.equal(prediction.strategyVersion, 'v101')
+  assert.equal(prediction.predictionFeatures.v101_side_policy.strategyVersion, V100_SIDE_DEDUP_VERSION)
+  assert.deepEqual(prediction.sideActions, prediction.predictionFeatures.v101_side_policy.actions)
   assert.deepEqual(prediction.sideActions, {
     tie: false, superSix: false, bankerPair: false, playerPair: false, bankerDragon: false, playerDragon: false,
   })
-  assert.equal(prediction.predictionFeatures.v100_side_dedup.diagnostics.rank.available, false)
+  assert.equal(prediction.predictionFeatures.v101_side_policy.diagnostics.rank.available, false)
 })

@@ -1,36 +1,37 @@
-# v100.0.8 正式雲端部署檢查表
+# v101.0.0 正式雲端部署檢查表
 
 ## 單一正式拓撲
 
 - Frontend：Cloudflare Pages `darven-ai-baccarat.pages.dev`
 - Proxy：Render `darven-ai-baccarat-proxy.onrender.com`
 - Worker：GCP台灣VM `darven-mt-taiwan-worker-5`，由systemd管理Docker
-- Database：Supabase，只允許v100正式策略
+- Database：Supabase，部署後只允許v101正式策略新寫入
 - Worker資料鏈：每5秒主動HTTPS Push到`/api/cloud-ingest/snapshot`
 
 ## Database
 
-Fresh install只套用：
+Fresh install先套用歷史整合Baseline，再套用v101 additive migration：
 
 ```text
 frontend/supabase/schema_v100_baseline.sql
+frontend/supabase/schema_v101_latest_only.sql
 ```
 
 既有正式環境只套用經審查的：
 
 ```text
-frontend/supabase/schema_v100_latest_only.sql
+frontend/supabase/schema_v101_latest_only.sql
 ```
 
 回復時只使用：
 
 ```text
-frontend/supabase/rollback_v100_latest_only.sql
+frontend/supabase/rollback_v101_to_v100.sql
 ```
 
 要求：
 
-- `ai_strategy_versions`只能有一筆`v100:active`
+- `ai_strategy_versions`只能有一筆`v101:active`
 - 所有Public Schema函式不得授權`PUBLIC`、`anon`或`authenticated`
 - `service_role`保有正式RPC EXECUTE
 - Frontend只讀Proxy，不持有service role或DB連線
@@ -58,7 +59,7 @@ GET /api/status
 GET /api/tables
 ```
 
-要求：Release commit精確相符、`/health`為v100、`/api/status`只顯示v100、`/api/tables`只有核准10桌。
+要求：Release commit精確相符、`/health`為v101、`/api/status`只顯示v101、`/api/tables`只有核准10桌。
 
 ## Worker（GCP VM）
 
@@ -99,11 +100,11 @@ https://darven-ai-baccarat.pages.dev/login
 https://darven-ai-baccarat.pages.dev/admin-login
 ```
 
-## v100.0.8 完成標準
+## v101.0.0 完成標準
 
-- Proxy、Worker、Frontend皆對應同一個Git commit及`v100.0.8` Tag
+- Proxy、Worker、Frontend皆對應同一個Git commit及`v101.0.0-formal.1` Tag
 - 10桌依序為BAG01、BAG02、BAG03、BAG03A、BAG05、BAG06、BAG07、BAG08、BAG09、BAG10
 - Push ACK成功且Queue排空
-- DB v100 Final筆數持續增加，無其他策略版本寫入
+- DB v101 Final筆數持續增加，部署後v100歷史筆數不再前進
 - Frontend可讀到與Proxy相同桌號、靴、局
 - 唯一保留的監控為抓牌3分鐘中斷自動復原警告

@@ -25,7 +25,7 @@ test('writer verifies exact reconcile ACK identity and lifecycle counts', async 
   })
   const ack = await client.reconcilePredictionLifecycle({ source: 'ofalive99', tableId: 'BAG03A', currentShoe: 901, currentVisibleRound: 12 })
   assert.deepEqual(ack, { source: 'ofalive99', tableId: 'BAG03A', currentShoe: '901', currentVisibleRound: 12, counts: { pending: 2, expiredNoFinal: 3, abandonedShoeChange: 4, updatedTotal: 9 } })
-  assert.match(requests[0].url, /\/rpc\/reconcile_v100_prediction_lifecycle$/)
+  assert.match(requests[0].url, /\/rpc\/reconcile_v101_prediction_lifecycle$/)
   assert.deepEqual(requests[0].body, { p_source: 'ofalive99', p_table_id: 'BAG03A', p_current_shoe: '901', p_current_visible_round: 12 })
 
   const mismatch = createSupabaseIngestionClient({ url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false, fetchImpl: async () => response({ source: 'ofalive99', table_id: 'BAG03A', current_shoe: '902', current_visible_round: 12, pending: 0, expired_no_final: 0, abandoned_shoe_change: 0, updated_total: 0 }) })
@@ -129,7 +129,7 @@ test('lifecycle stats use an aggregate RPC and exclude expired and abandoned row
     },
   })
   assert.deepEqual(await client.getPredictionLifecycleStats(), { activePending: 2, settled: 1, expiredNoFinal: 1, abandonedShoeChange: 1, unclassified: 1, total: 6 })
-  assert.match(statsUrl, /\/rpc\/get_v100_prediction_lifecycle_stats$/)
+  assert.match(statsUrl, /\/rpc\/get_v101_prediction_lifecycle_stats$/)
 
   const app = createApp({ autoConnect: false, licenseAdminClient: { configured: false, getCloudDataStatus: async () => ({ message: 'ok' }), getDailyAnalytics: async () => ({ todayRoundCount: 0, tableStats: [], dailyReports: [] }) }, supabaseClient: { configured: true, getPredictionLifecycleStats: async () => ({ activePending: 2, settled: 1, expiredNoFinal: 1, abandonedShoeChange: 1, unclassified: 0, total: 5 }) } })
   const status = JSON.parse((await app.inject({ url: '/api/cloud-data/status' })).body)

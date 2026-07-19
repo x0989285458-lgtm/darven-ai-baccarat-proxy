@@ -1,0 +1,20 @@
+{
+  "method": "chronological_train_product_runtime_quantile",
+  "splitIndex": 1182,
+  "trainRows": 1182,
+  "holdoutRows": 507,
+  "trainFirstCreatedAt": "2026-07-17T09:43:38.566Z",
+  "trainLastCreatedAt": "2026-07-17T11:04:56.872Z",
+  "holdoutFirstCreatedAt": "2026-07-17T11:04:58.131Z",
+  "trainIdsSha256": "9bffd3557c90c371d5144202f8f4f4c0853182717c7d03c04df27eada002a7c3",
+  "offsets": {
+    "tie": -13.867936925098554,
+    "superSix": -1.8125,
+    "bankerPair": 18.877647058823527,
+    "playerPair": 13.875,
+    "bankerDragon": 0,
+    "playerDragon": 0
+  },
+  "activationEligible": true,
+  "activationBlockReason": null
+}

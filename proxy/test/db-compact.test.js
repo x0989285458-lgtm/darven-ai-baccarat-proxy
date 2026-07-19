@@ -72,7 +72,7 @@ test('persistRound compacts roadmap data but preserves the complete immutable pr
   assert.ok(fullPrediction.prediction_features.side_prediction_rank_inputs.tie)
 
   await client.persistRound(round, table, pendingPrediction)
-  const atomicBody = requests.find((request) => request.url.includes('/rpc/persist_v100_settled_round')).body
+  const atomicBody = requests.find((request) => request.url.includes('/rpc/persist_v101_settled_round')).body
   const eventBody = atomicBody.p_roadmap
   const predictionBody = atomicBody.p_prediction
 
@@ -217,11 +217,11 @@ test('Supabase writer serializes retries and skips duplicate actual rounds in on
       await new Promise((resolve) => setTimeout(resolve, 2))
       requests.push({ url: String(url), body: JSON.parse(init.body) })
       activeRequests -= 1
-      if (failOnce && String(url).includes('/rpc/persist_v100_settled_round')) {
+      if (failOnce && String(url).includes('/rpc/persist_v101_settled_round')) {
         failOnce = false
         return { ok: false, status: 503, text: async () => 'temporary unavailable' }
       }
-      return String(url).includes('/rpc/persist_v100_settled_round')
+      return String(url).includes('/rpc/persist_v101_settled_round')
         ? { ok: true, status: 200, text: async () => JSON.stringify({ persisted: true, roadmapDurable: true, predictionDurable: true }) }
         : { ok: true, status: 201, text: async () => '' }
     },
@@ -234,6 +234,6 @@ test('Supabase writer serializes retries and skips duplicate actual rounds in on
   ])
 
   assert.equal(maxActiveRequests, 1)
-  assert.equal(requests.filter((request) => request.url.includes('/rpc/persist_v100_settled_round')).length, 2)
+  assert.equal(requests.filter((request) => request.url.includes('/rpc/persist_v101_settled_round')).length, 2)
   assert.deepEqual(requests[1].body, requests[0].body)
 })

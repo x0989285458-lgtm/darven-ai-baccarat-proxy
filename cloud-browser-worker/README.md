@@ -1,4 +1,4 @@
-# Darven Cloud Browser Worker v100
+# Darven Cloud Browser Worker v101
 
 正式抓牌Worker部署於GCP台灣VM `darven-mt-taiwan-worker-5`，由systemd `darven-worker.service`與Docker維持。Worker攔截MT JSON／WebSocket／localStorage資料，保存未ACK FIFO Queue，並主動以HTTPS推送到Render Proxy。
 
@@ -8,9 +8,9 @@
 GCP台灣VM Worker → HTTPS POST → Render Proxy → Supabase
 ```
 
-- 正式Build：`100`
-- Push Protocol：`v100`
-- Image：每個Release使用不可變Tag `darven-worker:v100-<sha7>`
+- 正式Build：`101`
+- Push Protocol：`v101`
+- Image：每個Release使用不可變Tag `darven-worker:v101-<sha7>`
 - Queue／Cursor：Host bind mount `/var/lib/darven-worker:/app/data`
 - Runtime env：`/etc/darven-worker/worker.env`（mode 600）
 - Release image pointer：`/etc/darven-worker/release.env`
@@ -53,9 +53,9 @@ PAGE_TIMEOUT_MS=45000
 2. 保留現行Image tag作回滾點。
 3. 更新`release.env`後restart `darven-worker.service`。
 4. Container為running，systemd為active。
-5. `/health`回`buildVersion: "100"`。
+5. `/health`回`buildVersion: "101"`。
 6. `/snapshot`只在帶`x-worker-admin-key`時可讀。
-7. Proxy `/api/status`為`buildVersion: "v100"`、10桌、Persistence正常。
+7. Proxy `/api/status`為`buildVersion: "v101"`、10桌、Persistence正常。
 8. Worker取得精確`sequence`與`acceptedRoundKeys` ACK後才移除Queue head。
 9. 重啟服務後未ACK Queue仍存在並優先重送。
 

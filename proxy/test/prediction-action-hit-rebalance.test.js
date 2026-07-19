@@ -10,7 +10,7 @@ import {
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 
 test('rebalances main prediction away from noisy road overfit toward calibration and history', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v100')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v101')
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
   assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'remaining_zero_to_k_total'), false)
 
@@ -23,12 +23,12 @@ test('rebalances main prediction away from noisy road overfit toward calibration
 
 test('loosens side prediction thresholds and strengthens side aggregate rank signal', () => {
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
-    tie: 25,
-    superSix: 45,
-    bankerPair: 43,
-    playerPair: 43,
-    bankerDragon: 30,
-    playerDragon: 30,
+    tie: 30,
+    superSix: 50,
+    bankerPair: 50,
+    playerPair: 50,
+    bankerDragon: 40,
+    playerDragon: 40,
   })
   assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.superSix.remaining_rank_total, 0.20)
   assert.equal(SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair.remaining_rank_total, 0)

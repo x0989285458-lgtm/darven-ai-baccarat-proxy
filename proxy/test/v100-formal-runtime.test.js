@@ -63,7 +63,7 @@ test('enabled v100 runtime rehydrates, applies Final in round order, and scores 
   assert.equal(result.predictions[0].targetTableId, 'BAG01')
   assert.equal(result.predictions[0].targetShoe, 'S100')
   assert.equal(result.predictions[0].targetRound, 2)
-  assert.equal(result.predictions[0].side.strategyVersion.includes('v100'), true)
+  assert.equal(result.predictions[0].side.strategyVersion.includes('v101'), true)
   assert.equal(result.predictions[0].activationEligible, true)
   assert.deepEqual(
     result.predictions[0].side.actions,
@@ -71,7 +71,7 @@ test('enabled v100 runtime rehydrates, applies Final in round order, and scores 
   )
   assert.equal(Object.values(result.predictions[0].side.actions).some((value) => typeof value === 'boolean'), true)
   assert.equal(result.predictions[0].activationBlockReason, null)
-  assert.equal(result.tables[0].v100RankLedger.rankDataAvailable, true)
+  assert.equal(result.tables[0].v101RankLedger.rankDataAvailable, true)
   assert.deepEqual(input, before, 'formal runtime must not mutate the formal table')
 })
 

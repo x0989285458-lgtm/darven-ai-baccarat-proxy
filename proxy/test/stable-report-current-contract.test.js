@@ -37,12 +37,12 @@ test('main hit-rate excludes tie rounds from denominator', () => {
 
 test('side predictions are recorded every round but actions require per-item thresholds', () => {
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
-    tie: 25,
-    superSix: 45,
-    bankerPair: 43,
-    playerPair: 43,
-    bankerDragon: 30,
-    playerDragon: 30,
+    tie: 30,
+    superSix: 50,
+    bankerPair: 50,
+    playerPair: 50,
+    bankerDragon: 40,
+    playerDragon: 40,
   })
   const session = createStableReportSession({ startedAt: '2026-01-01T00:00:00.000Z' })
   const table = makeTable({ bankerCount: 5, playerCount: 5, tieCount: 90, bankerPairCount: 2, playerPairCount: 2 })

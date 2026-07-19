@@ -58,7 +58,7 @@ test('cloud table snapshot carries backend-only live prediction confidence', () 
   })
 
   assert.equal(row.tables[0].prediction.source, 'backend')
-  assert.equal(row.tables[0].prediction.strategyVersion, 'v100')
+  assert.equal(row.tables[0].prediction.strategyVersion, 'v101')
   assert.match(row.tables[0].prediction.predictedResult, /^(banker|player)$/)
   assert.equal(row.tables[0].prediction.confidence >= 30, true)
   assert.equal(row.tables[0].prediction.confidence <= 70, true)

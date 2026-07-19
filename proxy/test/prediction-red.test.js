@@ -10,7 +10,7 @@ import {
   buildSideActions,
 } from '../src/supabase-writer.js'
 
-const approvedStrategyVersion = 'v100'
+const approvedStrategyVersion = 'v101'
 
 const approvedSideProfiles = {
   tie: { tie_risk: 0.45, tie_count: 0.10, shoe_stage: 0.10, road_chaos: 0.15, remaining_rank_total: 0.20 },
@@ -22,12 +22,12 @@ const approvedSideProfiles = {
 }
 
 const approvedThresholds = {
-  tie: 25,
-  superSix: 45,
-  bankerPair: 43,
-  playerPair: 43,
-  bankerDragon: 30,
-  playerDragon: 30,
+  tie: 30,
+  superSix: 50,
+  bankerPair: 50,
+  playerPair: 50,
+  bankerDragon: 40,
+  playerDragon: 40,
 }
 
 function activeWeights(profile) {

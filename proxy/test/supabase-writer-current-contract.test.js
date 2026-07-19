@@ -38,12 +38,12 @@ test('low-performing table keeps banker/player prediction and records all-MT equ
     recentPredictionCount: 25,
   })
 
-  assert.equal(prediction.strategy_version, 'v100')
+  assert.equal(prediction.strategy_version, 'v101')
   assert.equal(prediction.prediction_features.table_performance.recentHitRate, 0.44)
   assert.match(prediction.predicted_result, /^(banker|player)$/)
   assert.equal(prediction.confidence >= 30, true)
   assert.equal(prediction.confidence <= 70, true)
-  assert.equal(prediction.short_run_adjustment.rule, 'v100')
+  assert.equal(prediction.short_run_adjustment.rule, 'v101')
 })
 
 test('revealed winner never changes an already-created neutral pre-result prediction', () => {
@@ -120,7 +120,7 @@ test('prediction rows persist high-hit main and side weights plus captured MT co
     sourceUpdatedAt: '2026-07-01T09:00:00Z',
   })
 
-  assert.equal(prediction.strategy_version, 'v100')
+  assert.equal(prediction.strategy_version, 'v101')
   assert.deepEqual(prediction.feature_weights, ALL_MT_EQUAL_MAIN_WEIGHTS)
   assert.deepEqual(prediction.prediction_features.side_weights.bankerPair, ALL_MT_EQUAL_SIDE_WEIGHTS)
   assert.equal(Object.keys(prediction.prediction_features.side_weights.tie).length, 28)
@@ -150,7 +150,7 @@ test('high-performing table still keeps confidence in 30-70 range', () => {
     recentPredictionCount: 25,
   })
 
-  assert.equal(neutralPrediction.strategy_version, 'v100')
+  assert.equal(neutralPrediction.strategy_version, 'v101')
   assert.equal(neutralPrediction.confidence >= 30, true)
   assert.equal(neutralPrediction.confidence <= 70, true)
   assert.equal(boostedPrediction.confidence <= 70, true)

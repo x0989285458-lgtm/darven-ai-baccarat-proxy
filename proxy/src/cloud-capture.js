@@ -126,7 +126,7 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
     try {
       v100Result = await v100Formal.processSnapshot({ tables: parsed.tables, rounds: parsed.rounds })
     } catch (error) {
-      state?.setStatus?.({ v100RuntimeStatus: 'error', v100RuntimeError: String(error?.message ?? error) })
+      state?.setStatus?.({ v101RuntimeStatus: 'error', v101RuntimeError: String(error?.message ?? error) })
       throw error
     }
   }
