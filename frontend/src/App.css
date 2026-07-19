@@ -3289,7 +3289,7 @@ body,
 .member-dashboard .dashboard-road-region .road-card {
   width: 100%;
   height: auto;
-  min-height: 207px;
+  min-height: 255px;
   padding: 0;
   border: 1px solid rgba(191, 151, 80, .34);
   border-radius: 14px;
@@ -3307,18 +3307,27 @@ body,
 }
 
 .member-dashboard .dashboard-road-region .big-road.classic-road {
-  grid-template-rows: repeat(6, 22px);
-  grid-auto-columns: 22px;
-  gap: 5px;
-  height: 162px;
-  min-height: 162px;
+  grid-template-rows: repeat(6, 28px);
+  grid-auto-columns: 28px;
+  gap: 6px;
+  height: 210px;
+  min-height: 210px;
   align-content: start;
-  padding: 0 14px 5px;
+  padding: 8px 14px 10px;
   border: 0;
   background: rgba(3, 12, 21, .42);
 }
 
-.member-dashboard .dashboard-road-region .big-cell { width: 22px; height: 22px; }
+.member-dashboard .dashboard-road-region .big-cell {
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
+  border-width: 2px;
+}
+.member-dashboard .dashboard-road-region .big-cell.tie-mark::after {
+  width: 22px;
+  height: 3px;
+}
 .member-dashboard .dashboard-road-region .big-cell.Banker,
 .member-dashboard .dashboard-road-region .big-cell.Player {
   background: transparent;
