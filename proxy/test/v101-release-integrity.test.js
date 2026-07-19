@@ -64,6 +64,7 @@ test('v101 additive migration and rollback preserve v100 as inactive history', (
   const migration = read('frontend/supabase/schema_v101_latest_only.sql')
   const rollback = read('frontend/supabase/rollback_v101_to_v100.sql')
   for (const fn of ['issue_v101_prediction','settle_v101_prediction','reconcile_v101_prediction_lifecycle','get_v101_prediction_lifecycle_stats','persist_v101_settled_round','apply_v101_rank_ledger_event']) assert.match(migration, new RegExp(`function public\\.${fn}`, 'i'))
+  assert.match(migration, /insert into public\.v101_formal_release_previous_active\(version\)[\s\S]*select 'v100'[\s\S]*exists \(select 1 from public\.ai_strategy_versions where version = 'v100'\)/i)
   assert.match(migration, /revoke execute on function public\.issue_v100_prediction\(jsonb\) from service_role/i)
   assert.match(migration, /revoke execute on function public\.apply_v100_rank_ledger_event\(jsonb, jsonb\) from service_role/i)
   assert.doesNotMatch(migration, /drop\s+(?:table|function)|truncate|delete\s+from/i)

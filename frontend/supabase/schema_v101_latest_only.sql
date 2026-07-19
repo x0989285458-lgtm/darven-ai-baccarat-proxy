@@ -638,9 +638,10 @@ alter table public.v101_formal_release_previous_active enable row level security
 revoke all on table public.v101_formal_release_previous_active from public, anon, authenticated;
 
 insert into public.v101_formal_release_previous_active(version)
-select version from public.ai_strategy_versions
-where status = 'active' and version <> 'v101'
-  and not exists (select 1 from public.v101_formal_release_previous_active);
+select 'v100'
+where exists (select 1 from public.ai_strategy_versions where version = 'v100')
+  and not exists (select 1 from public.v101_formal_release_previous_active)
+on conflict (version) do nothing;
 
 do $$
 begin
