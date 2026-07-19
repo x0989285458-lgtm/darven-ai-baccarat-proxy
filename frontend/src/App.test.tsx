@@ -138,7 +138,7 @@ describe('AI百家預測軟體', () => {
     expect(within(header).queryByText(/更新：/)).not.toBeInTheDocument()
   })
 
-  it('does not treat the protected admin status 401 as a member-page backend failure', async () => {
+  it('keeps member pages off the protected admin status endpoint', async () => {
     const defaultFetch = fetch
     vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
       if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({ error: 'admin session is required' }) })
@@ -152,6 +152,15 @@ describe('AI百家預測軟體', () => {
     const requestedUrls = (fetch as any).mock.calls.map((call: any[]) => String(call[0]))
     expect(requestedUrls.some((url: string) => url.includes('/api/online-license/health'))).toBe(true)
     expect(requestedUrls.some((url: string) => url.includes('/api/online-license/status'))).toBe(false)
+  })
+
+  it('keeps admin pages on the protected status endpoint with the admin session', async () => {
+    await renderApp('/admin')
+    await waitFor(() => {
+      const requestedUrls = (fetch as any).mock.calls.map((call: any[]) => String(call[0]))
+      expect(requestedUrls.some((url: string) => url.includes('/api/online-license/status'))).toBe(true)
+      expect(requestedUrls.some((url: string) => url.includes('/api/online-license/health'))).toBe(false)
+    })
   })
 
   it('shows stale data badge without treating old sourceUpdatedAt as realtime', async () => {
