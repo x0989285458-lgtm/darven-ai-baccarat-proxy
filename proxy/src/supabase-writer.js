@@ -2103,7 +2103,7 @@ export function createSupabaseIngestionClient({
     },
     async getRecentPredictionRows({ limit = 10000 } = {}) {
       const rows = await getRest('daily_prediction_results', {
-        select: 'id,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,side_hits,prediction_features,created_at',
+        select: 'id,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,side_hits,prediction_features,prediction_issued_at,created_at',
         settlement_final: 'eq.true',
         strategy_version: `eq.${ALL_MT_EQUAL_STRATEGY_VERSION}`,
         order: 'created_at.desc',
@@ -2111,6 +2111,8 @@ export function createSupabaseIngestionClient({
       })
       return (Array.isArray(rows) ? rows : [])
         .filter((row) => row?.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION)
+        .filter((row) => row?.prediction_features?.prediction_timing === 'pre_result_context')
+        .filter((row) => Boolean(row?.prediction_issued_at))
         .filter(isFinalPredictionSettlement)
     },
     async getTableUiSettledPredictions({ tableId, shoe, limit = 10 } = {}) {

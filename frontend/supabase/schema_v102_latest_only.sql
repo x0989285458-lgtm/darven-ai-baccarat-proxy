@@ -621,13 +621,8 @@ grant execute on function public.reconcile_v102_prediction_lifecycle(text, text,
 revoke all on function public.get_v102_prediction_lifecycle_stats() from public, anon, authenticated;
 grant execute on function public.get_v102_prediction_lifecycle_stats() to service_role;
 
--- Cutover fence: keep v101 functions for rollback/history, but prevent predecessor writes.
-revoke execute on function public.get_v101_prediction_lifecycle_stats() from service_role;
-revoke execute on function public.reconcile_v101_prediction_lifecycle(text, text, text, integer) from service_role;
-revoke execute on function public.persist_v101_settled_round(jsonb, jsonb) from service_role;
-revoke execute on function public.settle_v101_prediction(jsonb, jsonb) from service_role;
-revoke execute on function public.issue_v101_prediction(jsonb) from service_role;
-revoke execute on function public.apply_v101_rank_ledger_event(jsonb, jsonb) from service_role;
+-- v101 RPC privileges remain available during DB-first cutover.
+-- Apply finalize_v102_cutover.sql only after the v102 Proxy and Worker pass E2E.
 
 
 create table if not exists public.v102_formal_release_previous_active (
@@ -664,29 +659,38 @@ insert into public.ai_strategy_versions (
 select
   'v102', 'active', learned_from_date, 0, total_hit_rate,
   high_confidence_hit_rate,
-  (weights || jsonb_build_object(
+  jsonb_build_object(
     'roadmap_trend_signals', 0.35,
     'ask_road_signals', 0.15,
     'recent_practical_calibration', 0.30,
     'shoe_banker_player_bias', 0.10,
     'neutral_reserve', 0.10
-  )) as weights,
+  ) as weights,
   jsonb_set(
     jsonb_set(
       jsonb_set(
-        jsonb_set(metrics, '{side_thresholds}', jsonb_build_object(
-          'tie', 30,
-          'superSix', 50,
-          'bankerPair', 50,
-          'playerPair', 50,
-          'bankerDragon', 40,
-          'playerDragon', 40
-        ), true),
-        '{description}', to_jsonb('v102正式策略；主預測同源去重、分方向校正與連續同邊信心規則，副預測沿用v101。'::text), true
+        jsonb_set(
+          jsonb_set(metrics, '{side_thresholds}', jsonb_build_object(
+            'tie', 30,
+            'superSix', 50,
+            'bankerPair', 50,
+            'playerPair', 50,
+            'bankerDragon', 40,
+            'playerDragon', 40
+          ), true),
+          '{description}', to_jsonb('v102正式策略；主預測同源去重、分方向校正與連續同邊信心規則，副預測沿用v101。'::text), true
+        ),
+        '{main_strategy}', to_jsonb('v102_主預測同源去重與連續同邊信心版'::text), true
       ),
-      '{main_strategy}', to_jsonb('v102_主預測同源去重與連續同邊信心版'::text), true
+      '{side_strategy}', to_jsonb('v102_副預測沿用v101正式版'::text), true
     ),
-    '{side_strategy}', to_jsonb('v102_副預測沿用v101正式版'::text), true
+    '{main_weights}', jsonb_build_object(
+      'roadmap_trend_signals', 0.35,
+      'ask_road_signals', 0.15,
+      'recent_practical_calibration', 0.30,
+      'shoe_banker_player_bias', 0.10,
+      'neutral_reserve', 0.10
+    ), true
   ),
   'Only active runtime strategy and history source for formal release v102.',
   now(), now()

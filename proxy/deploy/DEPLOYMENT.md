@@ -10,17 +10,24 @@
 
 ## Database
 
-Fresh install先套用歷史整合Baseline，再套用v102 additive migration：
+Fresh install依序套用歷史整合Baseline、v101正式migration，再套用v102 additive migration：
 
 ```text
 frontend/supabase/schema_v100_baseline.sql
+frontend/supabase/schema_v101_latest_only.sql
 frontend/supabase/schema_v102_latest_only.sql
 ```
 
-既有正式環境只套用經審查的：
+既有正式環境先套用經審查的：
 
 ```text
 frontend/supabase/schema_v102_latest_only.sql
+```
+
+此步保留v101 RPC權限，避免仍在運行的v101 Proxy於DB-first切換期間中斷。待v102 Proxy、Worker、10桌、Push ACK、Queue與DB前進全部驗證後，才套用：
+
+```text
+frontend/supabase/finalize_v102_cutover.sql
 ```
 
 回復時只使用：
@@ -33,7 +40,7 @@ frontend/supabase/rollback_v102_to_v101.sql
 
 - `ai_strategy_versions`只能有一筆`v102:active`
 - 所有Public Schema函式不得授權`PUBLIC`、`anon`或`authenticated`
-- `service_role`保有正式RPC EXECUTE
+- DB migration階段`service_role`同時保有v101/v102 RPC EXECUTE；正式E2E後finalize只保留v102
 - Frontend只讀Proxy，不持有service role或DB連線
 
 ## Proxy（Render）
@@ -105,6 +112,6 @@ https://darven-ai-baccarat.pages.dev/admin-login
 - Proxy、Worker、Frontend皆對應同一個Git commit及`v102.0.0-formal.1` Tag
 - 10桌依序為BAG01、BAG02、BAG03、BAG03A、BAG05、BAG06、BAG07、BAG08、BAG09、BAG10
 - Push ACK成功且Queue排空
-- DB v102 Final筆數持續增加，部署後v100歷史筆數不再前進
+- DB v102 Final筆數持續增加，部署後直接前版v101歷史筆數不再前進
 - Frontend可讀到與Proxy相同桌號、靴、局
 - 唯一保留的監控為抓牌3分鐘中斷自動復原警告

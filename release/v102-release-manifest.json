@@ -33,6 +33,7 @@
     "bankerDragon": 40,
     "playerDragon": 40
   },
-  "rolloutOrder": ["database", "render-proxy", "gcp-worker", "cloudflare-frontend"],
+  "rolloutOrder": ["database-additive", "render-proxy", "gcp-worker", "cloudflare-frontend", "database-finalize"],
+  "databaseFinalize": "frontend/supabase/finalize_v102_cutover.sql",
   "rollback": "frontend/supabase/rollback_v102_to_v101.sql"
 }

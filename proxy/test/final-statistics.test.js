@@ -45,7 +45,8 @@ test('recent calibration rows quarantine predictions without a verified final se
   const finalRow = {
     table_id: 'BAG01', shoe_no: '8', round_no: 3,
     strategy_version: 'v102', predicted_result: 'banker', actual_result: 'banker', is_hit: true,
-    settlement_final: true, prediction_features: { settlement_final: true }, created_at: '2026-07-15T08:03:00Z',
+    settlement_final: true, prediction_issued_at: '2026-07-15T08:02:00Z',
+    prediction_features: { settlement_final: true, prediction_timing: 'pre_result_context' }, created_at: '2026-07-15T08:03:00Z',
   }
   const legacyRow = {
     ...finalRow, round_no: 2, actual_result: 'player', is_hit: false,
@@ -68,7 +69,8 @@ test('v102 recent calibration reads and accepts only v102 settlements', async ()
   const v102Row = {
     table_id: 'BAG01', shoe_no: '100', round_no: 2,
     strategy_version: 'v102', predicted_result: 'banker', actual_result: 'banker', is_hit: true,
-    settlement_final: true, prediction_features: { settlement_final: true }, created_at: '2026-07-18T08:02:00Z',
+    settlement_final: true, prediction_issued_at: '2026-07-18T08:01:00Z',
+    prediction_features: { settlement_final: true, prediction_timing: 'pre_result_context' }, created_at: '2026-07-18T08:02:00Z',
   }
   const v98Row = {
     ...v102Row, round_no: 1, strategy_version: 'v98', created_at: '2026-07-18T08:01:00Z',
@@ -80,4 +82,23 @@ test('v102 recent calibration reads and accepts only v102 settlements', async ()
 
   assert.deepEqual(await client.getRecentPredictionRows({ limit: 100 }), [v102Row])
   assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v102')
+})
+
+test('v102 recent calibration rejects post-result or non-issued history', async () => {
+  const causal = {
+    id: 'causal', table_id: 'BAG01', shoe_no: '100', round_no: 3,
+    strategy_version: 'v102', predicted_result: 'banker', actual_result: 'banker', is_hit: true,
+    settlement_final: true, prediction_issued_at: '2026-07-18T08:02:00Z',
+    prediction_features: { prediction_timing: 'pre_result_context' }, created_at: '2026-07-18T08:03:00Z',
+  }
+  const postResult = {
+    ...causal, id: 'post-result', round_no: 2, prediction_features: { prediction_timing: 'post_result_context' },
+  }
+  const notIssued = { ...causal, id: 'not-issued', round_no: 1, prediction_issued_at: null }
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-service-key',
+    fetchImpl: async () => response([causal, postResult, notIssued]),
+  })
+
+  assert.deepEqual((await client.getRecentPredictionRows({ limit: 60 })).map((row) => row.id), ['causal'])
 })

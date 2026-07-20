@@ -40,7 +40,7 @@ Worker Push必須通過：
 ```bash
 npm ci
 npm test
-node --test test/v102-release-integrity.test.js test/v102-threshold-policy.test.js
+node --test test/v102-release-integrity.test.js test/v102-main-core.test.js
 ```
 
 部署與E2E標準見`deploy/DEPLOYMENT.md`。
