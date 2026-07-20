@@ -100,7 +100,9 @@ def restart_gcp_worker():
         raise RuntimeError(f'GCP worker restart failed: {detail}')
 
 
-def recovery_due(state, now=None):
+def recovery_due(state, failure_kind=None, now=None):
+    if state.get('alerting') and failure_kind and state.get('failure_kind') == failure_kind and state.get('last_recovery_attempt_at'):
+        return False
     previous = parse_dt(state.get('last_recovery_attempt_at'))
     current = now or datetime.now(timezone.utc)
     return previous is None or (current - previous).total_seconds() >= RECOVERY_COOLDOWN_SECONDS
@@ -137,6 +139,27 @@ def inspect():
     return status, table_count, age, healthy
 
 
+def classify_failure(status, table_count, age):
+    message = ' '.join(str(status.get(key) or '') for key in ('eventKind', 'eventMessage', 'errorMessage', 'reason')).lower()
+    if 'portal_auth_refresh_failed' in message:
+        return 'authorization_refresh_failed'
+    if status.get('connected') is True and status.get('authenticated') is False and table_count == 0:
+        return 'authorization_lost'
+    if status.get('connected') is not True:
+        return 'worker_or_transport'
+    if status.get('authenticated') is not True:
+        return 'authentication_unknown'
+    if table_count != EXPECTED_TABLE_COUNT:
+        return 'table_set_invalid'
+    if age > THRESHOLD_SECONDS or age < -MAX_FUTURE_SKEW_SECONDS:
+        return 'capture_stale'
+    return 'unknown'
+
+
+def restart_allowed(failure_kind):
+    return failure_kind not in {'authorization_lost', 'authorization_refresh_failed'}
+
+
 def last_status_text(status):
     value = freshest_status_time(status)
     return value.isoformat() if value else None
@@ -152,19 +175,24 @@ def main():
     else:
         first_error = None
 
+    failure_kind = None if healthy else classify_failure(status, table_count, age)
     attempted = []
     recovery_attempt_at = None
-    if not healthy and recovery_due(state):
+    if not healthy and restart_allowed(failure_kind) and recovery_due(state, failure_kind):
         recovery_attempt_at = datetime.now(timezone.utc).isoformat()
         try:
             restart_gcp_worker()
             attempted.append('gcp-worker-restart')
             time.sleep(20)
             status, table_count, age, healthy = inspect()
+            failure_kind = None if healthy else classify_failure(status, table_count, age)
         except Exception as error:
             attempted.append('gcp-worker-restart:failed')
             first_error = first_error or f'{type(error).__name__}: {error}'
             healthy = False
+            failure_kind = failure_kind or 'worker_or_transport'
+    elif not healthy and failure_kind in {'authorization_lost', 'authorization_refresh_failed'}:
+        attempted.append('worker-session-refresh')
 
     now = datetime.now(timezone.utc).isoformat()
     if healthy:
@@ -176,9 +204,15 @@ def main():
         save_state({'alerting': False, 'last_ok_at': now})
         return
 
-    error_text = sanitize_error(first_error or status.get('eventMessage') or status.get('errorMessage') or '上游Worker/Tunnel無回傳')
+    if failure_kind == 'authorization_lost':
+        error_text = 'MT授權失效，等待Worker自動取得新Session'
+    elif failure_kind == 'authorization_refresh_failed':
+        error_text = 'MT授權自動更新已失敗兩次，已停止重試並等待人工處理'
+    else:
+        error_text = sanitize_error(first_error or status.get('eventMessage') or status.get('errorMessage') or '上游Worker/Tunnel無回傳')
     if not state.get('alerting'):
         print('⚠️ AI百家抓牌中斷警報\n'
+              f'類型：{failure_kind}\n'
               f'connected={status.get("connected")}, authenticated={status.get("authenticated")}, tables={table_count}\n'
               f'最後資料已逾期：{int(age)}秒\n'
               f'自動復原嘗試：{", ".join(attempted) or "無"}\n'
@@ -194,6 +228,7 @@ def main():
         'last_checked_at': now,
         'age_seconds': int(age),
         'attempted': attempted,
+        'failure_kind': failure_kind,
         'last_recovery_attempt_at': recovery_attempt_at or state.get('last_recovery_attempt_at'),
     }
     if error_text:

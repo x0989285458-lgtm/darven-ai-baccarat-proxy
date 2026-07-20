@@ -3,8 +3,18 @@ import { chromium } from 'playwright'
 import { isWorkerAdminAuthorized } from './admin-auth.js'
 import { annotateRoundPayload, extractSnapshotFromPayloads, isFinalRealCardRound, isRoundPayload, redactUrlSecrets } from './snapshot.js'
 import { createSnapshotPusher } from './snapshot-pusher.js'
-import { assertMtFinalUrl, assertMtNavigationResponse, BUILD_VERSION, captureSessionId, publicBuildInfo, validateProductionConfig } from './runtime-config.js'
+import { BUILD_VERSION, captureSessionId, publicBuildInfo, validateProductionConfig } from './runtime-config.js'
 import { createFixedWindowRateLimiter } from './server-policy.js'
+import {
+  assertAllowedMtUrl,
+  createPortalRefreshController,
+  isFormalTenTableSnapshot,
+  parseMtHostAllowlist,
+  readPersistedSession,
+  readPortalCredentials,
+  recoverRedirectedInitialSession,
+  refreshMtSession,
+} from './portal-session.js'
 
 const SERVICE = 'darven-cloud-browser-worker'
 validateProductionConfig(process.env)
@@ -16,16 +26,32 @@ const SNAPSHOT_TIMEOUT_MS = Number(process.env.SNAPSHOT_TIMEOUT_MS ?? PAGE_TIMEO
 const MAX_CAPTURED_PAYLOADS = Number(process.env.MAX_CAPTURED_PAYLOADS ?? 250)
 const MAX_CAPTURED_ROUND_PAYLOADS = Number(process.env.MAX_CAPTURED_ROUND_PAYLOADS ?? 500)
 const BASE_SESSION_ID = process.env.SESSION_ID ?? 'darven-cloud-browser'
+const PORTAL_CREDENTIALS_FILE = process.env.PORTAL_CREDENTIALS_FILE ?? ''
+const MT_SESSION_PATH = process.env.MT_SESSION_PATH ?? './data/mt-session.json'
+const MT_ALLOWED_HOSTS = parseMtHostAllowlist(process.env.MT_HOST_ALLOWLIST)
+const BROWSER_CONTEXT_OPTIONS = {
+  viewport: { width: 1440, height: 1000 },
+  userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
+  locale: 'zh-TW',
+}
 
 const capturedPayloads = []
 const capturedRoundPayloads = []
 let browserPromise = null
 let pagePromise = null
+let pageContext = null
+let activeMtUrl = MT_LOGIN_URL
 let pageGeneration = 0
 let capturedRoundSequence = 0
 let lastSnapshot = null
 let lastError = null
 const snapshotRateLimiter = createFixedWindowRateLimiter({ limit: 12, windowMs: 60000 })
+const portalRefreshController = createPortalRefreshController({
+  enabled: Boolean(PORTAL_CREDENTIALS_FILE),
+  maxAttempts: 2,
+  baseBackoffMs: Number(process.env.PORTAL_REFRESH_BACKOFF_MS ?? 5000),
+  refresh: refreshExpiredMtSession,
+})
 
 const snapshotPusher = createSnapshotPusher({
   targetUrl: process.env.PUSH_TARGET_URL,
@@ -89,13 +115,13 @@ async function getSnapshot() {
 
   try {
     const page = await withTimeout(ensurePage(), SNAPSHOT_TIMEOUT_MS, 'MT page startup timed out')
-    assertMtFinalUrl(MT_LOGIN_URL, page.url())
+    activeMtUrl = assertAllowedMtUrl(page.url(), MT_LOGIN_URL, MT_ALLOWED_HOSTS)
     const browserPayload = await withTimeout(collectBrowserPayload(page), SNAPSHOT_TIMEOUT_MS, 'MT page snapshot timed out')
     const payloads = [...capturedPayloads, ...capturedRoundPayloads, browserPayload]
     const snapshot = extractSnapshotFromPayloads(payloads, {
       sessionId: captureSessionId(BASE_SESSION_ID, pageGeneration),
       now: new Date().toISOString(),
-      url: MT_LOGIN_URL,
+      url: activeMtUrl,
     })
 
     if (snapshot.tables.length === 0 && snapshot.rounds.length === 0) {
@@ -103,8 +129,11 @@ async function getSnapshot() {
       snapshot.errorMessage = 'MT page is open, but no table payload was detected yet. Keep worker running or inspect selector/websocket payloads.'
     }
 
+    const refreshStatus = await portalRefreshController.observe(snapshot, pageGeneration)
+    if (refreshStatus.errorCategory) snapshot.errorMessage = refreshStatus.errorCategory
+
     lastSnapshot = snapshot
-    lastError = null
+    lastError = refreshStatus.errorCategory ?? null
     return snapshot
   } catch (error) {
     lastError = redactUrlSecrets(error?.message ?? String(error))
@@ -119,18 +148,37 @@ async function ensurePage() {
   if (pagePromise) return pagePromise
   pagePromise = (async () => {
     const browser = await ensureBrowser()
-    const page = await browser.newPage({
-      viewport: { width: 1440, height: 1000 },
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
-      locale: 'zh-TW',
+    const persisted = PORTAL_CREDENTIALS_FILE
+      ? await readPersistedSession(MT_SESSION_PATH, MT_LOGIN_URL, MT_ALLOWED_HOSTS)
+      : null
+    const targetUrl = persisted?.url ?? MT_LOGIN_URL
+    const context = await browser.newContext({
+      ...BROWSER_CONTEXT_OPTIONS,
+      ...(persisted?.storageState ? { storageState: persisted.storageState } : {}),
     })
+    pageContext = context
+    const page = await context.newPage()
     pageGeneration += 1
     attachCaptureHooks(page)
-    const navigationResponse = await page.goto(MT_LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: PAGE_TIMEOUT_MS })
-    assertMtNavigationResponse(navigationResponse)
-    assertMtFinalUrl(MT_LOGIN_URL, page.url())
+    const navigationResponse = await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: PAGE_TIMEOUT_MS })
+    const refreshedPage = await recoverRedirectedInitialSession({
+      navigationResponse,
+      refreshEnabled: Boolean(PORTAL_CREDENTIALS_FILE),
+      closeExpired: async () => {
+        pagePromise = null
+        if (pageContext === context) pageContext = null
+        resetCapturedPayloads()
+        await context.close().catch(() => {})
+      },
+      refresh: async () => {
+        await refreshExpiredMtSession()
+        return pagePromise ? await pagePromise : null
+      },
+    })
+    if (refreshedPage) return refreshedPage
+    activeMtUrl = assertAllowedMtUrl(page.url(), MT_LOGIN_URL, MT_ALLOWED_HOSTS)
     await page.waitForTimeout(Number(process.env.INITIAL_SETTLE_MS ?? 5000))
-    assertMtFinalUrl(MT_LOGIN_URL, page.url())
+    activeMtUrl = assertAllowedMtUrl(page.url(), MT_LOGIN_URL, MT_ALLOWED_HOSTS)
     return page
   })()
   return pagePromise
@@ -145,22 +193,85 @@ async function ensureBrowser() {
   return browserPromise
 }
 
-function attachCaptureHooks(page) {
+function attachCaptureHooks(page, remember = rememberPayload, onPageError = (error) => {
+  lastError = redactUrlSecrets(error?.message ?? String(error))
+}) {
   page.on('response', async (response) => {
     const contentType = response.headers()['content-type'] ?? ''
     if (!contentType.includes('json')) return
     const text = await response.text().catch(() => null)
-    if (text) rememberPayload(text)
+    if (text) remember(text)
   })
 
   page.on('websocket', (ws) => {
-    ws.on('framereceived', (frame) => rememberPayload(frame.payload))
-    ws.on('framesent', (frame) => rememberPayload(frame.payload))
+    ws.on('framereceived', (frame) => remember(frame.payload))
+    ws.on('framesent', (frame) => remember(frame.payload))
   })
 
   page.on('pageerror', (error) => {
-    lastError = redactUrlSecrets(error?.message ?? String(error))
+    onPageError(error)
   })
+}
+
+async function refreshExpiredMtSession() {
+  const credentials = await readPortalCredentials(PORTAL_CREDENTIALS_FILE)
+  const browser = await ensureBrowser()
+  await refreshMtSession({
+    browser,
+    credentials,
+    configuredMtUrl: MT_LOGIN_URL,
+    allowedHosts: MT_ALLOWED_HOSTS,
+    sessionPath: MT_SESSION_PATH,
+    contextOptions: BROWSER_CONTEXT_OPTIONS,
+    timeoutMs: Number(process.env.PORTAL_LOGIN_TIMEOUT_MS ?? PAGE_TIMEOUT_MS),
+    prepareContext: prepareCandidateCapture,
+    validate: validateCandidatePage,
+    activate: activateCandidatePage,
+  })
+}
+
+function prepareCandidateCapture(context) {
+  const capture = { payloads: [] }
+  context.on('page', (page) => {
+    attachCaptureHooks(page, (payload) => rememberCandidatePayload(capture, payload), () => {})
+  })
+  return capture
+}
+
+function rememberCandidatePayload(capture, payload) {
+  if (payload == null) return
+  const text = Buffer.isBuffer(payload) ? payload.toString('utf8') : String(payload)
+  if (!text.trim()) return
+  capture.payloads.push(text)
+  while (capture.payloads.length > MAX_CAPTURED_ROUND_PAYLOADS) capture.payloads.shift()
+}
+
+async function validateCandidatePage(page, capture) {
+  const deadline = Date.now() + Number(process.env.PORTAL_CANDIDATE_TIMEOUT_MS ?? PAGE_TIMEOUT_MS)
+  do {
+    const browserPayload = await collectBrowserPayload(page)
+    const snapshot = extractSnapshotFromPayloads([...(capture?.payloads ?? []), browserPayload], {
+      sessionId: captureSessionId(BASE_SESSION_ID, pageGeneration + 1),
+      now: new Date().toISOString(),
+      url: page.url(),
+    })
+    if (isFormalTenTableSnapshot(snapshot)) return snapshot
+    await page.waitForTimeout(1000)
+  } while (Date.now() < deadline)
+  return { connected: true, authenticated: false, tables: [] }
+}
+
+async function activateCandidatePage({ page, context, prepared }) {
+  const previousPage = pagePromise ? await pagePromise.catch(() => null) : null
+  const previousContext = pageContext
+  resetCapturedPayloads()
+  pageGeneration += 1
+  for (const payload of prepared?.payloads ?? []) rememberPayload(payload)
+  activeMtUrl = assertAllowedMtUrl(page.url(), MT_LOGIN_URL, MT_ALLOWED_HOSTS)
+  pageContext = context
+  pagePromise = Promise.resolve(page)
+  if (previousContext && previousContext !== context) await previousContext.close().catch(() => {})
+  else if (previousPage && previousPage !== page) await previousPage.close().catch(() => {})
 }
 
 async function collectBrowserPayload(page) {
@@ -215,8 +326,11 @@ function resetCapturedPayloads() {
 
 async function closePage() {
   const page = pagePromise ? await withTimeout(pagePromise, 5000, 'MT page close wait timed out').catch(() => null) : null
+  const context = pageContext
   pagePromise = null
-  if (page) await page.close().catch(() => {})
+  pageContext = null
+  if (context) await context.close().catch(() => {})
+  else if (page) await page.close().catch(() => {})
 }
 
 function buildErrorSnapshot(errorMessage) {

@@ -10,11 +10,30 @@
 set -euo pipefail
 sudo test "$(sudo stat -c '%a' /etc/darven-worker/worker.env)" = 600
 sudo test "$(sudo stat -c '%u:%g' /etc/darven-worker/worker.env)" = 0:0
-for key in MT_LOGIN_URL WORKER_ADMIN_KEY INGEST_KEY PUSH_TARGET_URL; do
+for key in MT_LOGIN_URL WORKER_ADMIN_KEY INGEST_KEY PUSH_TARGET_URL PORTAL_CREDENTIALS_FILE MT_SESSION_PATH; do
   sudo sh -eu -c "grep -Eq '^${key}=.+' /etc/darven-worker/worker.env"
 done
 sudo test -d /var/lib/darven-worker
 sudo test "$(sudo stat -c '%a' /var/lib/darven-worker)" = 700
+```
+
+VM服務帳號必須有`cloud-platform` OAuth scope，且只在兩個Secret上授予`roles/secretmanager.secretAccessor`。部署前確認`darven-portal-username`與`darven-portal-password`各有一個啟用版本；不得在命令列、Git或log輸出值。
+
+Secret抓取器只把帳密寫到systemd RuntimeDirectory（tmpfs生命週期），固定mode 400。正式切換前必須把抓取器當硬Gate執行一次；systemd內的前置命令容許暫時失敗，是為了讓舊Image仍可回滾啟動，自動續期則會fail-closed並告警。
+
+```bash
+sudo install -o root -g root -m 0755 \
+  /opt/darven-v101-<sha7>/cloud-browser-worker/deploy/vm/fetch-portal-credentials.py \
+  /usr/local/sbin/darven-fetch-portal-credentials
+sudo /usr/local/sbin/darven-fetch-portal-credentials
+sudo test "$(sudo stat -c '%u:%g:%a' /run/darven-worker-secrets/portal-credentials.json)" = 0:0:400
+sudo python3 - <<'PY'
+import json
+p='/run/darven-worker-secrets/portal-credentials.json'
+x=json.load(open(p, encoding='utf-8'))
+assert isinstance(x.get('username'), str) and x['username']
+assert isinstance(x.get('password'), str) and x['password']
+PY
 ```
 
 以不可變Image ID記錄回滾點，並保存部署前Queue／Cursor狀態：

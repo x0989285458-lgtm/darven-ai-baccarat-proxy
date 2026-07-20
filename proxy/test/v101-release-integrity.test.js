@@ -13,11 +13,12 @@ test('v101 release manifest keeps every active product surface on one identity',
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
   assert.deepEqual(manifest.identity, {
     productVersion: 'v101',
+    releaseVersion: 'v101.0.5',
     proxyBuildVersion: 'v101',
     workerBuildVersion: '101',
     protocolVersion: 'v101',
     strategyVersion: 'v101',
-    packageVersion: '1.0.9',
+    packageVersion: '1.0.10',
   })
   assert.deepEqual(manifest.sideThresholds, {
     tie: 30,
@@ -49,7 +50,7 @@ test('v101 active frontend proxy worker protocol and RPC files match the manifes
   assert.match(read('cloud-browser-worker/Dockerfile'), /org\.opencontainers\.image\.version="v101"/)
   assert.doesNotMatch(read('cloud-browser-worker/src/snapshot-pusher.js'), /protocolVersion:\s*'v100'/)
   assert.match(read('cloud-browser-worker/src/snapshot-pusher.js'), /protocolVersion:\s*'v101'/)
-  assert.match(read('cloud-browser-worker/package.json'), /"version":\s*"1\.0\.9"[\s\S]*v101/)
+  assert.match(read('cloud-browser-worker/package.json'), /"version":\s*"1\.0\.10"[\s\S]*v101/)
   assert.match(read('cloud-browser-worker/deploy/vm/release.env.example'), /WORKER_IMAGE=darven-worker:v101-REVIEWED_SHA/)
   assert.match(read('proxy/deploy/DEPLOYMENT.md'), /schema_v101_latest_only\.sql[\s\S]*v101:active[\s\S]*v101\.0\.0-formal\.1/)
   const writer = read('proxy/src/supabase-writer.js')
