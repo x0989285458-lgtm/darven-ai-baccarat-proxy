@@ -13,7 +13,7 @@ const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Num
 const rankKeys = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
 
 test('uses Chinese version and requested side thresholds', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v101')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v102')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 30,
     superSix: 50,
@@ -29,12 +29,10 @@ test('main weights rebalance away from over-player bias while keeping required f
   for (const removed of ['round', 'super_six', 'banker_pair_count', 'player_pair_count']) {
     assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, removed), false)
   }
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.25)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals, 0.45)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.direction_calibration, 0)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.confidence, 0)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.probability_gap, 0)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.card_points, 0)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.15)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals, 0.35)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.recent_practical_calibration, 0.30)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.neutral_reserve, 0.10)
 })
 
 test('side weights shrink bonus noise and remove weak side features', () => {
@@ -74,7 +72,7 @@ test('prediction row records new Chinese version and thresholds remain active', 
     },
     { tableId: 'BAG75', shoe: 17001, round: 11, bankerCount: 12, playerCount: 8, tieCount: 1, beadPlateRaw: '01020202', bigRoadRaw: 'BBPBBP' },
   )
-  assert.equal(row.strategy_version, 'v101')
+  assert.equal(row.strategy_version, 'v102')
   assert.deepEqual(row.short_run_adjustment.sideActionRateTargets, {
     tie: 0.15,
     superSix: 0.1,

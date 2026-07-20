@@ -8,13 +8,14 @@ import { buildPredictionResultRow } from './helpers/prediction-result.js'
 
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 
-test('main weights add requested roadmap and remaining-card aggregate features', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v101')
+test('main weights keep the approved roadmap, ask, calibration, shoe, and neutral sources', () => {
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v102')
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
   assert.ok(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals > 0)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.road_structure_signals, 0)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.derived_road_structure_signals, 0)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.25)
+  assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'road_structure_signals'), false)
+  assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'derived_road_structure_signals'), false)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.15)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.neutral_reserve, 0.10)
   assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'remaining_zero_to_k_total'), false)
   assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'pattern_tags'), false)
 })
@@ -41,7 +42,7 @@ test('prediction features expose Chinese-requested roadmap details and 0-K total
       nextPlayerRaw: { big_eye: '222', small: '222', cockroach: '222' },
     },
   )
-  assert.equal(row.strategy_version, 'v101')
+  assert.equal(row.strategy_version, 'v102')
   const features = row.prediction_features.derived_main_features
   assert.ok(features.roadmapTrendSignals)
   assert.ok(Object.hasOwn(features.roadmapTrendSignals, 'singleJump'))

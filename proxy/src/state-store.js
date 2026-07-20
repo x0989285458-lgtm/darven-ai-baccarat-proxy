@@ -102,7 +102,7 @@ export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotR
           shoe: advancesIdentity ? (lastRound.shoe ?? currentTable.shoe) : currentTable.shoe,
           round: advancesIdentity ? (lastRound.round ?? currentTable.round) : currentTable.round,
           lastRound: advancesIdentity || !currentTable.lastRound ? lastRound : currentTable.lastRound,
-          v101RankLedger: advancesIdentity && mountedCardShoe ? mountedCardShoe : currentTable.v101RankLedger,
+          v102RankLedger: advancesIdentity && mountedCardShoe ? mountedCardShoe : currentTable.v102RankLedger,
         }, realRoundHistory)
       } else {
         state.tables.push(applyRealRoundRoadFallback({
@@ -112,7 +112,7 @@ export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotR
           shoe: lastRound.shoe,
           round: lastRound.round,
           lastRound,
-          ...(mountedCardShoe ? { v101RankLedger: mountedCardShoe } : {}),
+          ...(mountedCardShoe ? { v102RankLedger: mountedCardShoe } : {}),
         }, realRoundHistory))
       }
       state.status.tableCount = state.tables.length
@@ -397,7 +397,7 @@ function mergeExistingRoundData(nextTables, currentTables) {
       shoe: nextShoe,
       round: table.round ?? existing.lastRound.round ?? null,
       lastRound: existing.lastRound,
-      ...(existing.v101RankLedger ? { v101RankLedger: existing.v101RankLedger } : {}),
+      ...(existing.v102RankLedger ? { v102RankLedger: existing.v102RankLedger } : {}),
     }
   })
 }

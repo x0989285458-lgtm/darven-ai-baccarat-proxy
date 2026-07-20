@@ -1,0 +1,38 @@
+{
+  "identity": {
+    "productVersion": "v102",
+    "proxyBuildVersion": "v102",
+    "workerBuildVersion": "102",
+    "protocolVersion": "v102",
+    "strategyVersion": "v102",
+    "packageVersion": "1.0.10"
+  },
+  "mainWeights": {
+    "roadmap_trend_signals": 0.35,
+    "ask_road_signals": 0.15,
+    "recent_practical_calibration": 0.30,
+    "shoe_banker_player_bias": 0.10,
+    "neutral_reserve": 0.10
+  },
+  "mainPolicy": {
+    "directionalMinimumSamples": 20,
+    "directionalShrinkage": 0.25,
+    "directionalScoreMinimum": 0.45,
+    "directionalScoreMaximum": 0.55,
+    "sameSideThreshold": 5,
+    "minimumIndependentSupportGroups": 2,
+    "insufficientSupportConfidencePenalty": 5,
+    "forceReverse": false,
+    "suppressAction": false
+  },
+  "sideThresholds": {
+    "tie": 30,
+    "superSix": 50,
+    "bankerPair": 50,
+    "playerPair": 50,
+    "bankerDragon": 40,
+    "playerDragon": 40
+  },
+  "rolloutOrder": ["database", "render-proxy", "gcp-worker", "cloudflare-frontend"],
+  "rollback": "frontend/supabase/rollback_v102_to_v101.sql"
+}

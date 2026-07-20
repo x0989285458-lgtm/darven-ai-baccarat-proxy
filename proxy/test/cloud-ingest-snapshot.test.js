@@ -7,12 +7,12 @@ const key = 'test-ingest-key'
 
 function body(overrides = {}) {
   return JSON.stringify({
-    protocolVersion: 'v101',
+    protocolVersion: 'v102',
     timestamp: now,
     sequence: 1,
     roundKeys: [],
     snapshot: {
-      buildVersion: '101',
+      buildVersion: '102',
       connected: true,
       authenticated: true,
       sessionId: 'vm-worker',
@@ -87,7 +87,7 @@ test('same-session concurrent sequences are serialized and never regress or rewr
   })
   const request = (sequence) => ({
     method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': key },
-    body: body({ sequence, snapshot: { buildVersion: '101', connected: true, authenticated: true, sessionId: 'vm-worker', snapshotAt: new Date(now).toISOString(), tables: [{ tableId: 'BAG01', tableType: 'BAC', round: sequence }], rounds: [] } }),
+    body: body({ sequence, snapshot: { buildVersion: '102', connected: true, authenticated: true, sessionId: 'vm-worker', snapshotAt: new Date(now).toISOString(), tables: [{ tableId: 'BAG01', tableType: 'BAC', round: sequence }], rounds: [] } }),
   })
 
   const first = app.inject(request(1))
@@ -101,7 +101,7 @@ test('same-session concurrent sequences are serialized and never regress or rewr
   assert.deepEqual(writes, [1, 2])
 })
 
-test('v101 rank-ledger failure returns 503 without accepting the worker sequence', async () => {
+test('v102 rank-ledger failure returns 503 without accepting the worker sequence', async () => {
   const app = createTestApp({
     v100FormalRuntime: { enabled: true, async processSnapshot() { throw new Error('rank ledger unavailable') } },
     supabaseClient: { configured: true, writeCloudTableSnapshot: async () => assert.fail('must not write') },
@@ -111,7 +111,7 @@ test('v101 rank-ledger failure returns 503 without accepting the worker sequence
   assert.equal(JSON.parse(response.body).accepted, false)
 })
 
-test('v101 runtime mounts durable rank data before formal table state', async () => {
+test('v102 runtime mounts durable rank data before formal table state', async () => {
   const calls = []
   const app = createTestApp({
     v100FormalRuntime: {
@@ -121,7 +121,7 @@ test('v101 runtime mounts durable rank data before formal table state', async ()
         return {
           enabled: true,
           predictions: [],
-          tables: [{ ...tables[0], v101RankLedger: { status: 'contiguous', rankDataAvailable: true } }],
+          tables: [{ ...tables[0], v102RankLedger: { status: 'contiguous', rankDataAvailable: true } }],
         }
       },
     },
@@ -130,7 +130,7 @@ test('v101 runtime mounts durable rank data before formal table state', async ()
   const response = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': key }, body: body() })
   assert.equal(response.statusCode, 200)
   assert.deepEqual(calls, [['shadow', 'BAG01', 0, 0], ['tables']])
-  assert.equal(app.state.snapshot().tables[0].v101RankLedger.rankDataAvailable, true)
+  assert.equal(app.state.snapshot().tables[0].v102RankLedger.rankDataAvailable, true)
 })
 
 test('cloud ingest rejects an exact-looking provisional show_poker before any durable write', async () => {
@@ -154,7 +154,7 @@ test('cloud ingest rejects an exact-looking provisional show_poker before any du
     body: body({
       roundKeys: ['BAG01:14509:7'],
       snapshot: {
-        buildVersion: '101', connected: true, authenticated: true,
+        buildVersion: '102', connected: true, authenticated: true,
         sessionId: 'vm-worker', snapshotAt: new Date(now).toISOString(),
         tables: [{ tableId: 'BAG01', tableType: 'BAC', displayName: '測試桌', shoe: 14509, round: 8 }],
         rounds: [provisional],
@@ -170,7 +170,7 @@ test('cloud ingest rejects an exact-looking provisional show_poker before any du
 test('cloud ingest rejects malformed tables and oversized payloads', async () => {
   const app = createTestApp()
   const headers = { 'x-worker-key': key }
-  const malformed = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers, body: body({ snapshot: { buildVersion: '101', tables: {}, rounds: [] } }) })
+  const malformed = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers, body: body({ snapshot: { buildVersion: '102', tables: {}, rounds: [] } }) })
   assert.equal(malformed.statusCode, 400)
   const oversized = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers, body: `${body()}${' '.repeat(1024 * 1024)}` })
   assert.equal(oversized.statusCode, 413)

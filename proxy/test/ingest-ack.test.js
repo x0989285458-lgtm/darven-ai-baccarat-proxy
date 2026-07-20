@@ -10,8 +10,8 @@ test('ingest ACK follows durable writes and exactly echoes validated round keys'
     writeCloudTableSnapshot: async () => { order.push('snapshot') },
     writeCloudRoundEvent: async () => { order.push('round') },
   } })
-  const envelope = { protocolVersion: 'v101', timestamp: 1_000_000, sequence: 7, roundKeys: ['BAG01:88:21'], snapshot: {
-    buildVersion: '101', sessionId: 'worker-session', connected: true, authenticated: true,
+  const envelope = { protocolVersion: 'v102', timestamp: 1_000_000, sequence: 7, roundKeys: ['BAG01:88:21'], snapshot: {
+    buildVersion: '102', sessionId: 'worker-session', connected: true, authenticated: true,
     tables: [{ tableId: 'BAG01', shoe: 88, round: 21 }],
     rounds: [{ tableId: 'BAG01', shoe: 88, round: 21, winner: 'banker', rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9], sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary' }],
   } }

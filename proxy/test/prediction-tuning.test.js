@@ -53,13 +53,13 @@ test('prediction row records new strategy and preserves requested prediction out
     },
     { tableId: 'BAG05', displayName: '桌5', dealerName: 'ignored', roomId: 29, orderState: 1, state: 1, totalPlayers: 20, shoe: 15396, round: 1, beadPlateRaw: '0202', bankerCount: 1, playerCount: 0, tieCount: 0 },
   )
-  assert.equal(row.strategy_version, 'v101')
+  assert.equal(row.strategy_version, 'v102')
   assert.ok(['banker', 'player'].includes(row.predicted_result))
   assert.equal(row.prediction_features.side_weights.bankerPair.dealer_name, undefined)
   assert.equal(row.prediction_features.side_weights.bankerPair.total_players, undefined)
 })
 
-test('newly weighted main features produce non-neutral scores instead of metadata-only weights', () => {
+test('main score diagnostics expose exactly the five weighted sources', () => {
   const row = buildPredictionResultRow(
     {
       tableId: 'BAG73', shoe: 15396, round: 22, winner: 'banker',
@@ -84,8 +84,7 @@ test('newly weighted main features produce non-neutral scores instead of metadat
     },
   )
   const scores = row.prediction_features.unified_main_scores
-  assert.deepEqual(scores.card_points, { banker: 0.5, player: 0.5 }, 'unrevealed card points must stay neutral')
-  for (const key of ['shoe_remaining_points', 'direction_calibration', 'historical_backtest', 'pattern_tags']) {
-    assert.notDeepEqual(scores[key], { banker: 0.5, player: 0.5 }, `${key} should actively affect scoring`)
-  }
+  assert.deepEqual(Object.keys(scores), Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS))
+  assert.deepEqual(scores.neutral_reserve, { banker: 0.5, player: 0.5 })
+  assert.notDeepEqual(scores.roadmap_trend_signals, { banker: 0.5, player: 0.5 })
 })

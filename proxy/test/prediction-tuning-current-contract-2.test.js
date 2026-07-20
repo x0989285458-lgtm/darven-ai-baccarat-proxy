@@ -12,7 +12,7 @@ const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Num
 const rankKeys = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
 
 test('keeps main prediction unchanged while applying requested side ratios and thresholds', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v101')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v102')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 30,
     superSix: 50,
@@ -25,11 +25,10 @@ test('keeps main prediction unchanged while applying requested side ratios and t
 
 test('main weights further reduce player-biased noise and emphasize calibration', () => {
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.25)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals, 0.45)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.big_road, 0)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.card_points, 0)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.shoe_remaining_points, 0)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.15)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals, 0.35)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.recent_practical_calibration, 0.30)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.neutral_reserve, 0.10)
 })
 
 test('side weights keep tie useful but shrink superSix pair and dragon noise', () => {
@@ -61,6 +60,6 @@ test('prediction row records new strategy without changing main action-rate targ
     },
     { tableId: 'BAG76', shoe: 18001, round: 17, bankerCount: 12, playerCount: 8, tieCount: 1, beadPlateRaw: '01020202', bigRoadRaw: 'BBPBBP' },
   )
-  assert.equal(row.strategy_version, 'v101')
+  assert.equal(row.strategy_version, 'v102')
   assert.equal(row.predicted_result === 'banker' || row.predicted_result === 'player', true)
 })

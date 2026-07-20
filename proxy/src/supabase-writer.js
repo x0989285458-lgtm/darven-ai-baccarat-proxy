@@ -3,9 +3,9 @@ import { BUILD_VERSION } from './build-version.js'
 import { isVerifiedFinalRoundAction, normalizeExactRealCardEvent } from '../../shared/real-card-validator.js'
 
 const SOURCE = 'ofalive99'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v101'
-export const V100_MAIN_SIGNAL_DEDUP_VERSION = 'v101_主預測沿用v100正式版'
-export const V100_SIDE_DEDUP_VERSION = 'v101_副預測門檻調整版'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v102'
+export const V100_MAIN_SIGNAL_DEDUP_VERSION = 'v102_主預測同源去重與連續同邊信心版'
+export const V100_SIDE_DEDUP_VERSION = 'v102_副預測沿用v101正式版'
 export const V100_SIDE_SCORE_CALIBRATION_OFFSETS = Object.freeze({
   tie: -13.867936925098554,
   superSix: -1.8125,
@@ -31,13 +31,11 @@ function buildWeightedProfile(keys, profile) {
 }
 
 const MAIN_WEIGHT_KEYS = [
-  'table_type', 'total_players', 'state', 'source_updated_at',
-  'shoe', 'shoe_stage', 'banker_count', 'player_count', 'tie_count',
-  'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road', 'next_banker_road', 'next_player_road',
-  'previous_winner', 'streak_length', 'near5_banker_player_bias', 'table_recent_hit_rate', 'direction_calibration',
-  'confidence', 'probability_gap', 'card_points', 'shoe_remaining_points', 'historical_backtest',
-  'roadmap_trend_signals', 'road_structure_signals', 'derived_road_structure_signals', 'ask_road_signals',
-  'recent_practical_calibration', 'shoe_banker_player_bias',
+  'roadmap_trend_signals',
+  'ask_road_signals',
+  'recent_practical_calibration',
+  'shoe_banker_player_bias',
+  'neutral_reserve',
 ]
 
 const RANK_REMAINING_FEATURE_KEYS = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
@@ -52,10 +50,11 @@ export const SIDE_WEIGHT_KEYS = [
 ]
 
 export const ALL_MT_EQUAL_MAIN_WEIGHTS = buildWeightedProfile(MAIN_WEIGHT_KEYS, {
-  ask_road_signals: 0.25,
-  roadmap_trend_signals: 0.45,
-  recent_practical_calibration: 0.20,
+  roadmap_trend_signals: 0.35,
+  ask_road_signals: 0.15,
+  recent_practical_calibration: 0.30,
   shoe_banker_player_bias: 0.10,
+  neutral_reserve: 0.10,
 })
 
 export const V100_MAIN_SIGNAL_DEDUP_WEIGHTS = ALL_MT_EQUAL_MAIN_WEIGHTS
@@ -119,9 +118,9 @@ export function buildFormalActiveStrategy() {
       side_weights: Object.fromEntries(Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES).map(([key, profile]) => [key, { ...profile }])),
       side_thresholds: { ...SIDE_PREDICTION_THRESHOLDS },
       rank_ledger: 'durable_eight_deck_exact_rank_ledger',
-      description: 'v101正式策略；主預測與權重沿用v100，副預測門檻依核准值調整。',
+      description: 'v102正式策略；主預測採同源去重、分方向收縮校正與連續同邊信心規則，副預測沿用v101。',
     },
-    notes: 'Only active runtime strategy and history source for formal release v101.',
+    notes: 'Only active runtime strategy and history source for formal release v102.',
   }
 }
 
@@ -433,7 +432,7 @@ function calculateAllMtEqualMainPrediction({ round = {}, table = {}, facts = {},
   const difference = Math.abs(total.banker - total.player)
   const predictedResult = difference < 1e-9 ? breakAllMtMainTie({ round, table, facts, probabilities }) : (total.banker > total.player ? 'banker' : 'player')
   const rawSignalConfidence = difference < 1e-9 ? 30 : calculateConservativeMainConfidence(scores, ALL_MT_EQUAL_MAIN_WEIGHTS)
-  const confidenceCalibration = calibrateMainConfidenceByHitRate(rawSignalConfidence, tablePerformance)
+  const confidenceCalibration = calibrateMainConfidenceByHitRate(rawSignalConfidence, tablePerformance, predictedResult)
   return { predictedResult, confidence: confidenceCalibration.finalConfidence, confidenceCalibration, scores, total }
 }
 
@@ -459,7 +458,7 @@ export function calculateV100MainPrediction({ round = {}, table = {}, facts = {}
   const difference = Math.abs(total.banker - total.player)
   const predictedResult = difference < 1e-9 ? breakAllMtMainTie({ round, table: safeTable, facts, probabilities }) : (total.banker > total.player ? 'banker' : 'player')
   const rawSignalConfidence = difference < 1e-9 ? 30 : calculateConservativeMainConfidence(scores, V100_MAIN_SIGNAL_DEDUP_WEIGHTS)
-  const confidenceCalibration = calibrateMainConfidenceByHitRate(rawSignalConfidence, tablePerformance)
+  const confidenceCalibration = calibrateMainConfidenceByHitRate(rawSignalConfidence, tablePerformance, predictedResult)
   return {
     strategyVersion: V100_MAIN_SIGNAL_DEDUP_VERSION,
     predictedResult,
@@ -580,13 +579,19 @@ export function buildLivePrediction(table = {}) {
     probabilities,
     tablePerformance,
   })
+  const mainStreakAdjustment = buildMainPredictionStreakAdjustment({
+    table,
+    predictedResult: prediction.predictedResult,
+    confidence: prediction.confidence,
+    scores: prediction.scores,
+  })
   const baseSidePredictions = buildSidePredictions(table, nextRound)
-  const rankCardShoe = table.v101RankLedger ?? null
+  const rankCardShoe = table.v102RankLedger ?? null
   const rankAvailable = rankCardShoe?.rankDataAvailable === true
     && hasCompleteRemainingRankCounts(rankCardShoe.remainingRankCounts)
   const v100Side = calculateV100SidePrediction({
     table,
-    round: { ...nextRound, v101RankLedger: rankCardShoe },
+    round: { ...nextRound, v102RankLedger: rankCardShoe },
     rankAvailable,
     rankFallback: 'renormalize',
     mainPrediction: prediction.predictedResult,
@@ -620,11 +625,12 @@ export function buildLivePrediction(table = {}) {
     side_results: { superSix: false, bankerDragon: false, playerDragon: false, bankerPair: false, playerPair: false },
     table_performance: structuredClone(tablePerformance),
     confidence_calibration: structuredClone(prediction.confidenceCalibration),
-    v101_main_signal_dedup: {
+    main_streak_adjustment: structuredClone(mainStreakAdjustment),
+    v102_main_signal_dedup: {
       strategyVersion: V100_MAIN_SIGNAL_DEDUP_VERSION,
       diagnostics: structuredClone(prediction.diagnostics),
     },
-    v101_side_policy: structuredClone(v100Side),
+    v102_side_policy: structuredClone(v100Side),
   }
   return {
     source: 'backend',
@@ -634,12 +640,13 @@ export function buildLivePrediction(table = {}) {
     targetShoe: table.shoe == null ? null : String(table.shoe),
     targetRound: nextRound.round,
     predictedResult: prediction.predictedResult,
-    confidence: prediction.confidence,
+    confidence: mainStreakAdjustment.finalConfidence,
     probabilities,
     scoreTotals: prediction.total,
     scoreSources: prediction.scores,
     sidePredictions,
     sideActions,
+    mainStreakAdjustment,
     tableRecentHitRate: tablePerformance.recentHitRate,
     tableRecentPredictionCount: tablePerformance.recentPredictionCount,
     shortRunAdjustment: {
@@ -652,6 +659,65 @@ export function buildLivePrediction(table = {}) {
     },
     predictionFeatures,
     featureWeights: { ...prediction.featureWeights },
+  }
+}
+
+function buildMainPredictionStreakAdjustment({ table = {}, predictedResult, confidence, scores = {} } = {}) {
+  const streak = normalizePriorMainPredictionStreak(table)
+  const baseConfidence = clampPercent(Number(confidence), 30, 70)
+  if (!streak) return mainStreakResult('streak-unavailable', false, baseConfidence, 0, {})
+  if (streak.direction !== predictedResult) return mainStreakResult('direction-changed', false, baseConfidence, 0, {})
+
+  const supportGroups = buildIndependentMainSupportGroups(predictedResult, scores)
+  const supportGroupCount = Object.values(supportGroups).filter(Boolean).length
+  if (streak.count < 5) return mainStreakResult('below-five', false, baseConfidence, supportGroupCount, supportGroups)
+  if (supportGroupCount >= 2) return mainStreakResult('two-independent-groups', false, baseConfidence, supportGroupCount, supportGroups)
+  return mainStreakResult('five-same-side-low-support', true, clampPercent(baseConfidence - 5, 30, 70), supportGroupCount, supportGroups)
+}
+
+function normalizePriorMainPredictionStreak(table = {}) {
+  const raw = table.priorMainPredictionStreak ?? table.prior_main_prediction_streak
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const direction = normalizeMainDirection(raw.direction ?? raw.predictedResult ?? raw.predicted_result)
+  const count = numberOrNull(raw.count ?? raw.streakCount ?? raw.streak_count)
+  if (!direction || count == null || count < 0) return null
+  return { direction, count: Math.floor(count) }
+}
+
+function normalizeMainDirection(value) {
+  const direction = String(value ?? '').trim().toLowerCase()
+  if (direction === 'banker' || direction === '莊') return 'banker'
+  if (direction === 'player' || direction === '閒') return 'player'
+  return null
+}
+
+function buildIndependentMainSupportGroups(predictedResult, scores = {}) {
+  const roadmapAskMargin = signedScoreMargin(scores.roadmap_trend_signals) * ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals
+    + signedScoreMargin(scores.ask_road_signals) * ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals
+  return {
+    roadmapAsk: marginSupportsDirection(roadmapAskMargin, predictedResult),
+    directionalCalibration: scoreSupportsDirection(scores.recent_practical_calibration, predictedResult),
+    shoeBias: scoreSupportsDirection(scores.shoe_banker_player_bias, predictedResult),
+  }
+}
+
+function scoreSupportsDirection(score, direction) {
+  return marginSupportsDirection(signedScoreMargin(score), direction)
+}
+
+function marginSupportsDirection(margin, direction) {
+  return direction === 'banker' ? margin > 1e-12 : margin < -1e-12
+}
+
+function mainStreakResult(reason, applied, finalConfidence, supportGroupCount, supportGroups) {
+  return {
+    applied,
+    reason,
+    confidencePenalty: applied ? 5 : 0,
+    finalConfidence,
+    supportGroupCount,
+    supportGroups,
+    actionSuppressed: false,
   }
 }
 
@@ -693,27 +759,31 @@ function calculateConservativeMainConfidence(scores = {}, weights = {}) {
   return 30 + 40 * combined
 }
 
-export function calibrateMainConfidenceByHitRate(rawSignalConfidence, tablePerformance = {}) {
+export function calibrateMainConfidenceByHitRate(rawSignalConfidence, tablePerformance = {}, predictedResult = null) {
   const signal = clampPercent(Number(rawSignalConfidence), 30, 70)
-  const recentHitRate = normalizedRate(tablePerformance.recentHitRate ?? tablePerformance.recent_hit_rate)
-  const recentPredictionCount = numberOrNull(tablePerformance.recentPredictionCount ?? tablePerformance.recent_prediction_count)
+  const direction = normalizeMainDirection(predictedResult)
+  const directionStats = direction ? tablePerformance.settledDirectionalPredictionStats?.[direction] : null
+  const recentHitRate = normalizedRate(directionStats?.hitRate)
+  const recentPredictionCount = numberOrNull(directionStats?.settledPredictionCount)
   const signalAdjustment = (signal - 50) * 0.2
-  if (recentHitRate == null || recentPredictionCount == null || recentPredictionCount < 6) {
+  if (recentHitRate == null || recentPredictionCount == null || recentPredictionCount < 20) {
     return {
       rawSignalConfidence: signal,
       finalConfidence: Math.round(clampPercent(50 + signalAdjustment, 30, 70)),
       reason: 'learning-neutral-shrinkage',
+      ...(direction ? { direction } : {}),
       recentHitRate,
       recentPredictionCount,
       reliability: 0,
     }
   }
-  const reliability = Math.min(1, Math.max(0, recentPredictionCount / 18))
+  const reliability = Math.min(1, Math.max(0, recentPredictionCount / 20))
   const empiricalCenter = 50 + (recentHitRate * 100 - 50) * reliability
   return {
     rawSignalConfidence: signal,
     finalConfidence: Math.round(clampPercent(empiricalCenter + signalAdjustment, 30, 70)),
-    reason: 'settled-hit-rate-calibration',
+    reason: 'settled-direction-hit-rate-calibration',
+    ...(direction ? { direction } : {}),
     recentHitRate,
     recentPredictionCount,
     reliability: Math.round(reliability * 1000) / 1000,
@@ -758,6 +828,7 @@ function scoreAllMtFeature(key, ctx) {
     case 'ask_road_signals': return scoreAskRoadSignalsFeature(table, derived)
     case 'recent_practical_calibration': return scoreRecentPracticalCalibrationFeature(probabilities, tablePerformance)
     case 'shoe_banker_player_bias': return scoreShoeBankerPlayerBiasFeature(table)
+    case 'neutral_reserve': return neutralScore()
     case 'confidence': return ratioScore(probabilities.banker, probabilities.player)
     case 'probability_gap': return ratioScore(probabilities.banker, probabilities.player)
     case 'super_six': {
@@ -961,23 +1032,27 @@ function scoreAskRoadSignalsFeature(table = {}, derived = {}) {
 function buildRecentPracticalCalibration(tablePerformance = {}, probabilities = {}) {
   const score = scoreRecentPracticalCalibrationFeature(probabilities, tablePerformance)
   return {
-    recentHitRate: tablePerformance.recentHitRate ?? null,
-    recentPredictionCount: tablePerformance.recentPredictionCount ?? null,
-    source: tablePerformance.source ?? 'unavailable',
+    settledDirectionalPredictionStats: structuredClone(tablePerformance.settledDirectionalPredictionStats ?? null),
+    source: tablePerformance.directionalCalibrationSource ?? 'unavailable',
     preferred: score.banker > score.player ? 'banker' : score.player > score.banker ? 'player' : 'neutral',
     banker: score.banker,
     player: score.player,
   }
 }
 
-function scoreRecentPracticalCalibrationFeature(probabilities = {}, tablePerformance = {}) {
-  const count = numberOrZero(tablePerformance.recentPredictionCount)
-  const rate = tablePerformance.recentHitRate
-  if (rate == null || count < 6) return neutralScore()
-  const baseSide = pickPrediction(probabilities)
-  if (rate >= 0.58) return winnerScore(baseSide)
-  if (rate <= 0.45) return invertWinnerScore(baseSide)
-  return averageScores(winnerScore(baseSide), neutralScore())
+function scoreRecentPracticalCalibrationFeature(_probabilities = {}, tablePerformance = {}) {
+  const stats = tablePerformance.settledDirectionalPredictionStats ?? {}
+  return {
+    banker: scoreSettledDirection(stats.banker),
+    player: scoreSettledDirection(stats.player),
+  }
+}
+
+function scoreSettledDirection(stats = {}) {
+  const count = numberOrNull(stats.settledPredictionCount)
+  const rate = normalizedRate(stats.hitRate)
+  if (count == null || count < 20 || rate == null) return 0.5
+  return roundRate(Math.max(0.45, Math.min(0.55, 0.5 + (rate - 0.5) * 0.25)))
 }
 
 function buildShoeBankerPlayerBias(table = {}) {
@@ -1208,7 +1283,7 @@ export function calculateV100SidePrediction({
   mainPrediction = null,
   baseSidePredictions: baseOverrides = null,
 } = {}) {
-  const rankCardShoe = round.v101RankLedger ?? table.v101RankLedger ?? null
+  const rankCardShoe = round.v102RankLedger ?? table.v102RankLedger ?? null
   const featureScores = primitiveOverrides == null ? buildSideFeatureScores(table, { ...round, cardShoe: rankCardShoe }) : null
   const sourcePrimitives = primitiveOverrides ?? {
     T: featureScores.tie_count,
@@ -1865,9 +1940,9 @@ export function createSupabaseIngestionClient({
       const round = Number(event.round)
       if (!isVerifiedFinalRoundAction(event.sourceAction) || !normalized || !source || !tableId || !shoe
         || !Number.isSafeInteger(round) || round < 1) {
-        throw new Error('v101 durable rank event is invalid')
+        throw new Error('v102 durable rank event is invalid')
       }
-      const acknowledgement = await enqueueWrite(() => postRest('rpc/apply_v101_rank_ledger_event', {
+      const acknowledgement = await enqueueWrite(() => postRest('rpc/apply_v102_rank_ledger_event', {
         p_event: {
           source,
           table_id: tableId,
@@ -1917,7 +1992,7 @@ export function createSupabaseIngestionClient({
       if (!source || !tableId || !normalizedShoe || !Number.isSafeInteger(visibleRound) || visibleRound < 1) {
         throw new Error('prediction lifecycle reconciliation identity is incomplete')
       }
-      const acknowledgement = await enqueueWrite(() => postRest('rpc/reconcile_v101_prediction_lifecycle', {
+      const acknowledgement = await enqueueWrite(() => postRest('rpc/reconcile_v102_prediction_lifecycle', {
         p_source: String(source),
         p_table_id: String(tableId),
         p_current_shoe: normalizedShoe,
@@ -1947,7 +2022,7 @@ export function createSupabaseIngestionClient({
         || !row.strategy_version || !['banker', 'player'].includes(row.predicted_result)) {
         throw new Error('prediction issuance payload is incomplete')
       }
-      const acknowledgement = await enqueueWrite(() => postRest('rpc/issue_v101_prediction', { p_prediction: row }, undefined, { requireObject: true }))
+      const acknowledgement = await enqueueWrite(() => postRest('rpc/issue_v102_prediction', { p_prediction: row }, undefined, { requireObject: true }))
       const prediction = acknowledgement?.prediction
       if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
         || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at
@@ -2169,7 +2244,7 @@ export function createSupabaseIngestionClient({
           throw new Error('prediction identity is required for production settlement')
         }
         const acknowledgement = hasPredictionIdentity
-          ? await postRest('rpc/settle_v101_prediction', {
+          ? await postRest('rpc/settle_v102_prediction', {
               p_roadmap: compactEvent,
               p_settlement: {
                 prediction_id: precomputedPrediction.predictionId,
@@ -2187,7 +2262,7 @@ export function createSupabaseIngestionClient({
                 side_hits: compactPrediction.prediction_features?.side_hits ?? {},
               },
             }, undefined, { requireObject: true })
-          : await postRest('rpc/persist_v101_settled_round', {
+          : await postRest('rpc/persist_v102_settled_round', {
               p_roadmap: compactEvent,
               p_prediction: compactPrediction,
             }, undefined, { requireObject: true })
@@ -2266,7 +2341,7 @@ export function createSupabaseIngestionClient({
         .filter(isFinalPredictionSettlement).length
     },
     async getPredictionLifecycleStats() {
-      const acknowledgement = await postRest('rpc/get_v101_prediction_lifecycle_stats', {}, undefined, { requireObject: true })
+      const acknowledgement = await postRest('rpc/get_v102_prediction_lifecycle_stats', {}, undefined, { requireObject: true })
       const stats = {
         activePending: Number(acknowledgement?.active_pending),
         settled: Number(acknowledgement?.settled),
@@ -2427,9 +2502,15 @@ function buildUnknownRemainingPointCounts() {
 }
 
 function buildTablePerformanceFeature(table = {}) {
+  const directionalStats = normalizeSettledDirectionalPredictionStats(table)
+  const directionalCalibration = {
+    settledDirectionalPredictionStats: directionalStats,
+    directionalCalibrationSource: directionalStats ? 'provided_settled_directional_prediction_stats' : 'unavailable',
+  }
   const directRate = normalizedRate(table.recentHitRate ?? table.tableRecentHitRate ?? table.recent_hit_rate)
   if (directRate != null) {
     return {
+      ...directionalCalibration,
       recentHitRate: directRate,
       recentPredictionCount: numberOrNull(table.recentPredictionCount ?? table.recent_prediction_count),
       source: 'provided_recent_hit_rate',
@@ -2442,6 +2523,7 @@ function buildTablePerformanceFeature(table = {}) {
   const total = hits == null || misses == null ? null : hits + misses
   if (total && total > 0) {
     return {
+      ...directionalCalibration,
       recentHitRate: roundRate(hits / total),
       recentPredictionCount: total,
       source: 'provided_recent_hits_misses',
@@ -2450,10 +2532,27 @@ function buildTablePerformanceFeature(table = {}) {
   }
 
   return {
+    ...directionalCalibration,
     recentHitRate: null,
     recentPredictionCount: numberOrNull(table.recentPredictionCount ?? table.recent_prediction_count),
     source: 'unavailable',
     calculable: false,
+  }
+}
+
+function normalizeSettledDirectionalPredictionStats(table = {}) {
+  const raw = table.settledDirectionalPredictionStats ?? table.settled_directional_prediction_stats
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  return {
+    banker: normalizeSettledDirectionStats(raw.banker),
+    player: normalizeSettledDirectionStats(raw.player),
+  }
+}
+
+function normalizeSettledDirectionStats(raw = {}) {
+  return {
+    settledPredictionCount: numberOrNull(raw?.settledPredictionCount ?? raw?.settled_prediction_count ?? raw?.predictionCount ?? raw?.prediction_count),
+    hitRate: normalizedRate(raw?.hitRate ?? raw?.hit_rate),
   }
 }
 

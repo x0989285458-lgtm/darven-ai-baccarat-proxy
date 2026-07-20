@@ -18,8 +18,8 @@ import { hasExactRealCardCodes, isExactTenRawResult, isVerifiedFinalRoundAction 
 
 const VERSION = BUILD_VERSION
 const SERVICE = 'Draven MT資料代理伺服器'
-const WORKER_PROTOCOL_BUILD_VERSION = '101'
-const WORKER_PROTOCOL_VERSION = 'v101'
+const WORKER_PROTOCOL_BUILD_VERSION = '102'
+const WORKER_PROTOCOL_VERSION = 'v102'
 const LIFECYCLE_IDENTITIES_PER_TABLE = 256
 const LIFECYCLE_SHOES_PER_TABLE = 64
 
@@ -87,7 +87,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const settlingPredictionKeys = new Set()
   const lifecycleGuardsByTable = new Map()
   const memberSessions = new Map()
-  const recentTablePerformance = createRecentTablePerformanceStore({ windowSize: 18 })
+  const recentTablePerformance = createRecentTablePerformanceStore({ windowSize: 60 })
   let recentPerformanceReady = !(production && supabaseClient?.configured === true && typeof supabaseClient.getRecentPredictionRows === 'function')
   let tablesReceivedAtMs = 0
   const actionablePredictionTtlMs = Math.max(1000, Number(predictionTtlMs) || 120000)
@@ -637,7 +637,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
 
   async function savePendingPrediction(table) {
     if (!isPredictionRuntimeReady() || !recentPerformanceReady) return null
-    const tablePerformance = recentTablePerformance.summary(table?.tableId)
+    const tablePerformance = recentTablePerformance.summary(table?.tableId, table?.shoe)
     const generated = { ...buildLivePrediction({ ...table, ...tablePerformance }), createdAtMs: now() }
     if (!isValidPendingPrediction(generated)) return null
     const key = predictionTargetKey(generated.targetTableId, generated.targetShoe, generated.targetRound)

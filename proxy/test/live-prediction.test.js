@@ -15,7 +15,7 @@ test('exposes one backend live prediction with a non-fixed 30-70 confidence', ()
 
   const prediction = buildLivePrediction(table)
 
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v101')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v102')
   assert.equal(prediction.strategyVersion, ALL_MT_EQUAL_STRATEGY_VERSION)
   assert.match(prediction.predictedResult, /^(banker|player)$/)
   assert.ok(prediction.confidence > 30)
@@ -56,20 +56,30 @@ test('settlement persists the pre-result backend direction and confidence', () =
   assert.equal(row.prediction_features.prediction_timing, 'pre_result_context')
 })
 
-test('calibrates confidence against settled hit rate without changing direction', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v101')
+test('calibrates confidence from settled directional history without changing direction', () => {
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v102')
   assert.deepEqual(calibrateMainConfidenceByHitRate(30, {}), {
     rawSignalConfidence: 30, finalConfidence: 46, reason: 'learning-neutral-shrinkage', recentHitRate: null, recentPredictionCount: null, reliability: 0,
   })
   assert.equal(calibrateMainConfidenceByHitRate(70, {}).finalConfidence, 54)
-  assert.equal(calibrateMainConfidenceByHitRate(30, { recentHitRate: 0.30, recentPredictionCount: 18 }).finalConfidence, 30)
-  assert.equal(calibrateMainConfidenceByHitRate(70, { recentHitRate: 0.80, recentPredictionCount: 18 }).finalConfidence, 70)
-  assert.equal(calibrateMainConfidenceByHitRate(50, { recentHitRate: 0.80, recentPredictionCount: 9 }).finalConfidence, 65)
+  assert.equal(calibrateMainConfidenceByHitRate(30, { recentHitRate: 0.30, recentPredictionCount: 18 }, 'banker').finalConfidence, 46)
+  assert.equal(calibrateMainConfidenceByHitRate(70, {
+    settledDirectionalPredictionStats: { banker: { settledPredictionCount: 20, hitRate: 0.80 } },
+  }, 'banker').finalConfidence, 70)
+  assert.equal(calibrateMainConfidenceByHitRate(50, {
+    settledDirectionalPredictionStats: { banker: { settledPredictionCount: 19, hitRate: 0.80 } },
+  }, 'banker').finalConfidence, 50)
 
   const base = { tableId: 'BAG10', shoe: 10, round: 20, bankerCount: 12, playerCount: 8, tieCount: 1, beadPlateRaw: '0201020102' }
   const learning = buildLivePrediction(base)
-  const calibrated = buildLivePrediction({ ...base, recentHitRate: 0.80, recentPredictionCount: 18 })
+  const calibrated = buildLivePrediction({
+    ...base,
+    settledDirectionalPredictionStats: {
+      banker: { settledPredictionCount: 20, hitRate: 0.80 },
+      player: { settledPredictionCount: 20, hitRate: 0.20 },
+    },
+  })
   assert.equal(calibrated.predictedResult, learning.predictedResult)
-  assert.equal(calibrated.predictionFeatures.confidence_calibration.reason, 'settled-hit-rate-calibration')
+  assert.equal(calibrated.predictionFeatures.confidence_calibration.reason, 'settled-direction-hit-rate-calibration')
   assert.equal(calibrated.predictionFeatures.confidence_calibration.recentHitRate, 0.8)
 })

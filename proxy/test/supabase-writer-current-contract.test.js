@@ -38,12 +38,12 @@ test('low-performing table keeps banker/player prediction and records all-MT equ
     recentPredictionCount: 25,
   })
 
-  assert.equal(prediction.strategy_version, 'v101')
+  assert.equal(prediction.strategy_version, 'v102')
   assert.equal(prediction.prediction_features.table_performance.recentHitRate, 0.44)
   assert.match(prediction.predicted_result, /^(banker|player)$/)
   assert.equal(prediction.confidence >= 30, true)
   assert.equal(prediction.confidence <= 70, true)
-  assert.equal(prediction.short_run_adjustment.rule, 'v101')
+  assert.equal(prediction.short_run_adjustment.rule, 'v102')
 })
 
 test('revealed winner never changes an already-created neutral pre-result prediction', () => {
@@ -77,12 +77,8 @@ test('revealed winner never changes an already-created neutral pre-result predic
 
 test('main and side strategy uses high-hit weighted features', () => {
   const mainKeys = [
-    'table_type', 'total_players', 'state', 'source_updated_at',
-    'shoe', 'shoe_banker_player_bias', 'shoe_stage', 'banker_count', 'player_count', 'tie_count',
-    'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road', 'next_banker_road', 'next_player_road',
-    'previous_winner', 'streak_length', 'near5_banker_player_bias', 'table_recent_hit_rate', 'direction_calibration',
-    'confidence', 'probability_gap', 'recent_practical_calibration', 'card_points', 'shoe_remaining_points', 'historical_backtest',
-    'roadmap_trend_signals', 'road_structure_signals', 'derived_road_structure_signals', 'ask_road_signals',
+    'roadmap_trend_signals', 'ask_road_signals', 'recent_practical_calibration',
+    'shoe_banker_player_bias', 'neutral_reserve',
   ]
   const sideKeys = [
     'tie_count', 'banker_pair_count', 'player_pair_count', 'bead_road', 'big_road', 'big_eye_road', 'small_road', 'cockroach_road',
@@ -93,9 +89,9 @@ test('main and side strategy uses high-hit weighted features', () => {
   ]
   assert.deepEqual(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).sort(), mainKeys.sort())
   assert.deepEqual(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).sort(), sideKeys.sort())
-  assert.equal(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length, 32)
+  assert.equal(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length, 5)
   assert.equal(Object.keys(ALL_MT_EQUAL_SIDE_WEIGHTS).length, 28)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.25)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.15)
   assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'table_id'), false)
   assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.pair_risk, 0.35)
   assert.equal(ALL_MT_EQUAL_SIDE_WEIGHTS.remaining_rank_pressure, 0.15)
@@ -120,7 +116,7 @@ test('prediction rows persist high-hit main and side weights plus captured MT co
     sourceUpdatedAt: '2026-07-01T09:00:00Z',
   })
 
-  assert.equal(prediction.strategy_version, 'v101')
+  assert.equal(prediction.strategy_version, 'v102')
   assert.deepEqual(prediction.feature_weights, ALL_MT_EQUAL_MAIN_WEIGHTS)
   assert.deepEqual(prediction.prediction_features.side_weights.bankerPair, ALL_MT_EQUAL_SIDE_WEIGHTS)
   assert.equal(Object.keys(prediction.prediction_features.side_weights.tie).length, 28)
@@ -150,7 +146,7 @@ test('high-performing table still keeps confidence in 30-70 range', () => {
     recentPredictionCount: 25,
   })
 
-  assert.equal(neutralPrediction.strategy_version, 'v101')
+  assert.equal(neutralPrediction.strategy_version, 'v102')
   assert.equal(neutralPrediction.confidence >= 30, true)
   assert.equal(neutralPrediction.confidence <= 70, true)
   assert.equal(boostedPrediction.confidence <= 70, true)

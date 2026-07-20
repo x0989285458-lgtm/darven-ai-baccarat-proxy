@@ -2,8 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { ALL_MT_EQUAL_STRATEGY_VERSION, SIDE_PREDICTION_THRESHOLDS, buildSideActions } from '../src/supabase-writer.js'
 
-test('v101 uses the user-approved formal side thresholds', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v101')
+test('v102 uses the user-approved formal side thresholds', () => {
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v102')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 30,
     superSix: 50,
@@ -14,7 +14,7 @@ test('v101 uses the user-approved formal side thresholds', () => {
   })
 })
 
-test('v101 acts only at or above each approved threshold and preserves directional gates', () => {
+test('v102 acts only at or above each approved threshold and preserves directional gates', () => {
   assert.equal(buildSideActions({ tie: 29.999 }, 'player').tie, false)
   assert.equal(buildSideActions({ tie: 30 }, 'player').tie, true)
   assert.equal(buildSideActions({ bankerPair: 49.999 }, 'banker').bankerPair, false)

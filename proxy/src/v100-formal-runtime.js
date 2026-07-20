@@ -54,9 +54,9 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
       && durable?.rankDataAvailable === true
       && Number.isSafeInteger(targetRound)
       && completeThrough === targetRound - 1
-    const v101RankLedger = durable ? { ...structuredClone(durable), rankDataAvailable, targetRound } : null
-    const scoringTable = v101RankLedger ? { ...structuredClone(table), v101RankLedger } : structuredClone(table)
-    const roundContext = { round: targetRound, v101RankLedger }
+    const v102RankLedger = durable ? { ...structuredClone(durable), rankDataAvailable, targetRound } : null
+    const scoringTable = v102RankLedger ? { ...structuredClone(table), v102RankLedger } : structuredClone(table)
+    const roundContext = { round: targetRound, v102RankLedger }
     const main = calculateV100MainPrediction({ round: roundContext, table: scoringTable })
     const calculatedSide = calculateV100SidePrediction({
       round: roundContext,
@@ -77,7 +77,7 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
       rankDataAvailable,
       activationEligible: rankDataAvailable,
       activationBlockReason: rankDataAvailable ? null : 'rank_ledger_unavailable',
-      v101RankLedger,
+      v102RankLedger,
       main,
       side,
     }
@@ -90,7 +90,7 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
     async processSnapshot({ tables = [], rounds = [] } = {}) {
       if (!enabled) return { enabled: false, predictions: [] }
       if (!writer?.configured || typeof writer.readV100RankLedger !== 'function' || typeof writer.applyV100RankLedgerEvent !== 'function') {
-        throw new Error('v101 formal runtime requires a configured durable writer')
+        throw new Error('v102 formal runtime requires a configured durable writer')
       }
       for (const table of tables) await hydrateTable(table)
       await applyRounds(rounds)
@@ -101,8 +101,8 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
       ]))
       const formalTables = tables.map((table) => {
         const prediction = predictionByIdentity.get(identityKey(source, table.tableId, table.shoe))
-        return prediction?.v101RankLedger
-          ? { ...structuredClone(table), v101RankLedger: structuredClone(prediction.v101RankLedger) }
+        return prediction?.v102RankLedger
+          ? { ...structuredClone(table), v102RankLedger: structuredClone(prediction.v102RankLedger) }
           : structuredClone(table)
       })
       return { enabled: true, predictions, tables: formalTables }

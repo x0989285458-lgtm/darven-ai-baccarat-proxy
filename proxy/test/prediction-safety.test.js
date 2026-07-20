@@ -272,6 +272,6 @@ test('health and status expose one shared build version', async () => {
   const app = createApp({ autoConnect: false })
   const health = JSON.parse((await app.inject({ url: '/health' })).body)
   const status = JSON.parse((await app.inject({ url: '/api/status' })).body)
-  assert.equal(health.version, 'v101')
+  assert.equal(health.version, 'v102')
   assert.equal(status.version, health.version)
 })

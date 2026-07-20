@@ -27,9 +27,9 @@ test('production refuses startup unless all worker security and push settings ex
   }))
 })
 
-test('v101 exposes only a secret-free public build version', () => {
-  assert.equal(BUILD_VERSION, '101')
-  assert.deepEqual(publicBuildInfo(), { buildVersion: '101' })
+test('v102 exposes only the secret-free public build version 102', () => {
+  assert.equal(BUILD_VERSION, '102')
+  assert.deepEqual(publicBuildInfo(), { buildVersion: '102' })
 })
 
 test('production requires an HTTPS MT login URL', () => {

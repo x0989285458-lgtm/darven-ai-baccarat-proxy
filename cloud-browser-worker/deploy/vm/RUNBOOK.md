@@ -1,4 +1,4 @@
-# v101 GCP VM部署、回滾與驗證
+# v102 GCP VM部署、回滾與驗證
 
 正式VM：`darven-mt-taiwan-worker-5`（`asia-east1-b`）。正式服務：`darven-worker.service`。正式Queue／Cursor：`/var/lib/darven-worker`。
 
@@ -26,7 +26,7 @@ test -n "$PREVIOUS_IMAGE_ID"
 printf '%s\n' "$PREVIOUS_IMAGE_ID" | \
   sudo install -o root -g root -m 600 /dev/stdin /etc/darven-worker/previous-image-id
 sudo test "$(sudo stat -c '%u:%g:%a' /etc/darven-worker/previous-image-id)" = 0:0:600
-sudo python3 /opt/darven-v101-<sha7>/cloud-browser-worker/deploy/vm/verify-state-continuity.py \
+sudo python3 /opt/darven-v102-<sha7>/cloud-browser-worker/deploy/vm/verify-state-continuity.py \
   capture --evidence /tmp/darven-worker-state-before.json
 ```
 
@@ -36,12 +36,12 @@ sudo python3 /opt/darven-v101-<sha7>/cloud-browser-worker/deploy/vm/verify-state
 
 ```bash
 set -euo pipefail
-cd /opt/darven-v101-<sha7>
+cd /opt/darven-v102-<sha7>
 sudo docker build --pull \
-  -t darven-worker:v101-<sha7> \
+  -t darven-worker:v102-<sha7> \
   -f cloud-browser-worker/Dockerfile .
-test "$(sudo docker image inspect darven-worker:v101-<sha7> \
-  --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = v101
+test "$(sudo docker image inspect darven-worker:v102-<sha7> \
+  --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = v102
 sudo systemd-analyze verify cloud-browser-worker/deploy/vm/darven-worker.service
 ```
 
@@ -61,9 +61,9 @@ rollback() {
 trap rollback ERR
 
 sudo install -m 0644 \
-  /opt/darven-v101-<sha7>/cloud-browser-worker/deploy/vm/darven-worker.service \
+  /opt/darven-v102-<sha7>/cloud-browser-worker/deploy/vm/darven-worker.service \
   /etc/systemd/system/darven-worker.service
-printf '%s\n' 'WORKER_IMAGE=darven-worker:v101-<sha7>' | \
+printf '%s\n' 'WORKER_IMAGE=darven-worker:v102-<sha7>' | \
   sudo install -o root -g root -m 600 /dev/stdin /etc/darven-worker/release.env
 sudo test "$(sudo stat -c '%u:%g:%a' /etc/darven-worker/release.env)" = 0:0:600
 sudo systemctl daemon-reload
@@ -71,12 +71,12 @@ sudo systemd-analyze verify /etc/systemd/system/darven-worker.service
 sudo systemctl restart darven-worker.service
 sudo systemctl is-active --quiet darven-worker.service
 
-test "$(sudo docker inspect darven-worker --format '{{.Config.Image}}')" = 'darven-worker:v101-<sha7>'
+test "$(sudo docker inspect darven-worker --format '{{.Config.Image}}')" = 'darven-worker:v102-<sha7>'
 test "$(sudo docker inspect darven-worker --format '{{.State.Running}}')" = true
 sudo systemctl show darven-worker.service -p ExecStart -p ExecStop --no-pager
 
 curl -fsS http://127.0.0.1:8787/health |
-  node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const x=JSON.parse(s);if(!x.ok||x.buildVersion!=='101')process.exit(1)})"
+  python3 -c "import json,sys; x=json.load(sys.stdin); assert x.get('ok') is True; assert x.get('buildVersion') == '102'"
 
 sudo sh -eu -c '
   set -a
@@ -87,18 +87,18 @@ sudo sh -eu -c '
   test "$(curl -sS -o /dev/null -w "%{http_code}" "http://127.0.0.1:8787/snapshot?adminKey=invalid")" = 401
 '
 
-sudo python3 /opt/darven-v101-<sha7>/cloud-browser-worker/deploy/vm/verify-state-continuity.py \
+sudo python3 /opt/darven-v102-<sha7>/cloud-browser-worker/deploy/vm/verify-state-continuity.py \
   verify --evidence /tmp/darven-worker-state-before.json
 trap - ERR
 ```
 
 再由Render `/api/status`與正式DB確認：
 
-- Proxy buildVersion=`v101`、Worker protocol=`v101`。
+- Proxy buildVersion=`v102`、Worker protocol=`v102`。
 - tableCount=`10`、connected/authenticated=true。
 - Persistence正常，Final持續寫入。
 - Rank Ledger失敗不ACK；未ACK Queue仍保留。
-- 新結算只寫`strategy_version=v101`、`settlement_final=true`。
+- 新結算只寫`strategy_version=v102`、`settlement_final=true`。
 
 不得執行`docker system prune --volumes`，不得刪除`/var/lib/darven-worker`。
 

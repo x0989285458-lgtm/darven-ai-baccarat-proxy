@@ -14,13 +14,14 @@ const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Num
 const nonZero = (weights) => Object.fromEntries(Object.entries(weights).filter(([, value]) => Number(value) !== 0))
 
 test('uses only the user-defined main weights and ignores previous main weights', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v101')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v102')
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
   assert.deepEqual(nonZero(ALL_MT_EQUAL_MAIN_WEIGHTS), {
-    ask_road_signals: 0.25,
-    roadmap_trend_signals: 0.45,
-    recent_practical_calibration: 0.20,
+    roadmap_trend_signals: 0.35,
+    ask_road_signals: 0.15,
+    recent_practical_calibration: 0.30,
     shoe_banker_player_bias: 0.10,
+    neutral_reserve: 0.10,
   })
   assert.deepEqual(buildFormalActiveStrategy().metrics.main_weights, ALL_MT_EQUAL_MAIN_WEIGHTS)
   assert.deepEqual(buildLivePrediction({ tableId: 'BAG01', shoe: 1, round: 0 }).featureWeights, ALL_MT_EQUAL_MAIN_WEIGHTS)

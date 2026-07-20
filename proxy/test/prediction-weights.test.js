@@ -6,14 +6,12 @@ import { buildPredictionResultRow } from './helpers/prediction-result.js'
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 
 test('main recommendation weights strongly favor empirically higher-hit signals', () => {
-  assert.equal(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length, 32)
+  assert.equal(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length, 5)
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.25)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals, 0.45)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.next_player_road, 0)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.shoe_stage, 0)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.card_points, 0)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.shoe_remaining_points, 0)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.15)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals, 0.35)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.recent_practical_calibration, 0.30)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.neutral_reserve, 0.10)
   assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'table_id'), false)
 })
 
@@ -42,7 +40,7 @@ test('prediction row records high-hit weight strategy version and keeps banker/p
       nextBankerRaw: 'weak', nextPlayerRaw: '2222222222',
     },
   )
-  assert.equal(row.strategy_version, 'v101')
+  assert.equal(row.strategy_version, 'v102')
   assert.ok(['banker', 'player'].includes(row.predicted_result))
-  assert.equal(row.short_run_adjustment.rule, 'v101')
+  assert.equal(row.short_run_adjustment.rule, 'v102')
 })

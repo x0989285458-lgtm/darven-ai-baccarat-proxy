@@ -10,7 +10,7 @@ test('HTTP API exposes health, status, tables and latest snapshot', async () => 
   const health = await app.inject({ method: 'GET', url: '/health' })
   assert.equal(health.statusCode, 200)
   assert.deepEqual(JSON.parse(health.body), {
-    ok: true, service: 'Draven MT資料代理伺服器', version: 'v101', buildVersion: 'v101', deployMode: 'local',
+    ok: true, service: 'Draven MT資料代理伺服器', version: 'v102', buildVersion: 'v102', deployMode: 'local',
     health: 'ok', degraded: false, reason: null,
     runtimeStatus: { ready: false, degraded: false, reason: 'active_strategy_not_verified', activeStrategyVersion: null },
   })

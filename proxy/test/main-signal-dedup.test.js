@@ -20,7 +20,7 @@ test('deduplicates a same-direction shoe margin when ask-road is stronger', () =
     },
   })
 
-  assert.equal(V100_MAIN_SIGNAL_DEDUP_VERSION, 'v101_主預測沿用v100正式版')
+  assert.equal(V100_MAIN_SIGNAL_DEDUP_VERSION, 'v102_主預測同源去重與連續同邊信心版')
   assert.deepEqual(prediction.scores.shoe_banker_player_bias, { banker: 0.5, player: 0.5 })
   assert.deepEqual(prediction.diagnostics.shoeBankerPlayerBias, {
     originalScore: { banker: 0.55, player: 0.45 },
@@ -94,7 +94,7 @@ test('fails closed to a finite neutral shoe score for invalid signal input', () 
     .filter((value) => typeof value === 'number').every(Number.isFinite), true)
 })
 
-test('v101 formal prediction uses the approved deduplicated main score', () => {
+test('v102 formal prediction uses the approved deduplicated main score', () => {
   const prediction = buildLivePrediction({
     tableId: 'BAG99',
     shoe: 1,
@@ -112,24 +112,25 @@ test('v101 formal prediction uses the approved deduplicated main score', () => {
     askRoadScore: prediction.scoreSources.ask_road_signals,
     shoeScore: prediction.scoreSources.shoe_banker_player_bias,
   }, {
-    strategyVersion: 'v101',
+    strategyVersion: 'v102',
     predictedResult: 'banker',
     confidence: 46,
-    scoreTotals: { banker: 0.515, player: 0.48500000000000004 },
+    scoreTotals: { banker: 0.509, player: 0.491 },
     askRoadScore: { banker: 0.56, player: 0.44 },
     shoeScore: { banker: 0.5, player: 0.5 },
   })
 })
 
-test('keeps the exact approved four non-zero main weights', () => {
+test('keeps the exact approved five non-zero main weights', () => {
   const activeWeights = Object.fromEntries(Object.entries(V100_MAIN_SIGNAL_DEDUP_WEIGHTS)
     .filter(([, weight]) => weight > 0))
 
   assert.deepEqual(activeWeights, {
-    ask_road_signals: 0.25,
-    roadmap_trend_signals: 0.45,
-    recent_practical_calibration: 0.20,
+    roadmap_trend_signals: 0.35,
+    ask_road_signals: 0.15,
+    recent_practical_calibration: 0.30,
     shoe_banker_player_bias: 0.10,
+    neutral_reserve: 0.10,
   })
   assert.equal(V100_MAIN_SIGNAL_DEDUP_WEIGHTS, ALL_MT_EQUAL_MAIN_WEIGHTS)
   assert.ok(Math.abs(Object.values(V100_MAIN_SIGNAL_DEDUP_WEIGHTS).reduce((sum, weight) => sum + weight, 0) - 1) < 1e-12)

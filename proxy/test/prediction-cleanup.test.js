@@ -16,7 +16,7 @@ const sideTargets = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDrago
 const rankKeys = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
 
 test('uses Chinese version name and preserves action-rate thresholds', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v101')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v102')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 30,
     superSix: 50,
@@ -27,13 +27,13 @@ test('uses Chinese version name and preserves action-rate thresholds', () => {
   })
 })
 
-test('main prediction removes only requested direct weights and keeps remaining shoe points', () => {
+test('main prediction keeps only the approved five direct weights', () => {
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
   for (const key of mainRemovedKeys) assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, key), false, `${key} must be removed from main direct weights`)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.shoe_remaining_points, 0, 'v081 ignores previous shoe remaining weight')
-  for (const key of ['big_road', 'bead_road', 'big_eye_road', 'cockroach_road', 'next_banker_road', 'next_player_road', 'previous_winner', 'streak_length', 'near5_banker_player_bias', 'table_recent_hit_rate', 'direction_calibration', 'confidence', 'probability_gap', 'card_points', 'historical_backtest', 'shoe_stage', 'banker_count', 'player_count', 'tie_count', 'roadmap_trend_signals', 'road_structure_signals', 'derived_road_structure_signals', 'ask_road_signals']) {
-    assert.ok(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, key), `${key} should remain available in main weights`)
-  }
+  assert.deepEqual(Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS), [
+    'roadmap_trend_signals', 'ask_road_signals', 'recent_practical_calibration',
+    'shoe_banker_player_bias', 'neutral_reserve',
+  ])
 })
 
 test('side prediction treats raw result as source data, not a direct weight', () => {
@@ -64,10 +64,10 @@ test('prediction row records Chinese strategy and keeps derived point/rank featu
       nextBankerRaw: '1111', nextPlayerRaw: '2222',
     },
   )
-  assert.equal(row.strategy_version, 'v101')
+  assert.equal(row.strategy_version, 'v102')
   assert.ok(row.prediction_features.point_features)
   assert.ok(row.prediction_features.card_shoe_features)
   assert.ok(row.prediction_features.side_card_rank_features)
   assert.equal(Object.hasOwn(row.prediction_features.side_weights.bankerPair, 'raw_result'), false)
-  assert.ok(row.prediction_features.unified_main_scores.shoe_remaining_points)
+  assert.deepEqual(row.prediction_features.unified_main_scores.neutral_reserve, { banker: 0.5, player: 0.5 })
 })

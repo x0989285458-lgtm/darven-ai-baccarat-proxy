@@ -10,15 +10,14 @@ import {
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 
 test('rebalances main prediction away from noisy road overfit toward calibration and history', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v101')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v102')
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
   assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'remaining_zero_to_k_total'), false)
 
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.25)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals, 0.45)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.direction_calibration, 0)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.table_recent_hit_rate, 0)
-  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.historical_backtest, 0)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.15)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.roadmap_trend_signals, 0.35)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.recent_practical_calibration, 0.30)
+  assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.neutral_reserve, 0.10)
 })
 
 test('loosens side prediction thresholds and strengthens side aggregate rank signal', () => {
