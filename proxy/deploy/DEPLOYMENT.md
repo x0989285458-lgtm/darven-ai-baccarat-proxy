@@ -1,4 +1,14 @@
-# v102.0.0 正式雲端部署檢查表
+# v102 Active / v103.0.0-shadow.1 影子候選部署檢查表
+
+## v103 shadow 邊界
+
+- Active build、策略、會員前台、Worker protocol、正式統計與校準全部維持 `v102`。
+- 先套用 `frontend/supabase/schema_v103_shadow.sql`，再只於 Proxy 設定 `V103_SHADOW_ENABLED=true`；Frontend 與 Worker 不變。
+- migration 後確認 `ai_strategy_versions` 仍只有 `v102:active`，且 anon/authenticated 對 v103 tables/view 無 DML/SELECT、對 v103 RPC 無 EXECUTE。
+- v103 只寫 `v103_shadow_issuances` / `v103_shadow_settlements`，只讀 `v103_shadow_history`；不得寫 `daily_prediction_results` 或副預測 action。
+- 只有帶 control token 的 `/api/v103-shadow/status` 可觀察 `v103Shadow`；公開 `/api/status` 與 `/health` 都不得暴露 shadow，正式 health 也不得因 shadow 失敗而 degraded。
+- 非破壞停用套用 `frontend/supabase/disable_v103_shadow.sql`：只停新 issuance/settlement，保留既有 500/1000 局驗證證據。
+- 本文件不代表已部署；真 DB 必須另驗 migration 重跑、ACL、duplicate/conflict、Final summary/show_win、show_poker 拒絕與 PUSH。
 
 ## 單一正式拓撲
 

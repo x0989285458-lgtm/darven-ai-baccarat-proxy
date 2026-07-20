@@ -224,6 +224,42 @@ export function buildPredictionResultRow(round = {}, table = {}, precomputedPred
   }
 }
 
+function buildV103ShadowIssuanceRpcRow(candidate = {}) {
+  return {
+    source: candidate.source,
+    table_id: candidate.targetTableId,
+    shoe_no: candidate.targetShoe,
+    round_no: candidate.targetRound,
+    strategy_version: candidate.strategyVersion,
+    prediction_timing: candidate.predictionTiming,
+    predicted_result: candidate.predictedResult,
+    confidence: candidate.confidence,
+    feature_weights: structuredClone(candidate.featureWeights ?? {}),
+    score_sources: structuredClone(candidate.scoreSources ?? {}),
+    score_totals: structuredClone(candidate.scoreTotals ?? {}),
+    calibration: structuredClone(candidate.calibration ?? {}),
+    prediction_payload: structuredClone(candidate),
+  }
+}
+
+function buildV103ShadowSettlementRpcRow(settlement = {}) {
+  return {
+    prediction_id: settlement.predictionId,
+    source: settlement.source,
+    table_id: settlement.tableId,
+    shoe_no: settlement.shoe,
+    round_no: settlement.round,
+    strategy_version: settlement.strategyVersion,
+    predicted_result: settlement.predictedResult,
+    actual_result: settlement.actualResult,
+    is_hit: settlement.isHit,
+    settlement_status: settlement.settlementStatus,
+    settlement_final: settlement.settlementFinal,
+    settlement_source_action: settlement.settlementSourceAction,
+    resolved_at: settlement.resolvedAt,
+  }
+}
+
 export function buildCompactRoadmapEventDbRow(row = {}) {
   const raw = row.raw_event && typeof row.raw_event === 'object' ? row.raw_event : {}
   return {
@@ -1825,6 +1861,7 @@ export function createSupabaseIngestionClient({
   now = Date.now,
   captureStatusHeartbeatMs = 60000,
   snapshotHeartbeatMs = 60000,
+  shadowRequestTimeoutMs = 9000,
 } = {}) {
   const configured = Boolean(url && serviceKey && fetchImpl)
   const completedRoundKeys = new Set()
@@ -1834,14 +1871,28 @@ export function createSupabaseIngestionClient({
   const snapshotWrites = new Map()
   let runtimeStatus = { ready: false, degraded: false, reason: 'active_strategy_not_verified', activeStrategyVersion: null }
   let writeQueue = Promise.resolve()
+  let shadowWriteQueue = Promise.resolve()
   const completedRoundKeyLimit = Math.max(1, Number(maxCompletedRoundKeys) || 10000)
+  const shadowTimeoutMs = Math.max(1, Number(shadowRequestTimeoutMs) || 9000)
 
-  async function postRest(path, body, conflict, { requireRepresentation = false, requireObject = false, allowSuppressedRepresentation = false } = {}) {
+  async function fetchWithOptionalTimeout(endpoint, init, requestTimeoutMs = 0) {
+    if (!(requestTimeoutMs > 0)) return fetchImpl(endpoint, init)
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), requestTimeoutMs)
+    timer.unref?.()
+    try {
+      return await fetchImpl(endpoint, { ...init, signal: controller.signal })
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  async function postRest(path, body, conflict, { requireRepresentation = false, requireObject = false, allowSuppressedRepresentation = false, requestTimeoutMs = 0 } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase backend key is not configured' }
     const endpoint = new URL(`/rest/v1/${path}`, url)
     if (conflict) endpoint.searchParams.set('on_conflict', conflict)
     return withRetry(async () => {
-      const response = await fetchImpl(endpoint, {
+      const response = await fetchWithOptionalTimeout(endpoint, {
         method: 'POST',
         headers: {
           ['api' + 'key']: serviceKey,
@@ -1850,7 +1901,7 @@ export function createSupabaseIngestionClient({
           Prefer: `resolution=merge-duplicates,return=${requireRepresentation ? 'representation' : 'minimal'}`,
         },
         body: JSON.stringify(body),
-      })
+      }, requestTimeoutMs)
       const responseText = await response.text()
       if (!response.ok) throw new Error(`Supabase ${path} failed: ${response.status} ${responseText}`)
       if (requireRepresentation) {
@@ -1896,6 +1947,12 @@ export function createSupabaseIngestionClient({
   function enqueueWrite(operation) {
     const next = writeQueue.catch(() => {}).then(operation)
     writeQueue = next.catch(() => {})
+    return next
+  }
+
+  function enqueueShadowWrite(operation) {
+    const next = shadowWriteQueue.catch(() => {}).then(operation)
+    shadowWriteQueue = next.catch(() => {})
     return next
   }
 
@@ -2068,6 +2125,71 @@ export function createSupabaseIngestionClient({
         throw new Error('durable prediction issuance read failed')
       }
       return structuredClone({ ...prediction, predictionId: row.id, issuedAt: row.prediction_issued_at })
+    },
+    async issueV103ShadowPrediction(candidate = {}) {
+      const row = buildV103ShadowIssuanceRpcRow(candidate)
+      const acknowledgement = await enqueueShadowWrite(() => postRest('rpc/issue_v103_shadow_prediction', { p_prediction: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
+      const prediction = acknowledgement?.prediction
+      if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
+        || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at
+        || String(prediction.source ?? '') !== String(candidate.source ?? '')
+        || String(prediction.targetTableId ?? '') !== String(candidate.targetTableId ?? '')
+        || String(prediction.targetShoe ?? '') !== String(candidate.targetShoe ?? '')
+        || Number(prediction.targetRound) !== Number(candidate.targetRound)
+        || prediction.strategyVersion !== 'v103'
+        || prediction.predictionTiming !== 'pre_result_context') {
+        throw new Error('v103 shadow issuance acknowledgement failed')
+      }
+      return structuredClone({ ...prediction, predictionId: acknowledgement.prediction_id, issuedAt: acknowledgement.prediction_issued_at })
+    },
+    async readV103ShadowIssuance({ source = SOURCE, tableId, shoe, round } = {}) {
+      const targetRound = Number(round)
+      if (!source || !tableId || shoe == null || !Number.isSafeInteger(targetRound) || targetRound < 1) return null
+      const rows = await getRest('v103_shadow_issuances', {
+        select: 'id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,prediction_payload',
+        source: `eq.${source}`,
+        table_id: `eq.${tableId}`,
+        shoe_no: `eq.${shoe}`,
+        round_no: `eq.${targetRound}`,
+        strategy_version: 'eq.v103',
+        prediction_timing: 'eq.pre_result_context',
+        prediction_issued_at: 'not.is.null',
+        limit: '2',
+      })
+      if (!Array.isArray(rows) || rows.length === 0) return null
+      if (rows.length !== 1) throw new Error('conflicting v103 shadow issuance identity')
+      const row = rows[0]
+      const prediction = row?.prediction_payload
+      if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
+        || String(row.source) !== String(source)
+        || String(row.table_id) !== String(tableId)
+        || String(row.shoe_no) !== String(shoe)
+        || Number(row.round_no) !== targetRound
+        || row.strategy_version !== 'v103'
+        || row.prediction_timing !== 'pre_result_context'
+        || !row.id || !row.prediction_issued_at) throw new Error('v103 shadow issuance read failed')
+      return structuredClone({ ...prediction, predictionId: row.id, issuedAt: row.prediction_issued_at })
+    },
+    async settleV103ShadowPrediction(settlement = {}) {
+      const row = buildV103ShadowSettlementRpcRow(settlement)
+      const acknowledgement = await enqueueShadowWrite(() => postRest('rpc/settle_v103_shadow_prediction', { p_settlement: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
+      if (String(acknowledgement?.prediction_id ?? '') !== String(settlement.predictionId ?? '')) throw new Error('v103 shadow settlement acknowledgement failed')
+      return { ...acknowledgement, predictionId: acknowledgement.prediction_id }
+    },
+    async getV103ShadowHistory({ limit = 10000 } = {}) {
+      const rows = await getRest('v103_shadow_history', {
+        select: 'prediction_id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,predicted_result,actual_result,is_hit,settlement_status,settlement_final,resolved_at',
+        strategy_version: 'eq.v103',
+        prediction_timing: 'eq.pre_result_context',
+        prediction_issued_at: 'not.is.null',
+        settlement_final: 'eq.true',
+        order: 'resolved_at.desc',
+        limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
+      })
+      return (Array.isArray(rows) ? rows : []).filter((row) => row?.strategy_version === 'v103'
+        && row?.prediction_timing === 'pre_result_context'
+        && Boolean(row?.prediction_issued_at)
+        && row?.settlement_final === true)
     },
     async ensureInitialStrategy() {
       try {
