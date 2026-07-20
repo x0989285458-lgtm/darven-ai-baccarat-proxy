@@ -260,6 +260,46 @@ function buildV103ShadowSettlementRpcRow(settlement = {}) {
   }
 }
 
+function buildV104ShadowIssuanceRpcRow(candidate = {}) {
+  return {
+    source: candidate.source,
+    table_id: candidate.targetTableId,
+    shoe_no: candidate.targetShoe,
+    round_no: candidate.targetRound,
+    strategy_version: candidate.strategyVersion,
+    prediction_timing: candidate.predictionTiming,
+    predicted_result: candidate.predictedResult,
+    confidence: candidate.confidence,
+    feature_weights: structuredClone(candidate.featureWeights ?? {}),
+    score_sources: structuredClone(candidate.scoreSources ?? {}),
+    score_totals: structuredClone(candidate.scoreTotals ?? {}),
+    diagnostics: structuredClone(candidate.diagnostics ?? {}),
+    same_side_streak: candidate.sameSideStreak,
+    independent_support_count: candidate.independentSupportCount,
+    shoe_bias_suppressed: candidate.shoeBiasSuppressed,
+    lock_risk: candidate.lockRisk,
+    prediction_payload: structuredClone(candidate),
+  }
+}
+
+function buildV104ShadowSettlementRpcRow(settlement = {}) {
+  return {
+    prediction_id: settlement.predictionId,
+    source: settlement.source,
+    table_id: settlement.tableId,
+    shoe_no: settlement.shoe,
+    round_no: settlement.round,
+    strategy_version: settlement.strategyVersion,
+    predicted_result: settlement.predictedResult,
+    actual_result: settlement.actualResult,
+    is_hit: settlement.isHit,
+    settlement_status: settlement.settlementStatus,
+    settlement_final: settlement.settlementFinal,
+    settlement_source_action: settlement.settlementSourceAction,
+    resolved_at: settlement.resolvedAt,
+  }
+}
+
 export function buildCompactRoadmapEventDbRow(row = {}) {
   const raw = row.raw_event && typeof row.raw_event === 'object' ? row.raw_event : {}
   return {
@@ -1872,6 +1912,7 @@ export function createSupabaseIngestionClient({
   let runtimeStatus = { ready: false, degraded: false, reason: 'active_strategy_not_verified', activeStrategyVersion: null }
   let writeQueue = Promise.resolve()
   let shadowWriteQueue = Promise.resolve()
+  let v104ShadowWriteQueue = Promise.resolve()
   const completedRoundKeyLimit = Math.max(1, Number(maxCompletedRoundKeys) || 10000)
   const shadowTimeoutMs = Math.max(1, Number(shadowRequestTimeoutMs) || 9000)
 
@@ -1956,6 +1997,12 @@ export function createSupabaseIngestionClient({
     return next
   }
 
+  function enqueueV104ShadowWrite(operation) {
+    const next = v104ShadowWriteQueue.catch(() => {}).then(operation)
+    v104ShadowWriteQueue = next.catch(() => {})
+    return next
+  }
+
   async function withRetry(operation) {
     let lastError = null
     const attempts = Math.max(1, Number(retryAttempts) || 1)
@@ -1971,18 +2018,18 @@ export function createSupabaseIngestionClient({
     throw lastError
   }
 
-  async function getRest(path, query = {}) {
+  async function getRest(path, query = {}, { requestTimeoutMs = 0 } = {}) {
     if (!configured) return null
     const endpoint = new URL(`/rest/v1/${path}`, url)
     for (const [key, value] of Object.entries(query)) endpoint.searchParams.set(key, value)
-    const response = await fetchImpl(endpoint, {
+    const response = await fetchWithOptionalTimeout(endpoint, {
       method: 'GET',
       headers: {
         ['api' + 'key']: serviceKey,
         ['Author' + 'ization']: ['Bearer', serviceKey].join(' '),
         Accept: 'application/json',
       },
-    })
+    }, requestTimeoutMs)
     if (!response.ok) throw new Error(`Supabase ${path} read failed: ${response.status} ${await response.text()}`)
     return response.json()
   }
@@ -2190,6 +2237,58 @@ export function createSupabaseIngestionClient({
         && row?.prediction_timing === 'pre_result_context'
         && Boolean(row?.prediction_issued_at)
         && row?.settlement_final === true)
+    },
+    async issueV104ShadowPrediction(candidate = {}) {
+      const row = buildV104ShadowIssuanceRpcRow(candidate)
+      const acknowledgement = await enqueueV104ShadowWrite(() => postRest('rpc/issue_v104_shadow_prediction', { p_prediction: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
+      const prediction = acknowledgement?.prediction
+      if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
+        || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at
+        || String(prediction.source ?? '') !== String(candidate.source ?? '')
+        || String(prediction.targetTableId ?? '') !== String(candidate.targetTableId ?? '')
+        || String(prediction.targetShoe ?? '') !== String(candidate.targetShoe ?? '')
+        || Number(prediction.targetRound) !== Number(candidate.targetRound)
+        || prediction.strategyVersion !== 'v104'
+        || prediction.predictionTiming !== 'pre_result_context') {
+        throw new Error('v104 shadow issuance acknowledgement failed')
+      }
+      return structuredClone({ ...prediction, predictionId: acknowledgement.prediction_id, issuedAt: acknowledgement.prediction_issued_at })
+    },
+    async readV104ShadowIssuance({ source = SOURCE, tableId, shoe, round } = {}) {
+      const targetRound = Number(round)
+      if (!source || !tableId || shoe == null || !Number.isSafeInteger(targetRound) || targetRound < 1) return null
+      const rows = await getRest('v104_shadow_issuances', {
+        select: 'id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,prediction_payload',
+        source: `eq.${source}`, table_id: `eq.${tableId}`, shoe_no: `eq.${shoe}`,
+        round_no: `eq.${targetRound}`, strategy_version: 'eq.v104',
+        prediction_timing: 'eq.pre_result_context', prediction_issued_at: 'not.is.null', limit: '2',
+      }, { requestTimeoutMs: shadowTimeoutMs })
+      if (!Array.isArray(rows) || rows.length === 0) return null
+      if (rows.length !== 1) throw new Error('conflicting v104 shadow issuance identity')
+      const row = rows[0]
+      const prediction = row?.prediction_payload
+      if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
+        || String(row.source) !== String(source) || String(row.table_id) !== String(tableId)
+        || String(row.shoe_no) !== String(shoe) || Number(row.round_no) !== targetRound
+        || row.strategy_version !== 'v104' || row.prediction_timing !== 'pre_result_context'
+        || !row.id || !row.prediction_issued_at) throw new Error('v104 shadow issuance read failed')
+      return structuredClone({ ...prediction, predictionId: row.id, issuedAt: row.prediction_issued_at })
+    },
+    async settleV104ShadowPrediction(settlement = {}) {
+      const row = buildV104ShadowSettlementRpcRow(settlement)
+      const acknowledgement = await enqueueV104ShadowWrite(() => postRest('rpc/settle_v104_shadow_prediction', { p_settlement: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
+      if (String(acknowledgement?.prediction_id ?? '') !== String(settlement.predictionId ?? '')) throw new Error('v104 shadow settlement acknowledgement failed')
+      return { ...acknowledgement, predictionId: acknowledgement.prediction_id }
+    },
+    async getV104ShadowHistory({ limit = 10000 } = {}) {
+      const rows = await getRest('v104_shadow_history', {
+        select: 'prediction_id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,predicted_result,confidence,prediction_payload,same_side_streak,independent_support_count,shoe_bias_suppressed,lock_risk,actual_result,is_hit,settlement_status,settlement_final,resolved_at',
+        strategy_version: 'eq.v104', prediction_timing: 'eq.pre_result_context',
+        prediction_issued_at: 'not.is.null', order: 'prediction_issued_at.desc',
+        limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
+      }, { requestTimeoutMs: shadowTimeoutMs })
+      return (Array.isArray(rows) ? rows : []).filter((row) => row?.strategy_version === 'v104'
+        && row?.prediction_timing === 'pre_result_context' && Boolean(row?.prediction_issued_at))
     },
     async ensureInitialStrategy() {
       try {

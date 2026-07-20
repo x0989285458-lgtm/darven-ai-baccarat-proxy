@@ -1,4 +1,15 @@
-# v102 Active / v103.0.0-shadow.1 影子候選部署檢查表
+# v102 Active / v103.0.0-shadow.1 / v104.0.0-shadow.1 影子候選部署檢查表
+
+## v104 shadow 邊界
+
+- v102 維持唯一 Active；v103.0.0-shadow.1 繼續運行，新增 v104.0.0-shadow.1 與兩者並行。
+- 依序套用 `frontend/supabase/schema_v103_shadow.sql`、`frontend/supabase/schema_v104_shadow.sql`，Proxy 分別設定 `V103_SHADOW_ENABLED=true` 與 `V104_SHADOW_ENABLED=true`。
+- v104 僅使用 `v104_shadow_issuances`、`v104_shadow_settlements`、`v104_shadow_history` 與專屬 RPC；不得寫 v102/v103 表、正式統計、副預測或 ACK Queue。
+- 方向與信心分離：近期校正只調信心；連續第 5 次起若支援不足，靴偏移退出方向；直接路單與衍生問路衝突時以直接路單為主，不強制反向。
+- 重啟必須取最新 10,000 筆history、恢復未結算immutable issuance，且同桌並發發行需串行，避免重算或虛增連邊。
+- 只有 control token 可讀 `/api/v104-shadow/status`；公開 `/api/status` 與正式 `/health` 仍只反映 v102，不因 v104 故障降級。
+- 停用 v104 使用 `frontend/supabase/disable_v104_shadow.sql`，只停止新 issuance/settlement，保留歷史證據且不影響 v102/v103。
+- Frontend 與 Worker build identity 不變；本文件不代表已部署。
 
 ## v103 shadow 邊界
 
@@ -61,6 +72,8 @@ frontend/supabase/rollback_v102_to_v101.sql
 DEPLOY_MODE=cloud
 CAPTURE_SOURCE=cloud_browser
 V100_RELEASE_ENABLED=true
+V103_SHADOW_ENABLED=true
+V104_SHADOW_ENABLED=true
 PUBLIC_FRONTEND_ORIGIN=https://darven-ai-baccarat.pages.dev
 SUPABASE_URL=後端設定
 SUPABASE_SERVICE_ROLE_KEY=後端專用

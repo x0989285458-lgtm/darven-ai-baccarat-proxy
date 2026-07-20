@@ -10,6 +10,7 @@ import { ALL_MT_EQUAL_STRATEGY_VERSION, buildLivePrediction, createSupabaseInges
 import { createRecentTablePerformanceStore } from './recent-table-performance.js'
 import { createV100FormalRuntime, resolveV100FormalEnabled } from './v100-formal-runtime.js'
 import { createV103ShadowRuntime, resolveV103ShadowEnabled } from './v103-shadow-runtime.js'
+import { createV104ShadowRuntime, resolveV104ShadowEnabled } from './v104-shadow-runtime.js'
 import { createOnlineCoreClient } from './online-core.js'
 import { createLicenseAdminClient } from './license-admin.js'
 import { chooseCaptureSource, describeCaptureStatus } from './capture-source.js'
@@ -65,7 +66,7 @@ function rememberBounded(seen, order, value, limit) {
   while (order.length > limit) seen.delete(order.shift())
 }
 
-export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null } = {}) {
+export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null, v104ShadowRuntime = null } = {}) {
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
     CAPTURE_SOURCE: requestedCaptureSource,
@@ -92,6 +93,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   let recentPerformanceReady = !(production && supabaseClient?.configured === true && typeof supabaseClient.getRecentPredictionRows === 'function')
   let tablesReceivedAtMs = 0
   let v103Shadow = null
+  let v104Shadow = null
   const actionablePredictionTtlMs = Math.max(1000, Number(predictionTtlMs) || 120000)
   const expiredPredictionKeyLimit = Math.max(1, Number(maxExpiredPredictionKeys) || 10000)
   const resolvedMemberSessionTtlMs = Math.min(30 * 60 * 1000, Math.max(60000, Number(memberSessionTtlMs) || 30 * 60 * 1000))
@@ -103,6 +105,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       for (const table of tables) {
         void reconcileThenSavePendingPrediction(table)
         if (v103Shadow?.enabled === true) void v103Shadow.observeTable(table).catch(() => {})
+        if (v104Shadow?.enabled === true) void v104Shadow.observeTable(table).catch(() => {})
       }
     },
     onRoundEvent: async (round, table) => {
@@ -110,6 +113,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       if (!isVerifiedFinalRoundAction(round?.sourceAction)) return
       if (strictRealCardRounds && !hasRealCardCodes(round)) return
       if (v103Shadow?.enabled === true) void v103Shadow.settleRound(round).catch(() => {})
+      if (v104Shadow?.enabled === true) void v104Shadow.settleRound(round).catch(() => {})
       const pendingKey = predictionTargetKey(round.tableId ?? table.tableId, round.shoe, round.round)
       let issuedCandidate
       try {
@@ -157,6 +161,10 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   })
   v103Shadow = v103ShadowRuntime ?? createV103ShadowRuntime({
     enabled: resolveV103ShadowEnabled(),
+    writer: supabaseClient,
+  })
+  v104Shadow = v104ShadowRuntime ?? createV104ShadowRuntime({
+    enabled: resolveV104ShadowEnabled(),
     writer: supabaseClient,
   })
   const cloudCaptureClient = createCloudCaptureClient({ url: cloudBrowserUrl, state, writer: supabaseClient, v100Formal, fetchImpl, pollMs: deployConfig.cloudCapturePollMs, adminKey: process.env.WORKER_ADMIN_KEY })
@@ -218,6 +226,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       const controlError = requireControlAccess(headers)
       if (controlError) return controlError
       return jsonResponse(200, { ok: true, activeStrategyVersion: 'v102', v103Shadow: v103Shadow?.snapshot?.() ?? { status: 'unavailable' } }, frontendOrigin)
+    }
+    if (pathname === '/api/v104-shadow/status') {
+      const controlError = requireControlAccess(headers)
+      if (controlError) return controlError
+      return jsonResponse(200, { ok: true, activeStrategyVersion: 'v102', v104Shadow: v104Shadow?.snapshot?.() ?? { status: 'unavailable' } }, frontendOrigin)
     }
     if (pathname === '/api/tables') {
       if (hasSensitiveAuthQuery(requestUrl)) return jsonResponse(400, { ok: false, error: 'session token is not allowed in query' }, frontendOrigin)
@@ -975,6 +988,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     server,
     async start() {
       if (v103Shadow?.enabled === true && typeof v103Shadow.start === 'function') void v103Shadow.start().catch(() => {})
+      if (v104Shadow?.enabled === true && typeof v104Shadow.start === 'function') void v104Shadow.start().catch(() => {})
       if (requireVerifiedStrategy && supabaseClient?.configured === true && typeof supabaseClient.ensureInitialStrategy === 'function') {
         try {
           await supabaseClient.ensureInitialStrategy()
