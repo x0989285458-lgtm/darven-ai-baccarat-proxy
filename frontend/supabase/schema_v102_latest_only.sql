@@ -621,7 +621,13 @@ grant execute on function public.reconcile_v102_prediction_lifecycle(text, text,
 revoke all on function public.get_v102_prediction_lifecycle_stats() from public, anon, authenticated;
 grant execute on function public.get_v102_prediction_lifecycle_stats() to service_role;
 
--- v101 RPC privileges remain available during DB-first cutover.
+-- Restore v101 RPC privileges explicitly for DB-first cutover, including re-runs after an older v102 finalize.
+grant execute on function public.get_v101_prediction_lifecycle_stats() to service_role;
+grant execute on function public.reconcile_v101_prediction_lifecycle(text, text, text, integer) to service_role;
+grant execute on function public.persist_v101_settled_round(jsonb, jsonb) to service_role;
+grant execute on function public.settle_v101_prediction(jsonb, jsonb) to service_role;
+grant execute on function public.issue_v101_prediction(jsonb) to service_role;
+grant execute on function public.apply_v101_rank_ledger_event(jsonb, jsonb) to service_role;
 -- Apply finalize_v102_cutover.sql only after the v102 Proxy and Worker pass E2E.
 
 

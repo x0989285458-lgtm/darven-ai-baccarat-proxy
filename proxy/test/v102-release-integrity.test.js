@@ -48,6 +48,14 @@ test('v102 additive migration activates v102 and rollback restores v101 without 
   assert.doesNotMatch(migration, /weights\s*\|\|\s*jsonb_build_object/i)
   assert.match(migration, /\{main_weights\}[\s\S]*'roadmap_trend_signals',\s*0\.35[\s\S]*'neutral_reserve',\s*0\.10/i)
   assert.doesNotMatch(migration, /revoke execute on function public\.issue_v101_prediction/i)
+  for (const signature of [
+    'get_v101_prediction_lifecycle_stats\\(\\)',
+    'reconcile_v101_prediction_lifecycle\\(text, text, text, integer\\)',
+    'persist_v101_settled_round\\(jsonb, jsonb\\)',
+    'settle_v101_prediction\\(jsonb, jsonb\\)',
+    'issue_v101_prediction\\(jsonb\\)',
+    'apply_v101_rank_ledger_event\\(jsonb, jsonb\\)',
+  ]) assert.match(migration, new RegExp(`grant execute on function public\\.${signature} to service_role`, 'i'))
   assert.match(finalize, /revoke execute on function public\.issue_v101_prediction\(jsonb\) from service_role/i)
   assert.match(rollback, /version\s*=\s*'v101'/i)
   assert.doesNotMatch(migration + finalize + rollback, /drop\s+(?:table|function)|truncate|delete\s+from/i)
