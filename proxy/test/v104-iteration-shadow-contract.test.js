@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   SHADOW_HEAD_KEYS,
+  V104_ITERATION_SHADOW_RELEASE,
+  V104_ITERATION_SHADOW_THRESHOLDS,
   V104_ITERATION_SHADOW_VERSION,
   buildV104IterationShadowPrediction,
   buildV104IterationShadowSettlement,
@@ -21,8 +23,13 @@ const table = {
   v102RankLedger: { rankDataAvailable: true, remainingRankCounts: Object.fromEntries(['A','2','3','4','5','6','7','8','9','10','J','Q','K'].map((x) => [x, 30])) },
 }
 
-test('seven-head shadow freezes exact existing weight content and strategy identity', () => {
-  assert.equal(V104_ITERATION_SHADOW_VERSION, 'v104-seven-head-shadow-v1')
+test('v2 shadow freezes the approved identity and changes only player-pair threshold', () => {
+  assert.equal(V104_ITERATION_SHADOW_VERSION, 'v104-seven-head-shadow-v2-player-pair-threshold-41')
+  assert.equal(V104_ITERATION_SHADOW_RELEASE, 'v104.2.0-seven-head-shadow.2')
+  assert.deepEqual(V104_ITERATION_SHADOW_THRESHOLDS, {
+    ...SIDE_PREDICTION_THRESHOLDS,
+    playerPair: 41,
+  })
   assert.deepEqual(SHADOW_HEAD_KEYS, ['main','tie','superSix','bankerDragon','playerDragon','bankerPair','playerPair'])
   assert.deepEqual(frozenWeightKeys.main, Object.keys(V104_DIRECTION_WEIGHTS))
   for (const key of SHADOW_HEAD_KEYS.slice(1)) {
@@ -50,8 +57,8 @@ test('six side heads act independently at their existing thresholds without main
   assert.equal(prediction.writesSideActions, false)
   assert.match(prediction.heads.main.predictedResult, /^(banker|player)$/)
   for (const key of SHADOW_HEAD_KEYS.slice(1)) {
-    assert.equal(prediction.heads[key].threshold, SIDE_PREDICTION_THRESHOLDS[key])
-    assert.equal(prediction.heads[key].action, prediction.heads[key].confidence >= SIDE_PREDICTION_THRESHOLDS[key])
+    assert.equal(prediction.heads[key].threshold, V104_ITERATION_SHADOW_THRESHOLDS[key])
+    assert.equal(prediction.heads[key].action, prediction.heads[key].confidence >= V104_ITERATION_SHADOW_THRESHOLDS[key])
   }
   if (prediction.heads.bankerDragon.confidence >= SIDE_PREDICTION_THRESHOLDS.bankerDragon
       && prediction.heads.playerDragon.confidence >= SIDE_PREDICTION_THRESHOLDS.playerDragon) {

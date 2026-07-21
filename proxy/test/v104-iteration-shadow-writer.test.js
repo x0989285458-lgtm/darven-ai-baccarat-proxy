@@ -7,7 +7,7 @@ function response(payload, status = 200) {
 }
 
 const candidate = {
-  source: 'ofalive99', strategyVersion: 'v104-seven-head-shadow-v1', predictionTiming: 'pre_result_context',
+  source: 'ofalive99', strategyVersion: 'v104-seven-head-shadow-v2-player-pair-threshold-41', predictionTiming: 'pre_result_context',
   shadowOnly: true, activationEligible: false, memberVisible: false, writesSideActions: false,
   targetTableId: 'BAG08', targetShoe: '104', targetRound: 21,
   predictedResult: 'banker', confidence: 44,
@@ -25,8 +25,8 @@ test('v104 writer uses only its dedicated issuance RPC and preserves lock diagno
     },
   })
   const issued = await client.issueV104IterationShadowPrediction(candidate)
-  assert.match(requests[0].url, /\/rpc\/issue_v104_iteration_shadow_prediction$/)
-  assert.equal(requests[0].body.p_prediction.strategy_version, 'v104-seven-head-shadow-v1')
+  assert.match(requests[0].url, /\/rpc\/issue_v104_iteration_shadow_v2_prediction$/)
+  assert.equal(requests[0].body.p_prediction.strategy_version, 'v104-seven-head-shadow-v2-player-pair-threshold-41')
   assert.equal(requests[0].body.p_prediction.same_side_streak, 5)
   assert.equal(requests[0].body.p_prediction.shoe_bias_suppressed, true)
   assert.equal(issued.predictionId, 'pid-104')
@@ -34,14 +34,14 @@ test('v104 writer uses only its dedicated issuance RPC and preserves lock diagno
 
 test('v104 history reads its dedicated view including unsettled issuance rows for restart hydration', async () => {
   const requests = []
-  const row = { strategy_version: 'v104-seven-head-shadow-v1', prediction_timing: 'pre_result_context', prediction_issued_at: '2026-07-21T10:00:00Z', settlement_final: false }
+  const row = { strategy_version: 'v104-seven-head-shadow-v2-player-pair-threshold-41', prediction_timing: 'pre_result_context', prediction_issued_at: '2026-07-21T10:00:00Z', settlement_final: false }
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
     fetchImpl: async (url) => { requests.push(new URL(url)); return response([row]) },
   })
   assert.deepEqual(await client.getV104IterationShadowHistory(), [row])
-  assert.match(requests[0].pathname, /\/rest\/v1\/v104_iteration_shadow_history$/)
-  assert.equal(requests[0].searchParams.get('strategy_version'), 'eq.v104-seven-head-shadow-v1')
+  assert.match(requests[0].pathname, /\/rest\/v1\/v104_iteration_shadow_v2_history$/)
+  assert.equal(requests[0].searchParams.get('strategy_version'), 'eq.v104-seven-head-shadow-v2-player-pair-threshold-41')
   assert.equal(requests[0].searchParams.get('settlement_final'), null)
   assert.equal(requests[0].searchParams.get('order'), 'prediction_issued_at.desc,prediction_id.desc')
   assert.match(requests[0].searchParams.get('select'), /prediction_payload/)
@@ -49,7 +49,7 @@ test('v104 history reads its dedicated view including unsettled issuance rows fo
 
 test('v104 iteration history paginates beyond the Supabase 1000-row response cap', async () => {
   const requests = []
-  const makeRow = (index) => ({ strategy_version: 'v104-seven-head-shadow-v1', prediction_timing: 'pre_result_context', prediction_issued_at: `2026-07-21T10:${String(index % 60).padStart(2, '0')}:00Z`, prediction_id: `p-${index}` })
+  const makeRow = (index) => ({ strategy_version: 'v104-seven-head-shadow-v2-player-pair-threshold-41', prediction_timing: 'pre_result_context', prediction_issued_at: `2026-07-21T10:${String(index % 60).padStart(2, '0')}:00Z`, prediction_id: `p-${index}` })
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
     fetchImpl: async (url) => {
@@ -70,7 +70,7 @@ test('v104 durable reports and suggestions paginate beyond the REST 1000-row cap
     fetchImpl: async (url) => {
       const parsed = new URL(url); requests.push(parsed)
       const offset = Number(parsed.searchParams.get('offset') ?? 0)
-      const isReport = parsed.pathname.endsWith('/v104_iteration_shadow_cycle_reports')
+      const isReport = parsed.pathname.endsWith('/v104_iteration_shadow_v2_cycle_reports')
       const makeRow = (index) => isReport ? { cycle_number: index + 1 } : { suggestion_id: `s-${index}`, head_key: 'main', action_cycle: index + 1 }
       return response(offset === 0 ? Array.from({ length: 1000 }, (_, index) => makeRow(index)) : [makeRow(1000)])
     },
@@ -114,10 +114,10 @@ test('v104 settlement uses only its dedicated RPC and preserves PUSH', async () 
   })
   await client.settleV104IterationShadowPrediction({
     predictionId: 'pid-104', source: 'ofalive99', tableId: 'BAG08', shoe: '104', round: 21,
-    strategyVersion: 'v104-seven-head-shadow-v1', predictedResult: 'banker', actualResult: 'tie', isHit: null,
+    strategyVersion: 'v104-seven-head-shadow-v2-player-pair-threshold-41', predictedResult: 'banker', actualResult: 'tie', isHit: null,
     settlementStatus: 'push', settlementFinal: true, settlementSourceAction: '/summary', resolvedAt: '2026-07-21T10:01:00Z',
   })
-  assert.match(requests[0].url, /\/rpc\/settle_v104_iteration_shadow_prediction$/)
+  assert.match(requests[0].url, /\/rpc\/settle_v104_iteration_shadow_v2_prediction$/)
   assert.equal(requests[0].body.p_settlement.is_hit, null)
 })
 
@@ -131,7 +131,7 @@ test('v104 network timeout aborts without occupying v102 or v103 queues', { time
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
     retryAttempts: 1, shadowRequestTimeoutMs: 20,
     fetchImpl: async (url, init) => {
-      if (String(url).endsWith('/rpc/issue_v104_iteration_shadow_prediction')) return new Promise((_resolve, reject) => {
+      if (String(url).endsWith('/rpc/issue_v104_iteration_shadow_v2_prediction')) return new Promise((_resolve, reject) => {
         init.signal?.addEventListener('abort', () => { v104Aborted = true; reject(new Error('v104 fetch aborted')) }, { once: true })
       })
       if (String(url).endsWith('/rpc/issue_v103_shadow_prediction')) return response(v103Ack)

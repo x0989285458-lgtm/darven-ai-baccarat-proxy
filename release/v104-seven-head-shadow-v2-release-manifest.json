@@ -1,0 +1,35 @@
+{
+  "releaseVersion": "v104.2.0-seven-head-shadow.2",
+  "proxyPackageVersion": "1.0.13",
+  "formalStrategyVersion": "v104",
+  "shadowStrategyVersion": "v104-seven-head-shadow-v2-player-pair-threshold-41",
+  "shadowOnly": true,
+  "memberVisible": false,
+  "activationEligible": false,
+  "writesSideActions": false,
+  "autoApply": false,
+  "finalSettlementLimit": null,
+  "manualStopOnly": true,
+  "thresholds": {
+    "tie": 30,
+    "superSix": 50,
+    "bankerDragon": 40,
+    "playerDragon": 40,
+    "bankerPair": 50,
+    "playerPair": 41
+  },
+  "unchangedWeights": true,
+  "unchangedFormalV104": true,
+  "database": {
+    "additiveMigration": "frontend/supabase/schema_v104_iteration_shadow_v2.sql",
+    "rollback": "frontend/supabase/rollback_v104_iteration_shadow_v2.sql",
+    "isolatedFromV1": true,
+    "gaplessTransactionalCounters": true,
+    "finalOnly": true
+  },
+  "deployment": {
+    "proxy": "render",
+    "frontend": "unchanged",
+    "worker": "unchanged"
+  }
+}

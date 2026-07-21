@@ -8,8 +8,12 @@ import {
 import { V104_DIRECTION_WEIGHTS } from './v104-main-contract.js'
 import { buildV104FormalPrediction } from './v104-formal-strategy.js'
 
-export const V104_ITERATION_SHADOW_VERSION = 'v104-seven-head-shadow-v1'
-export const V104_ITERATION_SHADOW_RELEASE = 'v104.1.0-seven-head-shadow.1'
+export const V104_ITERATION_SHADOW_VERSION = 'v104-seven-head-shadow-v2-player-pair-threshold-41'
+export const V104_ITERATION_SHADOW_RELEASE = 'v104.2.0-seven-head-shadow.2'
+export const V104_ITERATION_SHADOW_THRESHOLDS = Object.freeze({
+  ...SIDE_PREDICTION_THRESHOLDS,
+  playerPair: 41,
+})
 export const SHADOW_HEAD_KEYS = Object.freeze(['main', 'tie', 'superSix', 'bankerDragon', 'playerDragon', 'bankerPair', 'playerPair'])
 export const SHADOW_HEAD_LABELS = Object.freeze({
   main: '莊／閒', tie: '和', superSix: '超六', bankerDragon: '莊龍寶',
@@ -55,7 +59,7 @@ export function buildV104IterationShadowPrediction(table = {}, historyRows = [],
   }
   const sideHeads = Object.fromEntries(SHADOW_HEAD_KEYS.slice(1).map((key) => {
     const confidence = finitePercent(formal.sidePredictions?.[key])
-    const threshold = Number(SIDE_PREDICTION_THRESHOLDS[key])
+    const threshold = Number(V104_ITERATION_SHADOW_THRESHOLDS[key])
     const action = rankAvailable && confidence >= threshold
     return [key, {
       key, label: SHADOW_HEAD_LABELS[key], action, threshold, confidence,

@@ -5,6 +5,10 @@ import fs from 'node:fs'
 const schema = fs.readFileSync(new URL('../../frontend/supabase/schema_v104_iteration_shadow.sql', import.meta.url), 'utf8')
 const disable = fs.readFileSync(new URL('../../frontend/supabase/disable_v104_iteration_shadow.sql', import.meta.url), 'utf8')
 const rollback = fs.readFileSync(new URL('../../frontend/supabase/rollback_v104_iteration_shadow.sql', import.meta.url), 'utf8')
+const schemaV2Url = new URL('../../frontend/supabase/schema_v104_iteration_shadow_v2.sql', import.meta.url)
+const rollbackV2Url = new URL('../../frontend/supabase/rollback_v104_iteration_shadow_v2.sql', import.meta.url)
+const schemaV2 = fs.existsSync(schemaV2Url) ? fs.readFileSync(schemaV2Url, 'utf8') : ''
+const rollbackV2 = fs.existsSync(rollbackV2Url) ? fs.readFileSync(rollbackV2Url, 'utf8') : ''
 
 test('iteration shadow migration is additive, v104-active-only, and disables old shadows', () => {
   assert.match(schema, /version\s*=\s*'v104'/i)
@@ -48,4 +52,20 @@ test('disable and rollback preserve all shadow evidence', () => {
     'persist_v104_iteration_shadow_artifacts\\(jsonb,jsonb\\)',
     'review_v104_iteration_shadow_suggestion\\(text,text,text\\)',
   ]) assert.match(rollback, new RegExp(`revoke execute on function public\\.${rpc} from service_role`, 'i'))
+})
+
+test('v2 migration is isolated, changes only player-pair threshold, and has no automatic settlement cap', () => {
+  assert.match(schemaV2, /v104-seven-head-shadow-v2-player-pair-threshold-41/i)
+  assert.match(schemaV2, /v104\.2\.0-seven-head-shadow\.2/i)
+  for (const table of ['runtime_settings','sequence_counters','issuances','settlements','cycle_reports','weight_suggestions']) {
+    assert.match(schemaV2, new RegExp(`public\\.v104_iteration_shadow_v2_${table}`, 'i'))
+  }
+  assert.match(schemaV2, /playerPair[\s\S]{0,300}threshold["']?\s*[^\n]*41/i)
+  assert.match(schemaV2, /manual stop only; no fixed settlement cap/i)
+  assert.doesNotMatch(schemaV2, /new\.settlement_sequence\s*>\s*\d+/i)
+  assert.match(schemaV2, /issue_v104_iteration_shadow_v2_prediction\(jsonb\)/i)
+  assert.match(schemaV2, /settle_v104_iteration_shadow_v2_prediction\(jsonb\)/i)
+  assert.doesNotMatch(schemaV2, /delete\s+from|truncate|drop\s+table/i)
+  assert.match(rollbackV2, /enabled=false/i)
+  assert.doesNotMatch(rollbackV2, /delete\s+from|truncate|drop\s+table/i)
 })
