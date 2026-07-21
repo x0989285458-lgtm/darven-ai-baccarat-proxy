@@ -55,11 +55,11 @@ function proxyTablesFromMocks() {
     beadPlateRaw: table.trend.bead_plate2,
     bigRoadRaw: table.trend.big2,
     sourceUpdatedAt: new Date().toISOString(),
-    buildVersion: 'v102',
+    buildVersion: 'v104',
     prediction: {
       source: 'backend',
-      strategyVersion: 'v102',
-      buildVersion: 'v102',
+      strategyVersion: 'v104',
+      buildVersion: 'v104',
       targetTableId: table.id,
       targetShoe: table.trend.current_shoe,
       targetRound: Number(table.trend.current_round ?? 0),
@@ -105,7 +105,7 @@ describe('AI百家預測軟體', () => {
         return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(tableUiHistory(tableId, table?.shoe ?? 0)) })
       }
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks()) })
-      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tables: proxyTablesFromMocks(), statusText: '已抓到9桌', buildVersion: 'v102' }) })
+      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tables: proxyTablesFromMocks(), statusText: '已抓到9桌', buildVersion: 'v104' }) })
       if (url.includes('/api/cloud-data/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, mtAutoLoginEnabled: false, message: 'MT自動登入未啟用', tableCount: 0 }) })
       if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ configured: true }) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: [], reports: [], strategies: [] }) })
@@ -168,7 +168,7 @@ describe('AI百家預測軟體', () => {
   it('shows stale data badge without treating old sourceUpdatedAt as realtime', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table) => ({ ...table, sourceUpdatedAt: '2026-07-11T00:00:00.000Z' }))) })
-      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 9, statusText: '雲端資料過期，等待Worker重新抓牌', buildVersion: 'v102' }) })
+      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 9, statusText: '雲端資料過期，等待Worker重新抓牌', buildVersion: 'v104' }) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: [], reports: [], strategies: [] }) })
     }))
     await renderApp('/', false)
@@ -245,9 +245,9 @@ describe('AI百家預測軟體', () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table, index) => ({
         ...table,
-        prediction: { source: 'backend', predictedResult: index % 2 === 0 ? 'banker' : 'player', confidence: 34, strategyVersion: 'v102' },
+        prediction: { source: 'backend', predictedResult: index % 2 === 0 ? 'banker' : 'player', confidence: 34, strategyVersion: 'v104' },
       }))) })
-      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tables: [], statusText: '已抓到9桌', buildVersion: 'v102' }) })
+      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tables: [], statusText: '已抓到9桌', buildVersion: 'v104' }) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: [], reports: [], strategies: [] }) })
     }))
 
@@ -289,7 +289,7 @@ describe('AI百家預測軟體', () => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([
         { ...proxyTablesFromMocks()[0], shoe: 12, round: 22 },
       ]) })
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, configured: true, buildVersion: 'v102' }) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, configured: true, buildVersion: 'v104' }) })
     }))
 
     await renderApp('/', false)
@@ -311,7 +311,7 @@ describe('AI百家預測軟體', () => {
         settledPredictions: [{ round: 22, predictedResult: 'player', actualResult: 'player', isHit: true }],
       }) })
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks()) })
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, configured: true, buildVersion: 'v102' }) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, configured: true, buildVersion: 'v104' }) })
     }))
     await renderApp('/', false)
     const buttons = await screen.findAllByRole('button', { name: /MT百家樂第.+桌 第\d+局/ })
@@ -342,7 +342,7 @@ describe('AI百家預測軟體', () => {
         historyCalls += 1
         return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(tableUiHistory('BAG01', 12)) })
       }
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, configured: true, buildVersion: 'v102' }) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, configured: true, buildVersion: 'v104' }) })
     }))
 
     await renderApp('/', false)
@@ -376,7 +376,7 @@ describe('AI百家預測軟體', () => {
           realCardHistoryCompleteThroughRound: durable ? (historyCalls > 2 ? 1 : 0) : 0,
         }) })
       }
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, configured: true, buildVersion: 'v102' }) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, configured: true, buildVersion: 'v104' }) })
     }))
 
     await renderApp('/', false)
@@ -413,7 +413,7 @@ describe('AI百家預測軟體', () => {
           realCardHistoryCompleteThroughRound: historyCalls === 1 ? 3 : 4,
         }) })
       }
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, configured: true, buildVersion: 'v102' }) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, configured: true, buildVersion: 'v104' }) })
     }))
 
     await renderApp('/', false)
@@ -445,7 +445,7 @@ describe('AI百家預測軟體', () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table) => ({ ...table, prediction: { ...table.prediction, strategyVersion: 'v096_副預測權重與信心校準版' } }))) })
       if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) })
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, configured: true, buildVersion: 'v102' }) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, configured: true, buildVersion: 'v104' }) })
     }))
 
     await renderApp('/', false)
@@ -456,8 +456,8 @@ describe('AI百家預測軟體', () => {
 
   it('waits and never takes side actions when backend side prediction data is missing', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table) => ({ ...table, prediction: { source: 'backend', strategyVersion: 'v102', predictedResult: 'banker', confidence: 34 } }))) })
-      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tables: [], statusText: '已抓到9桌', buildVersion: 'v102' }) })
+      if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table) => ({ ...table, prediction: { source: 'backend', strategyVersion: 'v104', predictedResult: 'banker', confidence: 34 } }))) })
+      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tables: [], statusText: '已抓到9桌', buildVersion: 'v104' }) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: [], reports: [], strategies: [] }) })
     }))
     await renderApp()
@@ -481,7 +481,7 @@ describe('AI百家預測軟體', () => {
         bigRoadRaw: table.trend.big2,
       }))) })
       if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ configured: true }) })
-      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, buildVersion: 'v102' }) })
+      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, buildVersion: 'v104' }) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
     }))
     await renderApp('/', false)
@@ -517,7 +517,7 @@ describe('AI百家預測軟體', () => {
         bankerCount: 1, playerCount: 1, tieCount: 0, beadPlateRaw: '0102', bigRoadRaw: '01#02',
       }))) })
       if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ configured: true }) })
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, buildVersion: 'v102' }) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, buildVersion: 'v104' }) })
     }))
 
     await renderApp('/', false)
@@ -540,7 +540,7 @@ describe('AI百家預測軟體', () => {
         bankerCount: 1, playerCount: 1, tieCount: 0, beadPlateRaw: '0102', bigRoadRaw: '01#02',
       }))) })
       if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ configured: true }) })
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, buildVersion: 'v102' }) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, buildVersion: 'v104' }) })
     }))
 
     await renderApp('/', false)
@@ -574,7 +574,7 @@ describe('AI百家預測軟體', () => {
   it('shows a formal waiting state instead of mock tables when cloud data is empty', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) })
-      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: false, authenticated: false, statusText: 'MT自動登入未啟用，等待手動或Worker資料來源', buildVersion: 'v102' }) })
+      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: false, authenticated: false, statusText: 'MT自動登入未啟用，等待手動或Worker資料來源', buildVersion: 'v104' }) })
       if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ configured: true, agents: [], licenses: [] }) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
     }))
@@ -637,7 +637,7 @@ describe('AI百家預測軟體', () => {
         bigRoadRaw: '1802#0901',
       }]) })
       if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ configured: true }) })
-      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, buildVersion: 'v102' }) })
+      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, buildVersion: 'v104' }) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
     }))
     await renderApp('/', false)
@@ -649,7 +649,7 @@ describe('AI百家預測軟體', () => {
     vi.mocked(fetch).mockImplementation((input) => {
       if (String(input).includes('/api/status')) return Promise.resolve({
         ok: true, status: 200,
-        json: () => Promise.resolve({ connected: true, authenticated: true, buildVersion: 'v102' }),
+        json: () => Promise.resolve({ connected: true, authenticated: true, buildVersion: 'v104' }),
       } as Response)
       return Promise.resolve({
       ok: true,
@@ -960,7 +960,7 @@ describe('AI百家預測軟體', () => {
     vi.mocked(fetch).mockImplementation((input) => {
       if (String(input).includes('/api/status')) return Promise.resolve({
         ok: true, status: 200,
-        json: () => Promise.resolve({ connected: true, authenticated: true, buildVersion: 'v102' }),
+        json: () => Promise.resolve({ connected: true, authenticated: true, buildVersion: 'v104' }),
       } as Response)
       return Promise.resolve({
       ok: true,
@@ -978,7 +978,7 @@ describe('AI百家預測軟體', () => {
         nextBankerRaw: '111',
         nextPlayerRaw: '222',
         prediction: {
-          source: 'backend', strategyVersion: 'v102',
+          source: 'backend', strategyVersion: 'v104',
           predictedResult: 'banker', confidence: 34, probabilities: { banker: 54, player: 46, tie: 0 }, scoreTotals: { banker: 38, player: 33 },
         },
       }))),

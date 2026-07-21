@@ -1,18 +1,11 @@
 import { isVerifiedFinalRoundAction } from '../../shared/real-card-validator.js'
 import { buildLivePrediction, deriveBaccaratRoundFacts } from './supabase-writer.js'
+import { V104_DIRECTION_WEIGHTS, V104_SHOE_BIAS } from './v104-main-contract.js'
 
 export const V104_SHADOW_STRATEGY_VERSION = 'v104'
 export const V104_SHADOW_RELEASE_CANDIDATE = 'v104.0.0-shadow.1'
-export const V104_SHADOW_DIRECTION_WEIGHTS = Object.freeze({
-  roadmap_trend_signals: 0.275,
-  ask_road_signals: 0.275,
-  shoe_banker_player_bias: 0.35,
-  neutral_reserve: 0.10,
-})
-export const V104_SHADOW_SHOE_BIAS = Object.freeze({
-  priorSampleSize: 8,
-  maximumEdge: 0.08,
-})
+export const V104_SHADOW_DIRECTION_WEIGHTS = V104_DIRECTION_WEIGHTS
+export const V104_SHADOW_SHOE_BIAS = V104_SHOE_BIAS
 
 const CALIBRATION_MINIMUM_SAMPLES = 20
 

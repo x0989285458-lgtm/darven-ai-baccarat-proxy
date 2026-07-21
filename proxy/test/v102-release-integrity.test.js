@@ -2,38 +2,41 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { BUILD_VERSION as PROXY_BUILD_VERSION } from '../src/build-version.js'
-import { ALL_MT_EQUAL_STRATEGY_VERSION, ALL_MT_EQUAL_MAIN_WEIGHTS, SIDE_PREDICTION_THRESHOLDS } from '../src/supabase-writer.js'
+import { ALL_MT_EQUAL_STRATEGY_VERSION, SIDE_PREDICTION_THRESHOLDS } from '../src/supabase-writer.js'
 
 const repo = new URL('../../', import.meta.url)
 const read = (relative) => readFileSync(new URL(relative, repo), 'utf8')
 
-test('v102 release manifest and runtime share one identity and approved main policy', () => {
-  const path = new URL('release/v102-release-manifest.json', repo)
+test('v104 release manifest and runtime share one formal identity', () => {
+  const path = new URL('release/v104-formal-release-manifest.json', repo)
   assert.equal(existsSync(path), true)
   const manifest = JSON.parse(readFileSync(path, 'utf8'))
-  assert.deepEqual(manifest.identity, {
-    productVersion: 'v102', proxyBuildVersion: 'v102', workerBuildVersion: '102',
-    protocolVersion: 'v102', strategyVersion: 'v102', packageVersion: '1.0.10',
+  assert.equal(manifest.packageVersion, '1.0.11')
+  assert.equal(manifest.productVersion, 'v104')
+  assert.equal(manifest.proxyBuildVersion, 'v104')
+  assert.equal(manifest.workerBuildVersion, '104')
+  assert.equal(manifest.protocolVersion, 'v104')
+  assert.equal(manifest.strategyVersion, 'v104')
+  assert.equal(PROXY_BUILD_VERSION, 'v104')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v104')
+  assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
+    tie: 30, superSix: 50, bankerPair: 50, playerPair: 50, bankerDragon: 40, playerDragon: 40,
   })
-  assert.equal(PROXY_BUILD_VERSION, 'v102')
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v102')
-  assert.deepEqual(ALL_MT_EQUAL_MAIN_WEIGHTS, manifest.mainWeights)
-  assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, manifest.sideThresholds)
-  assert.deepEqual(manifest.rolloutOrder, ['database-additive', 'render-proxy', 'gcp-worker', 'cloudflare-frontend', 'database-finalize'])
-  assert.equal(manifest.databaseFinalize, 'frontend/supabase/finalize_v102_cutover.sql')
+  assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'proxy', 'worker', 'frontend', 'live-e2e', 'database-finalize'])
+  assert.equal(manifest.rollbackTarget, 'v102')
 })
 
-test('v102 active frontend proxy worker protocol and deployment surfaces match', () => {
-  assert.match(read('frontend/src/lib/buildVersion.ts'), /buildVersion:\s*'v102'[\s\S]*strategyVersion:\s*'v102'/)
-  assert.match(read('frontend/package.json'), /"version":\s*"1\.0\.10"/)
-  assert.match(read('proxy/package.json'), /"name":\s*"draven-mt-data-proxy-v102"[\s\S]*"version":\s*"1\.0\.10"/)
-  assert.match(read('proxy/src/server.js'), /WORKER_PROTOCOL_BUILD_VERSION\s*=\s*'102'[\s\S]*WORKER_PROTOCOL_VERSION\s*=\s*'v102'/)
-  assert.match(read('proxy/src/cloud-capture.js'), /buildVersion\s*!==\s*'102'/)
-  assert.match(read('cloud-browser-worker/src/runtime-config.js'), /BUILD_VERSION\s*=\s*'102'/)
-  assert.match(read('cloud-browser-worker/src/snapshot-pusher.js'), /protocolVersion:\s*'v102'/)
-  assert.match(read('cloud-browser-worker/Dockerfile'), /org\.opencontainers\.image\.version="v102"/)
-  assert.match(read('cloud-browser-worker/package.json'), /"version":\s*"1\.0\.10"/)
-  assert.match(read('cloud-browser-worker/deploy/vm/release.env.example'), /WORKER_IMAGE=darven-worker:v102-REVIEWED_SHA/)
+test('v104 active frontend proxy worker protocol and deployment surfaces match', () => {
+  assert.match(read('frontend/src/lib/buildVersion.ts'), /buildVersion:\s*'v104'[\s\S]*strategyVersion:\s*'v104'/)
+  assert.match(read('frontend/package.json'), /"version":\s*"1\.0\.11"/)
+  assert.match(read('proxy/package.json'), /"name":\s*"draven-mt-data-proxy-v104"[\s\S]*"version":\s*"1\.0\.11"/)
+  assert.match(read('proxy/src/server.js'), /WORKER_PROTOCOL_BUILD_VERSION\s*=\s*'104'[\s\S]*WORKER_PROTOCOL_VERSION\s*=\s*'v104'/)
+  assert.match(read('proxy/src/cloud-capture.js'), /buildVersion\s*!==\s*'104'/)
+  assert.match(read('cloud-browser-worker/src/runtime-config.js'), /BUILD_VERSION\s*=\s*'104'/)
+  assert.match(read('cloud-browser-worker/src/snapshot-pusher.js'), /protocolVersion:\s*'v104'/)
+  assert.match(read('cloud-browser-worker/Dockerfile'), /org\.opencontainers\.image\.version="v104"/)
+  assert.match(read('cloud-browser-worker/package.json'), /"version":\s*"1\.0\.11"/)
+  assert.match(read('cloud-browser-worker/deploy/vm/release.env.example'), /WORKER_IMAGE=darven-worker:v104-REVIEWED_SHA/)
 })
 
 test('v102 additive migration activates v102 and rollback restores v101 without deletion', () => {

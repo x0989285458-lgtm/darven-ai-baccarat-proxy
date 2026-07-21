@@ -77,7 +77,7 @@ test('Supabase writer atomically persists both settlement rows through one RPC a
     fetchImpl: async (url, options) => {
       const path = new URL(url).pathname
       requests.push({ path, body: JSON.parse(options.body) })
-      if (path.endsWith('/rpc/persist_v102_settled_round') && transactionFailures-- > 0) {
+      if (path.endsWith('/rpc/persist_v104_settled_round') && transactionFailures-- > 0) {
         return { ok: false, status: 500, text: async () => 'fixture failure' }
       }
       return { ok: true, status: 200, text: async () => JSON.stringify({ persisted: true, roadmapDurable: true, predictionDurable: true }) }
@@ -85,13 +85,13 @@ test('Supabase writer atomically persists both settlement rows through one RPC a
   })
   const pending = buildLivePrediction(table)
 
-  await assert.rejects(client.persistRound(completed, table, pending), /persist_v102_settled_round failed/)
+  await assert.rejects(client.persistRound(completed, table, pending), /persist_v104_settled_round failed/)
   const result = await client.persistRound(completed, table, pending)
 
   assert.equal(result.prediction.prediction_features.prediction_timing, 'pre_result_context')
   assert.deepEqual(requests.map(({ path }) => path), [
-    '/rest/v1/rpc/persist_v102_settled_round',
-    '/rest/v1/rpc/persist_v102_settled_round',
+    '/rest/v1/rpc/persist_v104_settled_round',
+    '/rest/v1/rpc/persist_v104_settled_round',
   ])
   assert.deepEqual(requests[1].body, requests[0].body)
   assert.deepEqual(Object.keys(requests[0].body).sort(), ['p_prediction', 'p_roadmap'])

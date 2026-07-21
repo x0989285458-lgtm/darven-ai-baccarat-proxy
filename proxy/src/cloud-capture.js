@@ -50,7 +50,7 @@ export function createCloudCaptureClient({ url, state, writer = null, v100Formal
         throw new Error(`Cloud capture worker failed: ${response?.status ?? 'unknown'} ${text}`)
       }
       const body = await response.json()
-      if (body?.buildVersion !== '102') throw new Error('version_mismatch: worker buildVersion must be 102')
+      if (body?.buildVersion !== '104') throw new Error('version_mismatch: worker buildVersion must be 104')
       const parsed = parseCloudCapturePayload(body)
       try {
         await applyCloudCapturePayload({ parsed, state, writer, v100Formal })
@@ -126,14 +126,17 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
     try {
       v100Result = await v100Formal.processSnapshot({ tables: parsed.tables, rounds: parsed.rounds })
     } catch (error) {
-      state?.setStatus?.({ v102RuntimeStatus: 'error', v102RuntimeError: String(error?.message ?? error) })
+      state?.setStatus?.({ v104RuntimeStatus: 'error', v104RuntimeError: String(error?.message ?? error) })
       throw error
     }
   }
   const formalTables = Array.isArray(v100Result?.tables) ? v100Result.tables : parsed.tables
   state?.setStatus?.(parsed.status)
   state?.setTables?.(formalTables)
-  for (const round of parsed.rounds) state?.upsertRoundEvent?.(round)
+  for (const round of parsed.rounds) {
+    const settlement = await state?.upsertRoundEvent?.(round)
+    if (settlement?.ok === false) throw settlement.error ?? new Error('formal settlement failed before ingest acknowledgement')
+  }
   if (!writer?.configured) return { v100Formal: v100Result }
   const sessionId = parsed.sessionId ?? 'cloud-browser'
   await writer.writeCloudCaptureStatus?.({ sessionId, captureSource: 'cloud_browser', status: parsed.status })

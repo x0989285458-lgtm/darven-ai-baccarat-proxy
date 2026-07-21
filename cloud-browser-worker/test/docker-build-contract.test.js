@@ -16,7 +16,7 @@ function unitValues(source) {
   }))
 }
 
-test('v102 worker image and systemd deployment fail closed and preserve durable queue state', async () => {
+test('v104 worker image and systemd deployment fail closed and preserve durable queue state', async () => {
   const [dockerfile, runbook, service, continuity] = await Promise.all([
     readFile(dockerfileUrl, 'utf8'),
     readFile(runbookUrl, 'utf8'),
@@ -36,7 +36,7 @@ test('v102 worker image and systemd deployment fail closed and preserve durable 
   assert.match(dockerfile, /COPY\s+cloud-browser-worker\/package\*\.json\s+\.\//)
   assert.match(dockerfile, /COPY\s+cloud-browser-worker\/src\s+\.\/src/)
   assert.match(dockerfile, /COPY\s+shared\s+\/shared/)
-  assert.match(dockerfile, /org\.opencontainers\.image\.version="v102"/)
+  assert.match(dockerfile, /org\.opencontainers\.image\.version="v104"/)
 
   assert.equal(values.Type, 'simple')
   assert.equal(values.EnvironmentFile, '/etc/darven-worker/release.env')

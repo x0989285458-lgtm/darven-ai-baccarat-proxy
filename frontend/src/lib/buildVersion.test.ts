@@ -4,8 +4,8 @@ import { frontendBuildMetadata } from './buildVersion'
 describe('v100 unified frontend build metadata', () => {
   it('exposes one v100 product and strategy identity', () => {
     expect(frontendBuildMetadata).toEqual({
-      buildVersion: 'v102',
-      strategyVersion: 'v102',
+      buildVersion: 'v104',
+      strategyVersion: 'v104',
     })
   })
 })

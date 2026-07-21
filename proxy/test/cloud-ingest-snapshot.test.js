@@ -7,12 +7,12 @@ const key = 'test-ingest-key'
 
 function body(overrides = {}) {
   return JSON.stringify({
-    protocolVersion: 'v102',
+    protocolVersion: 'v104',
     timestamp: now,
     sequence: 1,
     roundKeys: [],
     snapshot: {
-      buildVersion: '102',
+      buildVersion: '104',
       connected: true,
       authenticated: true,
       sessionId: 'vm-worker',
@@ -87,7 +87,7 @@ test('same-session concurrent sequences are serialized and never regress or rewr
   })
   const request = (sequence) => ({
     method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': key },
-    body: body({ sequence, snapshot: { buildVersion: '102', connected: true, authenticated: true, sessionId: 'vm-worker', snapshotAt: new Date(now).toISOString(), tables: [{ tableId: 'BAG01', tableType: 'BAC', round: sequence }], rounds: [] } }),
+    body: body({ sequence, snapshot: { buildVersion: '104', connected: true, authenticated: true, sessionId: 'vm-worker', snapshotAt: new Date(now).toISOString(), tables: [{ tableId: 'BAG01', tableType: 'BAC', round: sequence }], rounds: [] } }),
   })
 
   const first = app.inject(request(1))
@@ -154,7 +154,7 @@ test('cloud ingest rejects an exact-looking provisional show_poker before any du
     body: body({
       roundKeys: ['BAG01:14509:7'],
       snapshot: {
-        buildVersion: '102', connected: true, authenticated: true,
+        buildVersion: '104', connected: true, authenticated: true,
         sessionId: 'vm-worker', snapshotAt: new Date(now).toISOString(),
         tables: [{ tableId: 'BAG01', tableType: 'BAC', displayName: '測試桌', shoe: 14509, round: 8 }],
         rounds: [provisional],
@@ -170,7 +170,7 @@ test('cloud ingest rejects an exact-looking provisional show_poker before any du
 test('cloud ingest rejects malformed tables and oversized payloads', async () => {
   const app = createTestApp()
   const headers = { 'x-worker-key': key }
-  const malformed = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers, body: body({ snapshot: { buildVersion: '102', tables: {}, rounds: [] } }) })
+  const malformed = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers, body: body({ snapshot: { buildVersion: '104', tables: {}, rounds: [] } }) })
   assert.equal(malformed.statusCode, 400)
   const oversized = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers, body: `${body()}${' '.repeat(1024 * 1024)}` })
   assert.equal(oversized.statusCode, 413)

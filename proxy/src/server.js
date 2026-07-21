@@ -10,6 +10,7 @@ import { ALL_MT_EQUAL_STRATEGY_VERSION, buildLivePrediction, createSupabaseInges
 import { createRecentTablePerformanceStore } from './recent-table-performance.js'
 import { createV100FormalRuntime, resolveV100FormalEnabled } from './v100-formal-runtime.js'
 import { createV103ShadowRuntime, resolveV103ShadowEnabled } from './v103-shadow-runtime.js'
+import { createV104FormalRuntime } from './v104-formal-runtime.js'
 import { createV104ShadowRuntime, resolveV104ShadowEnabled } from './v104-shadow-runtime.js'
 import { createOnlineCoreClient } from './online-core.js'
 import { createLicenseAdminClient } from './license-admin.js'
@@ -20,8 +21,8 @@ import { hasExactRealCardCodes, isExactTenRawResult, isVerifiedFinalRoundAction 
 
 const VERSION = BUILD_VERSION
 const SERVICE = 'Draven MT資料代理伺服器'
-const WORKER_PROTOCOL_BUILD_VERSION = '102'
-const WORKER_PROTOCOL_VERSION = 'v102'
+const WORKER_PROTOCOL_BUILD_VERSION = '104'
+const WORKER_PROTOCOL_VERSION = 'v104'
 const LIFECYCLE_IDENTITIES_PER_TABLE = 256
 const LIFECYCLE_SHOES_PER_TABLE = 64
 
@@ -66,7 +67,7 @@ function rememberBounded(seen, order, value, limit) {
   while (order.length > limit) seen.delete(order.shift())
 }
 
-export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null, v104ShadowRuntime = null } = {}) {
+export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null, v104ShadowRuntime = null, v104FormalRuntime = null } = {}) {
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
     CAPTURE_SOURCE: requestedCaptureSource,
@@ -84,9 +85,10 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const ingestSequences = new Map()
   const ingestSessionLocks = new Map()
   const pendingPredictions = new Map()
+  const preparingPredictionPromises = new Map()
   const issuingPredictionPromises = new Map()
   const expiredPredictionKeys = new Set()
-  const settlingPredictionKeys = new Set()
+  const settlingPredictionPromises = new Map()
   const lifecycleGuardsByTable = new Map()
   const memberSessions = new Map()
   const recentTablePerformance = createRecentTablePerformanceStore({ windowSize: 60 })
@@ -94,6 +96,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   let tablesReceivedAtMs = 0
   let v103Shadow = null
   let v104Shadow = null
+  const v104Formal = v104FormalRuntime ?? (ALL_MT_EQUAL_STRATEGY_VERSION === 'v104'
+    ? createV104FormalRuntime({ writer: supabaseClient, allowUnconfigured: !requireVerifiedStrategy })
+    : null)
   const actionablePredictionTtlMs = Math.max(1000, Number(predictionTtlMs) || 120000)
   const expiredPredictionKeyLimit = Math.max(1, Number(maxExpiredPredictionKeys) || 10000)
   const resolvedMemberSessionTtlMs = Math.min(30 * 60 * 1000, Math.max(60000, Number(memberSessionTtlMs) || 30 * 60 * 1000))
@@ -117,6 +122,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       const pendingKey = predictionTargetKey(round.tableId ?? table.tableId, round.shoe, round.round)
       let issuedCandidate
       try {
+        if (preparingPredictionPromises.has(pendingKey)) await preparingPredictionPromises.get(pendingKey)
         issuedCandidate = pendingPredictions.get(pendingKey)
         if (!issuedCandidate && issuingPredictionPromises.has(pendingKey)) issuedCandidate = await issuingPredictionPromises.get(pendingKey)
         if (!issuedCandidate && typeof supabaseClient?.readIssuedPrediction === 'function') {
@@ -129,7 +135,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         }
       } catch (error) {
         state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
-        return
+        throw error
       }
       const precomputedPrediction = issuedCandidate
         && predictionTargetKey(issuedCandidate.targetTableId, issuedCandidate.targetShoe, issuedCandidate.targetRound) === pendingKey
@@ -137,17 +143,28 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         ? issuedCandidate
         : null
       if (!precomputedPrediction) return
-      if (settlingPredictionKeys.has(pendingKey)) return
-      settlingPredictionKeys.add(pendingKey)
+      const existingSettlement = settlingPredictionPromises.get(pendingKey)
+      if (existingSettlement) return existingSettlement
+      const settlementPromise = (async () => {
+        try {
+          const persisted = await supabaseClient.persistRound?.(round, table, precomputedPrediction)
+          if (persisted?.prediction) {
+            recentTablePerformance.record(persisted.prediction)
+            v104Formal?.recordSettlement?.(persisted.prediction)
+          }
+          pendingPredictions.delete(pendingKey)
+          state.setStatus({ persistenceStatus: 'ok', persistenceError: null })
+          return persisted
+        } catch (error) {
+          state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+          throw error
+        }
+      })()
+      settlingPredictionPromises.set(pendingKey, settlementPromise)
       try {
-        const persisted = await supabaseClient.persistRound?.(round, table, precomputedPrediction)
-        if (persisted?.prediction) recentTablePerformance.record(persisted.prediction)
-        pendingPredictions.delete(pendingKey)
-        state.setStatus({ persistenceStatus: 'ok', persistenceError: null })
-      } catch (error) {
-        state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+        return await settlementPromise
       } finally {
-        settlingPredictionKeys.delete(pendingKey)
+        if (settlingPredictionPromises.get(pendingKey) === settlementPromise) settlingPredictionPromises.delete(pendingKey)
       }
     },
   })
@@ -163,10 +180,12 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     enabled: resolveV103ShadowEnabled(),
     writer: supabaseClient,
   })
-  v104Shadow = v104ShadowRuntime ?? createV104ShadowRuntime({
-    enabled: resolveV104ShadowEnabled(),
-    writer: supabaseClient,
-  })
+  v104Shadow = ALL_MT_EQUAL_STRATEGY_VERSION === 'v104'
+    ? createV104ShadowRuntime({ enabled: false, writer: supabaseClient })
+    : (v104ShadowRuntime ?? createV104ShadowRuntime({
+      enabled: resolveV104ShadowEnabled(),
+      writer: supabaseClient,
+    }))
   const cloudCaptureClient = createCloudCaptureClient({ url: cloudBrowserUrl, state, writer: supabaseClient, v100Formal, fetchImpl, pollMs: deployConfig.cloudCapturePollMs, adminKey: process.env.WORKER_ADMIN_KEY })
 
   async function recordOperationalEvent({ component, kind, message, statusCode = null, metadata = {} }) {
@@ -225,12 +244,12 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     if (pathname === '/api/v103-shadow/status') {
       const controlError = requireControlAccess(headers)
       if (controlError) return controlError
-      return jsonResponse(200, { ok: true, activeStrategyVersion: 'v102', v103Shadow: v103Shadow?.snapshot?.() ?? { status: 'unavailable' } }, frontendOrigin)
+      return jsonResponse(200, { ok: true, activeStrategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION, v103Shadow: v103Shadow?.snapshot?.() ?? { status: 'unavailable' } }, frontendOrigin)
     }
     if (pathname === '/api/v104-shadow/status') {
       const controlError = requireControlAccess(headers)
       if (controlError) return controlError
-      return jsonResponse(200, { ok: true, activeStrategyVersion: 'v102', v104Shadow: v104Shadow?.snapshot?.() ?? { status: 'unavailable' } }, frontendOrigin)
+      return jsonResponse(200, { ok: true, activeStrategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION, v104Shadow: v104Shadow?.snapshot?.() ?? { status: 'unavailable' } }, frontendOrigin)
     }
     if (pathname === '/api/tables') {
       if (hasSensitiveAuthQuery(requestUrl)) return jsonResponse(400, { ok: false, error: 'session token is not allowed in query' }, frontendOrigin)
@@ -663,10 +682,25 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
   }
 
-  async function savePendingPrediction(table) {
+  function savePendingPrediction(table) {
+    const currentRound = Number(table?.round)
+    if (!table?.tableId || table?.shoe == null || !Number.isSafeInteger(currentRound)) return Promise.resolve(null)
+    const expectedKey = predictionTargetKey(table.tableId, table.shoe, currentRound + 1)
+    if (preparingPredictionPromises.has(expectedKey)) return preparingPredictionPromises.get(expectedKey)
+    const preparation = savePendingPredictionImpl(table)
+      .finally(() => preparingPredictionPromises.delete(expectedKey))
+    preparingPredictionPromises.set(expectedKey, preparation)
+    return preparation
+  }
+
+  async function savePendingPredictionImpl(table) {
     if (!isPredictionRuntimeReady() || !recentPerformanceReady) return null
     const tablePerformance = recentTablePerformance.summary(table?.tableId, table?.shoe)
-    const generated = { ...buildLivePrediction({ ...table, ...tablePerformance }), createdAtMs: now() }
+    const predictionInput = { ...table, ...tablePerformance }
+    const formalPrediction = v104Formal
+      ? await v104Formal.buildPrediction(predictionInput)
+      : buildLivePrediction(predictionInput)
+    const generated = { ...formalPrediction, createdAtMs: now() }
     if (!isValidPendingPrediction(generated)) return null
     const key = predictionTargetKey(generated.targetTableId, generated.targetShoe, generated.targetRound)
     if (expiredPredictionKeys.has(key)) return null
@@ -700,6 +734,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           ...issued,
           createdAtMs: Number(issued.createdAtMs ?? Date.parse(issued.issuedAt)) || generated.createdAtMs,
         }))
+        v104Formal?.recordIssuance?.(immutable)
         pendingPredictions.set(key, immutable)
         state.setStatus({ persistenceStatus: 'ok', persistenceError: null })
         return immutable
@@ -745,8 +780,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
     if (!exact && !durableIssuanceRequired && !expiredPredictionKeys.has(key) && isPredictionRuntimeReady() && recentPerformanceReady) {
       const tablePerformance = recentTablePerformance.summary(table.tableId)
+      const localPrediction = v104Formal
+        ? await v104Formal.buildPrediction({ ...table, ...tablePerformance })
+        : buildLivePrediction({ ...table, ...tablePerformance })
       exact = deepFreeze(structuredClone({
-        ...buildLivePrediction({ ...table, ...tablePerformance }),
+        ...localPrediction,
         targetRound,
         createdAtMs: now(),
       }))
@@ -999,6 +1037,14 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           }
         } catch (error) {
           recentPerformanceReady = false
+          state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+          throw error
+        }
+      }
+      if (v104Formal && typeof v104Formal.start === 'function') {
+        try {
+          await v104Formal.start()
+        } catch (error) {
           state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
           throw error
         }

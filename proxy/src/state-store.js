@@ -23,12 +23,14 @@ export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotR
     tables: [],
   }
 
-  function emitRoundEvent(round, table) {
-    if (typeof onRoundEvent !== 'function') return
+  async function emitRoundEvent(round, table) {
+    if (typeof onRoundEvent !== 'function') return { ok: true }
     try {
-      void onRoundEvent(round, table)
+      await onRoundEvent(round, table)
+      return { ok: true }
     } catch (error) {
       state.status.persistenceError = redactSecrets(error?.message ?? String(error))
+      return { ok: false, error }
     }
   }
 
@@ -44,7 +46,7 @@ export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotR
       pruneRealRoundHistory(realRoundHistoryByTable, mergedTables)
       state.tables = mergedTables.map((table) => applyRealRoundRoadFallback(table, getContiguousRealRoundHistory(realRoundHistoryByTable, table.tableId)))
       state.status.tableCount = state.tables.length
-      for (const item of inferredEvents) emitRoundEvent(item.round, item.predictionTable)
+      for (const item of inferredEvents) void emitRoundEvent(item.round, item.predictionTable)
       if (typeof onTablesUpdated === 'function') onTablesUpdated(structuredCloneSafe(state.tables))
     },
     upsertRoundEvent(event = {}) {
@@ -116,7 +118,7 @@ export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotR
         }, realRoundHistory))
       }
       state.status.tableCount = state.tables.length
-      emitRoundEvent(lastRound, state.tables.find((item) => String(item.tableId) === tableId) ?? { tableId })
+      return emitRoundEvent(lastRound, state.tables.find((item) => String(item.tableId) === tableId) ?? { tableId })
     },
     recordError(message) {
       state.status.connected = false

@@ -46,10 +46,10 @@ test('v103 migration is additive idempotent service-role-only and never changes 
   assert.match(rollback, /enabled\s*=\s*false/i)
 })
 
-test('formal readers remain pinned to daily_prediction_results v102 and never read shadow tables', () => {
+test('formal readers remain pinned to daily_prediction_results v104 and never read shadow tables', () => {
   const writer = read('proxy/src/supabase-writer.js')
   const admin = read('proxy/src/license-admin.js')
-  assert.match(writer, /ALL_MT_EQUAL_STRATEGY_VERSION\s*=\s*'v102'/)
+  assert.match(writer, /ALL_MT_EQUAL_STRATEGY_VERSION\s*=\s*'v104'/)
   assert.match(writer, /getStablePredictionRows[\s\S]*getRest\('daily_prediction_results'[\s\S]*strategy_version:\s*`eq\.\$\{ALL_MT_EQUAL_STRATEGY_VERSION\}`/)
   assert.match(writer, /getRecentPredictionRows[\s\S]*getRest\('daily_prediction_results'[\s\S]*strategy_version:\s*`eq\.\$\{ALL_MT_EQUAL_STRATEGY_VERSION\}`/)
   assert.doesNotMatch(admin, /v103_shadow_/i)

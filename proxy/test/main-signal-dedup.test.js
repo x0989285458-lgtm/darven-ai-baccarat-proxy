@@ -20,7 +20,7 @@ test('deduplicates a same-direction shoe margin when ask-road is stronger', () =
     },
   })
 
-  assert.equal(V100_MAIN_SIGNAL_DEDUP_VERSION, 'v102_主預測同源去重與連續同邊信心版')
+  assert.equal(V100_MAIN_SIGNAL_DEDUP_VERSION, 'v104_主預測防鎖邊正式版')
   assert.deepEqual(prediction.scores.shoe_banker_player_bias, { banker: 0.5, player: 0.5 })
   assert.deepEqual(prediction.diagnostics.shoeBankerPlayerBias, {
     originalScore: { banker: 0.55, player: 0.45 },
@@ -112,7 +112,7 @@ test('v102 formal prediction uses the approved deduplicated main score', () => {
     askRoadScore: prediction.scoreSources.ask_road_signals,
     shoeScore: prediction.scoreSources.shoe_banker_player_bias,
   }, {
-    strategyVersion: 'v102',
+    strategyVersion: 'v104',
     predictedResult: 'banker',
     confidence: 46,
     scoreTotals: { banker: 0.509, player: 0.491 },

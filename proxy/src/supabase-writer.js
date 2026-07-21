@@ -1,11 +1,12 @@
 import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 import { BUILD_VERSION } from './build-version.js'
 import { isVerifiedFinalRoundAction, normalizeExactRealCardEvent } from '../../shared/real-card-validator.js'
+import { V104_DIRECTION_WEIGHTS, V104_SHOE_BIAS } from './v104-main-contract.js'
 
 const SOURCE = 'ofalive99'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v102'
-export const V100_MAIN_SIGNAL_DEDUP_VERSION = 'v102_主預測同源去重與連續同邊信心版'
-export const V100_SIDE_DEDUP_VERSION = 'v102_副預測沿用v101正式版'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v104'
+export const V100_MAIN_SIGNAL_DEDUP_VERSION = 'v104_主預測防鎖邊正式版'
+export const V100_SIDE_DEDUP_VERSION = 'v104_副預測沿用v102正式規則'
 export const V100_SIDE_SCORE_CALIBRATION_OFFSETS = Object.freeze({
   tie: -13.867936925098554,
   superSix: -1.8125,
@@ -108,19 +109,21 @@ export function buildFormalActiveStrategy() {
     version: ALL_MT_EQUAL_STRATEGY_VERSION,
     status: 'active',
     sample_count: 0,
-    weights: { ...V100_MAIN_SIGNAL_DEDUP_WEIGHTS },
+    weights: { ...V104_DIRECTION_WEIGHTS },
     metrics: {
       mode: 'formal_live_prediction',
       auto_adjust: false,
       main_strategy: V100_MAIN_SIGNAL_DEDUP_VERSION,
       side_strategy: V100_SIDE_DEDUP_VERSION,
-      main_weights: { ...V100_MAIN_SIGNAL_DEDUP_WEIGHTS },
+      main_weights: { ...V104_DIRECTION_WEIGHTS },
       side_weights: Object.fromEntries(Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES).map(([key, profile]) => [key, { ...profile }])),
       side_thresholds: { ...SIDE_PREDICTION_THRESHOLDS },
       rank_ledger: 'durable_eight_deck_exact_rank_ledger',
-      description: 'v102正式策略；主預測採同源去重、分方向收縮校正與連續同邊信心規則，副預測沿用v101。',
+      recent_calibration: 'confidence_only_direction_contribution_zero',
+      shoe_bias: { ...V104_SHOE_BIAS, priorCenter: 0.5 },
+      description: 'v104正式策略；主預測採方向／信心分離、當靴收縮與第五次同邊防鎖Gate，副預測完整沿用v102正式規則。',
     },
-    notes: 'Only active runtime strategy and history source for formal release v102.',
+    notes: 'Only active runtime strategy and history source for formal release v104.',
   }
 }
 
@@ -638,7 +641,7 @@ function roundSignalMargin(value) {
   return Number(Number(value).toFixed(12))
 }
 
-export function buildLivePrediction(table = {}) {
+export function buildLivePrediction(table = {}, options = {}) {
   const probabilities = calculateInitialProbabilities(table)
   const tablePerformance = buildTablePerformanceFeature(table)
   const nextRound = {
@@ -648,19 +651,24 @@ export function buildLivePrediction(table = {}) {
     lastRound: table.lastRound ?? null,
     cardShoe: table.cardShoe ?? null,
   }
-  const prediction = calculateV100MainPrediction({
+  const baselinePrediction = calculateV100MainPrediction({
     round: nextRound,
     table,
     facts: {},
     probabilities,
     tablePerformance,
   })
-  const mainStreakAdjustment = buildMainPredictionStreakAdjustment({
-    table,
-    predictedResult: prediction.predictedResult,
-    confidence: prediction.confidence,
-    scores: prediction.scores,
-  })
+  const prediction = options.mainPredictionOverride
+    ? structuredClone(options.mainPredictionOverride)
+    : baselinePrediction
+  const mainStreakAdjustment = options.mainStreakAdjustmentOverride
+    ? structuredClone(options.mainStreakAdjustmentOverride)
+    : buildMainPredictionStreakAdjustment({
+      table,
+      predictedResult: prediction.predictedResult,
+      confidence: prediction.confidence,
+      scores: prediction.scores,
+    })
   const baseSidePredictions = buildSidePredictions(table, nextRound)
   const rankCardShoe = table.v102RankLedger ?? null
   const rankAvailable = rankCardShoe?.rankDataAvailable === true
@@ -675,6 +683,10 @@ export function buildLivePrediction(table = {}) {
   })
   const sidePredictions = v100Side.predictions
   const sideActions = v100Side.actions
+  const buildVersion = String(options.buildVersion ?? BUILD_VERSION)
+  const strategyVersion = String(options.strategyVersion ?? ALL_MT_EQUAL_STRATEGY_VERSION)
+  const mainPolicyKey = String(options.mainPolicyKey ?? 'v102_main_signal_dedup')
+  const sidePolicyKey = String(options.sidePolicyKey ?? 'v102_side_policy')
   const preResultFacts = deriveBaccaratRoundFacts(table.lastRound ?? {})
   const predictionFeatures = {
     prediction_timing: 'pre_result_context',
@@ -702,16 +714,16 @@ export function buildLivePrediction(table = {}) {
     table_performance: structuredClone(tablePerformance),
     confidence_calibration: structuredClone(prediction.confidenceCalibration),
     main_streak_adjustment: structuredClone(mainStreakAdjustment),
-    v102_main_signal_dedup: {
-      strategyVersion: V100_MAIN_SIGNAL_DEDUP_VERSION,
+    [mainPolicyKey]: {
+      strategyVersion,
       diagnostics: structuredClone(prediction.diagnostics),
     },
-    v102_side_policy: structuredClone(v100Side),
+    [sidePolicyKey]: structuredClone(v100Side),
   }
   return {
     source: 'backend',
-    buildVersion: BUILD_VERSION,
-    strategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION,
+    buildVersion,
+    strategyVersion,
     targetTableId: String(table.tableId ?? ''),
     targetShoe: table.shoe == null ? null : String(table.shoe),
     targetRound: nextRound.round,
@@ -726,7 +738,7 @@ export function buildLivePrediction(table = {}) {
     tableRecentHitRate: tablePerformance.recentHitRate,
     tableRecentPredictionCount: tablePerformance.recentPredictionCount,
     shortRunAdjustment: {
-      rule: ALL_MT_EQUAL_STRATEGY_VERSION,
+      rule: strategyVersion,
       includedMainWeightCount: Object.keys(ALL_MT_EQUAL_MAIN_WEIGHTS).length,
       includedSideWeightCount: Object.keys(SIDE_WEIGHT_KEYS).length,
       sideActionRateTargets: structuredClone(SIDE_PREDICTION_ACTION_RATE_TARGETS),
@@ -1704,11 +1716,7 @@ function enrichTableWithLivePrediction(table = {}) {
     && Number.isFinite(Number(table.prediction.confidence))) {
     return { ...table, buildVersion: BUILD_VERSION, prediction: { ...table.prediction, buildVersion: BUILD_VERSION } }
   }
-  try {
-    return { ...table, buildVersion: BUILD_VERSION, prediction: buildLivePrediction(table) }
-  } catch {
-    return { ...table, buildVersion: BUILD_VERSION }
-  }
+  return { ...table, buildVersion: BUILD_VERSION }
 }
 
 export function buildCloudRoundEventRow({ sessionId = null, round = {}, table = {}, metadata = {} } = {}) {
@@ -2046,7 +2054,7 @@ export function createSupabaseIngestionClient({
         || !Number.isSafeInteger(round) || round < 1) {
         throw new Error('v102 durable rank event is invalid')
       }
-      const acknowledgement = await enqueueWrite(() => postRest('rpc/apply_v102_rank_ledger_event', {
+      const acknowledgement = await enqueueWrite(() => postRest('rpc/apply_v104_rank_ledger_event', {
         p_event: {
           source,
           table_id: tableId,
@@ -2096,7 +2104,7 @@ export function createSupabaseIngestionClient({
       if (!source || !tableId || !normalizedShoe || !Number.isSafeInteger(visibleRound) || visibleRound < 1) {
         throw new Error('prediction lifecycle reconciliation identity is incomplete')
       }
-      const acknowledgement = await enqueueWrite(() => postRest('rpc/reconcile_v102_prediction_lifecycle', {
+      const acknowledgement = await enqueueWrite(() => postRest('rpc/reconcile_v104_prediction_lifecycle', {
         p_source: String(source),
         p_table_id: String(tableId),
         p_current_shoe: normalizedShoe,
@@ -2126,7 +2134,7 @@ export function createSupabaseIngestionClient({
         || !row.strategy_version || !['banker', 'player'].includes(row.predicted_result)) {
         throw new Error('prediction issuance payload is incomplete')
       }
-      const acknowledgement = await enqueueWrite(() => postRest('rpc/issue_v102_prediction', { p_prediction: row }, undefined, { requireObject: true }))
+      const acknowledgement = await enqueueWrite(() => postRest('rpc/issue_v104_prediction', { p_prediction: row }, undefined, { requireObject: true }))
       const prediction = acknowledgement?.prediction
       if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
         || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at
@@ -2322,6 +2330,25 @@ export function createSupabaseIngestionClient({
         .filter((row) => row?.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION)
         .filter(isFinalPredictionSettlement)
     },
+    async getV104FormalHistory({ limit = 10000, requestTimeoutMs = 0 } = {}) {
+      const rows = await getRest('daily_prediction_results', {
+        select: 'id,source,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,prediction_issued_at,issued_prediction_payload,prediction_features,created_at',
+        strategy_version: 'eq.v104',
+        prediction_issued_at: 'not.is.null',
+        order: 'prediction_issued_at.desc',
+        limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
+      }, { requestTimeoutMs })
+      return (Array.isArray(rows) ? rows : [])
+        .filter((row) => row?.strategy_version === 'v104'
+          && row?.prediction_features?.prediction_timing === 'pre_result_context'
+          && Boolean(row?.prediction_issued_at))
+        .map((row) => ({
+          ...row,
+          prediction_id: row.id,
+          prediction_timing: row.prediction_features.prediction_timing,
+          prediction_payload: row.issued_prediction_payload,
+        }))
+    },
     async getRecentPredictionRows({ limit = 10000 } = {}) {
       const rows = await getRest('daily_prediction_results', {
         select: 'id,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,side_hits,prediction_features,prediction_issued_at,created_at',
@@ -2467,7 +2494,7 @@ export function createSupabaseIngestionClient({
           throw new Error('prediction identity is required for production settlement')
         }
         const acknowledgement = hasPredictionIdentity
-          ? await postRest('rpc/settle_v102_prediction', {
+          ? await postRest('rpc/settle_v104_prediction', {
               p_roadmap: compactEvent,
               p_settlement: {
                 prediction_id: precomputedPrediction.predictionId,
@@ -2485,7 +2512,7 @@ export function createSupabaseIngestionClient({
                 side_hits: compactPrediction.prediction_features?.side_hits ?? {},
               },
             }, undefined, { requireObject: true })
-          : await postRest('rpc/persist_v102_settled_round', {
+          : await postRest('rpc/persist_v104_settled_round', {
               p_roadmap: compactEvent,
               p_prediction: compactPrediction,
             }, undefined, { requireObject: true })
@@ -2564,7 +2591,7 @@ export function createSupabaseIngestionClient({
         .filter(isFinalPredictionSettlement).length
     },
     async getPredictionLifecycleStats() {
-      const acknowledgement = await postRest('rpc/get_v102_prediction_lifecycle_stats', {}, undefined, { requireObject: true })
+      const acknowledgement = await postRest('rpc/get_v104_prediction_lifecycle_stats', {}, undefined, { requireObject: true })
       const stats = {
         activePending: Number(acknowledgement?.active_pending),
         settled: Number(acknowledgement?.settled),

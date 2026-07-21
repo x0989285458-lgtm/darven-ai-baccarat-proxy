@@ -58,7 +58,7 @@ test('summarizes directional settled performance and same-shoe trailing predicti
     player: { settledPredictionCount: 20, hits: 9, hitRate: 9 / 20 },
   })
   assert.deepEqual(store.summary('BAG01').priorMainPredictionStreak, { direction: 'banker', count: 5 })
-  assert.equal(Object.hasOwn(store.summary('BAG01', '102'), 'priorMainPredictionStreak'), false)
+  assert.equal(Object.hasOwn(store.summary('BAG01', '104'), 'priorMainPredictionStreak'), false)
 })
 
 test('returns an unavailable summary before a table has settled banker/player rows', () => {
@@ -71,12 +71,12 @@ test('proxy warmup wires directional history and prior same-shoe streak into liv
   const rows = [
     ...Array.from({ length: 20 }, (_, index) => ({
       table_id: 'BAG01', shoe_no: '7', round_no: index + 1,
-      strategy_version: 'v102', predicted_result: 'banker',
+      strategy_version: 'v104', predicted_result: 'banker',
       actual_result: index < 14 ? 'banker' : 'player', created_at: new Date(Date.UTC(2026, 6, 20, 0, index)).toISOString(),
     })),
     ...Array.from({ length: 20 }, (_, index) => ({
       table_id: 'BAG01', shoe_no: '7', round_no: index + 21,
-      strategy_version: 'v102', predicted_result: 'player',
+      strategy_version: 'v104', predicted_result: 'player',
       actual_result: index < 9 ? 'player' : 'banker', created_at: new Date(Date.UTC(2026, 6, 20, 1, index)).toISOString(),
     })),
   ]
@@ -85,8 +85,14 @@ test('proxy warmup wires directional history and prior same-shoe streak into liv
   const supabaseClient = {
     configured: true,
     ensureInitialStrategy: async () => ({ ok: true }),
-    getRuntimeStatus: () => ({ ready: true, degraded: false, activeStrategyVersion: 'v98' }),
+    getRuntimeStatus: () => ({ ready: true, degraded: false, activeStrategyVersion: 'v104' }),
     getRecentPredictionRows: async () => rows,
+    getV104FormalHistory: async () => rows.map((row, index) => ({
+      ...row,
+      prediction_id: `warmup-${index}`,
+      prediction_timing: 'pre_result_context',
+      prediction_issued_at: row.created_at,
+    })),
     issuePrediction: async (candidate) => {
       futureCandidate = candidate
       return { ...candidate, predictionId: 'warmup-future', issuedAt }

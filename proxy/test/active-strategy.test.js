@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { buildFormalActiveStrategy, buildLivePrediction, createSupabaseIngestionClient } from '../src/supabase-writer.js'
 
 test('v102 exposes exactly one formal active strategy identity', () => {
-  assert.deepEqual([buildFormalActiveStrategy().version, buildFormalActiveStrategy().status], ['v102', 'active'])
+  assert.deepEqual([buildFormalActiveStrategy().version, buildFormalActiveStrategy().status], ['v104', 'active'])
 })
 
 test('runtime archives the previous active row before read-back accepts exactly one active strategy', async () => {
@@ -23,7 +23,7 @@ test('runtime archives the previous active row before read-back accepts exactly 
   assert.deepEqual(await client.ensureInitialStrategy(), { ok: true, activeStrategyVersion: expected })
   assert.equal(requests[0].method, 'PATCH')
   assert.match(requests[0].url, /status=eq\.active/)
-  assert.match(requests[0].url, /version=neq\.v102/)
+  assert.match(requests[0].url, /version=neq\.v104/)
   assert.equal(requests[1].method, 'POST')
   assert.equal(requests[2].method, 'GET')
   assert.deepEqual(client.getRuntimeStatus(), { ready: true, degraded: false, reason: null, activeStrategyVersion: expected })

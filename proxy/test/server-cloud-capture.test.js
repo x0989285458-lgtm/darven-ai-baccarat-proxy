@@ -12,7 +12,7 @@ test('server starts cloud capture worker when cloud_browser source has URL', asy
     fetchImpl: async () => ({
       ok: true,
       status: 200,
-      json: async () => ({ buildVersion: '102', connected: true, authenticated: true, sessionId: 'server-cloud-1', tables: [{ tableId: 'BAG09' }] }),
+      json: async () => ({ buildVersion: '104', connected: true, authenticated: true, sessionId: 'server-cloud-1', tables: [{ tableId: 'BAG09' }] }),
     }),
   })
 
@@ -38,7 +38,7 @@ test('server honors AUTO_CONNECT=true env for cloud capture on Render', async ()
     fetchImpl: async () => ({
       ok: true,
       status: 200,
-      json: async () => ({ buildVersion: '102', connected: true, authenticated: true, sessionId: 'server-cloud-env', tables: [{ tableId: 'BAG10' }] }),
+      json: async () => ({ buildVersion: '104', connected: true, authenticated: true, sessionId: 'server-cloud-env', tables: [{ tableId: 'BAG10' }] }),
     }),
   })
 

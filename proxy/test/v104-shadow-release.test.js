@@ -78,14 +78,14 @@ test('v104 SQL enforces immutable first-write-wins, verified Final, PUSH, and pa
   assert.match(migration, /lockRisk/i)
 })
 
-test('deployment guide adds v104 without changing formal health or frontend/worker build identity', () => {
+test('deployment guide promotes v104 coherently and preserves rollback and shadow history', () => {
   const deployment = read('proxy/deploy/DEPLOYMENT.md')
-  assert.match(deployment, /v102 Active \/ v103\.0\.0-shadow\.1 \/ v104\.0\.0-shadow\.1/i)
+  assert.match(deployment, /v104\.0\.0-formal\.1/i)
   assert.match(deployment, /V103_SHADOW_ENABLED=true/i)
-  assert.match(deployment, /V104_SHADOW_ENABLED=true/i)
-  assert.match(deployment, /schema_v104_shadow\.sql/i)
+  assert.match(deployment, /V104_SHADOW_ENABLED=false/i)
+  assert.match(deployment, /schema_v104_formal\.sql/i)
   assert.match(deployment, /disable_v104_shadow\.sql/i)
-  assert.match(deployment, /\/api\/v104-shadow\/status/i)
-  assert.match(deployment, /Frontend.*Worker.*不變/i)
-  assert.match(deployment, /正式.*health.*v102/i)
+  assert.match(deployment, /rollback_v104_to_v102\.sql/i)
+  assert.match(deployment, /Frontend、Proxy、Worker、Push Protocol、策略與監控身分統一為v104/i)
+  assert.match(deployment, /\/health`為v104/i)
 })

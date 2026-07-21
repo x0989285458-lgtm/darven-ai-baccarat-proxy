@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createSnapshotPusher } from '../src/snapshot-pusher.js'
 
-test('v102 migration restamps a retained snapshot so an empty head cannot block the v102 FIFO', async (t) => {
+test('v104 migration restamps retained v098 and v102 snapshots so an empty head cannot block the v104 FIFO', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-v100-build-migration-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
@@ -40,13 +40,13 @@ test('v102 migration restamps a retained snapshot so an empty head cannot block 
   })
 
   assert.equal(await pusher.tick(), true)
-  assert.equal(sent[0].protocolVersion, 'v102')
+  assert.equal(sent[0].protocolVersion, 'v104')
   assert.equal(sent[0].sequence, 1000)
-  assert.equal(sent[0].snapshot.buildVersion, '102')
+  assert.equal(sent[0].snapshot.buildVersion, '104')
   assert.deepEqual(sent[0].roundKeys, [])
   assert.equal(await pusher.tick(), true)
   assert.equal(sent[1].sequence, 1001)
-  assert.equal(sent[1].snapshot.buildVersion, '102')
+  assert.equal(sent[1].snapshot.buildVersion, '104')
   assert.deepEqual(sent[1].roundKeys, [key])
   await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
 })
@@ -255,10 +255,10 @@ test('pusher restores the queued envelope, keeps collecting, and only 2xx acknow
 
   assert.equal(await pusher.tick(), false, 'redirect is not an acknowledgement')
   assert.equal(snapshotCalls, 1)
-  assert.equal(sent[0].protocolVersion, 'v102')
+  assert.equal(sent[0].protocolVersion, 'v104')
   assert.equal(sent[0].sessionId, 'vm')
   assert.deepEqual(sent[0].roundKeys, ['BAG01:8:9'])
-  assert.deepEqual(sent[0].snapshot, { ...original.snapshot, buildVersion: '102' })
+  assert.deepEqual(sent[0].snapshot, { ...original.snapshot, buildVersion: '104' })
   assert.deepEqual(JSON.parse(await readFile(queuePath, 'utf8')).entries[0], sent[0])
   assert.equal(await pusher.tick(), true)
   assert.equal(snapshotCalls, 2)

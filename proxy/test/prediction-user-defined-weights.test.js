@@ -9,12 +9,13 @@ import {
   buildLivePrediction,
 } from '../src/supabase-writer.js'
 import { FORMAL_MAIN_PREDICTION_WEIGHTS } from '../src/stable-report.js'
+import { V104_DIRECTION_WEIGHTS } from '../src/v104-main-contract.js'
 
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 const nonZero = (weights) => Object.fromEntries(Object.entries(weights).filter(([, value]) => Number(value) !== 0))
 
 test('uses only the user-defined main weights and ignores previous main weights', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v102')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v104')
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
   assert.deepEqual(nonZero(ALL_MT_EQUAL_MAIN_WEIGHTS), {
     roadmap_trend_signals: 0.35,
@@ -23,7 +24,9 @@ test('uses only the user-defined main weights and ignores previous main weights'
     shoe_banker_player_bias: 0.10,
     neutral_reserve: 0.10,
   })
-  assert.deepEqual(buildFormalActiveStrategy().metrics.main_weights, ALL_MT_EQUAL_MAIN_WEIGHTS)
+  assert.deepEqual(buildFormalActiveStrategy().metrics.main_weights, { ...V104_DIRECTION_WEIGHTS })
+  assert.equal(buildFormalActiveStrategy().metrics.main_weights.recent_practical_calibration, undefined)
+  assert.ok(Math.abs(sum(buildFormalActiveStrategy().metrics.main_weights) - 1) < 1e-9)
   assert.deepEqual(buildLivePrediction({ tableId: 'BAG01', shoe: 1, round: 0 }).featureWeights, ALL_MT_EQUAL_MAIN_WEIGHTS)
   assert.strictEqual(FORMAL_MAIN_PREDICTION_WEIGHTS, ALL_MT_EQUAL_MAIN_WEIGHTS)
 })

@@ -10,7 +10,7 @@ import {
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 
 test('raises empirically higher-hit main features and suppresses weak road noise', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v102')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v104')
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
 
   assert.equal(ALL_MT_EQUAL_MAIN_WEIGHTS.ask_road_signals, 0.15)

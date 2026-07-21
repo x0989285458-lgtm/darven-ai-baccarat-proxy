@@ -1,0 +1,52 @@
+{
+  "releaseVersion": "v104.0.0-formal.1",
+  "packageVersion": "1.0.11",
+  "productVersion": "v104",
+  "frontendBuildVersion": "v104",
+  "proxyBuildVersion": "v104",
+  "workerBuildVersion": "104",
+  "strategyVersion": "v104",
+  "protocolVersion": "v104",
+  "monitorVersion": "v104",
+  "candidateMode": "formal",
+  "formalActionsEnabled": true,
+  "mainStrategy": {
+    "source": "v104.0.0-shadow.1",
+    "directionWeights": {
+      "roadmap_trend_signals": 0.275,
+      "ask_road_signals": 0.275,
+      "shoe_banker_player_bias": 0.35,
+      "neutral_reserve": 0.1
+    },
+    "calibrationDirectionContribution": 0,
+    "shoeBias": { "priorSampleSize": 8, "priorCenter": 0.5, "maximumEdge": 0.08 },
+    "lockGuard": {
+      "startsAtSameSideIssuance": 5,
+      "requiresIndependentRoadSupports": 2,
+      "suppressesShoeBiasWhenInsufficient": true,
+      "prefersDirectRoadmapWhenAskRoadConflicts": true,
+      "forcedReverse": false,
+      "randomSwitching": false
+    }
+  },
+  "sideStrategy": {
+    "inheritedFrom": "v102",
+    "weightsChanged": false,
+    "thresholdsChanged": false,
+    "directionGatesChanged": false
+  },
+  "shadowHistory": {
+    "v103Retained": true,
+    "v104Retained": true,
+    "v104NewWritesAfterPromotion": false
+  },
+  "deploymentOrder": [
+    "database-additive",
+    "proxy",
+    "worker",
+    "frontend",
+    "live-e2e",
+    "database-finalize"
+  ],
+  "rollbackTarget": "v102"
+}

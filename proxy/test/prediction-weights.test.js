@@ -40,7 +40,7 @@ test('prediction row records high-hit weight strategy version and keeps banker/p
       nextBankerRaw: 'weak', nextPlayerRaw: '2222222222',
     },
   )
-  assert.equal(row.strategy_version, 'v102')
+  assert.equal(row.strategy_version, 'v104')
   assert.ok(['banker', 'player'].includes(row.predicted_result))
-  assert.equal(row.short_run_adjustment.rule, 'v102')
+  assert.equal(row.short_run_adjustment.rule, 'v104')
 })

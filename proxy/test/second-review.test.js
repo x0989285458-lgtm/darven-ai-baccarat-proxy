@@ -76,6 +76,7 @@ test('startup verifies the active strategy before accepting live tables', async 
       ensureCalls += 1
       ready = true
     },
+    getV104FormalHistory: async () => [],
     issuePrediction: async (candidate) => {
       futureCandidate = candidate
       return { ...candidate, predictionId: 'verified-future', issuedAt: '2026-07-17T01:00:00.000Z' }
@@ -202,7 +203,14 @@ test('SSE revalidates member session before every push and emits 401 then closes
 })
 
 test('production HTTPS fail-closed also covers the SSE branch', async () => {
-  const app = createApp({ autoConnect: false, port: 0, production: true, memberAuthRequired: false, ingestKey: 'configured' })
+  const app = createApp({
+    autoConnect: false,
+    port: 0,
+    production: true,
+    memberAuthRequired: false,
+    ingestKey: 'configured',
+    v104FormalRuntime: { start: async () => {} },
+  })
   const controller = new AbortController()
   await app.start()
   try {

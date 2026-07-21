@@ -6,7 +6,7 @@ import { buildLivePrediction } from '../src/supabase-writer.js'
 const table = { tableId: 'BAG08', shoe: 104, round: 20, bankerCount: 12, playerCount: 8 }
 const final = { ...table, round: 21, sourceAction: '/summary', winner: 'banker', rawResult: [1, 9, 2, 10, 0, 0, -1, -1, 3, 9] }
 
-test('adding v104 leaves v102 member output bit-for-bit unchanged while v103 continues observing', async () => {
+test('promoted v104 formal output ignores attempted same-version shadow injection while v103 continues observing', async () => {
   const activeWriter = { configured: false }
   const clock = () => Date.parse('2026-07-21T10:00:00Z')
   let withoutV104Calls = 0
@@ -25,21 +25,21 @@ test('adding v104 leaves v102 member output bit-for-bit unchanged while v103 con
   const baseline = JSON.parse((await withoutV104.inject({ url: '/api/tables' })).body)
   const candidate = JSON.parse((await withV104.inject({ url: '/api/tables' })).body)
   assert.deepEqual(candidate, baseline)
-  assert.equal(candidate[0].prediction.strategyVersion, 'v102')
+  assert.equal(candidate[0].prediction.strategyVersion, 'v104')
   assert.equal(withoutV104Calls, 1)
   assert.equal(withV104Calls, 1)
 })
 
-test('v104 failure does not block active or v103 and is absent from formal health/public status', async () => {
+test('attempted v104 shadow failure is disabled and cannot block formal v104 or v103', async () => {
   let activeSettlements = 0
   let v103Settlements = 0
-  const issued = { ...buildLivePrediction(table), predictionId: 'v102-pid', issuedAt: '2026-07-21T10:00:00Z' }
+  const issued = { ...buildLivePrediction(table), predictionId: 'v104-pid', issuedAt: '2026-07-21T10:00:00Z' }
   const activeWriter = {
     configured: true,
     async issuePrediction() { return issued },
     async readIssuedPrediction() { return issued },
-    async persistRound() { activeSettlements += 1; return { prediction: { strategy_version: 'v102' } } },
-    getRuntimeStatus() { return { ready: true, degraded: false, reason: null, activeStrategyVersion: 'v102' } },
+    async persistRound() { activeSettlements += 1; return { prediction: { strategy_version: 'v104' } } },
+    getRuntimeStatus() { return { ready: true, degraded: false, reason: null, activeStrategyVersion: 'v104' } },
   }
   const v103 = {
     enabled: true, async observeTable() {}, async settleRound() { v103Settlements += 1 },
@@ -67,8 +67,8 @@ test('v104 failure does not block active or v103 and is absent from formal healt
   assert.equal('v103Shadow' in publicStatus, false)
   assert.equal('v104Shadow' in health, false)
   assert.equal(health.degraded, false)
-  assert.equal(health.runtimeStatus.activeStrategyVersion, 'v102')
+  assert.equal(health.runtimeStatus.activeStrategyVersion, 'v104')
   assert.equal(unauthorized.statusCode, 401)
-  assert.equal(controlled.activeStrategyVersion, 'v102')
-  assert.equal(controlled.v104Shadow.status, 'error')
+  assert.equal(controlled.activeStrategyVersion, 'v104')
+  assert.equal(controlled.v104Shadow.status, 'disabled')
 })

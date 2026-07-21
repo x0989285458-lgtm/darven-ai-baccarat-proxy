@@ -3,14 +3,14 @@ import { getBackendPredictionIssue, LiveRoadClient, type LiveTable } from './liv
 // @ts-expect-error Proxy is JavaScript and intentionally exercised as a real integration boundary.
 import { createApp } from '../../../proxy/src/server.js'
 
-const strategyVersion = 'v102'
+const strategyVersion = 'v104'
 
 function validTable(overrides: Partial<LiveTable> = {}): LiveTable {
   return {
     id: 'BAG01',
     table_id: 'BAG01',
     table_type: 'BAC',
-    buildVersion: 'v102',
+    buildVersion: 'v104',
     sourceUpdatedAt: new Date().toISOString(),
     trend: {
       bead_plate2: '0102',
@@ -21,7 +21,7 @@ function validTable(overrides: Partial<LiveTable> = {}): LiveTable {
     prediction: {
       source: 'backend',
       strategyVersion,
-      buildVersion: 'v102',
+      buildVersion: 'v104',
       targetTableId: 'BAG01',
       targetShoe: '123',
       targetRound: 18,
@@ -86,7 +86,7 @@ describe('live frontend contract', () => {
           body: new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(sse)); controller.close() } }),
         })
       }
-      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v102' }) })
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v104' }) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTables) })
     }))
     const received: LiveTable[][] = []
@@ -164,7 +164,7 @@ describe('live frontend contract', () => {
   it('rejects polling rollback but a reconstructed client accepts its own first payload', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-16T02:00:30.000Z'))
-    const proxy = (stamp: string) => ({ tableId: 'BAG01', tableType: 'BAC', shoe: 123, round: 18, beadPlateRaw: '0102', bigRoadRaw: '0102', sourceUpdatedAt: stamp, buildVersion: 'v102', prediction: validTable().prediction })
+    const proxy = (stamp: string) => ({ tableId: 'BAG01', tableType: 'BAC', shoe: 123, round: 18, beadPlateRaw: '0102', bigRoadRaw: '0102', sourceUpdatedAt: stamp, buildVersion: 'v104', prediction: validTable().prediction })
     let streamCall = 0
     const fetchMock = vi.fn((url: string) => {
       if (url.includes('/stream')) {
@@ -216,7 +216,7 @@ describe('live frontend contract', () => {
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
       expect(String(url)).not.toContain('opaque-member-token')
       expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer opaque-member-token')
-      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v102' }) })
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v104' }) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) })
     })
     vi.stubGlobal('fetch', fetchMock)

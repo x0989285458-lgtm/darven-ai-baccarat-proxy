@@ -31,7 +31,7 @@ test('v102 audit matrix applies each approved deduplicated side formula exactly 
   const A = 100 - Math.abs(BASE.B - BASE.P)
   const expectedTie = 0.5068331143232588 * BASE.T + 0.1931668856767411 * A + 0.10 * BASE.S + 0.20 * BASE.R
 
-  assert.equal(V100_SIDE_DEDUP_VERSION, 'v102_副預測沿用v101正式版')
+  assert.equal(V100_SIDE_DEDUP_VERSION, 'v104_副預測沿用v102正式規則')
   closeTo(shadow.diagnostics.rawPredictions.tie, expectedTie)
   closeTo(shadow.diagnostics.rawPredictions.bankerPair, 40.3)
   closeTo(shadow.diagnostics.rawPredictions.playerPair, 34.5)
@@ -155,7 +155,7 @@ test('v102 formal buildLivePrediction packages the approved side dedup and live 
     beadPlateRaw: '010203#020102', bigRoadRaw: 'BPBP', bigEyeRaw: '1212', smallRoadRaw: '1122', cockroachRaw: '1221',
   }
   const prediction = buildLivePrediction(table)
-  assert.equal(prediction.strategyVersion, 'v102')
+  assert.equal(prediction.strategyVersion, 'v104')
   assert.equal(prediction.predictionFeatures.v102_side_policy.strategyVersion, V100_SIDE_DEDUP_VERSION)
   assert.deepEqual(prediction.sideActions, prediction.predictionFeatures.v102_side_policy.actions)
   assert.deepEqual(prediction.sideActions, {

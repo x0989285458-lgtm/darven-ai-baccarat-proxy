@@ -1,15 +1,14 @@
-# v102 Active / v103.0.0-shadow.1 / v104.0.0-shadow.1 影子候選部署檢查表
+# v104.0.0-formal.1 正式部署檢查表
 
-## v104 shadow 邊界
+## v104正式邊界
 
-- v102 維持唯一 Active；v103.0.0-shadow.1 繼續運行，新增 v104.0.0-shadow.1 與兩者並行。
-- 依序套用 `frontend/supabase/schema_v103_shadow.sql`、`frontend/supabase/schema_v104_shadow.sql`，Proxy 分別設定 `V103_SHADOW_ENABLED=true` 與 `V104_SHADOW_ENABLED=true`。
-- v104 僅使用 `v104_shadow_issuances`、`v104_shadow_settlements`、`v104_shadow_history` 與專屬 RPC；不得寫 v102/v103 表、正式統計、副預測或 ACK Queue。
-- 方向與信心分離：近期校正只調信心；連續第 5 次起若支援不足，靴偏移退出方向；直接路單與衍生問路衝突時以直接路單為主，不強制反向。
-- 重啟必須取最新 10,000 筆history、恢復未結算immutable issuance，且同桌並發發行需串行，避免重算或虛增連邊。
-- 只有 control token 可讀 `/api/v104-shadow/status`；公開 `/api/status` 與正式 `/health` 仍只反映 v102，不因 v104 故障降級。
-- 停用 v104 使用 `frontend/supabase/disable_v104_shadow.sql`，只停止新 issuance/settlement，保留歷史證據且不影響 v102/v103。
-- Frontend 與 Worker build identity 不變；本文件不代表已部署。
+- v104成為唯一Active；主預測使用已核准v104防鎖邊策略，副預測權重、門檻與方向Gate完整沿用v102。
+- 先停用v104 Shadow新寫入並保留全部歷史，再套用`frontend/supabase/schema_v104_formal.sql`。
+- 正式Runtime只讀`daily_prediction_results`中的v104 immutable issuance／Final；不得讀v103／v104 Shadow資料校準正式輸出。
+- Frontend、Proxy、Worker、Push Protocol、策略與監控身分統一為v104（Worker build `104`）。
+- 正式E2E完成前保留v102 RPC EXECUTE；完成後才執行`finalize_v104_cutover.sql`。
+- 回滾採application-first，執行`rollback_v104_to_v102.sql`原子恢復v102 Active與RPC權限，保留v104歷史證據。
+- v103 Shadow可繼續觀察；v104 Shadow升正式後強制disabled且不得再次發行。
 
 ## v103 shadow 邊界
 
@@ -26,42 +25,47 @@
 - Frontend：Cloudflare Pages `darven-ai-baccarat.pages.dev`
 - Proxy：Render `darven-ai-baccarat-proxy.onrender.com`
 - Worker：GCP台灣VM `darven-mt-taiwan-worker-5`，由systemd管理Docker
-- Database：Supabase，部署後只允許v102正式策略新寫入
+- Database：Supabase，部署後只允許v104正式策略新寫入
 - Worker資料鏈：每5秒主動HTTPS Push到`/api/cloud-ingest/snapshot`
 
 ## Database
 
-Fresh install依序套用歷史整合Baseline、v101正式migration，再套用v102 additive migration：
+Fresh install依序套用歷史Baseline與正式migration，最後套用v104：
 
 ```text
 frontend/supabase/schema_v100_baseline.sql
 frontend/supabase/schema_v101_latest_only.sql
 frontend/supabase/schema_v102_latest_only.sql
+frontend/supabase/schema_v103_shadow.sql
+frontend/supabase/schema_v104_shadow.sql
+frontend/supabase/disable_v104_shadow.sql
+frontend/supabase/schema_v104_formal.sql
 ```
 
-既有正式環境先套用經審查的：
+既有正式環境先在同一交易中依序套用：
 
 ```text
-frontend/supabase/schema_v102_latest_only.sql
+frontend/supabase/disable_v104_shadow.sql
+frontend/supabase/schema_v104_formal.sql
 ```
 
-此步保留v101 RPC權限，避免仍在運行的v101 Proxy於DB-first切換期間中斷。待v102 Proxy、Worker、10桌、Push ACK、Queue與DB前進全部驗證後，才套用：
+此步保留v102 RPC權限。待v104 Proxy、Worker、10桌、Push ACK、Queue與DB前進全部驗證後，才套用：
 
 ```text
-frontend/supabase/finalize_v102_cutover.sql
+frontend/supabase/finalize_v104_cutover.sql
 ```
 
-回復時只使用：
+回滾只使用：
 
 ```text
-frontend/supabase/rollback_v102_to_v101.sql
+frontend/supabase/rollback_v104_to_v102.sql
 ```
 
 要求：
 
-- `ai_strategy_versions`只能有一筆`v102:active`
+- `ai_strategy_versions`只能有一筆`v104:active`
 - 所有Public Schema函式不得授權`PUBLIC`、`anon`或`authenticated`
-- DB migration階段`service_role`同時保有v101/v102 RPC EXECUTE；正式E2E後finalize只保留v102
+- DB migration階段`service_role`同時保有v102/v104 RPC EXECUTE；正式E2E後finalize撤除v102 EXECUTE
 - Frontend只讀Proxy，不持有service role或DB連線
 
 ## Proxy（Render）
@@ -73,7 +77,7 @@ DEPLOY_MODE=cloud
 CAPTURE_SOURCE=cloud_browser
 V100_RELEASE_ENABLED=true
 V103_SHADOW_ENABLED=true
-V104_SHADOW_ENABLED=true
+V104_SHADOW_ENABLED=false
 PUBLIC_FRONTEND_ORIGIN=https://darven-ai-baccarat.pages.dev
 SUPABASE_URL=後端設定
 SUPABASE_SERVICE_ROLE_KEY=後端專用
@@ -89,7 +93,7 @@ GET /api/status
 GET /api/tables
 ```
 
-要求：Release commit精確相符、`/health`為v102、`/api/status`只顯示v102、`/api/tables`只有核准10桌。
+要求：Release commit精確相符、`/health`為v104、`/api/status`只顯示v104、`/api/tables`只有核准10桌。
 
 ## Worker（GCP VM）
 
@@ -130,11 +134,11 @@ https://darven-ai-baccarat.pages.dev/login
 https://darven-ai-baccarat.pages.dev/admin-login
 ```
 
-## v102.0.0 完成標準
+## v104.0.0-formal.1 完成標準
 
-- Proxy、Worker、Frontend皆對應同一個Git commit及`v102.0.0-formal.1` Tag
+- Proxy、Worker、Frontend皆對應同一個Git commit及`v104.0.0-formal.1` Tag
 - 10桌依序為BAG01、BAG02、BAG03、BAG03A、BAG05、BAG06、BAG07、BAG08、BAG09、BAG10
 - Push ACK成功且Queue排空
-- DB v102 Final筆數持續增加，部署後直接前版v101歷史筆數不再前進
+- DB v104 Final筆數持續增加，部署後v102歷史筆數不再前進
 - Frontend可讀到與Proxy相同桌號、靴、局
 - 唯一保留的監控為抓牌3分鐘中斷自動復原警告

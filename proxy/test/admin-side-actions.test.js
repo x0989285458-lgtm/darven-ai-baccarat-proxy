@@ -46,9 +46,9 @@ test('admin requires complete boolean side_actions and side_hits before reportin
   assert.doesNotMatch(queries[2], /created_at\s*<\s*current_date/i)
   assert.equal((sql.match(/strategy_version\s*=\s*\$1/gi) ?? []).length, 3)
   assert.deepEqual(parameters, [
-    ['v102'],
-    ['v102'],
-    ['v102'],
+    ['v104'],
+    ['v104'],
+    ['v104'],
   ])
 })
 

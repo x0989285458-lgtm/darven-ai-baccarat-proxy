@@ -219,7 +219,7 @@ test('v102 Supabase client sends only immutable Final evidence and verifies a co
   assert.equal(duplicateResult.targetRound, 2)
   assert.equal(result.targetRound, 2)
   const body = JSON.parse(calls[0].options.body)
-  assert.equal(calls[0].url.endsWith('/rest/v1/rpc/apply_v102_rank_ledger_event'), true)
+  assert.equal(calls[0].url.endsWith('/rest/v1/rpc/apply_v104_rank_ledger_event'), true)
   assert.deepEqual(Object.keys(body.p_event).sort(), ['raw_result_exact10', 'round_no', 'shoe_no', 'source', 'source_action', 'table_id'])
   assert.equal(body.p_event.event_hash, undefined)
   assert.equal(body.p_event.dealt_rank_delta, undefined)
@@ -305,8 +305,8 @@ test('fixed eight-deck ledger accepts contiguous verified Final exact10 and expo
 
 test('v102 migration is conflict-safe and service-only while rollback preserves evidence', () => {
   const baseline = readFileSync(new URL('../../frontend/supabase/schema_v100_baseline.sql', import.meta.url), 'utf8')
-  const migration = readFileSync(new URL('../../frontend/supabase/schema_v102_latest_only.sql', import.meta.url), 'utf8')
-  const rollback = readFileSync(new URL('../../frontend/supabase/rollback_v102_to_v101.sql', import.meta.url), 'utf8')
+  const migration = readFileSync(new URL('../../frontend/supabase/schema_v104_formal.sql', import.meta.url), 'utf8')
+  const rollback = readFileSync(new URL('../../frontend/supabase/rollback_v104_to_v102.sql', import.meta.url), 'utf8')
 
   assert.match(baseline, /create table public\.shoe_round_card_events/i)
   assert.match(baseline, /unique \(source, table_id, shoe_no, round_no\)/i)
@@ -319,18 +319,18 @@ test('v102 migration is conflict-safe and service-only while rollback preserves 
   assert.doesNotMatch(baseline, /grant[^;]*insert[^;]*shoe_round_card_events[^;]*service_role/i)
   assert.doesNotMatch(baseline, /grant[^;]*update[^;]*shoe_round_card_events[^;]*service_role/i)
 
-  assert.match(migration, /create or replace function public\.apply_v102_rank_ledger_event/i)
+  assert.match(migration, /create or replace function public\.apply_v104_rank_ledger_event/i)
   assert.match(migration, /pg_advisory_xact_lock/i)
   assert.match(migration, /extensions\.digest/i)
   assert.doesNotMatch(migration, /p_ledger\s*->/i)
   assert.match(migration, /values \(v_source, v_table, v_shoe, v_round, v_raw, v_delta, v_action, v_hash, false\)/i)
   assert.doesNotMatch(migration, /v_raw, '\{\}'::jsonb, v_action, v_hash, false/i)
-  assert.match(migration, /revoke all on function public\.apply_v102_rank_ledger_event/i)
-  assert.match(migration, /grant execute on function public\.apply_v102_rank_ledger_event\(jsonb, jsonb\) to service_role/i)
+  assert.match(migration, /revoke all on function public\.apply_v104_rank_ledger_event/i)
+  assert.match(migration, /grant execute on function public\.apply_v104_rank_ledger_event\(jsonb, jsonb\) to service_role/i)
   assert.match(migration, /position between 1 and 4[^\n]*not between 1 and 52/i)
   assert.doesNotMatch(migration, /set\s+raw_result_exact10\s*=/i)
 
   assert.match(rollback, /status\s*=\s*'archived'/i)
-  assert.match(rollback, /version\s*=\s*'v101'/i)
+  assert.match(rollback, /version\s*=\s*'v102'/i)
   assert.doesNotMatch(rollback, /drop\s+(table|function)/i)
 })

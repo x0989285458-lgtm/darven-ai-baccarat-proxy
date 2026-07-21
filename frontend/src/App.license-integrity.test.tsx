@@ -12,7 +12,7 @@ function setAdminSession() {
 }
 
 function nonLicenseResponse(url: string) {
-  if (url.includes('/api/status')) return okJson({ connected: true, authenticated: true, tables: [], buildVersion: 'v102' })
+  if (url.includes('/api/status')) return okJson({ connected: true, authenticated: true, tables: [], buildVersion: 'v104' })
   if (url.includes('/api/cloud-data/status')) return okJson({ ok: true, todayRoundCount: 0, dailyReports: [], tableStats: [] })
   return okJson({ items: [], reports: [], strategies: [], strategyRows: [], weakTables: [], strongTables: [], watchTables: [], suggestions: [] })
 }

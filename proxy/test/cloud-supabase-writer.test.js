@@ -5,6 +5,7 @@ import {
   buildCloudTableSnapshotRow,
   buildCloudRoundEventRow,
   buildCloudStrategyReportRow,
+  buildLivePrediction,
   buildStrategyAdjustmentStatsRows,
   createSupabaseIngestionClient,
 } from '../src/supabase-writer.js'
@@ -40,7 +41,14 @@ test('builds a fallback snapshot without duplicate table summary storage', () =>
   assert.deepEqual(row.table_summary, [])
 })
 
-test('cloud table snapshot carries backend-only live prediction confidence', () => {
+test('cloud table snapshot carries an already-issued v104 backend prediction without recomputing it', () => {
+  const issuedPrediction = buildLivePrediction({
+    tableId: 'BAG01', shoe: 3, round: 12,
+    bankerCount: 10, playerCount: 18, tieCount: 2,
+    beadPlateRaw: '0101010101020202', bigRoadRaw: '0101,0101,#0202,0202',
+  }, {
+    strategyVersion: 'v104', buildVersion: 'v104',
+  })
   const row = buildCloudTableSnapshotRow({
     sessionId: 'session-1',
     tables: [{
@@ -53,16 +61,27 @@ test('cloud table snapshot carries backend-only live prediction confidence', () 
       tieCount: 2,
       beadPlateRaw: '0101010101020202',
       bigRoadRaw: '0101,0101,#0202,0202',
+      prediction: { ...issuedPrediction, predictionId: 'issued-v104', issuedAt: '2026-07-21T00:00:00Z' },
     }],
     status: { captureSource: 'cloud_browser' },
   })
 
   assert.equal(row.tables[0].prediction.source, 'backend')
-  assert.equal(row.tables[0].prediction.strategyVersion, 'v102')
+  assert.equal(row.tables[0].prediction.strategyVersion, 'v104')
+  assert.equal(row.tables[0].prediction.predictionId, 'issued-v104')
   assert.match(row.tables[0].prediction.predictedResult, /^(banker|player)$/)
   assert.equal(row.tables[0].prediction.confidence >= 30, true)
   assert.equal(row.tables[0].prediction.confidence <= 70, true)
   assert.deepEqual(row.table_summary, [])
+})
+
+test('cloud table snapshot fails closed instead of inventing an unissued v104 prediction', () => {
+  const row = buildCloudTableSnapshotRow({
+    sessionId: 'session-1',
+    tables: [{ tableId: 'BAG01', shoe: 3, round: 12 }],
+    status: { captureSource: 'cloud_browser' },
+  })
+  assert.equal(row.tables[0].prediction, undefined)
 })
 
 test('builds cloud round, strategy report, and adjustment stats rows', () => {

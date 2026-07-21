@@ -70,7 +70,7 @@ test('builds Supabase roadmap and prediction rows for short-retention learning d
   assert.equal(event.super_six, false)
   assert.equal(event.raw_event.sourceAction.includes('summary'), true)
 
-  assert.equal(prediction.strategy_version, 'v102')
+  assert.equal(prediction.strategy_version, 'v104')
   assert.ok(['banker', 'player'].includes(prediction.predicted_result))
   assert.equal(prediction.actual_result, 'banker')
   assert.equal(typeof prediction.is_hit, 'boolean')
@@ -90,7 +90,7 @@ test('Supabase client posts strategy, roadmap event and prediction result with s
       if (init.method === 'GET') {
         return { ok: true, json: async () => [{ version: buildLivePrediction(table).strategyVersion, status: 'active' }], text: async () => '' }
       }
-      return String(url).includes('/rpc/persist_v102_settled_round')
+      return String(url).includes('/rpc/persist_v104_settled_round')
         ? { ok: true, status: 200, text: async () => JSON.stringify({ persisted: true, roadmapDurable: true, predictionDurable: true }) }
         : { ok: true, status: 201, text: async () => '' }
     },
@@ -106,6 +106,6 @@ test('Supabase client posts strategy, roadmap event and prediction result with s
   assert.equal(requests[1].init.method, 'POST')
   assert.equal(requests[2].url.includes('/rest/v1/ai_strategy_versions'), true)
   assert.equal(requests[2].init.method, 'GET')
-  assert.equal(requests[3].url.includes('/rest/v1/rpc/persist_v102_settled_round'), true)
+  assert.equal(requests[3].url.includes('/rest/v1/rpc/persist_v104_settled_round'), true)
   assert.equal(requests[3].init.headers.Authorization, 'Bearer sb_secret_test_key')
 })
