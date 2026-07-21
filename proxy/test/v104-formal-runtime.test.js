@@ -63,3 +63,14 @@ test('v104 formal runtime hydrates formal issuance streaks and advances them onl
   assert.equal(newShoe.sameSideStreak, 1)
   assert.equal(runtime.snapshot().historySource, 'v104_formal_issuance_and_final_only')
 })
+
+test('v104 live issuance gap resets same-side streak before durable acknowledgement', async () => {
+  const { createV104FormalRuntime } = await import('../src/v104-formal-runtime.js')
+  const runtime = createV104FormalRuntime({ writer: { configured: false }, allowUnconfigured: true })
+  const first = await runtime.buildPrediction({ ...table, round: 5 })
+  runtime.recordIssuance({ ...first, predictionId: 'formal-gap-6', issuedAt: '2026-07-21T00:00:08Z' })
+
+  const afterGap = await runtime.buildPrediction({ ...table, round: 40 })
+  assert.equal(afterGap.targetRound, 41)
+  assert.equal(afterGap.sameSideStreak, 1)
+})

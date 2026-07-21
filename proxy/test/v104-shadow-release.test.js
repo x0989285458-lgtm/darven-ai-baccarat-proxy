@@ -80,7 +80,7 @@ test('v104 SQL enforces immutable first-write-wins, verified Final, PUSH, and pa
 
 test('deployment guide promotes v104 coherently and preserves rollback and shadow history', () => {
   const deployment = read('proxy/deploy/DEPLOYMENT.md')
-  assert.match(deployment, /v104\.0\.0-formal\.1/i)
+  assert.match(deployment, /v104\.0\.0-formal\.2/i)
   assert.match(deployment, /V103_SHADOW_ENABLED=true/i)
   assert.match(deployment, /V104_SHADOW_ENABLED=false/i)
   assert.match(deployment, /schema_v104_formal\.sql/i)

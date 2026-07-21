@@ -23,7 +23,7 @@ test('v104 formal prediction preserves the approved shadow main calculation and 
   const formal = module.buildV104FormalPrediction(table, history, issuanceContext)
 
   assert.equal(formal.strategyVersion, 'v104')
-  assert.equal(formal.releaseVersion, 'v104.0.0-formal.1')
+  assert.equal(formal.releaseVersion, 'v104.0.0-formal.2')
   assert.equal(formal.predictedResult, shadow.predictedResult)
   assert.equal(formal.confidence, shadow.confidence)
   assert.deepEqual(formal.scoreSources, shadow.scoreSources)

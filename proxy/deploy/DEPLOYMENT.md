@@ -1,4 +1,4 @@
-# v104.0.0-formal.1 正式部署檢查表
+# v104.0.0-formal.2 正式部署檢查表
 
 ## v104正式邊界
 
@@ -134,9 +134,9 @@ https://darven-ai-baccarat.pages.dev/login
 https://darven-ai-baccarat.pages.dev/admin-login
 ```
 
-## v104.0.0-formal.1 完成標準
+## v104.0.0-formal.2 完成標準
 
-- Proxy、Worker、Frontend皆對應同一個Git commit及`v104.0.0-formal.1` Tag
+- Proxy、Worker、Frontend皆對應同一個Git commit及`v104.0.0-formal.2` Tag
 - 10桌依序為BAG01、BAG02、BAG03、BAG03A、BAG05、BAG06、BAG07、BAG08、BAG09、BAG10
 - Push ACK成功且Queue排空
 - DB v104 Final筆數持續增加，部署後v102歷史筆數不再前進

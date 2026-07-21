@@ -42,10 +42,18 @@ export function createV104FormalRuntime({ writer = null, requestTimeoutMs = 1000
   async function buildPrediction(table = {}) {
     await start()
     const prior = issuanceStreaks.get(tableKey(table.tableId))
+    const currentShoe = table.shoe == null ? '' : String(table.shoe)
+    const targetRound = Number(table.round) + 1
+    const contiguousPrior = prior?.shoe === currentShoe
+      && Number.isSafeInteger(targetRound)
+      && Number.isSafeInteger(prior?.round)
+      && targetRound === prior.round + 1
+      ? prior
+      : null
     return buildV104FormalPrediction(table, historyRows, {
-      priorShoe: prior?.shoe,
-      priorDirection: prior?.direction,
-      priorSameSideStreak: prior?.sameSideStreak,
+      priorShoe: contiguousPrior?.shoe,
+      priorDirection: contiguousPrior?.direction,
+      priorSameSideStreak: contiguousPrior?.sameSideStreak,
     })
   }
 
