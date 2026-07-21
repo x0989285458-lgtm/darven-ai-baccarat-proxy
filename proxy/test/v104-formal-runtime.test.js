@@ -38,7 +38,7 @@ test('v104 formal runtime hydrates formal issuance streaks and advances them onl
     },
   })
   await runtime.start()
-  assert.deepEqual(calls, [{ limit: 10000, requestTimeoutMs: 10000 }])
+  assert.deepEqual(calls, [{ limit: 1000, requestTimeoutMs: 10000 }])
 
   const expected = buildV104FormalPrediction(table, historyRows, {
     priorShoe: '88', priorDirection: 'banker', priorSameSideStreak: 2,

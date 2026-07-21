@@ -1,6 +1,6 @@
 import { buildV104FormalPrediction, V104_FORMAL_STRATEGY_VERSION } from './v104-formal-strategy.js'
 
-const HISTORY_LIMIT = 10000
+const HISTORY_LIMIT = 1000
 
 export function createV104FormalRuntime({ writer = null, requestTimeoutMs = 10000, allowUnconfigured = false } = {}) {
   const issuanceStreaks = new Map()

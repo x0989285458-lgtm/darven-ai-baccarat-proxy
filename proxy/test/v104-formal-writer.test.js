@@ -32,11 +32,11 @@ test('v104 formal history reads only formal daily prediction issuances and keeps
   assert.equal(requested.pathname, '/rest/v1/daily_prediction_results')
   assert.equal(requested.searchParams.get('strategy_version'), 'eq.v104')
   assert.equal(requested.searchParams.has('settlement_final'), false, 'pending issuance rows must remain visible')
-  assert.match(requested.searchParams.get('select'), /issued_prediction_payload/)
+  assert.doesNotMatch(requested.searchParams.get('select'), /issued_prediction_payload/)
   assert.equal(history.length, 1)
   assert.equal(history[0].prediction_id, 'v104-formal-1')
   assert.equal(history[0].prediction_timing, 'pre_result_context')
-  assert.deepEqual(history[0].prediction_payload, rows[0].issued_prediction_payload)
+  assert.equal(Object.hasOwn(history[0], 'prediction_payload'), false)
 })
 
 test('v104 formal history timeout aborts the underlying Supabase GET', async () => {

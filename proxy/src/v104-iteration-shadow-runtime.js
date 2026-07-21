@@ -1,4 +1,5 @@
 import {
+  SHADOW_HEAD_LABELS,
   V104_ITERATION_SHADOW_VERSION,
   buildV104IterationShadowPrediction,
   buildV104IterationShadowSettlement,
@@ -232,8 +233,13 @@ export function createV104IterationShadowRuntime({ enabled = false, writer = nul
       suggestions.push(suggestion)
     }
     if (!report && suggestions.length === 0) return
-    const reportSvg = report ? renderShadowReportSvg(report, suggestions) : null
-    await withTimeout(writer.persistV104IterationShadowArtifacts({ report, reportSvg, suggestions }), timeoutMs, 'v104 iteration shadow artifact persistence')
+    let artifactSuggestions = suggestions
+    if (report && typeof writer?.getV104IterationShadowSuggestions === 'function') {
+      const durableSuggestions = await withTimeout(writer.getV104IterationShadowSuggestions({ limit: 50000 }), timeoutMs, 'v104 iteration shadow pending suggestions')
+      artifactSuggestions = mergePendingSuggestions(durableSuggestions, suggestions)
+    }
+    const reportSvg = report ? renderShadowReportSvg(report, artifactSuggestions) : null
+    await withTimeout(writer.persistV104IterationShadowArtifacts({ report, reportSvg, suggestions: artifactSuggestions }), timeoutMs, 'v104 iteration shadow artifact persistence')
   }
 
   function settleRound(round = {}) {
@@ -405,6 +411,40 @@ function assertIssuedIdentity(candidate, issued) {
 
 function rowTime(row) {
   return Date.parse(row?.prediction_issued_at ?? row?.predictionIssuedAt ?? '') || 0
+}
+
+function normalizeDurableSuggestion(row = {}) {
+  const headKey = row.headKey ?? row.head_key
+  const actionCycle = Number(row.actionCycle ?? row.action_cycle)
+  return {
+    ...structuredClone(row),
+    id: row.id ?? row.suggestion_id ?? `${V104_ITERATION_SHADOW_VERSION}:${headKey}:${actionCycle}`,
+    headKey,
+    headLabel: row.headLabel ?? SHADOW_HEAD_LABELS[headKey] ?? headKey,
+    actionCycle,
+    sampleStartAction: Number(row.sampleStartAction ?? row.sample_start_action),
+    sampleEndAction: Number(row.sampleEndAction ?? row.sample_end_action),
+    modelVersion: row.modelVersion ?? row.model_version ?? V104_ITERATION_SHADOW_VERSION,
+    searchMethod: row.searchMethod ?? row.search_method,
+    currentWeights: structuredClone(row.currentWeights ?? row.current_weights ?? {}),
+    suggestedWeights: structuredClone(row.suggestedWeights ?? row.suggested_weights ?? {}),
+    baselineMetrics: structuredClone(row.baselineMetrics ?? row.baseline_metrics ?? {}),
+    candidateMetrics: structuredClone(row.candidateMetrics ?? row.candidate_metrics ?? {}),
+    autoApply: row.autoApply ?? row.auto_apply ?? false,
+  }
+}
+
+function mergePendingSuggestions(durableRows, generatedRows) {
+  const merged = new Map()
+  for (const raw of Array.isArray(durableRows) ? durableRows : []) {
+    const item = normalizeDurableSuggestion(raw)
+    if (item.status === 'pending') merged.set(item.id, item)
+  }
+  for (const raw of Array.isArray(generatedRows) ? generatedRows : []) {
+    const item = normalizeDurableSuggestion(raw)
+    merged.set(item.id, item)
+  }
+  return [...merged.values()].sort((left, right) => left.actionCycle - right.actionCycle || String(left.headKey).localeCompare(String(right.headKey)))
 }
 
 function positiveLimit(value) {

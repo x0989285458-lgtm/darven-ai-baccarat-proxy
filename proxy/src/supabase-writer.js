@@ -2520,7 +2520,7 @@ export function createSupabaseIngestionClient({
     },
     async getV104FormalHistory({ limit = 10000, requestTimeoutMs = 0 } = {}) {
       const rows = await getRest('daily_prediction_results', {
-        select: 'id,source,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,prediction_issued_at,issued_prediction_payload,prediction_features,created_at',
+        select: 'id,source,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,prediction_issued_at,prediction_features,created_at',
         strategy_version: 'eq.v104',
         prediction_issued_at: 'not.is.null',
         order: 'prediction_issued_at.desc',
@@ -2534,7 +2534,6 @@ export function createSupabaseIngestionClient({
           ...row,
           prediction_id: row.id,
           prediction_timing: row.prediction_features.prediction_timing,
-          prediction_payload: row.issued_prediction_payload,
         }))
     },
     async getRecentPredictionRows({ limit = 10000 } = {}) {

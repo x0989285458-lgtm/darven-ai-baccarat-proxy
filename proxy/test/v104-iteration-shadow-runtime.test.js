@@ -185,13 +185,20 @@ test('v104 persists immutable cycle report SVG and per-head grid suggestion at e
   const rows = Array.from({ length: 1000 }, (_, index) => makeRow(index))
   writer.getV104IterationShadowSettledRange = async () => rows
   writer.getV104IterationShadowHeadActionRange = async () => rows
+  writer.getV104IterationShadowSuggestions = async () => [{
+    id: 'v104-seven-head-shadow-v1:tie:1', status: 'pending', head_key: 'tie', headKey: 'tie', headLabel: '和', action_cycle: 1,
+    currentWeights: { tie_rate: 0.5, tie_signal: 0.5 }, suggestedWeights: { tie_rate: 0.55, tie_signal: 0.45 }, autoApply: false,
+  }]
   let artifact
   writer.persistV104IterationShadowArtifacts = async (payload) => { artifact = payload; return { persisted: true } }
   await runtime.settleRound({ ...table(), round: 21, sourceAction: '/summary', winner: 'banker' })
   assert.equal(artifact.report.cycleNumber, 1)
   assert.match(artifact.reportSvg, /^<svg/)
-  assert.equal(artifact.suggestions[0].searchMethod, 'exhaustive_5_percent_grid')
-  assert.equal(artifact.suggestions[0].autoApply, false)
+  assert.equal(artifact.suggestions.some((item) => item.headKey === 'tie'), true)
+  assert.equal(artifact.suggestions.some((item) => item.headKey === 'main'), true)
+  assert.match(artifact.reportSvg, /和｜只調現有比例/)
+  assert.equal(artifact.suggestions.find((item) => item.headKey === 'main').searchMethod, 'exhaustive_5_percent_grid')
+  assert.equal(artifact.suggestions.find((item) => item.headKey === 'main').autoApply, false)
 })
 
 test('v104 restart reconstructs missing durable cycle and head artifacts from counters', async () => {
