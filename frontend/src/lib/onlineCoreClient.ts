@@ -25,6 +25,55 @@ export type OnlineStrategyAnalysis = {
   suggestions: string[]
 }
 
+export type ShadowIterationHead = {
+  key: 'main' | 'tie' | 'superSix' | 'bankerDragon' | 'playerDragon' | 'bankerPair' | 'playerPair'
+  label: string
+  actions: number
+  eligibleRounds: number
+  actionRate: number | null
+  hitRate: number | null
+  fixedNetUnits: number
+  weightedNetUnits: number
+  iterationProgress: number
+}
+
+export type ShadowIterationReport = {
+  cycleNumber: number
+  settledRounds?: number
+  startedAt?: string
+  completedAt?: string
+}
+
+export type ShadowIterationSuggestion = {
+  id: string
+  headKey: ShadowIterationHead['key']
+  actionCycle: number
+  status: 'pending' | 'approved' | 'rejected'
+  currentWeights: Record<string, number>
+  suggestedWeights: Record<string, number>
+  baselineMetrics?: Record<string, number>
+  candidateMetrics?: Record<string, number>
+  modelVersion?: string
+  searchMethod?: string
+  autoApply?: false
+  reviewedBy?: string | null
+  reviewedAt?: string | null
+  createdAt?: string
+}
+
+export type ShadowIterationStatus = {
+  state: 'connecting' | 'connected' | 'error'
+  enabled: boolean
+  shadowVersion?: string
+  formalStrategyVersion?: string
+  settledRounds: number
+  currentCycleProgress: number
+  heads: ShadowIterationHead[]
+  reports: ShadowIterationReport[]
+  suggestions: ShadowIterationSuggestion[]
+  message?: string
+}
+
 const proxyUrl = dravenApiBaseUrl
 
 export async function checkOnlineCoreStatus(fetchImpl = fetch): Promise<OnlineCoreStatus> {
@@ -75,6 +124,64 @@ export async function getOnlineStrategyAnalysis(fetchImpl = fetch): Promise<Onli
   } catch {
     return { state: 'error', strategyRows: [], weakTables: [], strongTables: [], watchTables: [], suggestions: [] }
   }
+}
+
+export async function getShadowIterationStatus(adminSessionToken: string, fetchImpl = fetch): Promise<ShadowIterationStatus> {
+  const empty: ShadowIterationStatus = {
+    state: 'error', enabled: false, settledRounds: 0, currentCycleProgress: 0,
+    heads: [], reports: [], suggestions: [], message: '影子預測資料未連線',
+  }
+  if (!adminSessionToken) return { ...empty, message: '需要超級管理員Session' }
+  try {
+    const response = await fetchImpl(`${proxyUrl}/api/v104-iteration-shadow/admin/status`, {
+      headers: { Authorization: `Bearer ${adminSessionToken}` },
+    })
+    if (!response.ok) return { ...empty, message: response.status === 403 ? '僅超級管理員可查看' : '影子預測資料未連線' }
+    const body = await response.json()
+    if (!body?.ok) return empty
+    return {
+      state: 'connected',
+      enabled: body.enabled === true,
+      shadowVersion: body.shadowVersion,
+      formalStrategyVersion: body.formalStrategyVersion,
+      settledRounds: Number(body.settledRounds ?? 0),
+      currentCycleProgress: Number(body.currentCycleProgress ?? 0),
+      heads: Array.isArray(body.heads) ? body.heads : [],
+      reports: Array.isArray(body.reports) ? body.reports : [],
+      suggestions: Array.isArray(body.suggestions) ? body.suggestions : [],
+      message: body.message,
+    }
+  } catch {
+    return empty
+  }
+}
+
+export async function getShadowIterationReportSvg(cycleNumber: number, adminSessionToken: string, fetchImpl = fetch): Promise<string> {
+  const cycle = Math.floor(Number(cycleNumber))
+  if (!Number.isSafeInteger(cycle) || cycle < 1) throw new Error('影子報告輪次錯誤')
+  if (!adminSessionToken) throw new Error('需要超級管理員Session')
+  const response = await fetchImpl(`${proxyUrl}/api/v104-iteration-shadow/admin/reports/${cycle}/image.svg`, {
+    headers: { Authorization: `Bearer ${adminSessionToken}` },
+  })
+  if (!response.ok) throw new Error('影子報告讀取失敗')
+  const contentType = response.headers?.get?.('content-type') ?? ''
+  const svg = await response.text()
+  if (!contentType.toLowerCase().includes('image/svg+xml') || svg.length > 1_000_000 || !/^\s*<svg[\s>]/i.test(svg)) {
+    throw new Error('影子報告格式錯誤')
+  }
+  return svg
+}
+
+export async function reviewShadowIterationSuggestion(suggestionId: string, decision: 'approved' | 'rejected', adminSessionToken: string, fetchImpl = fetch) {
+  if (!suggestionId || !['approved', 'rejected'].includes(decision)) throw new Error('影子建議審核資料錯誤')
+  if (!adminSessionToken) throw new Error('需要超級管理員Session')
+  const response = await fetchImpl(`${proxyUrl}/api/v104-iteration-shadow/admin/suggestions/${encodeURIComponent(suggestionId)}/review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminSessionToken}` },
+    body: JSON.stringify({ decision }),
+  })
+  if (!response.ok) throw new Error('影子建議審核失敗')
+  return response.json()
 }
 
 export async function updateOnlineAppSetting(payload: { scope: string; key: string; value: unknown; isPublic?: boolean; adminSessionToken?: string }, fetchImpl = fetch) {

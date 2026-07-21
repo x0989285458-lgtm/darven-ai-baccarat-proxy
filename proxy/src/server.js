@@ -12,6 +12,8 @@ import { createV100FormalRuntime, resolveV100FormalEnabled } from './v100-formal
 import { createV103ShadowRuntime, resolveV103ShadowEnabled } from './v103-shadow-runtime.js'
 import { createV104FormalRuntime } from './v104-formal-runtime.js'
 import { createV104ShadowRuntime, resolveV104ShadowEnabled } from './v104-shadow-runtime.js'
+import { createV104IterationShadowRuntime, resolveV104IterationShadowEnabled } from './v104-iteration-shadow-runtime.js'
+import { buildShadowAdminStatus } from './v104-iteration-shadow-report.js'
 import { createOnlineCoreClient } from './online-core.js'
 import { createLicenseAdminClient } from './license-admin.js'
 import { chooseCaptureSource, describeCaptureStatus } from './capture-source.js'
@@ -67,7 +69,7 @@ function rememberBounded(seen, order, value, limit) {
   while (order.length > limit) seen.delete(order.shift())
 }
 
-export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null, v104ShadowRuntime = null, v104FormalRuntime = null } = {}) {
+export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null, v104ShadowRuntime = null, v104IterationShadowRuntime = null, v104FormalRuntime = null } = {}) {
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
     CAPTURE_SOURCE: requestedCaptureSource,
@@ -96,6 +98,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   let tablesReceivedAtMs = 0
   let v103Shadow = null
   let v104Shadow = null
+  let v104IterationShadow = null
+  let v104IterationShadowAdminCache = { expiresAtMs: 0, state: null }
   const v104Formal = v104FormalRuntime ?? (ALL_MT_EQUAL_STRATEGY_VERSION === 'v104'
     ? createV104FormalRuntime({ writer: supabaseClient, allowUnconfigured: !requireVerifiedStrategy })
     : null)
@@ -111,6 +115,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         void reconcileThenSavePendingPrediction(table)
         if (v103Shadow?.enabled === true) void v103Shadow.observeTable(table).catch(() => {})
         if (v104Shadow?.enabled === true) void v104Shadow.observeTable(table).catch(() => {})
+        if (v104IterationShadow?.enabled === true) void v104IterationShadow.observeTable(table).catch(() => {})
       }
     },
     onRoundEvent: async (round, table) => {
@@ -119,6 +124,12 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       if (strictRealCardRounds && !hasRealCardCodes(round)) return
       if (v103Shadow?.enabled === true) void v103Shadow.settleRound(round).catch(() => {})
       if (v104Shadow?.enabled === true) void v104Shadow.settleRound(round).catch(() => {})
+      if (v104IterationShadow?.enabled === true) {
+        v104IterationShadowAdminCache = { expiresAtMs: 0, state: null }
+        void v104IterationShadow.settleRound(round)
+          .then(() => { v104IterationShadowAdminCache = { expiresAtMs: 0, state: null } })
+          .catch(() => {})
+      }
       const pendingKey = predictionTargetKey(round.tableId ?? table.tableId, round.shoe, round.round)
       let issuedCandidate
       try {
@@ -186,7 +197,36 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       enabled: resolveV104ShadowEnabled(),
       writer: supabaseClient,
     }))
+  v104IterationShadow = v104IterationShadowRuntime ?? createV104IterationShadowRuntime({
+    enabled: resolveV104IterationShadowEnabled(),
+    writer: supabaseClient,
+  })
   const cloudCaptureClient = createCloudCaptureClient({ url: cloudBrowserUrl, state, writer: supabaseClient, v100Formal, fetchImpl, pollMs: deployConfig.cloudCapturePollMs, adminKey: process.env.WORKER_ADMIN_KEY })
+
+  async function readV104IterationShadowAdminState() {
+    const currentTime = Number(now())
+    if (v104IterationShadowAdminCache.state && v104IterationShadowAdminCache.expiresAtMs > currentTime) {
+      return v104IterationShadowAdminCache.state
+    }
+    if (typeof supabaseClient?.getV104IterationShadowCounters !== 'function'
+        || typeof supabaseClient?.getV104IterationShadowSettledRange !== 'function'
+        || typeof supabaseClient?.getV104IterationShadowCycleReports !== 'function'
+        || typeof supabaseClient?.getV104IterationShadowSuggestions !== 'function') throw new Error('iteration shadow durable admin data is unavailable')
+    const counters = await supabaseClient.getV104IterationShadowCounters()
+    if (!counters) throw new Error('iteration shadow counters are unavailable')
+    const settledRounds = Number(counters.settlement_count) || 0
+    const remainder = settledRounds % 1000
+    const endSequence = settledRounds
+    const startSequence = settledRounds > 0 ? settledRounds - (remainder || Math.min(1000, settledRounds)) + 1 : 1
+    const [rows, reportRows, suggestionRows] = await Promise.all([
+      settledRounds > 0 ? supabaseClient.getV104IterationShadowSettledRange({ startSequence, endSequence }) : [],
+      supabaseClient.getV104IterationShadowCycleReports({ limit: 1000 }),
+      supabaseClient.getV104IterationShadowSuggestions({ limit: 1000 }),
+    ])
+    const state = { counters, rows, reportRows, suggestionRows }
+    v104IterationShadowAdminCache = { expiresAtMs: currentTime + 30000, state }
+    return state
+  }
 
   async function recordOperationalEvent({ component, kind, message, statusCode = null, metadata = {} }) {
     const event = buildOperationalEvent({ component, kind, message, statusCode, metadata })
@@ -250,6 +290,80 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       const controlError = requireControlAccess(headers)
       if (controlError) return controlError
       return jsonResponse(200, { ok: true, activeStrategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION, v104Shadow: v104Shadow?.snapshot?.() ?? { status: 'unavailable' } }, frontendOrigin)
+    }
+    if (pathname === '/api/v104-iteration-shadow/control/status') {
+      const controlError = requireControlAccess(headers)
+      if (controlError) return controlError
+      return jsonResponse(200, {
+        ok: true,
+        formalStrategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION,
+        runtime: v104IterationShadow?.snapshot?.() ?? { status: 'unavailable' },
+      }, frontendOrigin)
+    }
+    if (pathname === '/api/v104-iteration-shadow/admin/status') {
+      if (method !== 'GET') return jsonResponse(405, { ok: false, error: 'Method Not Allowed' }, frontendOrigin)
+      if (hasSensitiveAuthQuery(requestUrl)) return jsonResponse(400, { ok: false, error: 'admin session is not allowed in query' }, frontendOrigin)
+      try {
+        requireSuperAdminSession({}, requestUrl, headers)
+        const { counters, rows, reportRows, suggestionRows } = await readV104IterationShadowAdminState()
+        const status = buildShadowAdminStatus(rows)
+        const actionCounts = {
+          main: Number(counters.main_action_count) || 0, tie: Number(counters.tie_action_count) || 0,
+          superSix: Number(counters.super_six_action_count) || 0, bankerDragon: Number(counters.banker_dragon_action_count) || 0,
+          playerDragon: Number(counters.player_dragon_action_count) || 0, bankerPair: Number(counters.banker_pair_action_count) || 0,
+          playerPair: Number(counters.player_pair_action_count) || 0,
+        }
+        status.settledRounds = Number(counters.settlement_count) || 0
+        status.currentCycleProgress = status.settledRounds % 1000
+        status.heads = status.heads.map((head) => ({ ...head, iterationProgress: actionCounts[head.key] % 1000 }))
+        status.reports = (Array.isArray(reportRows) ? reportRows : []).map((row) => ({
+          cycleNumber: Number(row.cycle_number), settledRounds: 1000,
+          startedAt: row.report_payload?.startedAt ?? null, completedAt: row.report_payload?.completedAt ?? null,
+        }))
+        status.suggestions = (Array.isArray(suggestionRows) ? suggestionRows : []).map((row) => ({
+          id: row.suggestion_id, headKey: row.head_key, actionCycle: Number(row.action_cycle),
+          modelVersion: row.model_version, searchMethod: row.search_method,
+          currentWeights: row.current_weights, suggestedWeights: row.suggested_weights,
+          baselineMetrics: row.baseline_metrics, candidateMetrics: row.candidate_metrics,
+          status: row.status, autoApply: row.auto_apply, reviewedBy: row.reviewed_by, reviewedAt: row.reviewed_at,
+        }))
+        const runtime = v104IterationShadow?.snapshot?.() ?? { status: 'unavailable' }
+        return jsonResponse(200, { ...status, enabled: v104IterationShadow?.enabled === true, runtime }, frontendOrigin)
+      } catch (error) {
+        return jsonResponse(error?.statusCode ?? 503, { ok: false, error: error?.message ?? String(error) }, frontendOrigin)
+      }
+    }
+    const shadowSuggestionReviewMatch = pathname.match(/^\/api\/v104-iteration-shadow\/admin\/suggestions\/([^/]+)\/review$/)
+    if (shadowSuggestionReviewMatch) {
+      if (method !== 'POST') return jsonResponse(405, { ok: false, error: 'Method Not Allowed' }, frontendOrigin)
+      if (hasSensitiveAuthQuery(requestUrl)) return jsonResponse(400, { ok: false, error: 'admin session is not allowed in query' }, frontendOrigin)
+      try {
+        const payload = parseJsonBody(rawBody)
+        const session = requireSuperAdminSession(payload, requestUrl, headers)
+        if (typeof supabaseClient?.reviewV104IterationShadowSuggestion !== 'function') throw new Error('iteration shadow review writer is unavailable')
+        const reviewed = await supabaseClient.reviewV104IterationShadowSuggestion({
+          suggestionId: decodeURIComponent(shadowSuggestionReviewMatch[1]), decision: payload.decision, reviewer: session.adminAccount,
+        })
+        v104IterationShadowAdminCache = { expiresAtMs: 0, state: null }
+        return jsonResponse(200, { ok: true, ...reviewed }, frontendOrigin)
+      } catch (error) {
+        return jsonResponse(error?.statusCode ?? 400, { ok: false, error: error?.message ?? String(error) }, frontendOrigin)
+      }
+    }
+    const shadowReportImageMatch = pathname.match(/^\/api\/v104-iteration-shadow\/admin\/reports\/(\d+)\/image\.svg$/)
+    if (shadowReportImageMatch) {
+      if (method !== 'GET') return jsonResponse(405, { ok: false, error: 'Method Not Allowed' }, frontendOrigin)
+      if (hasSensitiveAuthQuery(requestUrl)) return jsonResponse(400, { ok: false, error: 'admin session is not allowed in query' }, frontendOrigin)
+      try {
+        requireSuperAdminSession({}, requestUrl, headers)
+        const { reportRows } = await readV104IterationShadowAdminState()
+        const cycleNumber = Number(shadowReportImageMatch[1])
+        const reportRow = (Array.isArray(reportRows) ? reportRows : []).find((item) => Number(item.cycle_number) === cycleNumber)
+        if (!reportRow?.report_svg) return jsonResponse(404, { ok: false, error: 'shadow report not found' }, frontendOrigin)
+        return svgResponse(200, reportRow.report_svg, frontendOrigin)
+      } catch (error) {
+        return jsonResponse(error?.statusCode ?? 503, { ok: false, error: error?.message ?? String(error) }, frontendOrigin)
+      }
     }
     if (pathname === '/api/tables') {
       if (hasSensitiveAuthQuery(requestUrl)) return jsonResponse(400, { ok: false, error: 'session token is not allowed in query' }, frontendOrigin)
@@ -1027,6 +1141,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     async start() {
       if (v103Shadow?.enabled === true && typeof v103Shadow.start === 'function') void v103Shadow.start().catch(() => {})
       if (v104Shadow?.enabled === true && typeof v104Shadow.start === 'function') void v104Shadow.start().catch(() => {})
+      if (v104IterationShadow?.enabled === true && typeof v104IterationShadow.start === 'function') void v104IterationShadow.start().catch(() => {})
       if (requireVerifiedStrategy && supabaseClient?.configured === true && typeof supabaseClient.ensureInitialStrategy === 'function') {
         try {
           await supabaseClient.ensureInitialStrategy()
@@ -1249,6 +1364,23 @@ function jsonResponse(statusCode, payload, frontendOrigin = '*') {
       pragma: 'no-cache',
     },
     body: JSON.stringify(payload),
+  }
+}
+
+function svgResponse(statusCode, svg, frontendOrigin = '*') {
+  return {
+    statusCode,
+    headers: {
+      'content-type': 'image/svg+xml; charset=utf-8',
+      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+      'x-content-type-options': 'nosniff',
+      'access-control-allow-origin': frontendOrigin,
+      'access-control-allow-methods': 'GET,OPTIONS',
+      'access-control-allow-headers': 'Authorization,X-Admin-Session-Token',
+      'cache-control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      pragma: 'no-cache',
+    },
+    body: String(svg),
   }
 }
 

@@ -1,0 +1,56 @@
+{
+  "releaseVersion": "v104.1.0-seven-head-shadow.1",
+  "packageVersion": "1.0.13",
+  "productVersion": "v104",
+  "frontendBuildVersion": "v104",
+  "proxyBuildVersion": "v104",
+  "workerBuildVersion": "104",
+  "formalStrategyVersion": "v104",
+  "shadowStrategyVersion": "v104-seven-head-shadow-v1",
+  "protocolVersion": "v104",
+  "candidateMode": "isolated-seven-head-shadow",
+  "formalActionsEnabled": true,
+  "shadowOnly": true,
+  "memberVisible": false,
+  "activationEligible": false,
+  "writesSideActions": false,
+  "heads": [
+    "main",
+    "tie",
+    "superSix",
+    "bankerDragon",
+    "playerDragon",
+    "bankerPair",
+    "playerPair"
+  ],
+  "iteration": {
+    "cycleFinalRounds": 1000,
+    "perHeadSettledActions": 1000,
+    "searchMethod": "exhaustive_5_percent_grid",
+    "existingNonzeroWeightKeysOnly": true,
+    "thresholdsChanged": false,
+    "autoApply": false,
+    "manualReviewRequired": true,
+    "durableReports": true,
+    "durableSuggestions": true
+  },
+  "database": {
+    "additive": true,
+    "gaplessTransactionalCounters": true,
+    "serviceRoleOnly": true,
+    "rollbackPreservesEvidence": true
+  },
+  "shadowHistory": {
+    "v103Retained": true,
+    "v104Retained": true,
+    "oldShadowWritesDisabled": true
+  },
+  "deploymentOrder": [
+    "database-additive",
+    "proxy",
+    "worker-package-coherence",
+    "frontend",
+    "live-e2e"
+  ],
+  "rollbackTarget": "v104.0.0-formal.2"
+}

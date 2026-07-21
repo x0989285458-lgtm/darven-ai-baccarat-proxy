@@ -165,6 +165,27 @@ describe('AI百家預測軟體', () => {
     })
   })
 
+  it('只讓超級管理員看到並以Bearer讀取影子預測區', async () => {
+    await renderApp('/admin')
+    expect(await screen.findByLabelText('影子預測迭代')).toBeInTheDocument()
+    await waitFor(() => {
+      const call = (fetch as any).mock.calls.find((item: any[]) => String(item[0]).includes('/api/v104-iteration-shadow/admin/status'))
+      expect(call).toBeTruthy()
+      expect(call[1]?.headers?.Authorization).toBe('Bearer test-admin-session')
+      expect(String(call[0])).not.toContain('test-admin-session')
+    })
+  })
+
+  it('一般管理員不顯示也不請求影子預測資料', async () => {
+    window.sessionStorage.setItem('darven-admin-account', 'manager001')
+    window.sessionStorage.setItem('darven-admin-session-token', 'manager-session')
+    window.sessionStorage.setItem('darven-admin-role', 'manager')
+    await renderApp('/admin')
+    expect(screen.queryByLabelText('影子預測迭代')).not.toBeInTheDocument()
+    const requestedUrls = (fetch as any).mock.calls.map((call: any[]) => String(call[0]))
+    expect(requestedUrls.some((url: string) => url.includes('/api/v104-iteration-shadow/'))).toBe(false)
+  })
+
   it('shows stale data badge without treating old sourceUpdatedAt as realtime', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks().map((table) => ({ ...table, sourceUpdatedAt: '2026-07-11T00:00:00.000Z' }))) })

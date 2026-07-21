@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 
 test('v104 package exposes cloud deployment smoke and mock worker commands', () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
-  assert.equal(pkg.version, '1.0.12')
+  assert.equal(pkg.version, '1.0.13')
   assert.equal(pkg.scripts['smoke:cloud'], 'node scripts/smoke-cloud-deploy.mjs')
   assert.equal(pkg.scripts['mock:cloud-worker'], 'node scripts/mock-cloud-worker.mjs')
 })
