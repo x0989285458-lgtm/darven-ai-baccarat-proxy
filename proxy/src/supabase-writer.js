@@ -2430,6 +2430,7 @@ export function createSupabaseIngestionClient({
         select: 'prediction_id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,predicted_result,confidence,prediction_payload,actual_result,actual_facts,is_hit,settlement_status,settlement_final,settlement_source_action,head_results,resolved_at,settlement_sequence,main_action_sequence,tie_action_sequence,super_six_action_sequence,banker_dragon_action_sequence,player_dragon_action_sequence,banker_pair_action_sequence,player_pair_action_sequence',
         strategy_version: 'eq.v104-seven-head-shadow-v2-player-pair-threshold-41', settlement_final: 'eq.true',
         [sequenceField]: `gte.${start}`, and: `(${sequenceField}.lte.${end})`, order: `${sequenceField}.asc`,
+        [`head_results->${headKey}->>action`]: 'eq.true',
         limit: String(Math.min(1000, end - start + 1)),
       }
       const rows = await getRest('v104_iteration_shadow_v2_history', query, { requestTimeoutMs: shadowTimeoutMs })

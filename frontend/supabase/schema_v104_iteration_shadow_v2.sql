@@ -156,8 +156,7 @@ grant select on table public.v104_iteration_shadow_v2_weight_suggestions to serv
 insert into public.v104_iteration_shadow_v2_runtime_settings (
   release_candidate, strategy_version, status, enabled, active_strategy_version, updated_at
 ) values ('v104.2.0-seven-head-shadow.2', 'v104-seven-head-shadow-v2-player-pair-threshold-41', 'shadow', true, 'v104', now())
-on conflict (release_candidate) do update set strategy_version=excluded.strategy_version,
-  status='shadow', enabled=true, active_strategy_version='v104', updated_at=now();
+on conflict (release_candidate) do nothing;
 
 insert into public.v104_iteration_shadow_v2_sequence_counters (release_candidate)
 values ('v104.2.0-seven-head-shadow.2') on conflict (release_candidate) do nothing;
@@ -170,8 +169,10 @@ begin
      or not exists (select 1 from public.ai_strategy_versions where status='active' and version='v104') then
     raise exception 'v104 Active strategy verification failed';
   end if;
-  if not exists (select 1 from public.v104_iteration_shadow_v2_runtime_settings
-    where release_candidate='v104.2.0-seven-head-shadow.2' and enabled=true and status='shadow' and active_strategy_version='v104') then
+  perform 1 from public.v104_iteration_shadow_v2_runtime_settings
+    where release_candidate='v104.2.0-seven-head-shadow.2' and enabled=true and status='shadow' and active_strategy_version='v104'
+    for share;
+  if not found then
     raise exception 'v104 iteration shadow is disabled';
   end if;
   if nullif(p_prediction->>'source','') is null or nullif(p_prediction->>'table_id','') is null
@@ -182,6 +183,14 @@ begin
      or coalesce((p_prediction->>'same_side_streak')::integer,0)<1
      or jsonb_typeof(p_prediction->'prediction_payload') is distinct from 'object'
      or p_prediction->'prediction_payload'->>'strategyVersion' is distinct from 'v104-seven-head-shadow-v2-player-pair-threshold-41'
+     or p_prediction->'prediction_payload'->>'releaseCandidate' is distinct from 'v104.2.0-seven-head-shadow.2'
+     or p_prediction->>'source' is distinct from p_prediction->'prediction_payload'->>'source'
+     or p_prediction->>'predicted_result' is distinct from p_prediction->'prediction_payload'->>'predictedResult'
+     or (p_prediction->>'confidence')::numeric is distinct from (p_prediction->'prediction_payload'->>'confidence')::numeric
+     or (p_prediction->>'same_side_streak')::integer is distinct from (p_prediction->'prediction_payload'->>'sameSideStreak')::integer
+     or (p_prediction->>'independent_support_count')::integer is distinct from (p_prediction->'prediction_payload'->>'independentSupportCount')::integer
+     or (p_prediction->>'shoe_bias_suppressed')::boolean is distinct from (p_prediction->'prediction_payload'->>'shoeBiasSuppressed')::boolean
+     or (p_prediction->>'lock_risk')::boolean is distinct from (p_prediction->'prediction_payload'->>'lockRisk')::boolean
      or p_prediction->'prediction_payload'->>'formalStrategyVersion' is distinct from 'v104'
      or p_prediction->'prediction_payload'->>'predictionTiming' is distinct from 'pre_result_context'
      or p_prediction->'prediction_payload'->'shadowOnly' is distinct from 'true'::jsonb
@@ -236,8 +245,10 @@ declare
   fixed_stake numeric; weighted_stake numeric; fixed_net numeric; weighted_net numeric;
   issued_units numeric; payout numeric;
 begin
-  if not exists (select 1 from public.v104_iteration_shadow_v2_runtime_settings
-    where release_candidate='v104.2.0-seven-head-shadow.2' and enabled=true and status='shadow' and active_strategy_version='v104') then
+  perform 1 from public.v104_iteration_shadow_v2_runtime_settings
+    where release_candidate='v104.2.0-seven-head-shadow.2' and enabled=true and status='shadow' and active_strategy_version='v104'
+    for share;
+  if not found then
     raise exception 'v104 iteration shadow is disabled';
   end if;
   if coalesce(p_settlement->>'settlement_source_action','') not in ('summary','show_win') then
@@ -397,8 +408,10 @@ declare
   suggestion jsonb; existing_suggestion public.v104_iteration_shadow_v2_weight_suggestions%rowtype;
   head_key_value text; action_cycle_value bigint; sample_start bigint; sample_end bigint; persisted_suggestions integer:=0;
 begin
-  if not exists (select 1 from public.v104_iteration_shadow_v2_runtime_settings
-    where release_candidate='v104.2.0-seven-head-shadow.2' and enabled=true and status='shadow' and active_strategy_version='v104') then
+  perform 1 from public.v104_iteration_shadow_v2_runtime_settings
+    where release_candidate='v104.2.0-seven-head-shadow.2' and enabled=true and status='shadow' and active_strategy_version='v104'
+    for share;
+  if not found then
     raise exception 'v104 iteration shadow is disabled';
   end if;
   if p_report is not null and p_report <> 'null'::jsonb then
@@ -462,8 +475,10 @@ create or replace function public.review_v104_iteration_shadow_v2_suggestion(p_s
 returns jsonb language plpgsql security definer set search_path=pg_catalog,public,extensions as $$
 declare reviewed public.v104_iteration_shadow_v2_weight_suggestions%rowtype;
 begin
-  if not exists (select 1 from public.v104_iteration_shadow_v2_runtime_settings
-    where release_candidate='v104.2.0-seven-head-shadow.2' and enabled=true and status='shadow' and active_strategy_version='v104') then
+  perform 1 from public.v104_iteration_shadow_v2_runtime_settings
+    where release_candidate='v104.2.0-seven-head-shadow.2' and enabled=true and status='shadow' and active_strategy_version='v104'
+    for share;
+  if not found then
     raise exception 'v104 iteration shadow is disabled';
   end if;
   if p_decision not in ('approved','rejected') or nullif(p_reviewer,'') is null then

@@ -63,6 +63,18 @@ test('v104 iteration history paginates beyond the Supabase 1000-row response cap
   assert.deepEqual(requests.map((url) => url.searchParams.get('offset')), ['0', '1000'])
 })
 
+test('v104 sparse head-action range filters action=true in PostgREST before applying the 1000-row limit', async () => {
+  const requests = []
+  const row = { head_results: { tie: { action: true } }, tie_action_sequence: 1000 }
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    fetchImpl: async (url) => { requests.push(new URL(url)); return response([row]) },
+  })
+  assert.deepEqual(await client.getV104IterationShadowHeadActionRange({ headKey: 'tie', startAction: 1, endAction: 1000 }), [row])
+  assert.equal(requests[0].searchParams.get('head_results->tie->>action'), 'eq.true')
+  assert.equal(requests[0].searchParams.get('limit'), '1000')
+})
+
 test('v104 durable reports and suggestions paginate beyond the REST 1000-row cap', async () => {
   const requests = []
   const client = createSupabaseIngestionClient({

@@ -61,6 +61,16 @@ test('v2 migration is isolated, changes only player-pair threshold, and has no a
     assert.match(schemaV2, new RegExp(`public\\.v104_iteration_shadow_v2_${table}`, 'i'))
   }
   assert.match(schemaV2, /playerPair[\s\S]{0,300}threshold["']?\s*[^\n]*41/i)
+  for (const [top, payload] of [
+    ['predicted_result', 'predictedResult'], ['confidence', 'confidence'],
+    ['same_side_streak', 'sameSideStreak'], ['independent_support_count', 'independentSupportCount'],
+    ['shoe_bias_suppressed', 'shoeBiasSuppressed'], ['lock_risk', 'lockRisk'],
+  ]) assert.match(schemaV2, new RegExp(`p_prediction->>'${top}'[\\s\\S]{0,180}prediction_payload'->>'${payload}'`, 'i'))
+  for (const rpc of [
+    'issue_v104_iteration_shadow_v2_prediction', 'settle_v104_iteration_shadow_v2_prediction',
+    'persist_v104_iteration_shadow_v2_artifacts', 'review_v104_iteration_shadow_v2_suggestion',
+  ]) assert.match(schemaV2, new RegExp(`function public\\.${rpc}[\\s\\S]{0,1200}for share[\\s\\S]{0,120}if not found`, 'i'))
+  assert.match(schemaV2, /insert into public\.v104_iteration_shadow_v2_runtime_settings[\s\S]{0,500}on conflict \(release_candidate\) do nothing/i)
   assert.match(schemaV2, /manual stop only; no fixed settlement cap/i)
   assert.doesNotMatch(schemaV2, /new\.settlement_sequence\s*>\s*\d+/i)
   assert.match(schemaV2, /issue_v104_iteration_shadow_v2_prediction\(jsonb\)/i)
