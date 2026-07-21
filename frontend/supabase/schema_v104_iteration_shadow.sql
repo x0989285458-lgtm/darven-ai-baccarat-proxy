@@ -83,6 +83,20 @@ create table if not exists public.v104_iteration_shadow_settlements (
   )
 );
 
+create or replace function public.enforce_v104_iteration_shadow_2000_settlement_cap()
+returns trigger language plpgsql set search_path=pg_catalog,public as $$
+begin
+  if new.settlement_sequence > 2000 then
+    raise exception 'v104 iteration shadow 2000-settlement hard stop';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists v104_iteration_shadow_2000_settlement_cap on public.v104_iteration_shadow_settlements;
+create trigger v104_iteration_shadow_2000_settlement_cap
+before insert on public.v104_iteration_shadow_settlements
+for each row execute function public.enforce_v104_iteration_shadow_2000_settlement_cap();
+
 create table if not exists public.v104_iteration_shadow_cycle_reports (
   id uuid primary key default gen_random_uuid(),
   cycle_number bigint not null unique check (cycle_number > 0),

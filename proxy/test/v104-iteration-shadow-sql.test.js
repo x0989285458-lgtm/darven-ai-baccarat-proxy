@@ -20,6 +20,8 @@ test('schema isolates immutable seven-head issuance and verified Final settlemen
   assert.match(schema, /count\(\*\)[\s\S]*jsonb_object_keys\([^)]*heads[^)]*\)[\s\S]*<>\s*7/i)
   for (const head of ['main','tie','superSix','bankerDragon','playerDragon','bankerPair','playerPair']) assert.match(schema, new RegExp(`'${head}'`))
   assert.match(schema, /show_poker is provisional/i)
+  assert.match(schema, /new\.settlement_sequence\s*>\s*2000[\s\S]*raise exception 'v104 iteration shadow 2000-settlement hard stop'/i)
+  assert.match(schema, /before insert on public\.v104_iteration_shadow_settlements/i)
   assert.match(schema, /conflicting v104 iteration shadow issuance/i)
   assert.match(schema, /conflicting v104 iteration shadow settlement/i)
   assert.match(schema, /bankerCardRanks[\s\S]*playerCardRanks[\s\S]*actual facts do not match exact cards/i)
