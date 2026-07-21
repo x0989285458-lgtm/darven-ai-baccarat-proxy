@@ -28,6 +28,13 @@
     "finalOnly": true
   },
   "deployment": {
+    "order": [
+      "database-additive",
+      "proxy-render",
+      "live-e2e"
+    ],
+    "databaseBeforeProxy": true,
+    "rollbackBeforeProxy": true,
     "proxy": "render",
     "frontend": "unchanged",
     "worker": "unchanged"
