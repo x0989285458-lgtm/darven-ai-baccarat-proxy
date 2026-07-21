@@ -76,6 +76,29 @@ test('server hydrates the v104 formal runtime before opening the listener', asyn
   }
 })
 
+test('server passes the configured formal hydration timeout to the v104 history reader', async () => {
+  let observedTimeout
+  const writer = {
+    configured: true,
+    async getV104FormalHistory(options) { observedTimeout = options.requestTimeoutMs; return [] },
+    async getRecentPredictionRows() { return [] },
+  }
+  const app = createApp({
+    autoConnect: false,
+    port: 0,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    supabaseClient: writer,
+    v104FormalRequestTimeoutMs: 30000,
+  })
+  await app.start()
+  try {
+    assert.equal(observedTimeout, 30000)
+  } finally {
+    await app.stop()
+  }
+})
+
 test('cloud ingest withholds ACK until v104 Final settlement is durable and returns 503 on failure', async () => {
   let releaseSettlement
   let settlementStarted
