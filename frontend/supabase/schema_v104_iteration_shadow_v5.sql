@@ -443,7 +443,8 @@ begin
     if settled.actual_result is distinct from p_settlement->>'actual_result'
        or settled.actual_facts is distinct from p_settlement->'actual_facts'
        or settled.head_results is distinct from p_settlement->'head_results'
-       or settled.settlement_source_action is distinct from p_settlement->>'settlement_source_action' then
+       or settled.settlement_source_action is distinct from p_settlement->>'settlement_source_action'
+       or settled.resolved_at is distinct from (p_settlement->>'resolved_at')::timestamptz then
       raise exception 'conflicting v104 iteration shadow settlement';
     end if;
     select * into counter from public.v104_iteration_shadow_v5_sequence_counters where release_candidate='v104.5.0-seven-head-shadow.5';
@@ -495,8 +496,12 @@ begin
   end if;
   if p_report is not null and p_report <> 'null'::jsonb then
     report_payload := p_report->'report_payload'; report_svg := p_report->>'report_svg';
+    if jsonb_typeof(report_payload) is distinct from 'object'
+       or jsonb_typeof(report_payload->'cycleNumber') is distinct from 'number' then
+      raise exception 'v104 iteration shadow cycle report is incomplete';
+    end if;
     cycle_no := (report_payload->>'cycleNumber')::bigint;
-    if jsonb_typeof(report_payload) is distinct from 'object' or coalesce(report_svg,'') not like '<svg%'
+    if coalesce(report_svg,'') not like '<svg%'
        or (select count(*) from public.v104_iteration_shadow_v5_settlements where settlement_sequence between ((cycle_no-1)*1000+1) and cycle_no*1000) <> 1000 then
       raise exception 'v104 iteration shadow cycle report is incomplete';
     end if;
@@ -513,6 +518,14 @@ begin
   end if;
   if p_suggestions is not null and jsonb_typeof(p_suggestions)='array' then
     for suggestion in select value from jsonb_array_elements(p_suggestions) loop
+      if jsonb_typeof(suggestion) is distinct from 'object'
+         or jsonb_typeof(suggestion->'id') is distinct from 'string'
+         or jsonb_typeof(suggestion->'headKey') is distinct from 'string'
+         or jsonb_typeof(suggestion->'actionCycle') is distinct from 'number'
+         or jsonb_typeof(suggestion->'sampleStartAction') is distinct from 'number'
+         or jsonb_typeof(suggestion->'sampleEndAction') is distinct from 'number' then
+        raise exception 'v104 iteration shadow suggestion contract mismatch';
+      end if;
       head_key_value := suggestion->>'headKey'; action_cycle_value := (suggestion->>'actionCycle')::bigint;
       sample_start := (suggestion->>'sampleStartAction')::bigint; sample_end := (suggestion->>'sampleEndAction')::bigint;
       expected_current_weights := case head_key_value
@@ -536,6 +549,8 @@ begin
          or (select count(*) from jsonb_object_keys(suggestion->'currentWeights')) = 0
          or (select count(*) from jsonb_object_keys(suggestion->'suggestedWeights')) = 0
          or suggestion->'currentWeights' is distinct from expected_current_weights
+         or exists (select 1 from jsonb_each(suggestion->'suggestedWeights') as typed_weights(key,value)
+                    where jsonb_typeof(value) is distinct from 'number')
          or sample_start <> ((action_cycle_value-1)*1000+1) or sample_end <> action_cycle_value*1000
          or (select count(*) from public.v104_iteration_shadow_v5_settlements where (head_results->head_key_value->>'action')::boolean) < sample_end
          or (select array_agg(key order by key) from jsonb_object_keys(suggestion->'currentWeights') key)
@@ -546,7 +561,7 @@ begin
            from jsonb_each_text(suggestion->'currentWeights') as current_weights(key,current_weight)
            join jsonb_each_text(suggestion->'suggestedWeights') as suggested_weights(key,suggested_weight) using (key)
            where (current_weight::numeric = 0 and suggested_weight::numeric <> 0)
-              or (current_weight::numeric > 0 and (suggested_weight::numeric < 0.05 or mod(round(suggested_weight::numeric*100),5)<>0))
+              or (current_weight::numeric > 0 and (suggested_weight::numeric < 0.05 or mod(suggested_weight::numeric*100,5)<>0))
          ) then
         raise exception 'v104 iteration shadow suggestion contract mismatch';
       end if;
@@ -560,7 +575,8 @@ begin
       if existing_suggestion.suggestion_id is null then
         select * into existing_suggestion from public.v104_iteration_shadow_v5_weight_suggestions
           where head_key=head_key_value and action_cycle=action_cycle_value;
-        if existing_suggestion.current_weights is distinct from suggestion->'currentWeights'
+        if existing_suggestion.suggestion_id is distinct from suggestion->>'id'
+           or existing_suggestion.current_weights is distinct from suggestion->'currentWeights'
            or existing_suggestion.suggested_weights is distinct from suggestion->'suggestedWeights'
            or existing_suggestion.baseline_metrics is distinct from suggestion->'baselineMetrics'
            or existing_suggestion.candidate_metrics is distinct from suggestion->'candidateMetrics' then

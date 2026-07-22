@@ -2389,11 +2389,14 @@ export function createSupabaseIngestionClient({
     },
     async persistV104IterationShadowArtifacts({ report = null, reportSvg = null, suggestions = [] } = {}) {
       if (!Array.isArray(suggestions)) throw new TypeError('v104 iteration shadow suggestions must be an array')
+      if (report && (typeof report.cycleNumber !== 'number' || !Number.isSafeInteger(report.cycleNumber) || report.cycleNumber <= 0)) {
+        throw new TypeError('v104 iteration shadow cycleNumber must be a positive safe integer')
+      }
       const pReport = report ? { report_payload: structuredClone(report), report_svg: String(reportSvg ?? '') } : null
       const acknowledgement = await enqueueV104IterationShadowWrite(() => postRest('rpc/persist_v104_iteration_shadow_v5_artifacts', {
         p_report: pReport, p_suggestions: structuredClone(suggestions),
       }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
-      const expectedCycleNumber = report ? Number(report.cycleNumber) : null
+      const expectedCycleNumber = report ? report.cycleNumber : null
       const acknowledgedCycleNumber = acknowledgement?.cycle_number
       const acknowledgedSuggestionCount = acknowledgement?.suggestions
       const cycleMatches = report
