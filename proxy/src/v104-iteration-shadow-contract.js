@@ -207,8 +207,16 @@ export function buildV104IterationShadowSettlement(round = {}, issued = {}) {
     isHit: mainResult.isHit,
     headResults,
     settlementFinal: true, settlementSourceAction: normalizeFinalAction(round.sourceAction),
-    resolvedAt: new Date().toISOString(),
+    resolvedAt: immutableResolvedAt(round, issued),
   }
+}
+
+function immutableResolvedAt(round = {}, issued = {}) {
+  for (const value of [round.resolvedAt, round.resolved_at, issued.issuedAt]) {
+    const timestamp = Date.parse(value ?? '')
+    if (Number.isFinite(timestamp)) return new Date(timestamp).toISOString()
+  }
+  throw new Error('iteration shadow settlement requires an immutable resolved timestamp')
 }
 
 function normalizeFinalAction(action) {

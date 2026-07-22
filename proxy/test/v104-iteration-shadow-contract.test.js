@@ -132,6 +132,7 @@ test('Final settlement handles main tie PUSH and exact MT fixed/weighted net uni
   assert.equal(settlement.headResults.main.weightedNetUnits, 0)
   assert.deepEqual(settlement.actualFacts.playerCardRanks, [1, 3])
   assert.deepEqual(settlement.actualFacts.bankerCardRanks, [2, 4])
+  assert.equal(settlement.resolvedAt, '2026-07-21T00:00:00.000Z')
 })
 
 test('settlement rejects provisional show_poker and mismatched immutable identity', () => {

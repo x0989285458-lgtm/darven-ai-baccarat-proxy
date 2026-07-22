@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util'
 import {
   SHADOW_HEAD_LABELS,
   V104_ITERATION_SHADOW_VERSION,
@@ -258,9 +259,7 @@ export function createV104IterationShadowRuntime({ enabled = false, writer = nul
     const cached = settledResults.get(key)
     if (cached) {
       const replay = buildV104IterationShadowSettlement(round, cached.issued)
-      if (replay.actualResult !== cached.settlement.actualResult
-        || replay.settlementStatus !== cached.settlement.settlementStatus
-        || replay.settlementSourceAction !== cached.settlement.settlementSourceAction) throw new Error('conflicting v104 iteration shadow settlement')
+      if (!isDeepStrictEqual(replay, cached.settlement)) throw new Error('conflicting v104 iteration shadow settlement')
       return { ...structuredClone(cached.result), predictionId: cached.issued.predictionId, duplicate: true }
     }
     let issued = issuances.get(key)

@@ -138,6 +138,21 @@ test('v104 settles only verified Final identity and tie remains PUSH', async () 
   await assert.rejects(runtime.settleRound({ ...table(), round: 22, sourceAction: '/show_poker', winner: 'banker' }), /immutable issuance|verified Final/i)
 })
 
+test('v104 cached replay requires the complete immutable Final snapshot', async () => {
+  const writer = createWriter()
+  const runtime = createV104IterationShadowRuntime({ enabled: true, writer })
+  await runtime.observeTable(table())
+  const exactFinal = { ...table(), round: 21, sourceAction: '/summary', winner: 'banker', rawResult: [1,2,3,4,0,0,-1,-1,4,6] }
+  const first = await runtime.settleRound(exactFinal)
+  const duplicate = await runtime.settleRound(structuredClone(exactFinal))
+  assert.equal(duplicate.duplicate, true)
+  assert.equal(first.predictionId, duplicate.predictionId)
+  assert.equal(writer.settlements.length, 1)
+  const conflictingCards = { ...exactFinal, rawResult: [5,6,7,8,0,0,-1,-1,2,4] }
+  await assert.rejects(runtime.settleRound(conflictingCards), /conflicting v104 iteration shadow settlement/i)
+  assert.equal(writer.settlements.length, 1)
+})
+
 test('v104 concurrent identical Final settlement shares one in-flight writer call', async () => {
   const writer = createWriter()
   let release
