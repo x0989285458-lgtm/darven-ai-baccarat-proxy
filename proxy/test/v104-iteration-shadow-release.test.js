@@ -70,3 +70,34 @@ test('v3 reweight shadow manifest is isolated and exact', () => {
   assert.deepEqual(manifest.deployment.order, ['previous-shadow-drain', 'database-additive', 'catalog-acl-readback', 'proxy-render', 'live-e2e'])
   assert.equal(manifest.deployment.previousShadowDrainBeforeDatabase, true)
 })
+
+test('v4 best-observed-heads manifest is isolated, exact, and starts from zero', () => {
+  const url = new URL('../../release/v104-seven-head-shadow-v4-release-manifest.json', import.meta.url)
+  assert.equal(existsSync(url), true)
+  const manifest = readJson('../../release/v104-seven-head-shadow-v4-release-manifest.json')
+  assert.equal(manifest.releaseVersion, 'v104.4.0-seven-head-shadow.4')
+  assert.equal(manifest.shadowStrategyVersion, 'v104-seven-head-shadow-v4-best-observed-heads')
+  assert.equal(manifest.formalStrategyVersion, 'v104')
+  assert.equal(manifest.shadowOnly, true)
+  assert.equal(manifest.autoApply, false)
+  assert.equal(manifest.finalSettlementLimit, null)
+  assert.equal(manifest.manualStopOnly, true)
+  assert.deepEqual(manifest.headSources, {
+    main: 'v1', tie: 'v3', superSix: 'v1', bankerDragon: 'v1',
+    playerDragon: 'v1', bankerPair: 'v3', playerPair: 'v2',
+  })
+  assert.deepEqual(manifest.mainWeights, {
+    roadmap_trend_signals: 0.275, ask_road_signals: 0.275,
+    shoe_banker_player_bias: 0.35, neutral_reserve: 0.10,
+  })
+  assert.deepEqual(manifest.playerPairWeights, {
+    pair_risk: 0.25, shoe_stage: 0.15, player_pair_count: 0.20,
+    table_side_history: 0.20, remaining_rank_pressure: 0.20,
+  })
+  assert.deepEqual(manifest.thresholds, { tie: 30, superSix: 50, bankerDragon: 40, playerDragon: 40, bankerPair: 50, playerPair: 41 })
+  assert.equal(manifest.database.startsAtZero, true)
+  assert.equal(manifest.database.previousV3ReadOnly, true)
+  assert.equal(manifest.database.manualStopDrainSafe, true)
+  assert.equal(manifest.database.rollbackRestoresV3, true)
+  assert.deepEqual(manifest.deployment.order, ['previous-shadow-drain', 'database-additive', 'catalog-acl-readback', 'proxy-render', 'live-e2e'])
+})

@@ -2,27 +2,30 @@ import { isVerifiedFinalRoundAction } from '../../shared/real-card-validator.js'
 import {
   SIDE_PREDICTION_THRESHOLDS,
   SIDE_PREDICTION_WEIGHT_PROFILES,
-  V100_SIDE_SCORE_CALIBRATION_OFFSETS,
   buildSideFeatureScores,
   deriveBaccaratRoundFacts,
 } from './supabase-writer.js'
 import { buildV104FormalPrediction } from './v104-formal-strategy.js'
 import { buildV104ShadowPrediction } from './v104-shadow-strategy.js'
 
-export const V104_ITERATION_SHADOW_VERSION = 'v104-seven-head-shadow-v3-main-player-pair-reweight'
-export const V104_ITERATION_SHADOW_RELEASE = 'v104.3.0-seven-head-shadow.3'
+export const V104_ITERATION_SHADOW_VERSION = 'v104-seven-head-shadow-v4-best-observed-heads'
+export const V104_ITERATION_SHADOW_RELEASE = 'v104.4.0-seven-head-shadow.4'
 export const V104_ITERATION_SHADOW_MAIN_WEIGHTS = Object.freeze({
-  roadmap_trend_signals: 0.25,
-  ask_road_signals: 0.35,
-  shoe_banker_player_bias: 0.30,
+  roadmap_trend_signals: 0.275,
+  ask_road_signals: 0.275,
+  shoe_banker_player_bias: 0.35,
   neutral_reserve: 0.10,
 })
 export const V104_ITERATION_SHADOW_PLAYER_PAIR_WEIGHTS = Object.freeze({
-  remaining_rank_pressure: 0.25,
-  shoe_stage: 0.05,
-  player_pair_count: 0.25,
-  player_pair_residual: 0.15,
-  pair_shared_factor: 0.30,
+  pair_risk: 0.25,
+  shoe_stage: 0.15,
+  player_pair_count: 0.20,
+  table_side_history: 0.20,
+  remaining_rank_pressure: 0.20,
+})
+export const V104_ITERATION_SHADOW_HEAD_SOURCES = Object.freeze({
+  main: 'v1', tie: 'v3', superSix: 'v1', bankerDragon: 'v1',
+  playerDragon: 'v1', bankerPair: 'v3', playerPair: 'v2',
 })
 export const V104_ITERATION_SHADOW_THRESHOLDS = Object.freeze({
   ...SIDE_PREDICTION_THRESHOLDS,
@@ -55,12 +58,6 @@ export function confidenceToSideUnits(confidence, threshold) {
   return Math.max(1, Math.min(10, Math.round(1 + ((value - gate) * 9 / (100 - gate)))))
 }
 
-export function calculateV104IterationPlayerPairConfidence(featureValues = {}) {
-  const raw = Object.entries(V104_ITERATION_SHADOW_PLAYER_PAIR_WEIGHTS)
-    .reduce((sum, [key, weight]) => sum + finitePercent(featureValues[key]) * weight, 0)
-  return finitePercent(raw + Number(V100_SIDE_SCORE_CALIBRATION_OFFSETS.playerPair ?? 0))
-}
-
 export function buildV104IterationShadowPrediction(table = {}, historyRows = [], issuanceContext = {}) {
   const formal = buildV104FormalPrediction(table, historyRows, issuanceContext)
   const candidateMain = buildV104ShadowPrediction(table, historyRows, issuanceContext, {
@@ -74,19 +71,10 @@ export function buildV104IterationShadowPrediction(table = {}, historyRows = [],
     cardShoe: table.v102RankLedger ?? table.cardShoe ?? null,
   })
   const sideDiagnostics = formal.predictionFeatures?.v104_side_policy?.diagnostics ?? {}
-  const sidePrimitives = sideDiagnostics.primitives ?? {}
-  const sideResiduals = sideDiagnostics.residuals ?? {}
-  const playerPairFeatureValues = {
-    remaining_rank_pressure: finitePercent(sidePrimitives.Q),
-    shoe_stage: finitePercent(sidePrimitives.S),
-    player_pair_count: finitePercent(sidePrimitives.XP),
-    player_pair_residual: finitePercent(sideResiduals.playerPair),
-    pair_shared_factor: finitePercent(sidePrimitives.Hpair),
-  }
-  const playerPairConfidence = calculateV104IterationPlayerPairConfidence(playerPairFeatureValues)
   const rankAvailable = sideDiagnostics.rank?.available === true
   const main = {
-    key: 'main', label: SHADOW_HEAD_LABELS.main, action: true, threshold: null,
+    key: 'main', label: SHADOW_HEAD_LABELS.main, sourceVersion: V104_ITERATION_SHADOW_HEAD_SOURCES.main,
+    action: true, threshold: null,
     predictedResult: candidateMain.predictedResult,
     confidence: finitePercent(candidateMain.confidence),
     units: confidenceToMainUnits(candidateMain.confidence),
@@ -94,19 +82,16 @@ export function buildV104IterationShadowPrediction(table = {}, historyRows = [],
     featureValues: buildMainFeatureValues(candidateMain),
   }
   const sideHeads = Object.fromEntries(SHADOW_HEAD_KEYS.slice(1).map((key) => {
-    const confidence = key === 'playerPair'
-      ? playerPairConfidence
-      : finitePercent(formal.sidePredictions?.[key])
+    const confidence = finitePercent(formal.sidePredictions?.[key])
     const threshold = Number(V104_ITERATION_SHADOW_THRESHOLDS[key])
     const action = rankAvailable && confidence >= threshold
     const weights = key === 'playerPair'
       ? V104_ITERATION_SHADOW_PLAYER_PAIR_WEIGHTS
       : SIDE_PREDICTION_WEIGHT_PROFILES[key]
-    const featureValues = key === 'playerPair'
-      ? playerPairFeatureValues
-      : Object.fromEntries(frozenWeightKeys[key].map((name) => [name, finitePercent(featureScores[name])]))
+    const featureValues = Object.fromEntries(frozenWeightKeys[key].map((name) => [name, finitePercent(featureScores[name])]))
     return [key, {
-      key, label: SHADOW_HEAD_LABELS[key], action, threshold, confidence,
+      key, label: SHADOW_HEAD_LABELS[key], sourceVersion: V104_ITERATION_SHADOW_HEAD_SOURCES[key],
+      action, threshold, confidence,
       units: action ? confidenceToSideUnits(confidence, threshold) : 0,
       weights: structuredClone(weights),
       featureValues,

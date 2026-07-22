@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   SHADOW_HEAD_KEYS,
+  V104_ITERATION_SHADOW_HEAD_SOURCES,
   V104_ITERATION_SHADOW_RELEASE,
   V104_ITERATION_SHADOW_MAIN_WEIGHTS,
   V104_ITERATION_SHADOW_PLAYER_PAIR_WEIGHTS,
@@ -9,7 +10,6 @@ import {
   V104_ITERATION_SHADOW_VERSION,
   buildV104IterationShadowPrediction,
   buildV104IterationShadowSettlement,
-  calculateV104IterationPlayerPairConfidence,
   confidenceToMainUnits,
   confidenceToSideUnits,
   frozenWeightKeys,
@@ -26,25 +26,29 @@ const table = {
   v102RankLedger: { rankDataAvailable: true, remainingRankCounts: Object.fromEntries(['A','2','3','4','5','6','7','8','9','10','J','Q','K'].map((x) => [x, 30])) },
 }
 
-test('v3 shadow freezes the approved main and player-pair reweight while preserving thresholds', () => {
-  assert.equal(V104_ITERATION_SHADOW_VERSION, 'v104-seven-head-shadow-v3-main-player-pair-reweight')
-  assert.equal(V104_ITERATION_SHADOW_RELEASE, 'v104.3.0-seven-head-shadow.3')
+test('v4 shadow freezes each head to the highest observed version while preserving thresholds', () => {
+  assert.equal(V104_ITERATION_SHADOW_VERSION, 'v104-seven-head-shadow-v4-best-observed-heads')
+  assert.equal(V104_ITERATION_SHADOW_RELEASE, 'v104.4.0-seven-head-shadow.4')
   assert.deepEqual(V104_ITERATION_SHADOW_THRESHOLDS, {
     ...SIDE_PREDICTION_THRESHOLDS,
     playerPair: 41,
   })
   assert.deepEqual(V104_ITERATION_SHADOW_MAIN_WEIGHTS, {
-    roadmap_trend_signals: 0.25,
-    ask_road_signals: 0.35,
-    shoe_banker_player_bias: 0.30,
+    roadmap_trend_signals: 0.275,
+    ask_road_signals: 0.275,
+    shoe_banker_player_bias: 0.35,
     neutral_reserve: 0.10,
   })
   assert.deepEqual(V104_ITERATION_SHADOW_PLAYER_PAIR_WEIGHTS, {
-    remaining_rank_pressure: 0.25,
-    shoe_stage: 0.05,
-    player_pair_count: 0.25,
-    player_pair_residual: 0.15,
-    pair_shared_factor: 0.30,
+    pair_risk: 0.25,
+    shoe_stage: 0.15,
+    player_pair_count: 0.20,
+    table_side_history: 0.20,
+    remaining_rank_pressure: 0.20,
+  })
+  assert.deepEqual(V104_ITERATION_SHADOW_HEAD_SOURCES, {
+    main: 'v1', tie: 'v3', superSix: 'v1', bankerDragon: 'v1',
+    playerDragon: 'v1', bankerPair: 'v3', playerPair: 'v2',
   })
   assert.deepEqual(SHADOW_HEAD_KEYS, ['main','tie','superSix','bankerDragon','playerDragon','bankerPair','playerPair'])
   assert.deepEqual(frozenWeightKeys.main, Object.keys(V104_ITERATION_SHADOW_MAIN_WEIGHTS))
@@ -52,16 +56,6 @@ test('v3 shadow freezes the approved main and player-pair reweight while preserv
   for (const key of SHADOW_HEAD_KEYS.slice(1).filter((key) => key !== 'playerPair')) {
     assert.deepEqual(frozenWeightKeys[key], Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES[key]).filter((name) => SIDE_PREDICTION_WEIGHT_PROFILES[key][name] > 0))
   }
-})
-
-test('v3 player-pair confidence uses approved effective coefficients and existing calibration offset', () => {
-  assert.equal(calculateV104IterationPlayerPairConfidence({
-    remaining_rank_pressure: 80,
-    shoe_stage: 20,
-    player_pair_count: 40,
-    player_pair_residual: 60,
-    pair_shared_factor: 30,
-  }), 62.875)
 })
 
 test('main and side confidence map to bounded rounded units without tiers', () => {
@@ -84,9 +78,11 @@ test('six side heads act independently at their existing thresholds without main
   assert.equal(prediction.writesSideActions, false)
   assert.match(prediction.heads.main.predictedResult, /^(banker|player)$/)
   assert.deepEqual(prediction.heads.main.weights, V104_ITERATION_SHADOW_MAIN_WEIGHTS)
+  assert.equal(prediction.heads.main.sourceVersion, V104_ITERATION_SHADOW_HEAD_SOURCES.main)
   assert.deepEqual(prediction.heads.playerPair.weights, V104_ITERATION_SHADOW_PLAYER_PAIR_WEIGHTS)
   assert.deepEqual(Object.keys(prediction.heads.playerPair.featureValues), Object.keys(V104_ITERATION_SHADOW_PLAYER_PAIR_WEIGHTS))
   for (const key of SHADOW_HEAD_KEYS.slice(1)) {
+    assert.equal(prediction.heads[key].sourceVersion, V104_ITERATION_SHADOW_HEAD_SOURCES[key])
     assert.equal(prediction.heads[key].threshold, V104_ITERATION_SHADOW_THRESHOLDS[key])
     assert.equal(prediction.heads[key].action, prediction.heads[key].confidence >= V104_ITERATION_SHADOW_THRESHOLDS[key])
   }

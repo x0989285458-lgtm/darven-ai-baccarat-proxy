@@ -13,6 +13,10 @@ const schemaV3Url = new URL('../../frontend/supabase/schema_v104_iteration_shado
 const rollbackV3Url = new URL('../../frontend/supabase/rollback_v104_iteration_shadow_v3.sql', import.meta.url)
 const schemaV3 = fs.existsSync(schemaV3Url) ? fs.readFileSync(schemaV3Url, 'utf8') : ''
 const rollbackV3 = fs.existsSync(rollbackV3Url) ? fs.readFileSync(rollbackV3Url, 'utf8') : ''
+const schemaV4Url = new URL('../../frontend/supabase/schema_v104_iteration_shadow_v4.sql', import.meta.url)
+const rollbackV4Url = new URL('../../frontend/supabase/rollback_v104_iteration_shadow_v4.sql', import.meta.url)
+const schemaV4 = fs.existsSync(schemaV4Url) ? fs.readFileSync(schemaV4Url, 'utf8') : ''
+const rollbackV4 = fs.existsSync(rollbackV4Url) ? fs.readFileSync(rollbackV4Url, 'utf8') : ''
 
 test('iteration shadow migration is additive, v104-active-only, and disables old shadows', () => {
   assert.match(schema, /version\s*=\s*'v104'/i)
@@ -118,4 +122,36 @@ test('v3 manual stop drains pending Finals and artifacts before disable or rollb
   assert.match(rollbackV3, /update public\.v104_iteration_shadow_v2_runtime_settings[\s\S]{0,220}enabled=true[\s\S]{0,100}status='shadow'/i)
   assert.match(rollbackV3, /grant execute on function public\.settle_v104_iteration_shadow_v2_prediction\(jsonb\) to service_role/i)
   assert.ok(rollbackV3.indexOf('must be fully drained before rollback') < rollbackV3.indexOf('revoke execute on function public.issue_v104_iteration_shadow_v3_prediction'))
+})
+
+test('v4 migration starts independent zero counters and validates best-observed head weights', () => {
+  assert.match(schemaV4, /v104-seven-head-shadow-v4-best-observed-heads/i)
+  assert.match(schemaV4, /v104\.4\.0-seven-head-shadow\.4/i)
+  for (const table of ['runtime_settings','sequence_counters','issuances','settlements','cycle_reports','weight_suggestions']) {
+    assert.match(schemaV4, new RegExp(`public\\.v104_iteration_shadow_v4_${table}`, 'i'))
+  }
+  assert.doesNotMatch(schemaV4, /update public\.v104_iteration_shadow_v3_runtime_settings[\s\S]{0,300}enabled=false/i)
+  assert.match(schemaV4, /values \('v104\.4\.0-seven-head-shadow\.4'\)[\s\S]{0,100}on conflict \(release_candidate\) do nothing/i)
+  assert.match(schemaV4, /roadmap_trend_signals[\s\S]{0,120}0\.275/i)
+  assert.match(schemaV4, /ask_road_signals[\s\S]{0,120}0\.275/i)
+  assert.match(schemaV4, /shoe_banker_player_bias[\s\S]{0,120}0\.35/i)
+  assert.match(schemaV4, /pair_risk[\s\S]{0,120}0\.25/i)
+  assert.match(schemaV4, /shoe_stage[\s\S]{0,120}0\.15/i)
+  assert.match(schemaV4, /player_pair_count[\s\S]{0,120}0\.20/i)
+  assert.match(schemaV4, /table_side_history[\s\S]{0,120}0\.20/i)
+  assert.match(schemaV4, /remaining_rank_pressure[\s\S]{0,120}0\.20/i)
+  assert.match(schemaV4, /manual stop only; no fixed settlement cap/i)
+  assert.doesNotMatch(schemaV4, /new\.settlement_sequence\s*>\s*\d+/i)
+  assert.doesNotMatch(schemaV4 + rollbackV4, /delete\s+from|truncate|drop\s+table/i)
+})
+
+test('v4 manual stop drains pending Finals and rollback restores paused v3', () => {
+  assert.match(schemaV4, /status in \('shadow',\s*'draining',\s*'shadow_disabled'\)/i)
+  assert.match(schemaV4, /begin_v104_iteration_shadow_v4_drain\(\)/i)
+  assert.match(schemaV4, /finish_v104_iteration_shadow_v4_drain\(\)/i)
+  assert.match(schemaV4, /left join public\.v104_iteration_shadow_v4_settlements[\s\S]{0,180}s\.id is null/i)
+  assert.match(schemaV4, /cycle_reports[\s\S]{0,300}weight_suggestions/i)
+  assert.match(rollbackV4, /v104 iteration shadow v4 must be fully drained before rollback/i)
+  assert.match(rollbackV4, /update public\.v104_iteration_shadow_v3_runtime_settings[\s\S]{0,220}enabled=true[\s\S]{0,100}status='shadow'/i)
+  assert.match(rollbackV4, /grant execute on function public\.settle_v104_iteration_shadow_v3_prediction\(jsonb\) to service_role/i)
 })

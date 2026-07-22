@@ -1,0 +1,64 @@
+{
+  "releaseVersion": "v104.4.0-seven-head-shadow.4",
+  "shadowStrategyVersion": "v104-seven-head-shadow-v4-best-observed-heads",
+  "formalStrategyVersion": "v104",
+  "shadowOnly": true,
+  "memberVisible": false,
+  "activationEligible": false,
+  "autoApply": false,
+  "finalSettlementLimit": null,
+  "manualStopOnly": true,
+  "headSources": {
+    "main": "v1",
+    "tie": "v3",
+    "superSix": "v1",
+    "bankerDragon": "v1",
+    "playerDragon": "v1",
+    "bankerPair": "v3",
+    "playerPair": "v2"
+  },
+  "mainWeights": {
+    "roadmap_trend_signals": 0.275,
+    "ask_road_signals": 0.275,
+    "shoe_banker_player_bias": 0.35,
+    "neutral_reserve": 0.10
+  },
+  "playerPairWeights": {
+    "pair_risk": 0.25,
+    "shoe_stage": 0.15,
+    "player_pair_count": 0.20,
+    "table_side_history": 0.20,
+    "remaining_rank_pressure": 0.20
+  },
+  "thresholds": {
+    "tie": 30,
+    "superSix": 50,
+    "bankerDragon": 40,
+    "playerDragon": 40,
+    "bankerPair": 50,
+    "playerPair": 41
+  },
+  "database": {
+    "schema": "frontend/supabase/schema_v104_iteration_shadow_v4.sql",
+    "rollback": "frontend/supabase/rollback_v104_iteration_shadow_v4.sql",
+    "previousV3ReadOnly": true,
+    "gaplessTransactionalCounters": true,
+    "startsAtZero": true,
+    "finalOnly": true,
+    "manualStopDrainSafe": true,
+    "rollbackRestoresV3": true
+  },
+  "deployment": {
+    "order": [
+      "previous-shadow-drain",
+      "database-additive",
+      "catalog-acl-readback",
+      "proxy-render",
+      "live-e2e"
+    ],
+    "previousShadowDrainBeforeDatabase": true,
+    "databaseBeforeProxy": true,
+    "catalogAclReadbackBeforeProxy": true,
+    "rollbackBeforeProxy": true
+  }
+}
