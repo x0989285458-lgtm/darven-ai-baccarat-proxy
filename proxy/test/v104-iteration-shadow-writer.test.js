@@ -131,6 +131,34 @@ test('v104 artifact writer rejects non-array suggestions instead of laundering t
   assert.equal(requests.length, 0)
 })
 
+test('v104 artifact writer rejects a negative or mismatched persistence acknowledgement', async () => {
+  for (const acknowledgement of [
+    { persisted: false, cycle_number: 999, suggestions: 0 },
+    { persisted: true, cycle_number: 2, suggestions: 1 },
+    { persisted: true, cycle_number: 1, suggestions: 0 },
+  ]) {
+    const client = createSupabaseIngestionClient({
+      url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+      fetchImpl: async () => response(acknowledgement),
+    })
+    await assert.rejects(
+      client.persistV104IterationShadowArtifacts({ report: { cycleNumber: 1 }, reportSvg: '<svg/>', suggestions: [{ id: 's1' }] }),
+      /artifact acknowledgement failed/i,
+    )
+  }
+})
+
+test('v104 artifact writer accepts only an exact positive persistence acknowledgement', async () => {
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    fetchImpl: async () => response({ persisted: true, cycle_number: 1, suggestions: 1 }),
+  })
+  assert.deepEqual(
+    await client.persistV104IterationShadowArtifacts({ report: { cycleNumber: 1 }, reportSvg: '<svg/>', suggestions: [{ id: 's1' }] }),
+    { persisted: true, cycle_number: 1, suggestions: 1 },
+  )
+})
+
 test('v104 settlement uses only its dedicated RPC and preserves PUSH', async () => {
   const requests = []
   const client = createSupabaseIngestionClient({

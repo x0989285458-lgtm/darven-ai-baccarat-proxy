@@ -2390,9 +2390,15 @@ export function createSupabaseIngestionClient({
     async persistV104IterationShadowArtifacts({ report = null, reportSvg = null, suggestions = [] } = {}) {
       if (!Array.isArray(suggestions)) throw new TypeError('v104 iteration shadow suggestions must be an array')
       const pReport = report ? { report_payload: structuredClone(report), report_svg: String(reportSvg ?? '') } : null
-      return enqueueV104IterationShadowWrite(() => postRest('rpc/persist_v104_iteration_shadow_v5_artifacts', {
+      const acknowledgement = await enqueueV104IterationShadowWrite(() => postRest('rpc/persist_v104_iteration_shadow_v5_artifacts', {
         p_report: pReport, p_suggestions: structuredClone(suggestions),
       }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
+      const expectedCycleNumber = report ? Number(report.cycleNumber) : null
+      const acknowledgedCycleNumber = acknowledgement?.cycle_number == null ? null : Number(acknowledgement.cycle_number)
+      if (acknowledgement?.persisted !== true
+        || Number(acknowledgement?.suggestions) !== suggestions.length
+        || acknowledgedCycleNumber !== expectedCycleNumber) throw new Error('v104 iteration shadow artifact acknowledgement failed')
+      return acknowledgement
     },
     async reviewV104IterationShadowSuggestion({ suggestionId, decision, reviewer } = {}) {
       return enqueueV104IterationShadowWrite(() => postRest('rpc/review_v104_iteration_shadow_v5_suggestion', {
