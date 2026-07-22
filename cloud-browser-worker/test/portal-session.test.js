@@ -73,14 +73,18 @@ test('portal MT popup listener starts only after a delayed MT control becomes vi
       const hidden = () => ({ isVisible: async () => false })
       return { first: hidden, last: hidden }
     },
-    getByText() {
-      return {
-        first: () => ({
-          waitFor: async () => { await new Promise((resolve) => setTimeout(resolve, 10)); visible = true },
-          isVisible: async () => visible,
-          click: async () => resolvePopup(popup),
-        }),
-      }
+    getByText(text) {
+      const item = () => ({
+        waitFor: async () => {
+          if (text === 'MT真人') { await new Promise((resolve) => setTimeout(resolve, 10)); visible = true }
+        },
+        isVisible: async () => text === '真人' || visible,
+        click: async () => {
+          if (text === '真人') visible = true
+          else resolvePopup(popup)
+        },
+      })
+      return { first: item, last: item }
     },
   }
   assert.equal(await openPortalMtPage({ context, portalPage: portal, timeoutMs: 100 }), popup)

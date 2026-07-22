@@ -62,7 +62,13 @@ export async function loginPortalPage(page, credentials, { portalUrl = PORTAL_UR
 
 export async function openPortalMtPage({ context, portalPage, timeoutMs = 45000 } = {}) {
   await closeAnnouncement(portalPage)
-  return clickTextAndCapturePopup(context, portalPage, PORTAL_SELECTORS.mtCasinoText[0], timeoutMs)
+  const mtText = PORTAL_SELECTORS.mtCasinoText[0]
+  const mtLocator = portalPage.getByText(mtText, { exact: true }).first()
+  if (!await mtLocator.isVisible().catch(() => false)) {
+    await clickExactTextAfterClosingAnnouncements(portalPage, '真人')
+    await portalPage.waitForTimeout?.(500)
+  }
+  return clickTextAndCapturePopup(context, portalPage, mtText, timeoutMs)
 }
 
 export function assertAllowedMtUrl(candidateUrl, configuredMtUrl, allowedHosts = []) {
