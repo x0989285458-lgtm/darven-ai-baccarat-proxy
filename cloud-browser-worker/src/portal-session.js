@@ -278,7 +278,18 @@ async function waitForVisible(page, selectors, timeoutMs) {
 }
 
 async function clickExactText(page, text, timeoutMs = 5000) {
-  const locator = page.getByText(text, { exact: true }).last()
+  const candidates = page.getByText(text, { exact: true })
+  if (typeof candidates.count === 'function' && typeof candidates.nth === 'function') {
+    const count = await candidates.count()
+    for (let index = count - 1; index >= 0; index -= 1) {
+      const locator = candidates.nth(index)
+      if (!await locator.isVisible().catch(() => false)) continue
+      await locator.click({ timeout: Math.max(1, Math.min(5000, Number(timeoutMs) || 5000)) })
+      return
+    }
+    throw new Error('required portal action was not found')
+  }
+  const locator = candidates.last()
   if (!await locator.isVisible().catch(() => false)) throw new Error('required portal action was not found')
   await locator.click({ timeout: Math.max(1, Math.min(5000, Number(timeoutMs) || 5000)) })
 }
