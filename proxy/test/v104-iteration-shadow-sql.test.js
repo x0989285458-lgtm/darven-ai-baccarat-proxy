@@ -191,14 +191,14 @@ test('v5 migration starts independent zero counters and validates approved side 
   assert.doesNotMatch(schemaV5 + rollbackV5, /delete\s+from|truncate|drop\s+table/i)
 })
 
-test('v5 manual stop drains pending Finals and rollback restores v4', () => {
+test('v5 rollback preserves the deliberately stopped pre-v5 v4 state', () => {
   assert.match(schemaV5, /status in \('shadow',\s*'draining',\s*'shadow_disabled'\)/i)
   assert.match(schemaV5, /begin_v104_iteration_shadow_v5_drain\(\)/i)
   assert.match(schemaV5, /finish_v104_iteration_shadow_v5_drain\(\)/i)
   assert.match(schemaV5, /left join public\.v104_iteration_shadow_v5_settlements[\s\S]{0,180}s\.id is null/i)
   assert.match(rollbackV5, /v104 iteration shadow v5 must be fully drained before rollback/i)
-  assert.match(rollbackV5, /update public\.v104_iteration_shadow_v4_runtime_settings[\s\S]{0,220}enabled=true[\s\S]{0,100}status='shadow'/i)
+  assert.match(rollbackV5, /update public\.v104_iteration_shadow_v4_runtime_settings[\s\S]{0,220}enabled=false[\s\S]{0,100}status='shadow_disabled'/i)
   assert.match(rollbackV5, /update public\.v104_iteration_shadow_v4_runtime_settings[\s\S]{0,500}if not found then[\s\S]{0,220}raise exception 'v4 runtime restore failed'/i)
-  assert.match(rollbackV5, /select enabled,status into[\s\S]{0,260}from public\.v104_iteration_shadow_v4_runtime_settings[\s\S]{0,320}if restored_enabled is distinct from true or restored_status is distinct from 'shadow'/i)
-  assert.match(rollbackV5, /grant execute on function public\.settle_v104_iteration_shadow_v4_prediction\(jsonb\) to service_role/i)
+  assert.match(rollbackV5, /select enabled,status into[\s\S]{0,260}from public\.v104_iteration_shadow_v4_runtime_settings[\s\S]{0,320}if restored_enabled is distinct from false or restored_status is distinct from 'shadow_disabled'/i)
+  assert.match(rollbackV5, /revoke execute on function public\.settle_v104_iteration_shadow_v4_prediction\(jsonb\) from service_role/i)
 })

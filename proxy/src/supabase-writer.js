@@ -2388,9 +2388,10 @@ export function createSupabaseIngestionClient({
       return { ...acknowledgement, predictionId: acknowledgement.prediction_id }
     },
     async persistV104IterationShadowArtifacts({ report = null, reportSvg = null, suggestions = [] } = {}) {
+      if (!Array.isArray(suggestions)) throw new TypeError('v104 iteration shadow suggestions must be an array')
       const pReport = report ? { report_payload: structuredClone(report), report_svg: String(reportSvg ?? '') } : null
       return enqueueV104IterationShadowWrite(() => postRest('rpc/persist_v104_iteration_shadow_v5_artifacts', {
-        p_report: pReport, p_suggestions: structuredClone(Array.isArray(suggestions) ? suggestions : []),
+        p_report: pReport, p_suggestions: structuredClone(suggestions),
       }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
     },
     async reviewV104IterationShadowSuggestion({ suggestionId, decision, reviewer } = {}) {

@@ -123,6 +123,6 @@ test('v5 best-stage side reweight manifest is isolated, exact, and starts from z
   assert.equal(manifest.database.startsAtZero, true)
   assert.equal(manifest.database.previousV4ReadOnly, true)
   assert.equal(manifest.database.manualStopDrainSafe, true)
-  assert.equal(manifest.database.rollbackRestoresV4, true)
+  assert.equal(manifest.database.rollbackRestoresV4PreV5State, 'shadow_disabled')
   assert.deepEqual(manifest.deployment.order, ['previous-shadow-drain', 'database-additive', 'catalog-acl-readback', 'proxy-render', 'live-e2e'])
 })

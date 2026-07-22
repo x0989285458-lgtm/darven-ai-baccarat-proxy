@@ -118,6 +118,19 @@ test('v104 issuance fallback GET is aborted at the network layer', { timeout: 25
   assert.equal(aborted, true)
 })
 
+test('v104 artifact writer rejects non-array suggestions instead of laundering them into an empty successful write', async () => {
+  const requests = []
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    fetchImpl: async (url, init) => { requests.push({ url: String(url), body: JSON.parse(init.body) }); return response({ persisted: true, suggestions: 0 }) },
+  })
+  await assert.rejects(
+    client.persistV104IterationShadowArtifacts({ suggestions: { invalid: true } }),
+    /suggestions must be an array/i,
+  )
+  assert.equal(requests.length, 0)
+})
+
 test('v104 settlement uses only its dedicated RPC and preserves PUSH', async () => {
   const requests = []
   const client = createSupabaseIngestionClient({

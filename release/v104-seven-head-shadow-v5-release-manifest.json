@@ -49,7 +49,7 @@
     "independentHistory": true,
     "previousV4ReadOnly": true,
     "manualStopDrainSafe": true,
-    "rollbackRestoresV4": true,
+    "rollbackRestoresV4PreV5State": "shadow_disabled",
     "gaplessTransactionalCounters": true,
     "serviceRoleOnly": true
   },

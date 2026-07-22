@@ -1,4 +1,4 @@
--- Non-destructive rollback after an explicit v5 drain: preserve v5 evidence and restore the prior v4 runtime.
+-- Non-destructive rollback after an explicit v5 drain: preserve v5 evidence and the deliberately stopped pre-v5 v4 state.
 begin;
 
 do $$
@@ -26,7 +26,7 @@ do $$
 declare restored_enabled boolean; restored_status text;
 begin
   update public.v104_iteration_shadow_v4_runtime_settings
-  set enabled=true,status='shadow',updated_at=now()
+  set enabled=false,status='shadow_disabled',updated_at=now()
   where release_candidate='v104.4.0-seven-head-shadow.4';
   if not found then
     raise exception 'v4 runtime restore failed';
@@ -35,16 +35,16 @@ begin
   from public.v104_iteration_shadow_v4_runtime_settings
   where release_candidate='v104.4.0-seven-head-shadow.4'
   for share;
-  if restored_enabled is distinct from true or restored_status is distinct from 'shadow' then
+  if restored_enabled is distinct from false or restored_status is distinct from 'shadow_disabled' then
     raise exception 'v4 runtime restore failed';
   end if;
 end;
 $$;
 
-grant execute on function public.issue_v104_iteration_shadow_v4_prediction(jsonb) to service_role;
-grant execute on function public.settle_v104_iteration_shadow_v4_prediction(jsonb) to service_role;
-grant execute on function public.persist_v104_iteration_shadow_v4_artifacts(jsonb,jsonb) to service_role;
-grant execute on function public.review_v104_iteration_shadow_v4_suggestion(text,text,text) to service_role;
+revoke execute on function public.issue_v104_iteration_shadow_v4_prediction(jsonb) from service_role;
+revoke execute on function public.settle_v104_iteration_shadow_v4_prediction(jsonb) from service_role;
+revoke execute on function public.persist_v104_iteration_shadow_v4_artifacts(jsonb,jsonb) from service_role;
+revoke execute on function public.review_v104_iteration_shadow_v4_suggestion(text,text,text) from service_role;
 
 revoke execute on function public.issue_v104_iteration_shadow_v5_prediction(jsonb) from service_role;
 revoke execute on function public.settle_v104_iteration_shadow_v5_prediction(jsonb) from service_role;
