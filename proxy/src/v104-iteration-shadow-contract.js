@@ -2,14 +2,28 @@ import { isVerifiedFinalRoundAction } from '../../shared/real-card-validator.js'
 import {
   SIDE_PREDICTION_THRESHOLDS,
   SIDE_PREDICTION_WEIGHT_PROFILES,
+  V100_SIDE_SCORE_CALIBRATION_OFFSETS,
   buildSideFeatureScores,
   deriveBaccaratRoundFacts,
 } from './supabase-writer.js'
-import { V104_DIRECTION_WEIGHTS } from './v104-main-contract.js'
 import { buildV104FormalPrediction } from './v104-formal-strategy.js'
+import { buildV104ShadowPrediction } from './v104-shadow-strategy.js'
 
-export const V104_ITERATION_SHADOW_VERSION = 'v104-seven-head-shadow-v2-player-pair-threshold-41'
-export const V104_ITERATION_SHADOW_RELEASE = 'v104.2.0-seven-head-shadow.2'
+export const V104_ITERATION_SHADOW_VERSION = 'v104-seven-head-shadow-v3-main-player-pair-reweight'
+export const V104_ITERATION_SHADOW_RELEASE = 'v104.3.0-seven-head-shadow.3'
+export const V104_ITERATION_SHADOW_MAIN_WEIGHTS = Object.freeze({
+  roadmap_trend_signals: 0.25,
+  ask_road_signals: 0.35,
+  shoe_banker_player_bias: 0.30,
+  neutral_reserve: 0.10,
+})
+export const V104_ITERATION_SHADOW_PLAYER_PAIR_WEIGHTS = Object.freeze({
+  remaining_rank_pressure: 0.25,
+  shoe_stage: 0.05,
+  player_pair_count: 0.25,
+  player_pair_residual: 0.15,
+  pair_shared_factor: 0.30,
+})
 export const V104_ITERATION_SHADOW_THRESHOLDS = Object.freeze({
   ...SIDE_PREDICTION_THRESHOLDS,
   playerPair: 41,
@@ -21,11 +35,12 @@ export const SHADOW_HEAD_LABELS = Object.freeze({
 })
 
 export const frozenWeightKeys = Object.freeze({
-  main: Object.freeze(Object.keys(V104_DIRECTION_WEIGHTS)),
+  main: Object.freeze(Object.keys(V104_ITERATION_SHADOW_MAIN_WEIGHTS)),
   ...Object.fromEntries(SHADOW_HEAD_KEYS.slice(1).map((key) => [
     key,
     Object.freeze(Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES[key]).filter((name) => Number(SIDE_PREDICTION_WEIGHT_PROFILES[key][name]) > 0)),
   ])),
+  playerPair: Object.freeze(Object.keys(V104_ITERATION_SHADOW_PLAYER_PAIR_WEIGHTS)),
 })
 
 export function confidenceToMainUnits(confidence) {
@@ -40,32 +55,61 @@ export function confidenceToSideUnits(confidence, threshold) {
   return Math.max(1, Math.min(10, Math.round(1 + ((value - gate) * 9 / (100 - gate)))))
 }
 
+export function calculateV104IterationPlayerPairConfidence(featureValues = {}) {
+  const raw = Object.entries(V104_ITERATION_SHADOW_PLAYER_PAIR_WEIGHTS)
+    .reduce((sum, [key, weight]) => sum + finitePercent(featureValues[key]) * weight, 0)
+  return finitePercent(raw + Number(V100_SIDE_SCORE_CALIBRATION_OFFSETS.playerPair ?? 0))
+}
+
 export function buildV104IterationShadowPrediction(table = {}, historyRows = [], issuanceContext = {}) {
   const formal = buildV104FormalPrediction(table, historyRows, issuanceContext)
+  const candidateMain = buildV104ShadowPrediction(table, historyRows, issuanceContext, {
+    directionWeights: V104_ITERATION_SHADOW_MAIN_WEIGHTS,
+    historyStrategyVersion: V104_ITERATION_SHADOW_VERSION,
+  })
   const featureScores = buildSideFeatureScores(table, {
     tableId: table.tableId,
     shoe: table.shoe,
     round: Number(table.round ?? 0) + 1,
     cardShoe: table.v102RankLedger ?? table.cardShoe ?? null,
   })
-  const rankAvailable = formal.predictionFeatures?.v104_side_policy?.diagnostics?.rank?.available === true
+  const sideDiagnostics = formal.predictionFeatures?.v104_side_policy?.diagnostics ?? {}
+  const sidePrimitives = sideDiagnostics.primitives ?? {}
+  const sideResiduals = sideDiagnostics.residuals ?? {}
+  const playerPairFeatureValues = {
+    remaining_rank_pressure: finitePercent(sidePrimitives.Q),
+    shoe_stage: finitePercent(sidePrimitives.S),
+    player_pair_count: finitePercent(sidePrimitives.XP),
+    player_pair_residual: finitePercent(sideResiduals.playerPair),
+    pair_shared_factor: finitePercent(sidePrimitives.Hpair),
+  }
+  const playerPairConfidence = calculateV104IterationPlayerPairConfidence(playerPairFeatureValues)
+  const rankAvailable = sideDiagnostics.rank?.available === true
   const main = {
     key: 'main', label: SHADOW_HEAD_LABELS.main, action: true, threshold: null,
-    predictedResult: formal.predictedResult,
-    confidence: finitePercent(formal.confidence),
-    units: confidenceToMainUnits(formal.confidence),
-    weights: structuredClone(V104_DIRECTION_WEIGHTS),
-    featureValues: buildMainFeatureValues(formal),
+    predictedResult: candidateMain.predictedResult,
+    confidence: finitePercent(candidateMain.confidence),
+    units: confidenceToMainUnits(candidateMain.confidence),
+    weights: structuredClone(V104_ITERATION_SHADOW_MAIN_WEIGHTS),
+    featureValues: buildMainFeatureValues(candidateMain),
   }
   const sideHeads = Object.fromEntries(SHADOW_HEAD_KEYS.slice(1).map((key) => {
-    const confidence = finitePercent(formal.sidePredictions?.[key])
+    const confidence = key === 'playerPair'
+      ? playerPairConfidence
+      : finitePercent(formal.sidePredictions?.[key])
     const threshold = Number(V104_ITERATION_SHADOW_THRESHOLDS[key])
     const action = rankAvailable && confidence >= threshold
+    const weights = key === 'playerPair'
+      ? V104_ITERATION_SHADOW_PLAYER_PAIR_WEIGHTS
+      : SIDE_PREDICTION_WEIGHT_PROFILES[key]
+    const featureValues = key === 'playerPair'
+      ? playerPairFeatureValues
+      : Object.fromEntries(frozenWeightKeys[key].map((name) => [name, finitePercent(featureScores[name])]))
     return [key, {
       key, label: SHADOW_HEAD_LABELS[key], action, threshold, confidence,
       units: action ? confidenceToSideUnits(confidence, threshold) : 0,
-      weights: structuredClone(SIDE_PREDICTION_WEIGHT_PROFILES[key]),
-      featureValues: Object.fromEntries(frozenWeightKeys[key].map((name) => [name, finitePercent(featureScores[name])])),
+      weights: structuredClone(weights),
+      featureValues,
       rankAvailable,
     }]
   }))
@@ -81,13 +125,13 @@ export function buildV104IterationShadowPrediction(table = {}, historyRows = [],
     writesSideActions: false,
     targetTableId: String(formal.targetTableId ?? table.tableId ?? ''),
     targetShoe: formal.targetShoe == null ? null : String(formal.targetShoe),
-    targetRound: Number(formal.targetRound),
-    predictedResult: formal.predictedResult,
+    targetRound: Number(candidateMain.targetRound),
+    predictedResult: candidateMain.predictedResult,
     confidence: main.confidence,
-    sameSideStreak: formal.sameSideStreak,
-    independentSupportCount: formal.independentSupportCount,
-    shoeBiasSuppressed: formal.shoeBiasSuppressed,
-    lockRisk: formal.lockRisk,
+    sameSideStreak: candidateMain.sameSideStreak,
+    independentSupportCount: candidateMain.independentSupportCount,
+    shoeBiasSuppressed: candidateMain.shoeBiasSuppressed,
+    lockRisk: candidateMain.lockRisk,
     heads: { main, ...sideHeads },
     formalReference: {
       releaseVersion: formal.releaseVersion,

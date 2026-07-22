@@ -9,6 +9,10 @@ const schemaV2Url = new URL('../../frontend/supabase/schema_v104_iteration_shado
 const rollbackV2Url = new URL('../../frontend/supabase/rollback_v104_iteration_shadow_v2.sql', import.meta.url)
 const schemaV2 = fs.existsSync(schemaV2Url) ? fs.readFileSync(schemaV2Url, 'utf8') : ''
 const rollbackV2 = fs.existsSync(rollbackV2Url) ? fs.readFileSync(rollbackV2Url, 'utf8') : ''
+const schemaV3Url = new URL('../../frontend/supabase/schema_v104_iteration_shadow_v3.sql', import.meta.url)
+const rollbackV3Url = new URL('../../frontend/supabase/rollback_v104_iteration_shadow_v3.sql', import.meta.url)
+const schemaV3 = fs.existsSync(schemaV3Url) ? fs.readFileSync(schemaV3Url, 'utf8') : ''
+const rollbackV3 = fs.existsSync(rollbackV3Url) ? fs.readFileSync(rollbackV3Url, 'utf8') : ''
 
 test('iteration shadow migration is additive, v104-active-only, and disables old shadows', () => {
   assert.match(schema, /version\s*=\s*'v104'/i)
@@ -78,4 +82,27 @@ test('v2 migration is isolated, changes only player-pair threshold, and has no a
   assert.doesNotMatch(schemaV2, /delete\s+from|truncate|drop\s+table/i)
   assert.match(rollbackV2, /enabled=false/i)
   assert.doesNotMatch(rollbackV2, /delete\s+from|truncate|drop\s+table/i)
+})
+
+test('v3 migration starts independent counters, freezes v2, and validates approved weights', () => {
+  assert.match(schemaV3, /v104-seven-head-shadow-v3-main-player-pair-reweight/i)
+  assert.match(schemaV3, /v104\.3\.0-seven-head-shadow\.3/i)
+  for (const table of ['runtime_settings','sequence_counters','issuances','settlements','cycle_reports','weight_suggestions']) {
+    assert.match(schemaV3, new RegExp(`public\\.v104_iteration_shadow_v3_${table}`, 'i'))
+  }
+  assert.match(schemaV3, /update public\.v104_iteration_shadow_v2_runtime_settings[\s\S]{0,300}enabled=false/i)
+  assert.match(schemaV3, /values \('v104\.3\.0-seven-head-shadow\.3'\)[\s\S]{0,100}on conflict \(release_candidate\) do nothing/i)
+  assert.match(schemaV3, /roadmap_trend_signals[\s\S]{0,120}0\.25/i)
+  assert.match(schemaV3, /ask_road_signals[\s\S]{0,120}0\.35/i)
+  assert.match(schemaV3, /shoe_banker_player_bias[\s\S]{0,120}0\.30/i)
+  assert.match(schemaV3, /remaining_rank_pressure[\s\S]{0,120}0\.25/i)
+  assert.match(schemaV3, /shoe_stage[\s\S]{0,120}0\.05/i)
+  assert.match(schemaV3, /player_pair_count[\s\S]{0,120}0\.25/i)
+  assert.match(schemaV3, /player_pair_residual[\s\S]{0,120}0\.15/i)
+  assert.match(schemaV3, /pair_shared_factor[\s\S]{0,120}0\.30/i)
+  assert.match(schemaV3, /manual stop only; no fixed settlement cap/i)
+  assert.doesNotMatch(schemaV3, /new\.settlement_sequence\s*>\s*\d+/i)
+  assert.doesNotMatch(schemaV3, /delete\s+from|truncate|drop\s+table/i)
+  assert.match(rollbackV3, /enabled=false/i)
+  assert.doesNotMatch(rollbackV3, /delete\s+from|truncate|drop\s+table/i)
 })

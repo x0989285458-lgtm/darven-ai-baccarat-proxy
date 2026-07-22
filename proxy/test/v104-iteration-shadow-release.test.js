@@ -43,3 +43,27 @@ test('v2 threshold-only shadow release manifest is isolated and exact', () => {
   assert.equal(frontend.version, '1.0.13')
   assert.equal(worker.version, '1.0.13')
 })
+
+test('v3 reweight shadow manifest is isolated and exact', () => {
+  const url = new URL('../../release/v104-seven-head-shadow-v3-release-manifest.json', import.meta.url)
+  assert.equal(existsSync(url), true)
+  const manifest = readJson('../../release/v104-seven-head-shadow-v3-release-manifest.json')
+  assert.equal(manifest.releaseVersion, 'v104.3.0-seven-head-shadow.3')
+  assert.equal(manifest.shadowStrategyVersion, 'v104-seven-head-shadow-v3-main-player-pair-reweight')
+  assert.equal(manifest.formalStrategyVersion, 'v104')
+  assert.equal(manifest.shadowOnly, true)
+  assert.equal(manifest.autoApply, false)
+  assert.equal(manifest.finalSettlementLimit, null)
+  assert.equal(manifest.manualStopOnly, true)
+  assert.deepEqual(manifest.mainWeights, {
+    roadmap_trend_signals: 0.25, ask_road_signals: 0.35,
+    shoe_banker_player_bias: 0.30, neutral_reserve: 0.10,
+  })
+  assert.deepEqual(manifest.playerPairWeights, {
+    remaining_rank_pressure: 0.25, shoe_stage: 0.05, player_pair_count: 0.25,
+    player_pair_residual: 0.15, pair_shared_factor: 0.30,
+  })
+  assert.equal(manifest.thresholds.playerPair, 41)
+  assert.equal(manifest.database.previousV2ReadOnly, true)
+  assert.deepEqual(manifest.deployment.order, ['database-additive', 'catalog-acl-readback', 'proxy-render', 'live-e2e'])
+})

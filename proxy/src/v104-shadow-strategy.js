@@ -9,14 +9,14 @@ export const V104_SHADOW_SHOE_BIAS = V104_SHOE_BIAS
 
 const CALIBRATION_MINIMUM_SAMPLES = 20
 
-export function buildV104ShadowHistory(rows = [], { tableId = null, windowSize = 60 } = {}) {
+export function buildV104ShadowHistory(rows = [], { tableId = null, windowSize = 60, strategyVersion = V104_SHADOW_STRATEGY_VERSION } = {}) {
   const eligible = rows.filter((row) => {
     const strategy = row?.strategy_version ?? row?.strategyVersion
     const timing = row?.prediction_timing ?? row?.predictionTiming
     const issuedAt = row?.prediction_issued_at ?? row?.predictionIssuedAt
     const final = row?.settlement_final ?? row?.settlementFinal
     const rowTableId = row?.table_id ?? row?.tableId
-    return strategy === V104_SHADOW_STRATEGY_VERSION
+    return strategy === strategyVersion
       && timing === 'pre_result_context'
       && Boolean(issuedAt)
       && final === true
@@ -60,14 +60,14 @@ export function buildV104ShoeBias(table = {}) {
   }
 }
 
-export function calculateV104Direction({ tableIdentity = '', scoreSources = {}, priorDirection = null, priorSameSideStreak = 0 } = {}) {
+export function calculateV104Direction({ tableIdentity = '', scoreSources = {}, priorDirection = null, priorSameSideStreak = 0, directionWeights = V104_SHADOW_DIRECTION_WEIGHTS } = {}) {
   const normalizedSources = {
     roadmap_trend_signals: normalizeScore(scoreSources.roadmap_trend_signals),
     ask_road_signals: normalizeScore(scoreSources.ask_road_signals),
     shoe_banker_player_bias: normalizeScore(scoreSources.shoe_banker_player_bias),
     neutral_reserve: normalizeScore(scoreSources.neutral_reserve),
   }
-  const raw = totalDirection(normalizedSources)
+  const raw = totalDirection(normalizedSources, directionWeights)
   const rawDirection = pickDirection(raw, tableIdentity)
   const normalizedPriorDirection = normalizeDirection(priorDirection)
   const priorStreak = Math.max(0, Math.floor(Number(priorSameSideStreak) || 0))
@@ -86,7 +86,7 @@ export function calculateV104Direction({ tableIdentity = '', scoreSources = {}, 
       askRoadSuppressed = true
     }
   }
-  const scoreTotals = totalDirection(appliedScoreSources)
+  const scoreTotals = totalDirection(appliedScoreSources, directionWeights)
   const predictedResult = pickDirection(scoreTotals, tableIdentity)
   const sameSideStreak = predictedResult === normalizedPriorDirection ? priorStreak + 1 : 1
   return {
@@ -103,8 +103,15 @@ export function calculateV104Direction({ tableIdentity = '', scoreSources = {}, 
   }
 }
 
-export function buildV104ShadowPrediction(table = {}, historyRows = [], issuanceContext = {}) {
-  const directionalHistory = buildV104ShadowHistory(historyRows, { tableId: table.tableId, windowSize: 60 })
+export function buildV104ShadowPrediction(table = {}, historyRows = [], issuanceContext = {}, {
+  directionWeights = V104_SHADOW_DIRECTION_WEIGHTS,
+  historyStrategyVersion = V104_SHADOW_STRATEGY_VERSION,
+} = {}) {
+  const directionalHistory = buildV104ShadowHistory(historyRows, {
+    tableId: table.tableId,
+    windowSize: 60,
+    strategyVersion: historyStrategyVersion,
+  })
   const source = buildLivePrediction({
     ...structuredClone(table),
     settledDirectionalPredictionStats: directionalHistory,
@@ -123,6 +130,7 @@ export function buildV104ShadowPrediction(table = {}, historyRows = [], issuance
     scoreSources,
     priorDirection: sameShoe ? issuanceContext.priorDirection : null,
     priorSameSideStreak: sameShoe ? issuanceContext.priorSameSideStreak : 0,
+    directionWeights,
   })
   const calibration = directionalHistory[direction.predictedResult]
   const rawConfidence = Math.max(30, Math.min(70, Math.round(30 + Math.abs(direction.scoreTotals.banker - direction.scoreTotals.player) * 100)))
@@ -143,7 +151,7 @@ export function buildV104ShadowPrediction(table = {}, historyRows = [], issuance
     confidence,
     scoreSources: { ...scoreSources, ...direction.appliedScoreSources },
     scoreTotals: direction.scoreTotals,
-    featureWeights: { ...V104_SHADOW_DIRECTION_WEIGHTS },
+    featureWeights: { ...directionWeights },
     sameSideStreak: direction.sameSideStreak,
     independentSupportCount: direction.independentSupportCount,
     shoeBiasSuppressed: direction.shoeBiasSuppressed,
@@ -195,8 +203,8 @@ export function buildV104ShadowSettlement(round = {}, issued = {}) {
   }
 }
 
-function totalDirection(scoreSources) {
-  return Object.entries(V104_SHADOW_DIRECTION_WEIGHTS).reduce((total, [key, weight]) => {
+function totalDirection(scoreSources, directionWeights = V104_SHADOW_DIRECTION_WEIGHTS) {
+  return Object.entries(directionWeights).reduce((total, [key, weight]) => {
     const score = normalizeScore(scoreSources[key])
     total.banker += score.banker * weight
     total.player += score.player * weight

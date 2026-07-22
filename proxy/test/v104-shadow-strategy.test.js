@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   V104_SHADOW_DIRECTION_WEIGHTS,
   V104_SHADOW_SHOE_BIAS,
+  buildV104ShadowHistory,
   buildV104ShadowPrediction,
   buildV104ShoeBias,
   calculateV104Direction,
@@ -73,6 +74,71 @@ test('v104 shoe bias applies fixed Bayesian shrinkage and transparent symmetric 
     banker: 0.42, player: 0.58, sampleCount: 8,
     rawBankerRate: 0, posteriorBankerRate: 0.25, capped: true,
   })
+})
+
+test('candidate history accepts only its own explicit strategy version', () => {
+  const row = (strategyVersion, actualResult) => ({
+    strategy_version: strategyVersion,
+    prediction_timing: 'pre_result_context',
+    prediction_issued_at: '2026-07-22T00:00:00Z',
+    settlement_final: true,
+    table_id: 'BAG08',
+    predicted_result: 'banker',
+    actual_result: actualResult,
+  })
+  const history = buildV104ShadowHistory([
+    row('v104', 'banker'),
+    row('v104-seven-head-shadow-v3-main-player-pair-reweight', 'player'),
+  ], {
+    tableId: 'BAG08',
+    strategyVersion: 'v104-seven-head-shadow-v3-main-player-pair-reweight',
+  })
+  assert.deepEqual(history.banker, { settledPredictionCount: 1, hitRate: 0 })
+})
+
+test('candidate prediction calibrates only from its own explicit strategy history', () => {
+  const version = 'v104-seven-head-shadow-v3-main-player-pair-reweight'
+  const row = (actualResult) => ({
+    ...historyRow(actualResult),
+    strategy_version: version,
+  })
+  const losing = buildV104ShadowPrediction(
+    baseTable(),
+    Array.from({ length: 20 }, () => row('player')),
+    {},
+    { historyStrategyVersion: version },
+  )
+  const winning = buildV104ShadowPrediction(
+    baseTable(),
+    Array.from({ length: 20 }, () => row('banker')),
+    {},
+    { historyStrategyVersion: version },
+  )
+  assert.equal(losing.diagnostics.calibration.sampleCount, 20)
+  assert.equal(winning.diagnostics.calibration.sampleCount, 20)
+  assert.notEqual(losing.confidence, winning.confidence)
+})
+
+test('v104 direction accepts isolated candidate weights without changing the formal default', () => {
+  const scoreSources = {
+    roadmap_trend_signals: { banker: 0.9, player: 0.1 },
+    ask_road_signals: { banker: 0.1, player: 0.9 },
+    shoe_banker_player_bias: { banker: 0.6, player: 0.4 },
+    neutral_reserve: { banker: 0.5, player: 0.5 },
+  }
+  const formal = calculateV104Direction({ tableIdentity: 'BAG08:104:21', scoreSources })
+  const candidate = calculateV104Direction({
+    tableIdentity: 'BAG08:104:21',
+    scoreSources,
+    directionWeights: {
+      roadmap_trend_signals: 0.25,
+      ask_road_signals: 0.35,
+      shoe_banker_player_bias: 0.30,
+      neutral_reserve: 0.10,
+    },
+  })
+  assert.equal(formal.predictedResult, 'banker')
+  assert.equal(candidate.predictedResult, 'player')
 })
 
 test('v104 fifth same-side issuance suppresses shoe and recomputes when independent support is insufficient', () => {
