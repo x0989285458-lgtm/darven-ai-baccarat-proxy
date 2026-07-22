@@ -25,23 +25,19 @@ begin
 end;
 $$;
 
-do $$
-begin
-  if to_regclass('public.v104_iteration_shadow_v2_runtime_settings') is not null then
-    update public.v104_iteration_shadow_v2_runtime_settings
-      set enabled=false, status='shadow_disabled', updated_at=now();
-  end if;
-end;
-$$;
-
 create table if not exists public.v104_iteration_shadow_v3_runtime_settings (
   release_candidate text primary key,
   strategy_version text not null check (strategy_version = 'v104-seven-head-shadow-v3-main-player-pair-reweight'),
-  status text not null check (status in ('shadow', 'shadow_disabled')),
+  status text not null,
   enabled boolean not null,
   active_strategy_version text not null check (active_strategy_version = 'v104'),
   updated_at timestamptz not null default now()
 );
+alter table public.v104_iteration_shadow_v3_runtime_settings
+  drop constraint if exists v104_iteration_shadow_v3_runtime_settings_status_check;
+alter table public.v104_iteration_shadow_v3_runtime_settings
+  add constraint v104_iteration_shadow_v3_runtime_settings_status_check
+  check (status in ('shadow', 'draining', 'shadow_disabled'));
 
 create table if not exists public.v104_iteration_shadow_v3_sequence_counters (
   release_candidate text primary key,
@@ -257,10 +253,10 @@ declare
   issued_units numeric; payout numeric;
 begin
   perform 1 from public.v104_iteration_shadow_v3_runtime_settings
-    where release_candidate='v104.3.0-seven-head-shadow.3' and enabled=true and status='shadow' and active_strategy_version='v104'
+    where release_candidate='v104.3.0-seven-head-shadow.3' and enabled=true and status in ('shadow','draining') and active_strategy_version='v104'
     for share;
   if not found then
-    raise exception 'v104 iteration shadow is disabled';
+    raise exception 'v104 iteration shadow settlement is disabled';
   end if;
   if coalesce(p_settlement->>'settlement_source_action','') not in ('summary','show_win') then
     raise exception 'v104 iteration shadow requires verified Final; show_poker is provisional';
@@ -420,10 +416,10 @@ declare
   head_key_value text; action_cycle_value bigint; sample_start bigint; sample_end bigint; persisted_suggestions integer:=0;
 begin
   perform 1 from public.v104_iteration_shadow_v3_runtime_settings
-    where release_candidate='v104.3.0-seven-head-shadow.3' and enabled=true and status='shadow' and active_strategy_version='v104'
+    where release_candidate='v104.3.0-seven-head-shadow.3' and enabled=true and status in ('shadow','draining') and active_strategy_version='v104'
     for share;
   if not found then
-    raise exception 'v104 iteration shadow is disabled';
+    raise exception 'v104 iteration shadow artifact persistence is disabled';
   end if;
   if p_report is not null and p_report <> 'null'::jsonb then
     report_payload := p_report->'report_payload'; report_svg := p_report->>'report_svg';
@@ -501,6 +497,69 @@ begin
   return jsonb_build_object('suggestion_id',reviewed.suggestion_id,'status',reviewed.status,'auto_apply',reviewed.auto_apply);
 end; $$;
 
+create or replace function public.begin_v104_iteration_shadow_v3_drain()
+returns jsonb language plpgsql security definer set search_path=pg_catalog,public,extensions as $$
+declare pending_count bigint; current_status text;
+begin
+  select status into current_status
+  from public.v104_iteration_shadow_v3_runtime_settings
+  where release_candidate='v104.3.0-seven-head-shadow.3' and enabled=true
+  for update;
+  if current_status not in ('shadow','draining') then
+    raise exception 'v104 iteration shadow v3 is unavailable for drain';
+  end if;
+  update public.v104_iteration_shadow_v3_runtime_settings
+    set status='draining',enabled=true,updated_at=now()
+    where release_candidate='v104.3.0-seven-head-shadow.3';
+  select count(*) into pending_count
+  from public.v104_iteration_shadow_v3_issuances i
+  left join public.v104_iteration_shadow_v3_settlements s on s.prediction_id=i.id
+  where s.id is null;
+  return jsonb_build_object('status','draining','pending_settlements',pending_count);
+end; $$;
+
+create or replace function public.finish_v104_iteration_shadow_v3_drain()
+returns jsonb language plpgsql security definer set search_path=pg_catalog,public,extensions as $$
+declare
+  pending_count bigint; expected_reports bigint; stored_reports bigint;
+  expected_suggestions bigint; stored_suggestions bigint;
+  counter public.v104_iteration_shadow_v3_sequence_counters%rowtype;
+  current_status text;
+begin
+  select status into current_status
+  from public.v104_iteration_shadow_v3_runtime_settings
+  where release_candidate='v104.3.0-seven-head-shadow.3' and enabled=true
+  for update;
+  if current_status is distinct from 'draining' then
+    raise exception 'v104 iteration shadow v3 must be draining before disable';
+  end if;
+  select count(*) into pending_count
+  from public.v104_iteration_shadow_v3_issuances i
+  left join public.v104_iteration_shadow_v3_settlements s on s.prediction_id=i.id
+  where s.id is null;
+  select * into counter from public.v104_iteration_shadow_v3_sequence_counters
+    where release_candidate='v104.3.0-seven-head-shadow.3';
+  expected_reports := floor(counter.settlement_count / 1000.0);
+  expected_suggestions := floor(counter.main_action_count / 1000.0)
+    + floor(counter.tie_action_count / 1000.0)
+    + floor(counter.super_six_action_count / 1000.0)
+    + floor(counter.banker_dragon_action_count / 1000.0)
+    + floor(counter.player_dragon_action_count / 1000.0)
+    + floor(counter.banker_pair_action_count / 1000.0)
+    + floor(counter.player_pair_action_count / 1000.0);
+  select count(*) into stored_reports from public.v104_iteration_shadow_v3_cycle_reports;
+  select count(*) into stored_suggestions from public.v104_iteration_shadow_v3_weight_suggestions;
+  if pending_count <> 0 or stored_reports < expected_reports or stored_suggestions < expected_suggestions then
+    raise exception 'v104 iteration shadow v3 drain incomplete: pending %, reports %/%, suggestions %/%',
+      pending_count,stored_reports,expected_reports,stored_suggestions,expected_suggestions;
+  end if;
+  update public.v104_iteration_shadow_v3_runtime_settings
+    set status='shadow_disabled',enabled=false,updated_at=now()
+    where release_candidate='v104.3.0-seven-head-shadow.3';
+  return jsonb_build_object('status','shadow_disabled','pending_settlements',0,
+    'reports',stored_reports,'suggestions',stored_suggestions);
+end; $$;
+
 create or replace view public.v104_iteration_shadow_v3_history as
 select i.id prediction_id,i.source,i.table_id,i.shoe_no,i.round_no,i.strategy_version,i.prediction_timing,
   i.prediction_issued_at,i.predicted_result,i.confidence,i.prediction_payload,i.same_side_streak,
@@ -523,9 +582,13 @@ revoke all on function public.issue_v104_iteration_shadow_v3_prediction(jsonb) f
 revoke all on function public.settle_v104_iteration_shadow_v3_prediction(jsonb) from public,anon,authenticated;
 revoke all on function public.persist_v104_iteration_shadow_v3_artifacts(jsonb,jsonb) from public,anon,authenticated;
 revoke all on function public.review_v104_iteration_shadow_v3_suggestion(text,text,text) from public,anon,authenticated;
+revoke all on function public.begin_v104_iteration_shadow_v3_drain() from public,anon,authenticated;
+revoke all on function public.finish_v104_iteration_shadow_v3_drain() from public,anon,authenticated;
 grant execute on function public.issue_v104_iteration_shadow_v3_prediction(jsonb) to service_role;
 grant execute on function public.settle_v104_iteration_shadow_v3_prediction(jsonb) to service_role;
 grant execute on function public.persist_v104_iteration_shadow_v3_artifacts(jsonb,jsonb) to service_role;
 grant execute on function public.review_v104_iteration_shadow_v3_suggestion(text,text,text) to service_role;
+grant execute on function public.begin_v104_iteration_shadow_v3_drain() to service_role;
+grant execute on function public.finish_v104_iteration_shadow_v3_drain() to service_role;
 
 commit;

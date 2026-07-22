@@ -40,15 +40,19 @@
     "previousV2ReadOnly": true,
     "gaplessTransactionalCounters": true,
     "startsAtZero": true,
-    "finalOnly": true
+    "finalOnly": true,
+    "manualStopDrainSafe": true,
+    "rollbackRestoresV2": true
   },
   "deployment": {
     "order": [
+      "previous-shadow-drain",
       "database-additive",
       "catalog-acl-readback",
       "proxy-render",
       "live-e2e"
     ],
+    "previousShadowDrainBeforeDatabase": true,
     "databaseBeforeProxy": true,
     "catalogAclReadbackBeforeProxy": true,
     "rollbackBeforeProxy": true,

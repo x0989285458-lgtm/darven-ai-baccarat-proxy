@@ -84,13 +84,13 @@ test('v2 migration is isolated, changes only player-pair threshold, and has no a
   assert.doesNotMatch(rollbackV2, /delete\s+from|truncate|drop\s+table/i)
 })
 
-test('v3 migration starts independent counters, freezes v2, and validates approved weights', () => {
+test('v3 migration starts independent counters and validates approved weights', () => {
   assert.match(schemaV3, /v104-seven-head-shadow-v3-main-player-pair-reweight/i)
   assert.match(schemaV3, /v104\.3\.0-seven-head-shadow\.3/i)
   for (const table of ['runtime_settings','sequence_counters','issuances','settlements','cycle_reports','weight_suggestions']) {
     assert.match(schemaV3, new RegExp(`public\\.v104_iteration_shadow_v3_${table}`, 'i'))
   }
-  assert.match(schemaV3, /update public\.v104_iteration_shadow_v2_runtime_settings[\s\S]{0,300}enabled=false/i)
+  assert.doesNotMatch(schemaV3, /update public\.v104_iteration_shadow_v2_runtime_settings[\s\S]{0,300}enabled=false/i)
   assert.match(schemaV3, /values \('v104\.3\.0-seven-head-shadow\.3'\)[\s\S]{0,100}on conflict \(release_candidate\) do nothing/i)
   assert.match(schemaV3, /roadmap_trend_signals[\s\S]{0,120}0\.25/i)
   assert.match(schemaV3, /ask_road_signals[\s\S]{0,120}0\.35/i)
@@ -103,6 +103,19 @@ test('v3 migration starts independent counters, freezes v2, and validates approv
   assert.match(schemaV3, /manual stop only; no fixed settlement cap/i)
   assert.doesNotMatch(schemaV3, /new\.settlement_sequence\s*>\s*\d+/i)
   assert.doesNotMatch(schemaV3, /delete\s+from|truncate|drop\s+table/i)
-  assert.match(rollbackV3, /enabled=false/i)
   assert.doesNotMatch(rollbackV3, /delete\s+from|truncate|drop\s+table/i)
+})
+
+test('v3 manual stop drains pending Finals and artifacts before disable or rollback', () => {
+  assert.match(schemaV3, /status in \('shadow',\s*'draining',\s*'shadow_disabled'\)/i)
+  assert.match(schemaV3, /begin_v104_iteration_shadow_v3_drain\(\)/i)
+  assert.match(schemaV3, /finish_v104_iteration_shadow_v3_drain\(\)/i)
+  assert.match(schemaV3, /status='shadow'[\s\S]{0,80}for share/i)
+  assert.match(schemaV3, /status in \('shadow','draining'\)[\s\S]{0,80}for share/i)
+  assert.match(schemaV3, /left join public\.v104_iteration_shadow_v3_settlements[\s\S]{0,180}s\.id is null/i)
+  assert.match(schemaV3, /cycle_reports[\s\S]{0,300}weight_suggestions/i)
+  assert.match(rollbackV3, /v104 iteration shadow v3 must be fully drained before rollback/i)
+  assert.match(rollbackV3, /update public\.v104_iteration_shadow_v2_runtime_settings[\s\S]{0,220}enabled=true[\s\S]{0,100}status='shadow'/i)
+  assert.match(rollbackV3, /grant execute on function public\.settle_v104_iteration_shadow_v2_prediction\(jsonb\) to service_role/i)
+  assert.ok(rollbackV3.indexOf('must be fully drained before rollback') < rollbackV3.indexOf('revoke execute on function public.issue_v104_iteration_shadow_v3_prediction'))
 })
