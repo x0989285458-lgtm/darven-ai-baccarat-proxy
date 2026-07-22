@@ -22,9 +22,24 @@ update public.v104_iteration_shadow_v4_runtime_settings
 set enabled=false,status='shadow_disabled',updated_at=now()
 where release_candidate='v104.4.0-seven-head-shadow.4';
 
-update public.v104_iteration_shadow_v3_runtime_settings
-set enabled=true,status='shadow',updated_at=now()
-where release_candidate='v104.3.0-seven-head-shadow.3';
+do $$
+declare restored_enabled boolean; restored_status text;
+begin
+  update public.v104_iteration_shadow_v3_runtime_settings
+  set enabled=true,status='shadow',updated_at=now()
+  where release_candidate='v104.3.0-seven-head-shadow.3';
+  if not found then
+    raise exception 'v3 runtime restore failed';
+  end if;
+  select enabled,status into restored_enabled,restored_status
+  from public.v104_iteration_shadow_v3_runtime_settings
+  where release_candidate='v104.3.0-seven-head-shadow.3'
+  for share;
+  if restored_enabled is distinct from true or restored_status is distinct from 'shadow' then
+    raise exception 'v3 runtime restore failed';
+  end if;
+end;
+$$;
 
 grant execute on function public.issue_v104_iteration_shadow_v3_prediction(jsonb) to service_role;
 grant execute on function public.settle_v104_iteration_shadow_v3_prediction(jsonb) to service_role;

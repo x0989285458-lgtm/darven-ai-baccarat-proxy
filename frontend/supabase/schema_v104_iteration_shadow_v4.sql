@@ -25,6 +25,22 @@ begin
 end;
 $$;
 
+do $$
+declare previous_enabled boolean; previous_status text;
+begin
+  if to_regclass('public.v104_iteration_shadow_v3_runtime_settings') is null then
+    raise exception 'v3 must be fully stopped before v4 activation';
+  end if;
+  select enabled,status into previous_enabled,previous_status
+  from public.v104_iteration_shadow_v3_runtime_settings
+  where release_candidate='v104.3.0-seven-head-shadow.3'
+  for share;
+  if not found or previous_enabled is distinct from false or previous_status is distinct from 'shadow_disabled' then
+    raise exception 'v3 must be fully stopped before v4 activation';
+  end if;
+end;
+$$;
+
 create table if not exists public.v104_iteration_shadow_v4_runtime_settings (
   release_candidate text primary key,
   strategy_version text not null check (strategy_version = 'v104-seven-head-shadow-v4-best-observed-heads'),
