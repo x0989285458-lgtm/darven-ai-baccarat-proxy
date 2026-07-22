@@ -149,6 +149,9 @@ export async function refreshMtSession({
     const portalPage = await context.newPage()
     await login(portalPage, credentials, { portalUrl: PORTAL_URL, timeoutMs })
     const candidatePage = await openMt({ context, portalPage, timeoutMs })
+    if (typeof candidatePage.waitForURL === 'function') {
+      await candidatePage.waitForURL((url) => url.protocol === 'https:', { waitUntil: 'domcontentloaded', timeout: timeoutMs })
+    }
     await candidatePage.waitForLoadState?.('domcontentloaded', { timeout: timeoutMs }).catch(() => {})
     const candidateUrl = assertAllowedMtUrl(candidatePage.url(), configuredMtUrl, allowedHosts)
     const snapshot = await validate(candidatePage, prepared)

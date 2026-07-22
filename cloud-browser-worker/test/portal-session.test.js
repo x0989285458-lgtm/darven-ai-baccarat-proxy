@@ -230,13 +230,17 @@ test('candidate session validates formal ten tables, persists, then atomically a
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-candidate-session-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const sessionPath = path.join(dir, 'mt-session.json')
+  const events = []
   const candidatePage = fakePage('https://mt.example/game')
+  candidatePage.waitForURL = async (predicate) => {
+    assert.equal(predicate(new URL('https://mt.example/game')), true)
+    events.push('wait-url')
+  }
   const context = {
     newPage: async () => fakePage('https://ag001.3a1788.bet/'),
     storageState: async () => ({ cookies: [{ name: 'sid', value: 'candidate' }], origins: [] }),
     close: async () => { throw new Error('validated context must remain open') },
   }
-  const events = []
 
   const result = await refreshMtSession({
     browser: { newContext: async () => context },
@@ -254,7 +258,7 @@ test('candidate session validates formal ten tables, persists, then atomically a
   })
 
   assert.equal(result, undefined)
-  assert.deepEqual(events, ['login', 'validate', 'activate'])
+  assert.deepEqual(events, ['login', 'wait-url', 'validate', 'activate'])
 })
 
 test('invalid candidate is closed and exposes only portal_auth_refresh_failed', async () => {
