@@ -1,11 +1,12 @@
 {
   "identity": {
     "productVersion": "v101",
+    "releaseVersion": "v101.0.5",
     "proxyBuildVersion": "v101",
     "workerBuildVersion": "101",
     "protocolVersion": "v101",
     "strategyVersion": "v101",
-    "packageVersion": "1.0.9"
+    "packageVersion": "1.0.10"
   },
   "sideThresholds": {
     "tie": 30,

@@ -13,6 +13,7 @@ GCP台灣VM Worker → HTTPS POST → Render Proxy → Supabase
 - Image：每個Release使用不可變Tag `darven-worker:v104-<sha7>`
 - Queue／Cursor：Host bind mount `/var/lib/darven-worker:/app/data`
 - Runtime env：`/etc/darven-worker/worker.env`（mode 600）
+- 入口帳密：GCP Secret Manager `darven-portal-username`／`darven-portal-password`；啟動時合成到tmpfs `/run/darven-worker-secrets/portal-credentials.json`（mode 400），唯讀掛載，停服即刪
 - Release image pointer：`/etc/darven-worker/release.env`
 - 正式桌台：BAG01、BAG02、BAG03、BAG03A、BAG05、BAG06、BAG07、BAG08、BAG09、BAG10
 - Render Worker與Docker Compose正式路徑已停用；不得把Worker部署到無persistent storage的服務。
@@ -62,6 +63,8 @@ PAGE_TIMEOUT_MS=45000
 ## 安全與資料完整性
 
 - `MT_LOGIN_URL`含token，不得貼到Git、聊天、截圖或log。
+- 選用入口自動登入時，設定 `PORTAL_CREDENTIALS_FILE` 為容器內 Secret JSON 路徑，內容僅含 `{"username":"...","password":"..."}`；未設定即維持原有 `MT_LOGIN_URL` 行為。
+- 輪替後的 MT storage state 原子寫入 `MT_SESSION_PATH`（預設 `./data/mt-session.json`），與 Queue/Cursor 分檔；候選 host 僅允許 `MT_LOGIN_URL` host 或 `MT_HOST_ALLOWLIST`。
 - production缺少`WORKER_ADMIN_KEY`、`INGEST_KEY`或`PUSH_TARGET_URL`時拒絕啟動。
 - `/snapshot`與`/reload`只接受Header，不接受query token。
 - 只推送已驗證Final；`show_poker`不得占用同局Identity。

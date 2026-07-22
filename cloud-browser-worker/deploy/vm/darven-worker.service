@@ -9,8 +9,11 @@ StartLimitBurst=3
 [Service]
 Type=simple
 EnvironmentFile=/etc/darven-worker/release.env
+RuntimeDirectory=darven-worker-secrets
+RuntimeDirectoryMode=0700
+ExecStartPre=-/usr/local/sbin/darven-fetch-portal-credentials
 ExecStartPre=-/usr/bin/docker rm -f darven-worker
-ExecStart=/usr/bin/docker run --name darven-worker --network host --shm-size=1g --env-file /etc/darven-worker/worker.env -v /var/lib/darven-worker:/app/data --entrypoint /bin/sh ${WORKER_IMAGE} -c "Xvfb :99 -screen 0 1440x1000x24 -nolisten tcp >/tmp/xvfb.log 2>&1 & sleep 2; export DISPLAY=:99; exec npm start"
+ExecStart=/usr/bin/docker run --name darven-worker --network host --shm-size=1g --env-file /etc/darven-worker/worker.env -v /run/darven-worker-secrets:/run/secrets:ro -v /var/lib/darven-worker:/app/data --entrypoint /bin/sh ${WORKER_IMAGE} -c "Xvfb :99 -screen 0 1440x1000x24 -nolisten tcp >/tmp/xvfb.log 2>&1 & sleep 2; export DISPLAY=:99; exec npm start"
 ExecStop=/usr/bin/docker stop -t 30 darven-worker
 ExecStopPost=-/usr/bin/docker rm -f darven-worker
 Restart=always
