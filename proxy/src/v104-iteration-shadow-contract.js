@@ -8,24 +8,35 @@ import {
 import { buildV104FormalPrediction } from './v104-formal-strategy.js'
 import { buildV104ShadowPrediction } from './v104-shadow-strategy.js'
 
-export const V104_ITERATION_SHADOW_VERSION = 'v104-seven-head-shadow-v4-best-observed-heads'
-export const V104_ITERATION_SHADOW_RELEASE = 'v104.4.0-seven-head-shadow.4'
+export const V104_ITERATION_SHADOW_VERSION = 'v104-seven-head-shadow-v5-best-stage-side-reweight'
+export const V104_ITERATION_SHADOW_RELEASE = 'v104.5.0-seven-head-shadow.5'
 export const V104_ITERATION_SHADOW_MAIN_WEIGHTS = Object.freeze({
   roadmap_trend_signals: 0.275,
   ask_road_signals: 0.275,
   shoe_banker_player_bias: 0.35,
   neutral_reserve: 0.10,
 })
-export const V104_ITERATION_SHADOW_PLAYER_PAIR_WEIGHTS = Object.freeze({
-  pair_risk: 0.25,
-  shoe_stage: 0.15,
-  player_pair_count: 0.20,
-  table_side_history: 0.20,
-  remaining_rank_pressure: 0.20,
+export const V104_ITERATION_SHADOW_SIDE_WEIGHTS = Object.freeze({
+  tie: Object.freeze({ ...SIDE_PREDICTION_WEIGHT_PROFILES.tie }),
+  superSix: Object.freeze({
+    ...SIDE_PREDICTION_WEIGHT_PROFILES.superSix,
+    shoe_stage: 0.10, banker_point: 0.30, table_side_history: 0.25, remaining_rank_total: 0.35,
+  }),
+  bankerDragon: Object.freeze({
+    ...SIDE_PREDICTION_WEIGHT_PROFILES.bankerDragon,
+    big_road: 0.15, point_diff: 0.10, banker_point: 0.35, banker_natural: 0.05, remaining_rank_total: 0.35,
+  }),
+  playerDragon: Object.freeze({ ...SIDE_PREDICTION_WEIGHT_PROFILES.playerDragon }),
+  bankerPair: Object.freeze({ ...SIDE_PREDICTION_WEIGHT_PROFILES.bankerPair }),
+  playerPair: Object.freeze({
+    ...SIDE_PREDICTION_WEIGHT_PROFILES.playerPair,
+    pair_risk: 0.20, shoe_stage: 0.15, player_pair_count: 0.20,
+    table_side_history: 0.25, remaining_rank_pressure: 0.20,
+  }),
 })
 export const V104_ITERATION_SHADOW_HEAD_SOURCES = Object.freeze({
-  main: 'v1', tie: 'v3', superSix: 'v1', bankerDragon: 'v1',
-  playerDragon: 'v1', bankerPair: 'v3', playerPair: 'v2',
+  main: 'v4-unchanged', tie: 'v4-unchanged', superSix: 'v4-stage-9-reweight', bankerDragon: 'v4-stage-9-reweight',
+  playerDragon: 'v4-unchanged', bankerPair: 'v4-unchanged', playerPair: 'v4-stage-6-reweight',
 })
 export const V104_ITERATION_SHADOW_THRESHOLDS = Object.freeze({
   ...SIDE_PREDICTION_THRESHOLDS,
@@ -41,10 +52,13 @@ export const frozenWeightKeys = Object.freeze({
   main: Object.freeze(Object.keys(V104_ITERATION_SHADOW_MAIN_WEIGHTS)),
   ...Object.fromEntries(SHADOW_HEAD_KEYS.slice(1).map((key) => [
     key,
-    Object.freeze(Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES[key]).filter((name) => Number(SIDE_PREDICTION_WEIGHT_PROFILES[key][name]) > 0)),
+    Object.freeze(Object.keys(V104_ITERATION_SHADOW_SIDE_WEIGHTS[key])),
   ])),
-  playerPair: Object.freeze(Object.keys(V104_ITERATION_SHADOW_PLAYER_PAIR_WEIGHTS)),
 })
+export const adjustableWeightKeys = Object.freeze(Object.fromEntries(SHADOW_HEAD_KEYS.map((key) => [
+  key,
+  Object.freeze(frozenWeightKeys[key].filter((name) => Number((key === 'main' ? V104_ITERATION_SHADOW_MAIN_WEIGHTS : V104_ITERATION_SHADOW_SIDE_WEIGHTS[key])[name]) > 0)),
+])))
 
 export function confidenceToMainUnits(confidence) {
   const value = Math.min(70, Math.max(50, finitePercent(confidence)))
@@ -82,13 +96,12 @@ export function buildV104IterationShadowPrediction(table = {}, historyRows = [],
     featureValues: buildMainFeatureValues(candidateMain),
   }
   const sideHeads = Object.fromEntries(SHADOW_HEAD_KEYS.slice(1).map((key) => {
-    const confidence = finitePercent(formal.sidePredictions?.[key])
     const threshold = Number(V104_ITERATION_SHADOW_THRESHOLDS[key])
-    const action = rankAvailable && confidence >= threshold
-    const weights = key === 'playerPair'
-      ? V104_ITERATION_SHADOW_PLAYER_PAIR_WEIGHTS
-      : SIDE_PREDICTION_WEIGHT_PROFILES[key]
+    const weights = V104_ITERATION_SHADOW_SIDE_WEIGHTS[key]
     const featureValues = Object.fromEntries(frozenWeightKeys[key].map((name) => [name, finitePercent(featureScores[name])]))
+    const confidence = finitePercent(Object.entries(weights)
+      .reduce((sum, [name, weight]) => sum + Number(featureValues[name] ?? 0) * Number(weight ?? 0), 0))
+    const action = rankAvailable && confidence >= threshold
     return [key, {
       key, label: SHADOW_HEAD_LABELS[key], sourceVersion: V104_ITERATION_SHADOW_HEAD_SOURCES[key],
       action, threshold, confidence,

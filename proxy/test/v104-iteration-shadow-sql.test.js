@@ -17,6 +17,10 @@ const schemaV4Url = new URL('../../frontend/supabase/schema_v104_iteration_shado
 const rollbackV4Url = new URL('../../frontend/supabase/rollback_v104_iteration_shadow_v4.sql', import.meta.url)
 const schemaV4 = fs.existsSync(schemaV4Url) ? fs.readFileSync(schemaV4Url, 'utf8') : ''
 const rollbackV4 = fs.existsSync(rollbackV4Url) ? fs.readFileSync(rollbackV4Url, 'utf8') : ''
+const schemaV5Url = new URL('../../frontend/supabase/schema_v104_iteration_shadow_v5.sql', import.meta.url)
+const rollbackV5Url = new URL('../../frontend/supabase/rollback_v104_iteration_shadow_v5.sql', import.meta.url)
+const schemaV5 = fs.existsSync(schemaV5Url) ? fs.readFileSync(schemaV5Url, 'utf8') : ''
+const rollbackV5 = fs.existsSync(rollbackV5Url) ? fs.readFileSync(rollbackV5Url, 'utf8') : ''
 
 test('iteration shadow migration is additive, v104-active-only, and disables old shadows', () => {
   assert.match(schema, /version\s*=\s*'v104'/i)
@@ -157,4 +161,44 @@ test('v4 manual stop drains pending Finals and rollback restores paused v3', () 
   assert.match(rollbackV4, /update public\.v104_iteration_shadow_v3_runtime_settings[\s\S]{0,500}if not found then[\s\S]{0,220}raise exception 'v3 runtime restore failed'/i)
   assert.match(rollbackV4, /select enabled,status into[\s\S]{0,260}from public\.v104_iteration_shadow_v3_runtime_settings[\s\S]{0,320}if restored_enabled is distinct from true or restored_status is distinct from 'shadow'/i)
   assert.match(rollbackV4, /grant execute on function public\.settle_v104_iteration_shadow_v3_prediction\(jsonb\) to service_role/i)
+})
+
+test('v5 migration starts independent zero counters and validates approved side reweights', () => {
+  assert.match(schemaV5, /v104-seven-head-shadow-v5-best-stage-side-reweight/i)
+  assert.match(schemaV5, /v104\.5\.0-seven-head-shadow\.5/i)
+  for (const table of ['runtime_settings','sequence_counters','issuances','settlements','cycle_reports','weight_suggestions']) assert.match(schemaV5, new RegExp(`public\\.v104_iteration_shadow_v5_${table}`, 'i'))
+  assert.doesNotMatch(schemaV5, /update public\.v104_iteration_shadow_v4_runtime_settings[\s\S]{0,300}enabled=false/i)
+  assert.match(schemaV5, /from public\.v104_iteration_shadow_v4_runtime_settings[\s\S]{0,220}enabled is distinct from false[\s\S]{0,180}status is distinct from 'shadow_disabled'[\s\S]{0,180}raise exception 'v4 must be fully stopped before v5 activation'/i)
+  assert.match(schemaV5, /values \('v104\.5\.0-seven-head-shadow\.5'\)[\s\S]{0,100}on conflict \(release_candidate\) do nothing/i)
+  assert.match(schemaV5, /heads'->'superSix'->'weights' is distinct from '[^']*"shoe_stage":0\.10[^']*"banker_point":0\.30[^']*"table_side_history":0\.25[^']*"remaining_rank_total":0\.35[^']*'::jsonb/i)
+  assert.match(schemaV5, /heads'->'bankerDragon'->'weights' is distinct from '[^']*"big_road":0\.15[^']*"banker_point":0\.35[^']*"point_diff":0\.10[^']*"banker_natural":0\.05[^']*"remaining_rank_total":0\.35[^']*'::jsonb/i)
+  assert.match(schemaV5, /heads'->'tie'->'weights' is distinct from '[^']*"tie_count":0\.10[^']*"shoe_stage":0\.10[^']*"tie_risk":0\.45[^']*"road_chaos":0\.15[^']*"remaining_rank_total":0\.20[^']*'::jsonb/i)
+  assert.match(schemaV5, /heads'->'playerDragon'->'weights' is distinct from '[^']*"big_road":0\.10[^']*"player_point":0\.35[^']*"point_diff":0\.15[^']*"player_natural":0\.10[^']*"remaining_rank_total":0\.30[^']*'::jsonb/i)
+  assert.match(schemaV5, /heads'->'bankerPair'->'weights' is distinct from '[^']*"banker_pair_count":0\.20[^']*"shoe_stage":0\.20[^']*"pair_risk":0\.35[^']*"table_side_history":0\.10[^']*"remaining_rank_pressure":0\.15[^']*'::jsonb/i)
+  assert.match(schemaV5, /heads'->'playerPair'->'weights' is distinct from '[^']*"player_pair_count":0\.20[^']*"shoe_stage":0\.15[^']*"pair_risk":0\.20[^']*"table_side_history":0\.25[^']*"remaining_rank_pressure":0\.20[^']*'::jsonb/i)
+  assert.match(schemaV5, /foreach head_key in array array\['tie','superSix','bankerDragon','playerDragon','bankerPair','playerPair'\]/i)
+  assert.match(schemaV5, /jsonb_object_keys\(side_head->'featureValues'\)/i)
+  assert.match(schemaV5, /expected_confidence[\s\S]{0,1200}expected_action[\s\S]{0,1200}expected_units/i)
+  assert.match(schemaV5, /side_head->'action' is distinct from to_jsonb\(expected_action\)/i)
+  assert.match(schemaV5, /\(side_head->>'units'\)::integer is distinct from expected_units/i)
+  assert.match(schemaV5, /p_suggestions is not null and p_suggestions <> 'null'::jsonb and jsonb_typeof\(p_suggestions\) is distinct from 'array'[\s\S]{0,160}raise exception 'v104 iteration shadow suggestions must be an array'/i)
+  assert.match(schemaV5, /jsonb_typeof\(suggestion->'currentWeights'\) is distinct from 'object'/i)
+  assert.match(schemaV5, /jsonb_typeof\(suggestion->'suggestedWeights'\) is distinct from 'object'/i)
+  assert.match(schemaV5, /\(select count\(\*\) from jsonb_object_keys\(suggestion->'currentWeights'\)\) = 0/i)
+  assert.match(schemaV5, /current_weight::numeric = 0 and suggested_weight::numeric <> 0/i)
+  assert.match(schemaV5, /manual stop only; no fixed settlement cap/i)
+  assert.doesNotMatch(schemaV5, /new\.settlement_sequence\s*>\s*\d+/i)
+  assert.doesNotMatch(schemaV5 + rollbackV5, /delete\s+from|truncate|drop\s+table/i)
+})
+
+test('v5 manual stop drains pending Finals and rollback restores v4', () => {
+  assert.match(schemaV5, /status in \('shadow',\s*'draining',\s*'shadow_disabled'\)/i)
+  assert.match(schemaV5, /begin_v104_iteration_shadow_v5_drain\(\)/i)
+  assert.match(schemaV5, /finish_v104_iteration_shadow_v5_drain\(\)/i)
+  assert.match(schemaV5, /left join public\.v104_iteration_shadow_v5_settlements[\s\S]{0,180}s\.id is null/i)
+  assert.match(rollbackV5, /v104 iteration shadow v5 must be fully drained before rollback/i)
+  assert.match(rollbackV5, /update public\.v104_iteration_shadow_v4_runtime_settings[\s\S]{0,220}enabled=true[\s\S]{0,100}status='shadow'/i)
+  assert.match(rollbackV5, /update public\.v104_iteration_shadow_v4_runtime_settings[\s\S]{0,500}if not found then[\s\S]{0,220}raise exception 'v4 runtime restore failed'/i)
+  assert.match(rollbackV5, /select enabled,status into[\s\S]{0,260}from public\.v104_iteration_shadow_v4_runtime_settings[\s\S]{0,320}if restored_enabled is distinct from true or restored_status is distinct from 'shadow'/i)
+  assert.match(rollbackV5, /grant execute on function public\.settle_v104_iteration_shadow_v4_prediction\(jsonb\) to service_role/i)
 })

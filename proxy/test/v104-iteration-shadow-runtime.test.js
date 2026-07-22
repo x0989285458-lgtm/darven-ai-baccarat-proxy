@@ -31,7 +31,7 @@ function createWriter(history = []) {
 test('v104 runtime hydrates issuance streaks before predicting and tracks pre-result directions per table and shoe', async () => {
   const history = Array.from({ length: 4 }, (_, index) => ({
     source: 'ofalive99', table_id: 'BAG08', shoe_no: '104', round_no: 17 + index,
-    strategy_version: 'v104-seven-head-shadow-v4-best-observed-heads', prediction_timing: 'pre_result_context',
+    strategy_version: 'v104-seven-head-shadow-v5-best-stage-side-reweight', prediction_timing: 'pre_result_context',
     prediction_issued_at: `2026-07-21T10:0${index}:00Z`, predicted_result: 'banker',
   }))
   const writer = createWriter(history)
@@ -54,14 +54,14 @@ test('v104 runtime resets same-side issuance tracking when shoe changes', async 
 
 test('v104 restart rehydrates an unsettled immutable issuance instead of recomputing the same target', async () => {
   const payload = {
-    source: 'ofalive99', strategyVersion: 'v104-seven-head-shadow-v4-best-observed-heads', predictionTiming: 'pre_result_context',
+    source: 'ofalive99', strategyVersion: 'v104-seven-head-shadow-v5-best-stage-side-reweight', predictionTiming: 'pre_result_context',
     targetTableId: 'BAG08', targetShoe: '104', targetRound: 21,
     predictedResult: 'banker', confidence: 48, sameSideStreak: 4,
     independentSupportCount: 2, shoeBiasSuppressed: false, lockRisk: false,
   }
   const history = [{
     prediction_id: 'persisted-v104-21', source: 'ofalive99', table_id: 'BAG08',
-    shoe_no: '104', round_no: 21, strategy_version: 'v104-seven-head-shadow-v4-best-observed-heads',
+    shoe_no: '104', round_no: 21, strategy_version: 'v104-seven-head-shadow-v5-best-stage-side-reweight',
     prediction_timing: 'pre_result_context', prediction_issued_at: '2026-07-21T10:04:00Z',
     predicted_result: 'banker', settlement_final: false, prediction_payload: payload,
   }]
@@ -76,7 +76,7 @@ test('v104 restart rehydrates an unsettled immutable issuance instead of recompu
 test('v104 restart hydration resets streak across missing round gaps', async () => {
   const history = [17, 19].map((round) => ({
     source: 'ofalive99', table_id: 'BAG08', shoe_no: '104', round_no: round,
-    strategy_version: 'v104-seven-head-shadow-v4-best-observed-heads', prediction_timing: 'pre_result_context',
+    strategy_version: 'v104-seven-head-shadow-v5-best-stage-side-reweight', prediction_timing: 'pre_result_context',
     prediction_issued_at: `2026-07-21T10:${round}:00Z`, predicted_result: 'banker',
   }))
   const writer = createWriter(history)
@@ -186,7 +186,7 @@ test('v104 persists immutable cycle report SVG and per-head grid suggestion at e
   writer.getV104IterationShadowSettledRange = async () => rows
   writer.getV104IterationShadowHeadActionRange = async () => rows
   writer.getV104IterationShadowSuggestions = async () => [{
-    id: 'v104-seven-head-shadow-v4-best-observed-heads:tie:1', status: 'pending', head_key: 'tie', headKey: 'tie', headLabel: '和', action_cycle: 1,
+    id: 'v104-seven-head-shadow-v5-best-stage-side-reweight:tie:1', status: 'pending', head_key: 'tie', headKey: 'tie', headLabel: '和', action_cycle: 1,
     currentWeights: { tie_rate: 0.5, tie_signal: 0.5 }, suggestedWeights: { tie_rate: 0.55, tie_signal: 0.45 }, autoApply: false,
   }]
   let artifact

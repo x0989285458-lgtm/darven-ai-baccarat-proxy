@@ -5,7 +5,7 @@ import {
   V104_ITERATION_SHADOW_HEAD_SOURCES,
   V104_ITERATION_SHADOW_RELEASE,
   V104_ITERATION_SHADOW_MAIN_WEIGHTS,
-  V104_ITERATION_SHADOW_PLAYER_PAIR_WEIGHTS,
+  V104_ITERATION_SHADOW_SIDE_WEIGHTS,
   V104_ITERATION_SHADOW_THRESHOLDS,
   V104_ITERATION_SHADOW_VERSION,
   buildV104IterationShadowPrediction,
@@ -26,9 +26,9 @@ const table = {
   v102RankLedger: { rankDataAvailable: true, remainingRankCounts: Object.fromEntries(['A','2','3','4','5','6','7','8','9','10','J','Q','K'].map((x) => [x, 30])) },
 }
 
-test('v4 shadow freezes each head to the highest observed version while preserving thresholds', () => {
-  assert.equal(V104_ITERATION_SHADOW_VERSION, 'v104-seven-head-shadow-v4-best-observed-heads')
-  assert.equal(V104_ITERATION_SHADOW_RELEASE, 'v104.4.0-seven-head-shadow.4')
+test('v5 shadow applies approved best-stage side reweights while preserving thresholds', () => {
+  assert.equal(V104_ITERATION_SHADOW_VERSION, 'v104-seven-head-shadow-v5-best-stage-side-reweight')
+  assert.equal(V104_ITERATION_SHADOW_RELEASE, 'v104.5.0-seven-head-shadow.5')
   assert.deepEqual(V104_ITERATION_SHADOW_THRESHOLDS, {
     ...SIDE_PREDICTION_THRESHOLDS,
     playerPair: 41,
@@ -39,22 +39,46 @@ test('v4 shadow freezes each head to the highest observed version while preservi
     shoe_banker_player_bias: 0.35,
     neutral_reserve: 0.10,
   })
-  assert.deepEqual(V104_ITERATION_SHADOW_PLAYER_PAIR_WEIGHTS, {
-    pair_risk: 0.25,
+  assert.deepEqual(Object.fromEntries(Object.entries(V104_ITERATION_SHADOW_SIDE_WEIGHTS.superSix).filter(([, value]) => value > 0)), {
+    shoe_stage: 0.10,
+    banker_point: 0.30,
+    table_side_history: 0.25,
+    remaining_rank_total: 0.35,
+  })
+  assert.deepEqual(Object.fromEntries(Object.entries(V104_ITERATION_SHADOW_SIDE_WEIGHTS.bankerDragon).filter(([, value]) => value > 0)), {
+    big_road: 0.15,
+    point_diff: 0.10,
+    banker_point: 0.35,
+    banker_natural: 0.05,
+    remaining_rank_total: 0.35,
+  })
+  assert.deepEqual(V104_ITERATION_SHADOW_SIDE_WEIGHTS.playerPair, {
+    ...SIDE_PREDICTION_WEIGHT_PROFILES.playerPair,
+    pair_risk: 0.20,
     shoe_stage: 0.15,
     player_pair_count: 0.20,
-    table_side_history: 0.20,
+    table_side_history: 0.25,
     remaining_rank_pressure: 0.20,
   })
+  assert.deepEqual(Object.fromEntries(Object.entries(V104_ITERATION_SHADOW_SIDE_WEIGHTS.tie).filter(([, value]) => value > 0)), {
+    tie_risk: 0.45, tie_count: 0.10, road_chaos: 0.15, shoe_stage: 0.10, remaining_rank_total: 0.20,
+  })
+  assert.deepEqual(Object.fromEntries(Object.entries(V104_ITERATION_SHADOW_SIDE_WEIGHTS.playerDragon).filter(([, value]) => value > 0)), {
+    big_road: 0.10, point_diff: 0.15, player_point: 0.35, player_natural: 0.10, remaining_rank_total: 0.30,
+  })
+  assert.deepEqual(Object.fromEntries(Object.entries(V104_ITERATION_SHADOW_SIDE_WEIGHTS.bankerPair).filter(([, value]) => value > 0)), {
+    pair_risk: 0.35, shoe_stage: 0.20, banker_pair_count: 0.20, table_side_history: 0.10, remaining_rank_pressure: 0.15,
+  })
   assert.deepEqual(V104_ITERATION_SHADOW_HEAD_SOURCES, {
-    main: 'v1', tie: 'v3', superSix: 'v1', bankerDragon: 'v1',
-    playerDragon: 'v1', bankerPair: 'v3', playerPair: 'v2',
+    main: 'v4-unchanged', tie: 'v4-unchanged', superSix: 'v4-stage-9-reweight', bankerDragon: 'v4-stage-9-reweight',
+    playerDragon: 'v4-unchanged', bankerPair: 'v4-unchanged', playerPair: 'v4-stage-6-reweight',
   })
   assert.deepEqual(SHADOW_HEAD_KEYS, ['main','tie','superSix','bankerDragon','playerDragon','bankerPair','playerPair'])
   assert.deepEqual(frozenWeightKeys.main, Object.keys(V104_ITERATION_SHADOW_MAIN_WEIGHTS))
-  assert.deepEqual(frozenWeightKeys.playerPair, Object.keys(V104_ITERATION_SHADOW_PLAYER_PAIR_WEIGHTS))
-  for (const key of SHADOW_HEAD_KEYS.slice(1).filter((key) => key !== 'playerPair')) {
-    assert.deepEqual(frozenWeightKeys[key], Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES[key]).filter((name) => SIDE_PREDICTION_WEIGHT_PROFILES[key][name] > 0))
+  for (const key of SHADOW_HEAD_KEYS.slice(1)) assert.deepEqual(frozenWeightKeys[key], Object.keys(V104_ITERATION_SHADOW_SIDE_WEIGHTS[key]))
+  assert.equal(Object.keys(V104_ITERATION_SHADOW_SIDE_WEIGHTS.playerPair).length, Object.keys(SIDE_PREDICTION_WEIGHT_PROFILES.playerPair).length)
+  for (const [name, value] of Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES.playerPair)) {
+    if (value === 0) assert.equal(V104_ITERATION_SHADOW_SIDE_WEIGHTS.playerPair[name], 0)
   }
 })
 
@@ -79,11 +103,14 @@ test('six side heads act independently at their existing thresholds without main
   assert.match(prediction.heads.main.predictedResult, /^(banker|player)$/)
   assert.deepEqual(prediction.heads.main.weights, V104_ITERATION_SHADOW_MAIN_WEIGHTS)
   assert.equal(prediction.heads.main.sourceVersion, V104_ITERATION_SHADOW_HEAD_SOURCES.main)
-  assert.deepEqual(prediction.heads.playerPair.weights, V104_ITERATION_SHADOW_PLAYER_PAIR_WEIGHTS)
-  assert.deepEqual(Object.keys(prediction.heads.playerPair.featureValues), Object.keys(V104_ITERATION_SHADOW_PLAYER_PAIR_WEIGHTS))
+  assert.deepEqual(prediction.heads.playerPair.weights, V104_ITERATION_SHADOW_SIDE_WEIGHTS.playerPair)
+  assert.deepEqual(Object.keys(prediction.heads.playerPair.featureValues), Object.keys(V104_ITERATION_SHADOW_SIDE_WEIGHTS.playerPair))
   for (const key of SHADOW_HEAD_KEYS.slice(1)) {
     assert.equal(prediction.heads[key].sourceVersion, V104_ITERATION_SHADOW_HEAD_SOURCES[key])
     assert.equal(prediction.heads[key].threshold, V104_ITERATION_SHADOW_THRESHOLDS[key])
+    const expectedConfidence = Object.entries(prediction.heads[key].weights)
+      .reduce((sum, [name, weight]) => sum + Number(prediction.heads[key].featureValues[name] ?? 0) * Number(weight), 0)
+    assert.ok(Math.abs(prediction.heads[key].confidence - expectedConfidence) < 1e-9, `${key} must apply its issued weight formula`)
     assert.equal(prediction.heads[key].action, prediction.heads[key].confidence >= V104_ITERATION_SHADOW_THRESHOLDS[key])
   }
   if (prediction.heads.bankerDragon.confidence >= SIDE_PREDICTION_THRESHOLDS.bankerDragon

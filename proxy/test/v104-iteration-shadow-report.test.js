@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildCycleReports, buildShadowProgress, buildWeightSuggestions } from '../src/v104-iteration-shadow-report.js'
 import { renderShadowReportSvg } from '../src/v104-iteration-shadow-svg.js'
-import { SHADOW_HEAD_KEYS, frozenWeightKeys } from '../src/v104-iteration-shadow-contract.js'
+import { SHADOW_HEAD_KEYS, V104_ITERATION_SHADOW_SIDE_WEIGHTS, frozenWeightKeys } from '../src/v104-iteration-shadow-contract.js'
 
 function row(index) {
   const hit = index % 2 === 0
@@ -79,6 +79,27 @@ test('weight suggestions trigger per head at 1000 actions and preserve exact fro
   assert.equal(Object.values(suggestion.suggestedWeights).every((value) => value >= 0.05 && Math.round(value * 100) % 5 === 0), true)
   assert.equal('threshold' in suggestion, false)
   assert.equal(suggestion.status, 'pending')
+})
+
+test('side suggestions preserve the complete declared keyset and keep original zero weights at zero', () => {
+  const rows = Array.from({ length: 4000 }, (_, index) => {
+    const item = row(index)
+    item.settlement_sequence = index + 1
+    item.player_pair_action_sequence = Math.floor(index / 4) + 1
+    item.prediction_payload.heads.playerPair.weights = structuredClone(V104_ITERATION_SHADOW_SIDE_WEIGHTS.playerPair)
+    return item
+  })
+  const suggestion = buildWeightSuggestions(rows).find((item) => item.headKey === 'playerPair')
+  assert.ok(suggestion)
+  const declaredKeys = Object.keys(V104_ITERATION_SHADOW_SIDE_WEIGHTS.playerPair)
+  assert.deepEqual(Object.keys(suggestion.currentWeights), declaredKeys)
+  assert.deepEqual(Object.keys(suggestion.suggestedWeights), declaredKeys)
+  for (const [key, value] of Object.entries(V104_ITERATION_SHADOW_SIDE_WEIGHTS.playerPair)) {
+    if (value === 0) {
+      assert.equal(suggestion.currentWeights[key], 0)
+      assert.equal(suggestion.suggestedWeights[key], 0)
+    }
+  }
 })
 
 test('a completed 1000-action suggestion stays frozen until the next full non-overlapping action block', () => {

@@ -2345,7 +2345,7 @@ export function createSupabaseIngestionClient({
     },
     async issueV104IterationShadowPrediction(candidate = {}) {
       const row = buildV104IterationShadowIssuanceRpcRow(candidate)
-      const acknowledgement = await enqueueV104IterationShadowWrite(() => postRest('rpc/issue_v104_iteration_shadow_v4_prediction', { p_prediction: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
+      const acknowledgement = await enqueueV104IterationShadowWrite(() => postRest('rpc/issue_v104_iteration_shadow_v5_prediction', { p_prediction: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
       const prediction = acknowledgement?.prediction
       if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
         || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at
@@ -2353,7 +2353,7 @@ export function createSupabaseIngestionClient({
         || String(prediction.targetTableId ?? '') !== String(candidate.targetTableId ?? '')
         || String(prediction.targetShoe ?? '') !== String(candidate.targetShoe ?? '')
         || Number(prediction.targetRound) !== Number(candidate.targetRound)
-        || prediction.strategyVersion !== 'v104-seven-head-shadow-v4-best-observed-heads'
+        || prediction.strategyVersion !== 'v104-seven-head-shadow-v5-best-stage-side-reweight'
         || prediction.predictionTiming !== 'pre_result_context'
         || prediction.shadowOnly !== true || prediction.activationEligible !== false
         || prediction.memberVisible !== false || prediction.writesSideActions !== false) {
@@ -2364,10 +2364,10 @@ export function createSupabaseIngestionClient({
     async readV104IterationShadowIssuance({ source = SOURCE, tableId, shoe, round } = {}) {
       const targetRound = Number(round)
       if (!source || !tableId || shoe == null || !Number.isSafeInteger(targetRound) || targetRound < 1) return null
-      const rows = await getRest('v104_iteration_shadow_v4_issuances', {
+      const rows = await getRest('v104_iteration_shadow_v5_issuances', {
         select: 'id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,prediction_payload',
         source: `eq.${source}`, table_id: `eq.${tableId}`, shoe_no: `eq.${shoe}`,
-        round_no: `eq.${targetRound}`, strategy_version: 'eq.v104-seven-head-shadow-v4-best-observed-heads',
+        round_no: `eq.${targetRound}`, strategy_version: 'eq.v104-seven-head-shadow-v5-best-stage-side-reweight',
         prediction_timing: 'eq.pre_result_context', prediction_issued_at: 'not.is.null', limit: '2',
       }, { requestTimeoutMs: shadowTimeoutMs })
       if (!Array.isArray(rows) || rows.length === 0) return null
@@ -2377,40 +2377,40 @@ export function createSupabaseIngestionClient({
       if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
         || String(row.source) !== String(source) || String(row.table_id) !== String(tableId)
         || String(row.shoe_no) !== String(shoe) || Number(row.round_no) !== targetRound
-        || row.strategy_version !== 'v104-seven-head-shadow-v4-best-observed-heads' || row.prediction_timing !== 'pre_result_context'
+        || row.strategy_version !== 'v104-seven-head-shadow-v5-best-stage-side-reweight' || row.prediction_timing !== 'pre_result_context'
         || !row.id || !row.prediction_issued_at) throw new Error('v104 iteration shadow issuance read failed')
       return structuredClone({ ...prediction, predictionId: row.id, issuedAt: row.prediction_issued_at })
     },
     async settleV104IterationShadowPrediction(settlement = {}) {
       const row = buildV104IterationShadowSettlementRpcRow(settlement)
-      const acknowledgement = await enqueueV104IterationShadowWrite(() => postRest('rpc/settle_v104_iteration_shadow_v4_prediction', { p_settlement: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
+      const acknowledgement = await enqueueV104IterationShadowWrite(() => postRest('rpc/settle_v104_iteration_shadow_v5_prediction', { p_settlement: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
       if (String(acknowledgement?.prediction_id ?? '') !== String(settlement.predictionId ?? '')) throw new Error('v104 iteration shadow settlement acknowledgement failed')
       return { ...acknowledgement, predictionId: acknowledgement.prediction_id }
     },
     async persistV104IterationShadowArtifacts({ report = null, reportSvg = null, suggestions = [] } = {}) {
       const pReport = report ? { report_payload: structuredClone(report), report_svg: String(reportSvg ?? '') } : null
-      return enqueueV104IterationShadowWrite(() => postRest('rpc/persist_v104_iteration_shadow_v4_artifacts', {
+      return enqueueV104IterationShadowWrite(() => postRest('rpc/persist_v104_iteration_shadow_v5_artifacts', {
         p_report: pReport, p_suggestions: structuredClone(Array.isArray(suggestions) ? suggestions : []),
       }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
     },
     async reviewV104IterationShadowSuggestion({ suggestionId, decision, reviewer } = {}) {
-      return enqueueV104IterationShadowWrite(() => postRest('rpc/review_v104_iteration_shadow_v4_suggestion', {
+      return enqueueV104IterationShadowWrite(() => postRest('rpc/review_v104_iteration_shadow_v5_suggestion', {
         p_suggestion_id: suggestionId, p_decision: decision, p_reviewer: reviewer,
       }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
     },
     async getV104IterationShadowCounters() {
-      const rows = await getRest('v104_iteration_shadow_v4_sequence_counters', {
+      const rows = await getRest('v104_iteration_shadow_v5_sequence_counters', {
         select: 'settlement_count,main_action_count,tie_action_count,super_six_action_count,banker_dragon_action_count,player_dragon_action_count,banker_pair_action_count,player_pair_action_count,updated_at',
-        release_candidate: 'eq.v104.4.0-seven-head-shadow.4', limit: '1',
+        release_candidate: 'eq.v104.5.0-seven-head-shadow.5', limit: '1',
       }, { requestTimeoutMs: shadowTimeoutMs })
       return Array.isArray(rows) && rows.length === 1 ? rows[0] : null
     },
     async getV104IterationShadowSettledRange({ startSequence, endSequence } = {}) {
       const start = Math.max(1, Number(startSequence) || 1)
       const end = Math.max(start, Number(endSequence) || start)
-      const rows = await getRest('v104_iteration_shadow_v4_history', {
+      const rows = await getRest('v104_iteration_shadow_v5_history', {
         select: 'prediction_id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,predicted_result,confidence,prediction_payload,actual_result,actual_facts,is_hit,settlement_status,settlement_final,settlement_source_action,head_results,resolved_at,settlement_sequence,main_action_sequence,tie_action_sequence,super_six_action_sequence,banker_dragon_action_sequence,player_dragon_action_sequence,banker_pair_action_sequence,player_pair_action_sequence',
-        strategy_version: 'eq.v104-seven-head-shadow-v4-best-observed-heads', settlement_final: 'eq.true',
+        strategy_version: 'eq.v104-seven-head-shadow-v5-best-stage-side-reweight', settlement_final: 'eq.true',
         settlement_sequence: `gte.${start}`, and: `(settlement_sequence.lte.${end})`, order: 'settlement_sequence.asc',
         limit: String(Math.min(1000, end - start + 1)),
       }, { requestTimeoutMs: shadowTimeoutMs })
@@ -2428,12 +2428,12 @@ export function createSupabaseIngestionClient({
       const end = Math.max(start, Number(endAction) || start)
       const query = {
         select: 'prediction_id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,predicted_result,confidence,prediction_payload,actual_result,actual_facts,is_hit,settlement_status,settlement_final,settlement_source_action,head_results,resolved_at,settlement_sequence,main_action_sequence,tie_action_sequence,super_six_action_sequence,banker_dragon_action_sequence,player_dragon_action_sequence,banker_pair_action_sequence,player_pair_action_sequence',
-        strategy_version: 'eq.v104-seven-head-shadow-v4-best-observed-heads', settlement_final: 'eq.true',
+        strategy_version: 'eq.v104-seven-head-shadow-v5-best-stage-side-reweight', settlement_final: 'eq.true',
         [sequenceField]: `gte.${start}`, and: `(${sequenceField}.lte.${end})`, order: `${sequenceField}.asc`,
         [`head_results->${headKey}->>action`]: 'eq.true',
         limit: String(Math.min(1000, end - start + 1)),
       }
-      const rows = await getRest('v104_iteration_shadow_v4_history', query, { requestTimeoutMs: shadowTimeoutMs })
+      const rows = await getRest('v104_iteration_shadow_v5_history', query, { requestTimeoutMs: shadowTimeoutMs })
       return (Array.isArray(rows) ? rows : []).filter((row) => row?.head_results?.[headKey]?.action === true)
     },
     async getV104IterationShadowCycleReports({ limit = 100 } = {}) {
@@ -2441,7 +2441,7 @@ export function createSupabaseIngestionClient({
       const collected = []
       while (collected.length < cappedLimit) {
         const requestLimit = Math.min(1000, cappedLimit - collected.length)
-        const rows = await getRest('v104_iteration_shadow_v4_cycle_reports', {
+        const rows = await getRest('v104_iteration_shadow_v5_cycle_reports', {
           select: 'cycle_number,start_sequence,end_sequence,model_version,report_payload,report_svg,created_at',
           order: 'cycle_number.desc', limit: String(requestLimit), offset: String(collected.length),
         }, { requestTimeoutMs: shadowTimeoutMs })
@@ -2456,7 +2456,7 @@ export function createSupabaseIngestionClient({
       const collected = []
       while (collected.length < cappedLimit) {
         const requestLimit = Math.min(1000, cappedLimit - collected.length)
-        const rows = await getRest('v104_iteration_shadow_v4_weight_suggestions', {
+        const rows = await getRest('v104_iteration_shadow_v5_weight_suggestions', {
           select: 'suggestion_id,head_key,action_cycle,sample_start_action,sample_end_action,model_version,search_method,current_weights,suggested_weights,baseline_metrics,candidate_metrics,status,auto_apply,reviewed_by,reviewed_at,created_at',
           order: 'action_cycle.desc,head_key.asc', limit: String(requestLimit), offset: String(collected.length),
         }, { requestTimeoutMs: shadowTimeoutMs })
@@ -2474,17 +2474,17 @@ export function createSupabaseIngestionClient({
       while (collected.length < cappedLimit) {
         const query = {
           select: 'prediction_id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,predicted_result,confidence,prediction_payload,same_side_streak,actual_result,actual_facts,is_hit,settlement_status,settlement_final,settlement_source_action,head_results,resolved_at,settlement_sequence,main_action_sequence,tie_action_sequence,super_six_action_sequence,banker_dragon_action_sequence,player_dragon_action_sequence,banker_pair_action_sequence,player_pair_action_sequence',
-          strategy_version: 'eq.v104-seven-head-shadow-v4-best-observed-heads', prediction_timing: 'eq.pre_result_context',
+          strategy_version: 'eq.v104-seven-head-shadow-v5-best-stage-side-reweight', prediction_timing: 'eq.pre_result_context',
           prediction_issued_at: snapshotBefore ? `lte.${snapshotBefore}` : 'not.is.null', order: 'prediction_issued_at.desc,prediction_id.desc',
           limit: String(Math.min(pageSize, cappedLimit - collected.length)), offset: String(collected.length),
         }
-        const rows = await getRest('v104_iteration_shadow_v4_history', query, { requestTimeoutMs: shadowTimeoutMs })
+        const rows = await getRest('v104_iteration_shadow_v5_history', query, { requestTimeoutMs: shadowTimeoutMs })
         const page = Array.isArray(rows) ? rows : []
         if (!snapshotBefore && page.length) snapshotBefore = page[0].prediction_issued_at
         collected.push(...page)
         if (page.length < pageSize) break
       }
-      return collected.filter((row) => row?.strategy_version === 'v104-seven-head-shadow-v4-best-observed-heads'
+      return collected.filter((row) => row?.strategy_version === 'v104-seven-head-shadow-v5-best-stage-side-reweight'
         && row?.prediction_timing === 'pre_result_context' && Boolean(row?.prediction_issued_at))
     },
     async ensureInitialStrategy() {

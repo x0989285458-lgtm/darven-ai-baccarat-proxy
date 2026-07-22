@@ -1,0 +1,63 @@
+{
+  "releaseVersion": "v104.5.0-seven-head-shadow.5",
+  "shadowStrategyVersion": "v104-seven-head-shadow-v5-best-stage-side-reweight",
+  "formalStrategyVersion": "v104",
+  "shadowOnly": true,
+  "memberVisible": false,
+  "activationEligible": false,
+  "autoApply": false,
+  "finalSettlementLimit": null,
+  "manualStopOnly": true,
+  "thresholds": {
+    "tie": 30,
+    "superSix": 50,
+    "bankerDragon": 40,
+    "playerDragon": 40,
+    "bankerPair": 50,
+    "playerPair": 41
+  },
+  "reweightedHeads": {
+    "superSix": {
+      "shoe_stage": 0.10,
+      "banker_point": 0.30,
+      "table_side_history": 0.25,
+      "remaining_rank_total": 0.35
+    },
+    "bankerDragon": {
+      "big_road": 0.15,
+      "point_diff": 0.10,
+      "banker_point": 0.35,
+      "banker_natural": 0.05,
+      "remaining_rank_total": 0.35
+    },
+    "playerPair": {
+      "pair_risk": 0.20,
+      "shoe_stage": 0.15,
+      "player_pair_count": 0.20,
+      "table_side_history": 0.25,
+      "remaining_rank_pressure": 0.20
+    }
+  },
+  "unchangedHeads": ["main", "tie", "playerDragon", "bankerPair"],
+  "evidenceStages": {
+    "superSix": "801-900",
+    "bankerDragon": "801-900",
+    "playerPair": "501-600"
+  },
+  "database": {
+    "startsAtZero": true,
+    "independentHistory": true,
+    "previousV4ReadOnly": true,
+    "manualStopDrainSafe": true,
+    "rollbackRestoresV4": true,
+    "gaplessTransactionalCounters": true,
+    "serviceRoleOnly": true
+  },
+  "deployment": {
+    "order": ["previous-shadow-drain", "database-additive", "catalog-acl-readback", "proxy-render", "live-e2e"],
+    "previousShadowDrainBeforeDatabase": true,
+    "databaseBeforeProxy": true,
+    "catalogAclReadbackBeforeProxy": true,
+    "rollbackBeforeProxy": true
+  }
+}

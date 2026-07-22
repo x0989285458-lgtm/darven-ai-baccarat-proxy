@@ -1,4 +1,4 @@
-import { SHADOW_HEAD_KEYS, SHADOW_HEAD_LABELS, V104_ITERATION_SHADOW_VERSION, frozenWeightKeys } from './v104-iteration-shadow-contract.js'
+import { SHADOW_HEAD_KEYS, SHADOW_HEAD_LABELS, V104_ITERATION_SHADOW_VERSION, adjustableWeightKeys, frozenWeightKeys } from './v104-iteration-shadow-contract.js'
 
 const CYCLE_SIZE = 1000
 const ACTION_SEQUENCE_FIELDS = Object.freeze({
@@ -93,7 +93,8 @@ export function buildWeightSuggestions(rows = []) {
     if (sampleRows.length !== CYCLE_SIZE) continue
     const predictionHead = sampleRows.find((row) => row.prediction_payload?.heads?.[headKey])?.prediction_payload?.heads?.[headKey]
     if (!predictionHead) continue
-    const keys = frozenWeightKeys[headKey]
+    const declaredKeys = frozenWeightKeys[headKey]
+    const keys = adjustableWeightKeys[headKey]
     let currentWeights
     try {
       currentWeights = canonicalWeights(predictionHead.weights, keys)
@@ -104,7 +105,8 @@ export function buildWeightSuggestions(rows = []) {
     if (!model.sampleCount) continue
     const baselineMetrics = evaluateBrierModel(model, currentWeights, keys)
     const candidate = exhaustiveFivePercentGrid(model, keys)
-    const suggestedWeights = candidate.weights
+    const currentDeclaredWeights = completeDeclaredWeights(currentWeights, declaredKeys)
+    const suggestedWeights = completeDeclaredWeights(candidate.weights, declaredKeys)
     suggestions.push({
       id: `${V104_ITERATION_SHADOW_VERSION}:${headKey}:${completedActionCycle}`,
       shadowVersion: V104_ITERATION_SHADOW_VERSION,
@@ -114,7 +116,7 @@ export function buildWeightSuggestions(rows = []) {
       sampleStartAction: (completedActionCycle - 1) * CYCLE_SIZE + 1,
       sampleEndAction: completedActionCycle * CYCLE_SIZE,
       actionCycle: completedActionCycle,
-      currentWeights,
+      currentWeights: currentDeclaredWeights,
       suggestedWeights,
       baselineMetrics,
       candidateMetrics: candidate.metrics,
@@ -249,6 +251,10 @@ function weightSignature(weights, keys) {
 function canonicalWeights(source, keys) {
   const raw = Object.fromEntries(keys.map((key) => [key, Math.max(0, finite(source?.[key]))]))
   return normalizeWeights(raw, keys)
+}
+
+function completeDeclaredWeights(source, declaredKeys) {
+  return Object.fromEntries(declaredKeys.map((key) => [key, Number(source?.[key]) || 0]))
 }
 
 function normalizeWeights(source, keys) {
