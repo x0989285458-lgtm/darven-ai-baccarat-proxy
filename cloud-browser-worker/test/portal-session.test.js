@@ -39,6 +39,13 @@ test('portal login closes layered notices, opens the login view, fills credentia
   assert.equal(page.stage(), 'authenticated')
 })
 
+test('portal login waits for delayed announcement layers before opening the login view', async () => {
+  const page = fakePortalLoginPage({ delayedInitialNotices: true })
+  await loginPortalPage(page, { username: 'safe-user', password: 'safe-pass' }, { timeoutMs: 100 })
+  assert.equal(page.stage(), 'authenticated')
+  assert.equal(page.noticeClicks, 6)
+})
+
 test('portal MT opening accepts a popup page', async () => {
   const portal = fakePage('https://ag001.3a1788.bet/')
   const popup = fakePage('https://mt.example/game')
@@ -269,16 +276,22 @@ test('invalid candidate is closed and exposes only portal_auth_refresh_failed', 
   assert.equal(closed, 1)
 })
 
-function fakePortalLoginPage() {
+function fakePortalLoginPage({ delayedInitialNotices = false } = {}) {
   let currentStage = 'home'
-  let remainingNotices = 3
+  let remainingNotices = delayedInitialNotices ? 0 : 3
+  let initialNoticesMaterialized = !delayedInitialNotices
   const page = {
     filled: {},
     loginClicks: 0,
     noticeClicks: 0,
     stage: () => currentStage,
     goto: async () => {},
-    waitForTimeout: async () => {},
+    waitForTimeout: async () => {
+      if (currentStage === 'home' && !initialNoticesMaterialized) {
+        remainingNotices = 3
+        initialNoticesMaterialized = true
+      }
+    },
     locator(selector) {
       const buildLocator = (topmost) => ({
         isVisible: async () => {
@@ -306,6 +319,10 @@ function fakePortalLoginPage() {
         last: () => ({
           isVisible: async () => text === '登入' && (currentStage === 'home' || currentStage === 'login'),
           click: async () => {
+            if (currentStage === 'home' && !initialNoticesMaterialized) {
+              remainingNotices = 3
+              initialNoticesMaterialized = true
+            }
             if (remainingNotices > 0) throw new Error('announcement overlay intercepts login')
             page.loginClicks += 1
             if (currentStage === 'home') currentStage = 'login'

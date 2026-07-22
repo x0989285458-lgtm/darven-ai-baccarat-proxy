@@ -47,9 +47,10 @@ export async function loginPortalPage(page, credentials, { portalUrl = PORTAL_UR
   const parsed = new URL(String(portalUrl))
   if (parsed.protocol !== 'https:') throw new Error('Portal URL must use HTTPS')
   await page.goto(parsed.href, { waitUntil: 'domcontentloaded', timeout: timeoutMs })
+  await page.waitForTimeout?.(1000)
   await closeAnnouncement(page)
   if (!await hasVisible(page, PORTAL_SELECTORS.username)) {
-    await clickExactText(page, '登入')
+    await clickExactTextAfterClosingAnnouncements(page, '登入')
     await waitForVisible(page, PORTAL_SELECTORS.username, timeoutMs)
   }
   await fillFirstVisible(page, PORTAL_SELECTORS.username, credentials.username)
@@ -270,10 +271,19 @@ async function waitForVisible(page, selectors, timeoutMs) {
   throw new Error('required portal field was not found')
 }
 
-async function clickExactText(page, text) {
+async function clickExactText(page, text, timeoutMs = 5000) {
   const locator = page.getByText(text, { exact: true }).last()
   if (!await locator.isVisible().catch(() => false)) throw new Error('required portal action was not found')
-  await locator.click()
+  await locator.click({ timeout: Math.max(1, Math.min(5000, Number(timeoutMs) || 5000)) })
+}
+
+async function clickExactTextAfterClosingAnnouncements(page, text) {
+  try {
+    await clickExactText(page, text)
+  } catch {
+    await closeAnnouncement(page)
+    await clickExactText(page, text)
+  }
 }
 
 async function clickFirstVisible(page, selectors) {
