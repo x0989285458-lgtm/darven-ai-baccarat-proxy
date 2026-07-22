@@ -2394,10 +2394,18 @@ export function createSupabaseIngestionClient({
         p_report: pReport, p_suggestions: structuredClone(suggestions),
       }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
       const expectedCycleNumber = report ? Number(report.cycleNumber) : null
-      const acknowledgedCycleNumber = acknowledgement?.cycle_number == null ? null : Number(acknowledgement.cycle_number)
+      const acknowledgedCycleNumber = acknowledgement?.cycle_number
+      const acknowledgedSuggestionCount = acknowledgement?.suggestions
+      const cycleMatches = report
+        ? Number.isSafeInteger(expectedCycleNumber) && expectedCycleNumber > 0
+          && typeof acknowledgedCycleNumber === 'number' && Number.isSafeInteger(acknowledgedCycleNumber)
+          && acknowledgedCycleNumber === expectedCycleNumber
+        : acknowledgedCycleNumber === null
       if (acknowledgement?.persisted !== true
-        || Number(acknowledgement?.suggestions) !== suggestions.length
-        || acknowledgedCycleNumber !== expectedCycleNumber) throw new Error('v104 iteration shadow artifact acknowledgement failed')
+        || typeof acknowledgedSuggestionCount !== 'number'
+        || !Number.isSafeInteger(acknowledgedSuggestionCount)
+        || acknowledgedSuggestionCount !== suggestions.length
+        || !cycleMatches) throw new Error('v104 iteration shadow artifact acknowledgement failed')
       return acknowledgement
     },
     async reviewV104IterationShadowSuggestion({ suggestionId, decision, reviewer } = {}) {

@@ -136,6 +136,9 @@ test('v104 artifact writer rejects a negative or mismatched persistence acknowle
     { persisted: false, cycle_number: 999, suggestions: 0 },
     { persisted: true, cycle_number: 2, suggestions: 1 },
     { persisted: true, cycle_number: 1, suggestions: 0 },
+    { persisted: true, cycle_number: null, suggestions: null },
+    { persisted: true, cycle_number: true, suggestions: 1 },
+    { persisted: true, cycle_number: 1, suggestions: false },
   ]) {
     const client = createSupabaseIngestionClient({
       url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
