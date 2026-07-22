@@ -1,4 +1,4 @@
--- v104.3.0 seven-head iteration shadow v3; additive and isolated from formal v104 and v1 shadow evidence.
+-- v104.4.0 seven-head iteration shadow v4; additive and isolated from formal v104 and v1-v3 shadow evidence.
 begin;
 
 do $$

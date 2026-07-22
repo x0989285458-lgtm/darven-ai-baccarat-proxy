@@ -1,4 +1,4 @@
--- Non-destructive rollback after an explicit v3 drain: preserve v3 evidence and restore the prior v3 runtime.
+-- Non-destructive rollback after an explicit v4 drain: preserve v4 evidence and restore the prior v3 runtime.
 begin;
 
 do $$
