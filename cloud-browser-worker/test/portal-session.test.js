@@ -21,6 +21,8 @@ const expired = { connected: true, authenticated: false, tables: [] }
 
 test('portal selectors target credentials, submit, announcement close, and MT真人 without opt-out checkbox', () => {
   assert.match(PORTAL_SELECTORS.username.join(' '), /user|account|帳號/i)
+  assert.equal(PORTAL_SELECTORS.username.includes('input[type="text"]'), false)
+  assert.match(PORTAL_SELECTORS.username.join(' '), /:not\(\[readonly\]\).*:not\(\[role="combobox"\]\)/i)
   assert.match(PORTAL_SELECTORS.password.join(' '), /password|密碼/i)
   assert.match(PORTAL_SELECTORS.submit.join(' '), /submit|login|登入/i)
   assert.match(PORTAL_SELECTORS.announcementClose.join(' '), /close|關閉|×/i)

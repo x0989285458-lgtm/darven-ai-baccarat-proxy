@@ -8,7 +8,8 @@ export const PORTAL_URL = 'https://ag001.3a1788.bet/'
 export const PORTAL_SELECTORS = Object.freeze({
   username: Object.freeze([
     'input[name="username"]', 'input[name="account"]', 'input[autocomplete="username"]',
-    'input[placeholder*="帳號"]', 'input[placeholder*="账号"]', 'input[type="text"]',
+    'input[placeholder*="帳號"]', 'input[placeholder*="账号"]',
+    'input[type="text"]:not([readonly]):not([role="combobox"])',
   ]),
   password: Object.freeze([
     'input[name="password"]', 'input[autocomplete="current-password"]',
