@@ -63,7 +63,8 @@ test('portal MT popup listener starts only after a delayed MT control becomes vi
   }
   const portal = {
     locator() {
-      return { first: () => ({ isVisible: async () => false }) }
+      const hidden = () => ({ isVisible: async () => false })
+      return { first: hidden, last: hidden }
     },
     getByText() {
       return {
@@ -279,32 +280,33 @@ function fakePortalLoginPage() {
     goto: async () => {},
     waitForTimeout: async () => {},
     locator(selector) {
-      return {
-        first: () => ({
-          isVisible: async () => {
-            if (selector === PORTAL_SELECTORS.announcementClose[0]) return remainingNotices > 0
-            if (PORTAL_SELECTORS.username.includes(selector)) return currentStage === 'login' && selector === PORTAL_SELECTORS.username[0]
-            if (PORTAL_SELECTORS.password.includes(selector)) return currentStage === 'login' && selector === PORTAL_SELECTORS.password[0]
-            return false
-          },
-          fill: async (value) => {
-            if (PORTAL_SELECTORS.username.includes(selector)) page.filled.username = value
-            if (PORTAL_SELECTORS.password.includes(selector)) page.filled.password = value
-          },
-          click: async () => {
-            if (selector === PORTAL_SELECTORS.announcementClose[0]) {
-              remainingNotices -= 1
-              page.noticeClicks += 1
-            }
-          },
-        }),
-      }
+      const buildLocator = (topmost) => ({
+        isVisible: async () => {
+          if (selector === PORTAL_SELECTORS.announcementClose[0]) return remainingNotices > 0
+          if (PORTAL_SELECTORS.username.includes(selector)) return currentStage === 'login' && selector === PORTAL_SELECTORS.username[0]
+          if (PORTAL_SELECTORS.password.includes(selector)) return currentStage === 'login' && selector === PORTAL_SELECTORS.password[0]
+          return false
+        },
+        fill: async (value) => {
+          if (PORTAL_SELECTORS.username.includes(selector)) page.filled.username = value
+          if (PORTAL_SELECTORS.password.includes(selector)) page.filled.password = value
+        },
+        click: async () => {
+          if (selector === PORTAL_SELECTORS.announcementClose[0]) {
+            if (!topmost) throw new Error('lower announcement is covered by the topmost overlay')
+            remainingNotices -= 1
+            page.noticeClicks += 1
+          }
+        },
+      })
+      return { first: () => buildLocator(false), last: () => buildLocator(true) }
     },
     getByText(text) {
       return {
         last: () => ({
           isVisible: async () => text === '登入' && (currentStage === 'home' || currentStage === 'login'),
           click: async () => {
+            if (remainingNotices > 0) throw new Error('announcement overlay intercepts login')
             page.loginClicks += 1
             if (currentStage === 'home') currentStage = 'login'
             else if (currentStage === 'login') {
@@ -343,15 +345,14 @@ function fakePage(initialUrl, { sameTabUrl = null, announcementCount = 3 } = {})
     url: () => currentUrl,
     waitForTimeout: async () => {},
     locator(selector) {
-      return {
-        first: () => ({
-          isVisible: async () => selector === PORTAL_SELECTORS.announcementClose[0] && remainingAnnouncements > 0,
-          click: async () => {
-            this.clickedSelectors.push(selector)
-            remainingAnnouncements -= 1
-          },
-        }),
-      }
+      const announcementLocator = () => ({
+        isVisible: async () => selector === PORTAL_SELECTORS.announcementClose[0] && remainingAnnouncements > 0,
+        click: async () => {
+          this.clickedSelectors.push(selector)
+          remainingAnnouncements -= 1
+        },
+      })
+      return { first: announcementLocator, last: announcementLocator }
     },
     getByText(text) {
       return {

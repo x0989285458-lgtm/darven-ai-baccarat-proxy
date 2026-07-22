@@ -291,7 +291,7 @@ async function closeAnnouncement(page, maxClosures = 6) {
   for (let attempt = 0; attempt < maxClosures; attempt += 1) {
     let clicked = false
     for (const selector of PORTAL_SELECTORS.announcementClose) {
-      const locator = page.locator(selector).first()
+      const locator = page.locator(selector).last()
       if (await locator.isVisible().catch(() => false)) {
         await locator.click().catch(() => {})
         await page.waitForTimeout?.(100)
