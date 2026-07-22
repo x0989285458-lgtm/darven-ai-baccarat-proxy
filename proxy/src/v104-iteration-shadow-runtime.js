@@ -246,7 +246,7 @@ export function createV104IterationShadowRuntime({ enabled = false, writer = nul
   function settleRound(round = {}) {
     if (!enabled) return Promise.resolve(null)
     const key = identityKey({ source: round.source ?? 'ofalive99', tableId: round.tableId, shoe: round.shoe, round: round.round })
-    if (settlementPromises.has(key)) return settlementPromises.get(key)
+    if (settlementPromises.has(key)) return settlementPromises.get(key).then(() => settleRoundNow(round))
     const promise = Promise.resolve().then(() => settleRoundNow(round)).finally(() => settlementPromises.delete(key))
     settlementPromises.set(key, promise)
     return promise

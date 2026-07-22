@@ -153,6 +153,27 @@ test('v104 cached replay requires the complete immutable Final snapshot', async 
   assert.equal(writer.settlements.length, 1)
 })
 
+test('v104 concurrent conflicting Final waits for the first write then fails immutable replay validation', async () => {
+  const writer = createWriter()
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  const originalSettle = writer.settleV104IterationShadowPrediction.bind(writer)
+  writer.settleV104IterationShadowPrediction = async (settlement) => {
+    await gate
+    return originalSettle(settlement)
+  }
+  const runtime = createV104IterationShadowRuntime({ enabled: true, writer })
+  await runtime.observeTable(table())
+  const firstFinal = { ...table(), round: 21, sourceAction: '/summary', winner: 'banker', rawResult: [1,2,3,4,0,0,-1,-1,4,6] }
+  const conflictingFinal = { ...firstFinal, rawResult: [5,6,7,8,0,0,-1,-1,2,4] }
+  const first = runtime.settleRound(firstFinal)
+  const conflict = runtime.settleRound(conflictingFinal)
+  release()
+  await first
+  await assert.rejects(conflict, /conflicting v104 iteration shadow settlement/i)
+  assert.equal(writer.settlements.length, 1)
+})
+
 test('v104 concurrent identical Final settlement shares one in-flight writer call', async () => {
   const writer = createWriter()
   let release
