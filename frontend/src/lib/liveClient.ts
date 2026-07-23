@@ -1,5 +1,5 @@
 import { dravenApiBaseUrl } from './apiBase'
-import { frontendBuildMetadata } from './buildVersion'
+import { buildVersionRefreshUrl, frontendBuildMetadata } from './buildVersion'
 
 export type LiveTable = {
   id: string | number
@@ -284,9 +284,19 @@ async function readProxyStatus(memberSessionToken?: string): Promise<Status> {
     const response = await fetch(`${proxyApiUrl}/api/status`, { cache: 'no-store', headers })
     if (!response.ok) return { state: 'error', message: `proxy狀態讀取失敗 (${response.status})` }
     const status = await response.json()
-    if (String(status.buildVersion ?? '') !== CURRENT_BUILD_VERSION) {
+    const remoteBuildVersion = String(status.buildVersion ?? '')
+    if (remoteBuildVersion !== CURRENT_BUILD_VERSION) {
+      if (typeof window !== 'undefined') {
+        const refreshKey = 'darven-frontend-build-refresh'
+        const refreshUrl = buildVersionRefreshUrl(window.location.href, CURRENT_BUILD_VERSION, remoteBuildVersion, window.sessionStorage.getItem(refreshKey))
+        if (refreshUrl) {
+          window.sessionStorage.setItem(refreshKey, remoteBuildVersion)
+          window.location.replace(refreshUrl)
+        }
+      }
       return { state: 'error', message: '建置版本不符，預測暫不可用' }
     }
+    if (typeof window !== 'undefined') window.sessionStorage.removeItem('darven-frontend-build-refresh')
     if (typeof status.statusText === 'string' && status.statusText) {
       return { state: status.connected ? 'connected' : 'connecting', message: status.statusText }
     }
