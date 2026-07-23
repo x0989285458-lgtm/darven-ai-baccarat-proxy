@@ -39,14 +39,14 @@ test('v105 history reader warm-starts from v104 and v105 while rejecting older s
   const base = {
     source: 'ofalive99', table_id: 'BAG01', shoe_no: '1', round_no: 8,
     predicted_result: 'banker', prediction_issued_at: '2026-07-22T00:00:00.000Z',
-    prediction_features: { prediction_timing: 'pre_result_context' }, settlement_final: true,
+    prediction_timing: 'pre_result_context', issued_same_side_streak: '1', settlement_final: true,
   }
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
     fetchImpl: async (url) => { requested = new URL(url); return response([
       { ...base, id: 'old', strategy_version: 'v103' },
       { ...base, id: 'predecessor', strategy_version: 'v104' },
-      { ...base, id: 'current', strategy_version: 'v105', issued_prediction_payload: { baselineV104PredictedResult: 'player', baselineV104SameSideStreak: 3 } },
+      { ...base, id: 'current', strategy_version: 'v105', baseline_v104_predicted_result: 'player', baseline_v104_same_side_streak: '3' },
     ]) },
   })
   const rows = await client.getV105FormalHistory()

@@ -2557,7 +2557,7 @@ export function createSupabaseIngestionClient({
     },
     async getV105FormalHistory({ limit = 10000, requestTimeoutMs = 0 } = {}) {
       const rows = await getRest('daily_prediction_results', {
-        select: 'id,source,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,prediction_issued_at,prediction_features,issued_prediction_payload,created_at',
+        select: 'id,source,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,prediction_issued_at,created_at,prediction_timing:prediction_features->>prediction_timing,baseline_v104_predicted_result:issued_prediction_payload->>baselineV104PredictedResult,baseline_v104_same_side_streak:issued_prediction_payload->>baselineV104SameSideStreak,issued_same_side_streak:issued_prediction_payload->>sameSideStreak',
         strategy_version: 'in.(v104,v105)',
         prediction_issued_at: 'not.is.null',
         order: 'prediction_issued_at.desc',
@@ -2565,19 +2565,18 @@ export function createSupabaseIngestionClient({
       }, { requestTimeoutMs })
       return (Array.isArray(rows) ? rows : [])
         .filter((row) => ['v104', 'v105'].includes(row?.strategy_version)
-          && row?.prediction_features?.prediction_timing === 'pre_result_context'
+          && row?.prediction_timing === 'pre_result_context'
           && Boolean(row?.prediction_issued_at))
         .map((row) => ({
           ...row,
           prediction_id: row.id,
-          prediction_timing: row.prediction_features.prediction_timing,
           final_v105_predicted_result: row.strategy_version === 'v105' ? row.predicted_result : null,
           predicted_result: row.strategy_version === 'v105'
-            ? (row.issued_prediction_payload?.baselineV104PredictedResult ?? row.predicted_result)
+            ? (row.baseline_v104_predicted_result ?? row.predicted_result)
             : row.predicted_result,
           same_side_streak: row.strategy_version === 'v105'
-            ? (row.issued_prediction_payload?.baselineV104SameSideStreak ?? row.issued_prediction_payload?.sameSideStreak ?? null)
-            : (row.issued_prediction_payload?.sameSideStreak ?? null),
+            ? positiveIntegerOrNull(row.baseline_v104_same_side_streak ?? row.issued_same_side_streak)
+            : positiveIntegerOrNull(row.issued_same_side_streak),
         }))
     },
     async getRecentPredictionRows({ limit = 10000 } = {}) {
@@ -2913,6 +2912,11 @@ function buildRoundDedupeKey(event = {}, prediction = {}) {
     bankerPoints: event.banker_points,
     playerPoints: event.player_points,
   })
+}
+
+function positiveIntegerOrNull(value) {
+  const parsed = Number(value)
+  return Number.isSafeInteger(parsed) && parsed >= 1 ? parsed : null
 }
 
 function isFinalPredictionSettlement(row = {}) {
