@@ -39,7 +39,9 @@ export type BackendSideActions = Record<SidePredictionKey, boolean>
 export type MainPredictionReasonKey = 'shoe_banker_player_bias' | 'ask_road_signals' | 'roadmap_trend_signals'
 export type MainPredictionSourceScores = { banker?: number; player?: number }
 export type BackendPredictionReason = { key: MainPredictionReasonKey; text: string; weight: number }
-export type BackendPrediction = { source?: string; predictionId?: string; issuedAt?: string; strategyVersion: string; buildVersion?: string; targetTableId?: string | number; targetShoe?: string | number; targetRound?: number; predictedResult: 'banker' | 'player'; recommendation?: string; confidence: number; probabilities?: { banker?: number; player?: number; tie?: number }; scoreTotals?: { banker?: number; player?: number }; featureWeights?: Partial<Record<MainPredictionReasonKey | 'neutral_reserve', number>>; scoreSources?: Partial<Record<MainPredictionReasonKey | 'neutral_reserve' | 'recent_practical_calibration', MainPredictionSourceScores>>; sidePredictions?: BackendSidePredictions; sideActions?: BackendSideActions }
+export type BackendRoadCycleMain = { detected?: boolean; direction?: 'banker' | 'player'; reasonText?: string | null }
+export type BackendPredictionDiagnostics = { roadCycles?: { main?: BackendRoadCycleMain } }
+export type BackendPrediction = { source?: string; predictionId?: string; issuedAt?: string; strategyVersion: string; buildVersion?: string; targetTableId?: string | number; targetShoe?: string | number; targetRound?: number; predictedResult: 'banker' | 'player'; recommendation?: string; confidence: number; probabilities?: { banker?: number; player?: number; tie?: number }; scoreTotals?: { banker?: number; player?: number }; featureWeights?: Partial<Record<MainPredictionReasonKey | 'neutral_reserve', number>>; scoreSources?: Partial<Record<MainPredictionReasonKey | 'neutral_reserve' | 'recent_practical_calibration', MainPredictionSourceScores>>; diagnostics?: BackendPredictionDiagnostics; sidePredictions?: BackendSidePredictions; sideActions?: BackendSideActions }
 export type SettledPrediction = { round: number; mainPredictedResult?: 'banker' | 'player'; predictedResult: 'banker' | 'player' | 'tie'; actualResult: 'banker' | 'player' | 'tie'; isHit: boolean; result?: 'hit' | 'miss' | 'uncalculated' }
 export type RealCardRound = { round: number; result: 'banker' | 'player' | 'tie'; bankerPoint: number; playerPoint: number }
 export type TableUiHistory = {
@@ -330,7 +332,12 @@ export function backendPredictionReasonsFromTable(table?: Pick<LiveTable, 'predi
     const supporting = Number(scores?.[direction])
     const opposing = Number(scores?.[opposite])
     if (!Number.isFinite(weight) || weight <= 0 || !Number.isFinite(supporting) || !Number.isFinite(opposing) || supporting <= opposing) return []
-    return [{ key, text: `${label}支持${directionLabel}`, weight, influence: (supporting - opposing) * weight }]
+    const formalCycleReason = key === 'roadmap_trend_signals'
+      && prediction.diagnostics?.roadCycles?.main?.detected
+      && prediction.diagnostics.roadCycles.main.direction === direction
+      ? prediction.diagnostics.roadCycles.main.reasonText
+      : null
+    return [{ key, text: formalCycleReason || `${label}支持${directionLabel}`, weight, influence: (supporting - opposing) * weight }]
   })
     .sort((left, right) => right.influence - left.influence)
     .slice(0, 3)

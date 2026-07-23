@@ -28,7 +28,7 @@ test('writer issuance returns the first durable immutable payload and prediction
   const issued = await client.issuePrediction(candidate)
   assert.equal(issued.predictionId, first.predictionId)
   assert.deepEqual(issued, first)
-  assert.match(requests[0].url, /\/rpc\/issue_v104_prediction$/)
+  assert.match(requests[0].url, /\/rpc\/issue_v105_prediction$/)
   assert.equal(requests[0].body.p_prediction.actual_result, null)
   assert.equal(requests[0].body.p_prediction.is_hit, null)
   assert.equal(requests[0].body.p_prediction.resolved_at, null)
@@ -70,7 +70,7 @@ test('writer settles by prediction_id and suppresses an identical duplicate sett
   const duplicate = await client.persistRound(completed, baseTable, pending)
   assert.equal(duplicate.reason, 'duplicate_round')
   assert.equal(requests.length, 1)
-  assert.match(requests[0].url, /\/rpc\/settle_v104_prediction$/)
+  assert.match(requests[0].url, /\/rpc\/settle_v105_prediction$/)
   assert.equal(requests[0].body.p_settlement.prediction_id, pending.predictionId)
   assert.equal(requests[0].body.p_settlement.settlement_final, true)
 })
@@ -169,7 +169,7 @@ test('admin main denominators exclude tie PUSH in SQL and fallback reports', asy
 
 test('v102 readers require complete current final columns and exclude compatibility and pending rows', async () => {
   const requests = []
-  const compatibility = { id: 'compatibility', table_id: 'BAG01', shoe_no: '88', round_no: 3, strategy_version: 'v104', predicted_result: 'banker', actual_result: 'banker', is_hit: true, settlement_final: null, side_hits: null, prediction_issued_at: '2026-07-16T00:59:00Z', prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true, side_hits: { tie: false } }, created_at: '2026-07-16T01:00:00Z' }
+  const compatibility = { id: 'compatibility', table_id: 'BAG01', shoe_no: '88', round_no: 3, strategy_version: 'v105', predicted_result: 'banker', actual_result: 'banker', is_hit: true, settlement_final: null, side_hits: null, prediction_issued_at: '2026-07-16T00:59:00Z', prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true, side_hits: { tie: false } }, created_at: '2026-07-16T01:00:00Z' }
   const modern = { ...compatibility, id: 'modern', round_no: 4, settlement_final: true, side_hits: { tie: true }, prediction_features: { prediction_timing: 'pre_result_context' }, created_at: '2026-07-16T01:01:00Z' }
   const pending = { ...modern, id: 'pending', round_no: 5, actual_result: null, is_hit: null, settlement_final: false }
   const client = createSupabaseIngestionClient({ url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false, fetchImpl: async (url) => { requests.push(new URL(url)); return response([modern, compatibility, pending]) } })
@@ -179,7 +179,7 @@ test('v102 readers require complete current final columns and exclude compatibil
   assert.equal(await client.countTodayPredictionRounds(), 1)
   for (const url of requests) {
     assert.match(url.searchParams.get('select') ?? '', /settlement_final/)
-    assert.equal(url.searchParams.get('strategy_version'), 'eq.v104')
+    assert.equal(url.searchParams.get('strategy_version'), 'eq.v105')
     assert.equal(url.searchParams.get('settlement_final'), 'eq.true')
     assert.equal(url.searchParams.has('or'), false)
   }

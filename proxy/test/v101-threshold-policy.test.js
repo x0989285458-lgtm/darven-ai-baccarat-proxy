@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { ALL_MT_EQUAL_STRATEGY_VERSION, SIDE_PREDICTION_THRESHOLDS, buildSideActions } from '../src/supabase-writer.js'
 
 test('v102 uses the user-approved formal side thresholds', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v104')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v105')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 30,
     superSix: 50,

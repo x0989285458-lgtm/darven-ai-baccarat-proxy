@@ -63,7 +63,7 @@ test('enabled v100 runtime rehydrates, applies Final in round order, and scores 
   assert.equal(result.predictions[0].targetTableId, 'BAG01')
   assert.equal(result.predictions[0].targetShoe, 'S100')
   assert.equal(result.predictions[0].targetRound, 2)
-  assert.equal(result.predictions[0].side.strategyVersion.includes('v102'), true)
+  assert.equal(result.predictions[0].side.strategyVersion.includes('v105'), true)
   assert.equal(result.predictions[0].activationEligible, true)
   assert.deepEqual(
     result.predictions[0].side.actions,

@@ -76,7 +76,7 @@ test('startup verifies the active strategy before accepting live tables', async 
       ensureCalls += 1
       ready = true
     },
-    getV104FormalHistory: async () => [],
+    getV105FormalHistory: async () => [],
     issuePrediction: async (candidate) => {
       futureCandidate = candidate
       return { ...candidate, predictionId: 'verified-future', issuedAt: '2026-07-17T01:00:00.000Z' }

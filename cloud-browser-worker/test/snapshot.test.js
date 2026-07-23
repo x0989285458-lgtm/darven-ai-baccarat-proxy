@@ -146,7 +146,7 @@ test('extracts tables and rounds recursively from websocket/localStorage payload
   ], { sessionId: 'test-session', now: '2026-06-30T00:00:00.000Z' })
 
   assert.equal(snapshot.connected, true)
-  assert.equal(snapshot.buildVersion, '104')
+  assert.equal(snapshot.buildVersion, '105')
   assert.equal(snapshot.authenticated, true)
   assert.equal(snapshot.sessionId, 'test-session')
   assert.equal(snapshot.tables.length, 1)

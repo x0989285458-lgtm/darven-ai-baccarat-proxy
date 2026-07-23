@@ -10,7 +10,7 @@ describe('LiveRoadClient status messages', () => {
   it('explains the formal prediction only from non-zero pre-result sources supporting the issued direction', () => {
     const table = {
       prediction: {
-        source: 'backend', strategyVersion: 'v104', predictedResult: 'banker', confidence: 48,
+        source: 'backend', strategyVersion: 'v105', predictedResult: 'banker', confidence: 48,
         featureWeights: { shoe_banker_player_bias: 0.35, roadmap_trend_signals: 0.275, ask_road_signals: 0.275, neutral_reserve: 0.1 },
         scoreSources: {
           shoe_banker_player_bias: { banker: 0.58, player: 0.42 },
@@ -26,6 +26,20 @@ describe('LiveRoadClient status messages', () => {
       { key: 'shoe_banker_player_bias', text: '靴內莊閒偏態支持莊', weight: 0.35 },
       { key: 'ask_road_signals', text: '問路訊號支持莊', weight: 0.275 },
       { key: 'roadmap_trend_signals', text: '路單趨勢支持莊', weight: 0.275 },
+    ])
+  })
+
+  it('uses the exact formal v105 big-road cycle reason instead of the generic roadmap label', () => {
+    const table = {
+      prediction: {
+        source: 'backend', strategyVersion: 'v105', predictedResult: 'banker', confidence: 48,
+        featureWeights: { roadmap_trend_signals: 0.275 },
+        scoreSources: { roadmap_trend_signals: { banker: 0.55, player: 0.45 } },
+        diagnostics: { roadCycles: { main: { detected: true, direction: 'banker', reasonText: '大路週期1－3連續2次，2路輔助確認，下一位置支持莊' } } },
+      },
+    }
+    expect(backendPredictionReasonsFromTable(table as any)).toEqual([
+      { key: 'roadmap_trend_signals', text: '大路週期1－3連續2次，2路輔助確認，下一位置支持莊', weight: 0.275 },
     ])
   })
 
@@ -57,7 +71,7 @@ describe('LiveRoadClient status messages', () => {
     vi.useFakeTimers()
     const statuses: Array<{ state: string; message: string }> = []
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: false, authenticated: null, tables: [], buildVersion: 'v104' }) })
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: false, authenticated: null, tables: [], buildVersion: 'v105' }) })
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
     }))
 
@@ -73,7 +87,7 @@ describe('LiveRoadClient status messages', () => {
     vi.useFakeTimers()
     const statuses: Array<{ state: string; message: string }> = []
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, tables: [], buildVersion: 'v104' }) })
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, tables: [], buildVersion: 'v105' }) })
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
     }))
 
@@ -89,7 +103,7 @@ describe('LiveRoadClient status messages', () => {
     vi.useFakeTimers()
     const statuses: Array<{ state: string; message: string }> = []
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, statusText: 'Chrome已連接，等待MT登入驗證', buildVersion: 'v104' }) })
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, statusText: 'Chrome已連接，等待MT登入驗證', buildVersion: 'v105' }) })
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
     }))
 
@@ -105,7 +119,7 @@ describe('LiveRoadClient status messages', () => {
     vi.useFakeTimers()
     const received: any[] = []
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v104' }) })
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v105' }) })
       return Promise.resolve({ ok: true, json: () => Promise.resolve([{
         tableId: 'BAG01', displayName: 'MT百家樂第1桌', tableType: 'BAC', shoe: 12, round: 34,
         bankerCount: 11, playerCount: 10, tieCount: 2, bankerPairCount: 3, playerPairCount: 4,
@@ -153,7 +167,7 @@ describe('LiveRoadClient status messages', () => {
     const received: any[][] = []
     let tableCalls = 0
     vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
-      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v104' }) })
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v105' }) })
       if (url.endsWith('/api/tables/stream')) return Promise.resolve({ ok: false, status: 503, body: null })
       tableCalls += 1
       const rows = tableCalls === 1 ? [{
@@ -180,7 +194,7 @@ describe('LiveRoadClient status messages', () => {
     const received: any[][] = []
     const statuses: Array<{ state: string; message: string }> = []
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, statusText: '雲端資料 stale，等待Worker更新', buildVersion: 'v104' }) })
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, statusText: '雲端資料 stale，等待Worker更新', buildVersion: 'v105' }) })
       return Promise.resolve({ ok: true, json: () => Promise.resolve([{
         tableId: 'BAG01', displayName: 'MT百家樂第1桌', tableType: 'BAC', round: 1,
         beadPlateRaw: '0102', bigRoadRaw: '0102', sourceUpdatedAt: new Date().toISOString(),
@@ -247,7 +261,7 @@ describe('LiveRoadClient status messages', () => {
     }
     let tableCalls = 0
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v104' }) })
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v105' }) })
       if (url.endsWith('/api/tables/stream')) return Promise.resolve({ ok: false, status: 503, body: null })
       tableCalls += 1
       const firstPayload = tableCalls === 1

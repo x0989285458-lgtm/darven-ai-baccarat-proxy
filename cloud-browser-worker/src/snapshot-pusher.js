@@ -127,7 +127,7 @@ export function createSnapshotPusher({
     const sequence = Math.max(lastSequence + 1, timestamp)
     lastSequence = sequence
     return {
-      protocolVersion: 'v104',
+      protocolVersion: 'v105',
       sessionId: String(snapshot?.sessionId ?? ''),
       timestamp,
       captureTimestamp: timestamp,
@@ -243,7 +243,7 @@ export function createSnapshotPusher({
     const captureTimestamp = Number(envelope.captureTimestamp ?? envelope.timestamp)
     const normalizedEnvelope = {
       ...envelope,
-      protocolVersion: 'v104',
+      protocolVersion: 'v105',
       sessionId: String(envelope.sessionId ?? snapshot.sessionId ?? ''),
       timestamp: Number(envelope.timestamp),
       captureTimestamp,

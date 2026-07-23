@@ -10,7 +10,7 @@ import {
   buildSideActions,
 } from '../src/supabase-writer.js'
 
-const approvedStrategyVersion = 'v104'
+const approvedStrategyVersion = 'v105'
 
 const approvedSideProfiles = {
   tie: { tie_risk: 0.45, tie_count: 0.10, shoe_stage: 0.10, road_chaos: 0.15, remaining_rank_total: 0.20 },

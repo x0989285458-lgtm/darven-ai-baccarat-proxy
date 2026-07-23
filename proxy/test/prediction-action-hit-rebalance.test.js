@@ -10,7 +10,7 @@ import {
 const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Number(value), 0)
 
 test('rebalances main prediction away from noisy road overfit toward calibration and history', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v104')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v105')
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
   assert.equal(Object.hasOwn(ALL_MT_EQUAL_MAIN_WEIGHTS, 'remaining_zero_to_k_total'), false)
 

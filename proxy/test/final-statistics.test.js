@@ -9,7 +9,7 @@ function response(rows) {
 
 test('v102 today prediction count queries and accepts only v102 final settlements', async () => {
   let requestedUrl
-  const v102Row = { id: 'v102-final', strategy_version: 'v104', settlement_final: true, prediction_features: { settlement_final: true } }
+  const v102Row = { id: 'v102-final', strategy_version: 'v105', settlement_final: true, prediction_features: { settlement_final: true } }
   const oldRow = { id: 'v98-final', strategy_version: 'v98', settlement_final: true, prediction_features: { settlement_final: true } }
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-service-key',
@@ -18,14 +18,14 @@ test('v102 today prediction count queries and accepts only v102 final settlement
 
   assert.equal(await client.countTodayPredictionRounds(), 1)
   assert.match(requestedUrl.searchParams.get('select') ?? '', /settlement_final/)
-  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v104')
+  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v105')
   assert.equal(requestedUrl.searchParams.get('settlement_final'), 'eq.true')
   assert.equal(requestedUrl.searchParams.has('or'), false)
 })
 
 test('v102 stable report reads and accepts only complete v102 final settlements', async () => {
   let requestedUrl
-  const finalRow = { table_id: 'BAG01', strategy_version: 'v104', settlement_final: true, prediction_features: { settlement_final: true }, created_at: '2026-07-15T08:03:00Z' }
+  const finalRow = { table_id: 'BAG01', strategy_version: 'v105', settlement_final: true, prediction_features: { settlement_final: true }, created_at: '2026-07-15T08:03:00Z' }
   const oldVersionRow = { ...finalRow, strategy_version: 'v98', created_at: '2026-07-15T08:02:00Z' }
   const compatibilityRow = { ...finalRow, settlement_final: null, prediction_features: { settlement_final: true }, created_at: '2026-07-15T08:01:00Z' }
   const client = createSupabaseIngestionClient({
@@ -35,7 +35,7 @@ test('v102 stable report reads and accepts only complete v102 final settlements'
 
   assert.deepEqual(await client.getStablePredictionRows({ limit: 100 }), [finalRow])
   assert.match(requestedUrl.searchParams.get('select') ?? '', /settlement_final/)
-  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v104')
+  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v105')
   assert.equal(requestedUrl.searchParams.get('settlement_final'), 'eq.true')
   assert.equal(requestedUrl.searchParams.has('or'), false)
 })
@@ -44,7 +44,7 @@ test('recent calibration rows quarantine predictions without a verified final se
   let requestedUrl
   const finalRow = {
     table_id: 'BAG01', shoe_no: '8', round_no: 3,
-    strategy_version: 'v104', predicted_result: 'banker', actual_result: 'banker', is_hit: true,
+    strategy_version: 'v105', predicted_result: 'banker', actual_result: 'banker', is_hit: true,
     settlement_final: true, prediction_issued_at: '2026-07-15T08:02:00Z',
     prediction_features: { settlement_final: true, prediction_timing: 'pre_result_context' }, created_at: '2026-07-15T08:03:00Z',
   }
@@ -59,7 +59,7 @@ test('recent calibration rows quarantine predictions without a verified final se
 
   assert.deepEqual(await client.getRecentPredictionRows({ limit: 100 }), [finalRow])
   assert.match(requestedUrl.searchParams.get('select') ?? '', /settlement_final/)
-  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v104')
+  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v105')
   assert.equal(requestedUrl.searchParams.get('settlement_final'), 'eq.true')
   assert.equal(requestedUrl.searchParams.has('or'), false)
 })
@@ -68,7 +68,7 @@ test('v102 recent calibration reads and accepts only v102 settlements', async ()
   let requestedUrl
   const v102Row = {
     table_id: 'BAG01', shoe_no: '100', round_no: 2,
-    strategy_version: 'v104', predicted_result: 'banker', actual_result: 'banker', is_hit: true,
+    strategy_version: 'v105', predicted_result: 'banker', actual_result: 'banker', is_hit: true,
     settlement_final: true, prediction_issued_at: '2026-07-18T08:01:00Z',
     prediction_features: { settlement_final: true, prediction_timing: 'pre_result_context' }, created_at: '2026-07-18T08:02:00Z',
   }
@@ -81,13 +81,13 @@ test('v102 recent calibration reads and accepts only v102 settlements', async ()
   })
 
   assert.deepEqual(await client.getRecentPredictionRows({ limit: 100 }), [v102Row])
-  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v104')
+  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v105')
 })
 
 test('v102 recent calibration rejects post-result or non-issued history', async () => {
   const causal = {
     id: 'causal', table_id: 'BAG01', shoe_no: '100', round_no: 3,
-    strategy_version: 'v104', predicted_result: 'banker', actual_result: 'banker', is_hit: true,
+    strategy_version: 'v105', predicted_result: 'banker', actual_result: 'banker', is_hit: true,
     settlement_final: true, prediction_issued_at: '2026-07-18T08:02:00Z',
     prediction_features: { prediction_timing: 'pre_result_context' }, created_at: '2026-07-18T08:03:00Z',
   }

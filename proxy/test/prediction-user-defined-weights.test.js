@@ -15,7 +15,7 @@ const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Num
 const nonZero = (weights) => Object.fromEntries(Object.entries(weights).filter(([, value]) => Number(value) !== 0))
 
 test('uses only the user-defined main weights and ignores previous main weights', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v104')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v105')
   assert.ok(Math.abs(sum(ALL_MT_EQUAL_MAIN_WEIGHTS) - 1) < 1e-9)
   assert.deepEqual(nonZero(ALL_MT_EQUAL_MAIN_WEIGHTS), {
     roadmap_trend_signals: 0.35,

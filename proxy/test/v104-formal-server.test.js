@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createApp } from '../src/server.js'
-import { buildV104FormalPrediction } from '../src/v104-formal-strategy.js'
+import { buildV105FormalPrediction } from '../src/v105-formal-strategy.js'
 
 const table = {
   tableId: 'BAG01', shoe: '88', round: 19,
@@ -18,17 +18,17 @@ test('server routes formal issuance through v104 runtime and records only durabl
     async start() {},
     async buildPrediction(input) {
       built.push(structuredClone(input))
-      return buildV104FormalPrediction(input, [], {})
+      return buildV105FormalPrediction(input, [], {})
     },
     recordIssuance(prediction) { acknowledgements.push(structuredClone(prediction)) },
     recordSettlement() {},
-    snapshot() { return { strategyVersion: 'v104', status: 'ready' } },
+    snapshot() { return { strategyVersion: 'v105', status: 'ready' } },
   }
   const writer = {
     configured: true,
     async issuePrediction(candidate) {
       issued.push(structuredClone(candidate))
-      return { ...candidate, predictionId: 'formal-v104-20', issuedAt: '2026-07-21T01:00:01.000Z' }
+      return { ...candidate, predictionId: 'formal-v105-20', issuedAt: '2026-07-21T01:00:01.000Z' }
     },
     async readIssuedPrediction() { return null },
   }
@@ -46,10 +46,10 @@ test('server routes formal issuance through v104 runtime and records only durabl
 
   assert.equal(built.length, 1)
   assert.equal(issued.length, 1)
-  assert.equal(issued[0].strategyVersion, 'v104')
+  assert.equal(issued[0].strategyVersion, 'v105')
   assert.equal(issued[0].targetRound, 20)
   assert.equal(acknowledgements.length, 1)
-  assert.equal(acknowledgements[0].predictionId, 'formal-v104-20')
+  assert.equal(acknowledgements[0].predictionId, 'formal-v105-20')
 })
 
 test('server hydrates the v104 formal runtime before opening the listener', async () => {
@@ -62,10 +62,10 @@ test('server hydrates the v104 formal runtime before opening the listener', asyn
     supabaseClient: { configured: false },
     v104FormalRuntime: {
       async start() { started += 1 },
-      async buildPrediction(input) { return buildV104FormalPrediction(input, [], {}) },
+      async buildPrediction(input) { return buildV105FormalPrediction(input, [], {}) },
       recordIssuance() {},
       recordSettlement() {},
-      snapshot() { return { strategyVersion: 'v104', status: started ? 'ready' : 'initializing' } },
+      snapshot() { return { strategyVersion: 'v105', status: started ? 'ready' : 'initializing' } },
     },
   })
   await app.start()
@@ -80,7 +80,7 @@ test('server passes the configured formal hydration timeout to the v104 history 
   let observedTimeout
   const writer = {
     configured: true,
-    async getV104FormalHistory(options) { observedTimeout = options.requestTimeoutMs; return [] },
+    async getV105FormalHistory(options) { observedTimeout = options.requestTimeoutMs; return [] },
     async getRecentPredictionRows() { return [] },
   }
   const app = createApp({
@@ -106,13 +106,13 @@ test('cloud ingest withholds ACK until v104 Final settlement is durable and retu
   const gate = new Promise((resolve) => { releaseSettlement = resolve })
   const formalRuntime = {
     async start() {},
-    async buildPrediction(input) { return buildV104FormalPrediction(input, [], {}) },
+    async buildPrediction(input) { return buildV105FormalPrediction(input, [], {}) },
     recordIssuance() {}, recordSettlement() {},
-    snapshot() { return { strategyVersion: 'v104', status: 'ready' } },
+    snapshot() { return { strategyVersion: 'v105', status: 'ready' } },
   }
   const writer = {
     configured: true,
-    async issuePrediction(candidate) { return { ...candidate, predictionId: 'formal-v104-20', issuedAt: '2026-07-21T01:00:01.000Z' } },
+    async issuePrediction(candidate) { return { ...candidate, predictionId: 'formal-v105-20', issuedAt: '2026-07-21T01:00:01.000Z' } },
     async readIssuedPrediction() { return null },
     async persistRound() {
       settlementStarted()
@@ -131,8 +131,8 @@ test('cloud ingest withholds ACK until v104 Final settlement is durable and retu
   app.state.setTables([table])
   await new Promise((resolve) => setImmediate(resolve))
   await new Promise((resolve) => setImmediate(resolve))
-  const envelope = { protocolVersion: 'v104', timestamp: 1_000_000, sequence: 8, roundKeys: ['BAG01:88:20'], snapshot: {
-    buildVersion: '104', sessionId: 'worker-session', connected: true, authenticated: true,
+  const envelope = { protocolVersion: 'v105', timestamp: 1_000_000, sequence: 8, roundKeys: ['BAG01:88:20'], snapshot: {
+    buildVersion: '105', sessionId: 'worker-session', connected: true, authenticated: true,
     tables: [{ ...table, round: 20 }],
     rounds: [{ tableId: 'BAG01', shoe: 88, round: 20, winner: 'banker', rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9], sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary' }],
   } }
@@ -144,4 +144,36 @@ test('cloud ingest withholds ACK until v104 Final settlement is durable and retu
   const response = await responsePromise
   assert.equal(response.statusCode, 503)
   assert.equal(JSON.parse(response.body).accepted, false)
+})
+
+test('server links a durable Final settlement back to the original v105 prediction identity', async () => {
+  const settlements = []
+  const formalRuntime = {
+    async start() {},
+    async buildPrediction(input) { return buildV105FormalPrediction(input, [], {}) },
+    recordIssuance() {},
+    recordSettlement(row) { settlements.push(structuredClone(row)) },
+    snapshot() { return { strategyVersion: 'v105', status: 'ready' } },
+  }
+  const writer = {
+    configured: true,
+    async issuePrediction(candidate) { return { ...candidate, predictionId: 'formal-v105-20', issuedAt: '2026-07-21T01:00:01.000Z' } },
+    async readIssuedPrediction() { return null },
+    async persistRound() { return { prediction: { strategy_version: 'v105', predicted_result: 'banker', settlement_final: true } } },
+    async writeCloudCaptureStatus() {}, async writeCloudTableSnapshot() {}, async writeCloudRoundEvent() {},
+  }
+  const app = createApp({ autoConnect: false, ingestKey: 'worker-key', now: () => 1_000_000,
+    requireVerifiedStrategy: false, memberAuthRequired: false, supabaseClient: writer, v104FormalRuntime: formalRuntime })
+  app.state.setTables([table])
+  await new Promise((resolve) => setImmediate(resolve))
+  await new Promise((resolve) => setImmediate(resolve))
+  const envelope = { protocolVersion: 'v105', timestamp: 1_000_000, sequence: 9, roundKeys: ['BAG01:88:20'], snapshot: {
+    buildVersion: '105', sessionId: 'worker-session', connected: true, authenticated: true,
+    tables: [{ ...table, round: 20 }],
+    rounds: [{ tableId: 'BAG01', shoe: 88, round: 20, winner: 'banker', rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9], sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary' }],
+  } }
+  const response = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': 'worker-key', 'x-forwarded-proto': 'https' }, body: JSON.stringify(envelope) })
+  assert.equal(response.statusCode, 200)
+  assert.equal(settlements.length, 1)
+  assert.equal(settlements[0].predictionId, 'formal-v105-20')
 })

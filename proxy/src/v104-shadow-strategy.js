@@ -1,6 +1,7 @@
 import { isVerifiedFinalRoundAction } from '../../shared/real-card-validator.js'
 import { buildLivePrediction, deriveBaccaratRoundFacts } from './supabase-writer.js'
 import { V104_DIRECTION_WEIGHTS, V104_SHOE_BIAS } from './v104-main-contract.js'
+import { analyzeFiveRoadCycles } from './v105-road-cycle.js'
 
 export const V104_SHADOW_STRATEGY_VERSION = 'v104'
 export const V104_SHADOW_RELEASE_CANDIDATE = 'v104.0.0-shadow.1'
@@ -10,13 +11,14 @@ export const V104_SHADOW_SHOE_BIAS = V104_SHOE_BIAS
 const CALIBRATION_MINIMUM_SAMPLES = 20
 
 export function buildV104ShadowHistory(rows = [], { tableId = null, windowSize = 60, strategyVersion = V104_SHADOW_STRATEGY_VERSION } = {}) {
+  const allowedStrategies = new Set(Array.isArray(strategyVersion) ? strategyVersion : [strategyVersion])
   const eligible = rows.filter((row) => {
     const strategy = row?.strategy_version ?? row?.strategyVersion
     const timing = row?.prediction_timing ?? row?.predictionTiming
     const issuedAt = row?.prediction_issued_at ?? row?.predictionIssuedAt
     const final = row?.settlement_final ?? row?.settlementFinal
     const rowTableId = row?.table_id ?? row?.tableId
-    return strategy === strategyVersion
+    return allowedStrategies.has(strategy)
       && timing === 'pre_result_context'
       && Boolean(issuedAt)
       && final === true
@@ -106,6 +108,7 @@ export function calculateV104Direction({ tableIdentity = '', scoreSources = {}, 
 export function buildV104ShadowPrediction(table = {}, historyRows = [], issuanceContext = {}, {
   directionWeights = V104_SHADOW_DIRECTION_WEIGHTS,
   historyStrategyVersion = V104_SHADOW_STRATEGY_VERSION,
+  cyclePriority = false,
 } = {}) {
   const directionalHistory = buildV104ShadowHistory(historyRows, {
     tableId: table.tableId,
@@ -122,6 +125,8 @@ export function buildV104ShadowPrediction(table = {}, historyRows = [], issuance
     shoe_banker_player_bias: { banker: shoe.banker, player: shoe.player },
     neutral_reserve: neutralScore(),
   }
+  const roadCycles = cyclePriority ? analyzeFiveRoadCycles(table) : null
+  if (roadCycles?.main?.priorityEligible) scoreSources.roadmap_trend_signals = structuredClone(roadCycles.roadmapScore)
   const currentShoe = table.shoe == null ? null : String(table.shoe)
   const contextShoe = issuanceContext.priorShoe == null ? currentShoe : String(issuanceContext.priorShoe)
   const sameShoe = contextShoe === currentShoe
@@ -158,6 +163,7 @@ export function buildV104ShadowPrediction(table = {}, historyRows = [], issuance
     askRoadSuppressed: direction.askRoadSuppressed,
     lockRisk: direction.lockRisk,
     diagnostics: {
+      ...(cyclePriority ? { roadCycles } : {}),
       direction: {
         rawPredictedResult: direction.rawPredictedResult,
         rawScoreTotals: direction.rawScoreTotals,

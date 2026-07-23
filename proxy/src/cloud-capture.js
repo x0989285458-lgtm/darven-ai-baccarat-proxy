@@ -50,7 +50,7 @@ export function createCloudCaptureClient({ url, state, writer = null, v100Formal
         throw new Error(`Cloud capture worker failed: ${response?.status ?? 'unknown'} ${text}`)
       }
       const body = await response.json()
-      if (body?.buildVersion !== '104') throw new Error('version_mismatch: worker buildVersion must be 104')
+      if (body?.buildVersion !== '105') throw new Error('version_mismatch: worker buildVersion must be 105')
       const parsed = parseCloudCapturePayload(body)
       try {
         await applyCloudCapturePayload({ parsed, state, writer, v100Formal })

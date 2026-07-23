@@ -23,25 +23,25 @@ test('v104 formal runtime exposes the exact release identity, approved main weig
   assert.match(baselineSql, /v100[\s\S]*active/i)
   assert.match(latestOnlySql, /v104/)
   assert.match(rollbackSql, /status\s*=\s*'archived'[\s\S]*version\s*=\s*'v102'/i)
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v104')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v105')
   assert.deepEqual(buildFormalActiveStrategy().weights, { ...V104_DIRECTION_WEIGHTS })
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 30, superSix: 50, bankerPair: 50, playerPair: 50, bankerDragon: 40, playerDragon: 40,
   })
-  assert.equal(buildFormalActiveStrategy().version, 'v104')
+  assert.equal(buildFormalActiveStrategy().version, 'v105')
   assert.equal(buildFormalActiveStrategy().status, 'active')
   assert.deepEqual(buildFormalActiveStrategy().metrics.side_weights, Object.fromEntries(Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES).map(([key, value]) => [key, { ...value }])))
 
   const app = createApp({ autoConnect: false })
   const health = JSON.parse((await app.inject({ url: '/health' })).body)
-  assert.equal(health.buildVersion, 'v104')
+  assert.equal(health.buildVersion, 'v105')
 })
 
 test('v104 history derives tie display only from complete persisted v104 evidence and rejects predecessors', async () => {
   const requests = []
   const rows = [
     {
-      id: 'tie-action-miss', table_id: 'BAG01', shoe_no: '88', round_no: 13, strategy_version: 'v104',
+      id: 'tie-action-miss', table_id: 'BAG01', shoe_no: '88', round_no: 13, strategy_version: 'v105',
       predicted_result: 'banker', actual_result: 'banker', is_hit: true, settlement_final: true,
       side_hits: { tie: false }, prediction_features: { prediction_timing: 'pre_result_context', side_actions: { tie: true }, side_hits: { tie: false } },
     },
@@ -51,12 +51,12 @@ test('v104 history derives tie display only from complete persisted v104 evidenc
       side_hits: { tie: false }, prediction_features: { prediction_timing: 'pre_result_context', side_actions: { tie: false }, side_hits: { tie: false } },
     },
     {
-      id: 'tie-action', table_id: 'BAG01', shoe_no: '88', round_no: 12, strategy_version: 'v104',
+      id: 'tie-action', table_id: 'BAG01', shoe_no: '88', round_no: 12, strategy_version: 'v105',
       predicted_result: 'player', actual_result: 'tie', is_hit: false, settlement_final: true,
       side_hits: { tie: true }, prediction_features: { prediction_timing: 'pre_result_context', side_actions: { tie: true }, side_hits: { tie: true } },
     },
     {
-      id: 'tie-no-action', table_id: 'BAG01', shoe_no: '88', round_no: 11, strategy_version: 'v104',
+      id: 'tie-no-action', table_id: 'BAG01', shoe_no: '88', round_no: 11, strategy_version: 'v105',
       predicted_result: 'banker', actual_result: 'tie', is_hit: false, settlement_final: true,
       side_hits: { tie: false }, prediction_features: { prediction_timing: 'pre_result_context', side_actions: { tie: false }, side_hits: { tie: false } },
     },
@@ -72,7 +72,7 @@ test('v104 history derives tie display only from complete persisted v104 evidenc
   })
 
   const history = await client.getTableUiSettledPredictions({ tableId: 'BAG01', shoe: 88, limit: 10 })
-  assert.match(decodeURIComponent(requests[0]), /strategy_version=eq\.v104/)
+  assert.match(decodeURIComponent(requests[0]), /strategy_version=eq\.v105/)
   assert.deepEqual(history, [
     { round: 13, mainPredictedResult: 'banker', predictedResult: 'banker', actualResult: 'banker', isHit: true, result: 'hit' },
     { round: 12, mainPredictedResult: 'player', predictedResult: 'tie', actualResult: 'tie', isHit: true, result: 'hit' },
@@ -90,5 +90,5 @@ test('v104 recent calibration hydration queries only the current formal release'
 
   await client.getRecentPredictionRows({ limit: 18 })
 
-  assert.match(requestedUrl, /strategy_version=eq\.v104/)
+  assert.match(requestedUrl, /strategy_version=eq\.v105/)
 })

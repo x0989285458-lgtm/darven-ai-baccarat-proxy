@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { createApp } from '../src/server.js'
 import { buildLivePrediction } from '../src/supabase-writer.js'
 
-const strategyVersion = 'v104'
+const strategyVersion = 'v105'
 const issuedAt = '2026-07-17T01:00:00.000Z'
 
 function table(round) {

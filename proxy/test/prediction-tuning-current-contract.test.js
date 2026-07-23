@@ -13,7 +13,7 @@ const sum = (weights) => Object.values(weights).reduce((acc, value) => acc + Num
 const rankKeys = ['remaining_A', 'remaining_2', 'remaining_3', 'remaining_4', 'remaining_5', 'remaining_6', 'remaining_7', 'remaining_8', 'remaining_9', 'remaining_10', 'remaining_J', 'remaining_Q', 'remaining_K']
 
 test('uses Chinese version and requested side thresholds', () => {
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v104')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v105')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 30,
     superSix: 50,
@@ -72,7 +72,7 @@ test('prediction row records new Chinese version and thresholds remain active', 
     },
     { tableId: 'BAG75', shoe: 17001, round: 11, bankerCount: 12, playerCount: 8, tieCount: 1, beadPlateRaw: '01020202', bigRoadRaw: 'BBPBBP' },
   )
-  assert.equal(row.strategy_version, 'v104')
+  assert.equal(row.strategy_version, 'v105')
   assert.deepEqual(row.short_run_adjustment.sideActionRateTargets, {
     tie: 0.15,
     superSix: 0.1,

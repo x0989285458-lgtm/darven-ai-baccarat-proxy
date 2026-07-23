@@ -6,7 +6,7 @@ import { ALL_MT_EQUAL_STRATEGY_VERSION, buildFormalActiveStrategy } from '../src
 import { createApp } from '../src/server.js'
 
 const root = new URL('../../', import.meta.url)
-const manifestUrl = new URL('release/v104-formal-release-manifest.json', root)
+const manifestUrl = new URL('release/v105-formal-release-manifest.json', root)
 const frontendVersionUrl = new URL('frontend/src/lib/buildVersion.ts', root)
 const workerRuntimeUrl = new URL('cloud-browser-worker/src/runtime-config.js', root)
 const workerPusherUrl = new URL('cloud-browser-worker/src/snapshot-pusher.js', root)
@@ -26,26 +26,26 @@ test('v104 formal release manifest and every live component expose one coherent 
     candidateMode: manifest.candidateMode,
     formalActionsEnabled: manifest.formalActionsEnabled,
   }, {
-    productVersion: 'v104', frontendBuildVersion: 'v104', proxyBuildVersion: 'v104',
-    workerBuildVersion: '104', strategyVersion: 'v104', protocolVersion: 'v104',
-    monitorVersion: 'v104', candidateMode: 'formal', formalActionsEnabled: true,
+    productVersion: 'v105', frontendBuildVersion: 'v105', proxyBuildVersion: 'v105',
+    workerBuildVersion: '105', strategyVersion: 'v105', protocolVersion: 'v105',
+    monitorVersion: 'v105', candidateMode: 'formal', formalActionsEnabled: true,
   })
 
-  assert.equal(BUILD_VERSION, 'v104')
-  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v104')
-  assert.equal(buildFormalActiveStrategy().version, 'v104')
+  assert.equal(BUILD_VERSION, 'v105')
+  assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v105')
+  assert.equal(buildFormalActiveStrategy().version, 'v105')
   assert.equal(buildFormalActiveStrategy().status, 'active')
   const app = createApp({ autoConnect: false })
   const health = JSON.parse((await app.inject({ url: '/health' })).body)
-  assert.equal(health.buildVersion, 'v104')
+  assert.equal(health.buildVersion, 'v105')
 
   const frontend = readFileSync(frontendVersionUrl, 'utf8')
-  assert.match(frontend, /buildVersion:\s*'v104'/)
-  assert.match(frontend, /strategyVersion:\s*'v104'/)
+  assert.match(frontend, /buildVersion:\s*'v105'/)
+  assert.match(frontend, /strategyVersion:\s*'v105'/)
   const workerRuntime = readFileSync(workerRuntimeUrl, 'utf8')
-  assert.match(workerRuntime, /BUILD_VERSION\s*=\s*'104'/)
+  assert.match(workerRuntime, /BUILD_VERSION\s*=\s*'105'/)
   const pusher = readFileSync(workerPusherUrl, 'utf8')
-  assert.equal((pusher.match(/protocolVersion:\s*'v104'/g) ?? []).length >= 2, true)
+  assert.equal((pusher.match(/protocolVersion:\s*'v105'/g) ?? []).length >= 2, true)
   const docker = readFileSync(workerDockerUrl, 'utf8')
-  assert.match(docker, /org\.opencontainers\.image\.version="v104"/)
+  assert.match(docker, /org\.opencontainers\.image\.version="v105"/)
 })

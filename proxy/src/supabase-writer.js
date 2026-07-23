@@ -4,9 +4,9 @@ import { isVerifiedFinalRoundAction, normalizeExactRealCardEvent } from '../../s
 import { V104_DIRECTION_WEIGHTS, V104_SHOE_BIAS } from './v104-main-contract.js'
 
 const SOURCE = 'ofalive99'
-export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v104'
-export const V100_MAIN_SIGNAL_DEDUP_VERSION = 'v104_主預測防鎖邊正式版'
-export const V100_SIDE_DEDUP_VERSION = 'v104_副預測沿用v102正式規則'
+export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v105'
+export const V100_MAIN_SIGNAL_DEDUP_VERSION = 'v105_五路通用週期正式版'
+export const V100_SIDE_DEDUP_VERSION = 'v105_副預測沿用v104正式規則'
 export const V100_SIDE_SCORE_CALIBRATION_OFFSETS = Object.freeze({
   tie: -13.867936925098554,
   superSix: -1.8125,
@@ -2099,7 +2099,7 @@ export function createSupabaseIngestionClient({
         || !Number.isSafeInteger(round) || round < 1) {
         throw new Error('v102 durable rank event is invalid')
       }
-      const acknowledgement = await enqueueWrite(() => postRest('rpc/apply_v104_rank_ledger_event', {
+      const acknowledgement = await enqueueWrite(() => postRest('rpc/apply_v105_rank_ledger_event', {
         p_event: {
           source,
           table_id: tableId,
@@ -2149,7 +2149,7 @@ export function createSupabaseIngestionClient({
       if (!source || !tableId || !normalizedShoe || !Number.isSafeInteger(visibleRound) || visibleRound < 1) {
         throw new Error('prediction lifecycle reconciliation identity is incomplete')
       }
-      const acknowledgement = await enqueueWrite(() => postRest('rpc/reconcile_v104_prediction_lifecycle', {
+      const acknowledgement = await enqueueWrite(() => postRest('rpc/reconcile_v105_prediction_lifecycle', {
         p_source: String(source),
         p_table_id: String(tableId),
         p_current_shoe: normalizedShoe,
@@ -2179,7 +2179,7 @@ export function createSupabaseIngestionClient({
         || !row.strategy_version || !['banker', 'player'].includes(row.predicted_result)) {
         throw new Error('prediction issuance payload is incomplete')
       }
-      const acknowledgement = await enqueueWrite(() => postRest('rpc/issue_v104_prediction', { p_prediction: row }, undefined, { requireObject: true }))
+      const acknowledgement = await enqueueWrite(() => postRest('rpc/issue_v105_prediction', { p_prediction: row }, undefined, { requireObject: true }))
       const prediction = acknowledgement?.prediction
       if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
         || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at
@@ -2555,6 +2555,31 @@ export function createSupabaseIngestionClient({
           prediction_timing: row.prediction_features.prediction_timing,
         }))
     },
+    async getV105FormalHistory({ limit = 10000, requestTimeoutMs = 0 } = {}) {
+      const rows = await getRest('daily_prediction_results', {
+        select: 'id,source,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,prediction_issued_at,prediction_features,issued_prediction_payload,created_at',
+        strategy_version: 'in.(v104,v105)',
+        prediction_issued_at: 'not.is.null',
+        order: 'prediction_issued_at.desc',
+        limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
+      }, { requestTimeoutMs })
+      return (Array.isArray(rows) ? rows : [])
+        .filter((row) => ['v104', 'v105'].includes(row?.strategy_version)
+          && row?.prediction_features?.prediction_timing === 'pre_result_context'
+          && Boolean(row?.prediction_issued_at))
+        .map((row) => ({
+          ...row,
+          prediction_id: row.id,
+          prediction_timing: row.prediction_features.prediction_timing,
+          final_v105_predicted_result: row.strategy_version === 'v105' ? row.predicted_result : null,
+          predicted_result: row.strategy_version === 'v105'
+            ? (row.issued_prediction_payload?.baselineV104PredictedResult ?? row.predicted_result)
+            : row.predicted_result,
+          same_side_streak: row.strategy_version === 'v105'
+            ? (row.issued_prediction_payload?.baselineV104SameSideStreak ?? row.issued_prediction_payload?.sameSideStreak ?? null)
+            : (row.issued_prediction_payload?.sameSideStreak ?? null),
+        }))
+    },
     async getRecentPredictionRows({ limit = 10000 } = {}) {
       const rows = await getRest('daily_prediction_results', {
         select: 'id,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,side_hits,prediction_features,prediction_issued_at,created_at',
@@ -2700,7 +2725,7 @@ export function createSupabaseIngestionClient({
           throw new Error('prediction identity is required for production settlement')
         }
         const acknowledgement = hasPredictionIdentity
-          ? await postRest('rpc/settle_v104_prediction', {
+          ? await postRest('rpc/settle_v105_prediction', {
               p_roadmap: compactEvent,
               p_settlement: {
                 prediction_id: precomputedPrediction.predictionId,
@@ -2718,7 +2743,7 @@ export function createSupabaseIngestionClient({
                 side_hits: compactPrediction.prediction_features?.side_hits ?? {},
               },
             }, undefined, { requireObject: true })
-          : await postRest('rpc/persist_v104_settled_round', {
+          : await postRest('rpc/persist_v105_settled_round', {
               p_roadmap: compactEvent,
               p_prediction: compactPrediction,
             }, undefined, { requireObject: true })
@@ -2797,7 +2822,7 @@ export function createSupabaseIngestionClient({
         .filter(isFinalPredictionSettlement).length
     },
     async getPredictionLifecycleStats() {
-      const acknowledgement = await postRest('rpc/get_v104_prediction_lifecycle_stats', {}, undefined, { requireObject: true })
+      const acknowledgement = await postRest('rpc/get_v105_prediction_lifecycle_stats', {}, undefined, { requireObject: true })
       const stats = {
         activePending: Number(acknowledgement?.active_pending),
         settled: Number(acknowledgement?.settled),

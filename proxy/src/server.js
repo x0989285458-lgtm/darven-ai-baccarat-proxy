@@ -11,6 +11,7 @@ import { createRecentTablePerformanceStore } from './recent-table-performance.js
 import { createV100FormalRuntime, resolveV100FormalEnabled } from './v100-formal-runtime.js'
 import { createV103ShadowRuntime, resolveV103ShadowEnabled } from './v103-shadow-runtime.js'
 import { createV104FormalRuntime } from './v104-formal-runtime.js'
+import { createV105FormalRuntime } from './v105-formal-runtime.js'
 import { createV104ShadowRuntime, resolveV104ShadowEnabled } from './v104-shadow-runtime.js'
 import { createV104IterationShadowRuntime, resolveV104IterationShadowEnabled } from './v104-iteration-shadow-runtime.js'
 import { buildShadowAdminStatus } from './v104-iteration-shadow-report.js'
@@ -23,8 +24,8 @@ import { hasExactRealCardCodes, isExactTenRawResult, isVerifiedFinalRoundAction 
 
 const VERSION = BUILD_VERSION
 const SERVICE = 'Draven MT資料代理伺服器'
-const WORKER_PROTOCOL_BUILD_VERSION = '104'
-const WORKER_PROTOCOL_VERSION = 'v104'
+const WORKER_PROTOCOL_BUILD_VERSION = '105'
+const WORKER_PROTOCOL_VERSION = 'v105'
 const LIFECYCLE_IDENTITIES_PER_TABLE = 256
 const LIFECYCLE_SHOES_PER_TABLE = 64
 
@@ -125,9 +126,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   let v104Shadow = null
   let v104IterationShadow = null
   let v104IterationShadowAdminCache = { expiresAtMs: 0, state: null }
-  const v104Formal = v104FormalRuntime ?? (ALL_MT_EQUAL_STRATEGY_VERSION === 'v104'
-    ? createV104FormalRuntime({ writer: supabaseClient, requestTimeoutMs: Math.max(1000, Number(v104FormalRequestTimeoutMs) || 10000), allowUnconfigured: !requireVerifiedStrategy })
-    : null)
+  const v104Formal = v104FormalRuntime ?? (ALL_MT_EQUAL_STRATEGY_VERSION === 'v105'
+    ? createV105FormalRuntime({ writer: supabaseClient, requestTimeoutMs: Math.max(1000, Number(v104FormalRequestTimeoutMs) || 10000), allowUnconfigured: !requireVerifiedStrategy })
+    : ALL_MT_EQUAL_STRATEGY_VERSION === 'v104'
+      ? createV104FormalRuntime({ writer: supabaseClient, requestTimeoutMs: Math.max(1000, Number(v104FormalRequestTimeoutMs) || 10000), allowUnconfigured: !requireVerifiedStrategy })
+      : null)
   const actionablePredictionTtlMs = Math.max(1000, Number(predictionTtlMs) || 120000)
   const expiredPredictionKeyLimit = Math.max(1, Number(maxExpiredPredictionKeys) || 10000)
   const resolvedMemberSessionTtlMs = Math.min(30 * 60 * 1000, Math.max(60000, Number(memberSessionTtlMs) || 30 * 60 * 1000))
@@ -186,7 +189,10 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           const persisted = await supabaseClient.persistRound?.(round, table, precomputedPrediction)
           if (persisted?.prediction) {
             recentTablePerformance.record(persisted.prediction)
-            v104Formal?.recordSettlement?.(persisted.prediction)
+            v104Formal?.recordSettlement?.({
+              ...persisted.prediction,
+              predictionId: persisted.prediction.predictionId ?? persisted.prediction.prediction_id ?? persisted.prediction.id ?? precomputedPrediction.predictionId,
+            })
           }
           pendingPredictions.delete(pendingKey)
           state.setStatus({ persistenceStatus: 'ok', persistenceError: null })
