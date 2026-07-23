@@ -69,17 +69,42 @@ function rememberBounded(seen, order, value, limit) {
   while (order.length > limit) seen.delete(order.shift())
 }
 
-export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), v104FormalRequestTimeoutMs = Number(process.env.V104_FORMAL_REQUEST_TIMEOUT_MS ?? 10000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null, v104ShadowRuntime = null, v104IterationShadowRuntime = null, v104FormalRuntime = null } = {}) {
+export function resolveFrontendCorsOrigin(configuredOrigin, requestOrigin) {
+  const configured = String(configuredOrigin ?? '*').trim() || '*'
+  if (configured === '*') return '*'
+
+  const requested = String(requestOrigin ?? '').trim()
+  if (!requested) return configured
+
+  try {
+    const configuredUrl = new URL(configured)
+    const requestedUrl = new URL(requested)
+    if (requestedUrl.origin !== requested || requestedUrl.protocol !== 'https:') return configured
+    if (requestedUrl.origin === configuredUrl.origin) return requestedUrl.origin
+    if (configuredUrl.protocol !== 'https:' || !configuredUrl.hostname.endsWith('.pages.dev')) return configured
+
+    const previewSuffix = `.${configuredUrl.hostname}`
+    if (!requestedUrl.hostname.endsWith(previewSuffix)) return configured
+    const previewLabel = requestedUrl.hostname.slice(0, -previewSuffix.length)
+    if (!previewLabel || !/^[a-z0-9-]+$/i.test(previewLabel) || requestedUrl.port) return configured
+    return requestedUrl.origin
+  } catch {
+    return configured
+  }
+}
+
+export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), v104FormalRequestTimeoutMs = Number(process.env.V104_FORMAL_REQUEST_TIMEOUT_MS ?? 10000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient(), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null, v104ShadowRuntime = null, v104IterationShadowRuntime = null, v104FormalRuntime = null } = {}) {
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
     CAPTURE_SOURCE: requestedCaptureSource,
-    PUBLIC_FRONTEND_ORIGIN: frontendOrigin,
+    PUBLIC_FRONTEND_ORIGIN: configuredFrontendOrigin,
     CLOUD_BROWSER_URL: cloudBrowserUrl,
     CHROME_CAPTURE_URL: captureUrl,
     MT_TOKEN: token,
     AUTO_CONNECT: autoConnect === undefined ? process.env.AUTO_CONNECT : String(autoConnect),
     CLOUD_CAPTURE_POLL_MS: process.env.CLOUD_CAPTURE_POLL_MS,
   })
+  const frontendOrigin = configuredFrontendOrigin
   assertSecureCloudBrowserUrl(cloudBrowserUrl, { production, deployMode: deployConfig.deployMode })
   const shouldAutoConnect = autoConnect ?? deployConfig.autoConnect
   const strictRealCardRounds = process.env.REQUIRE_REAL_CARD_ROUNDS !== 'false'
@@ -252,6 +277,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
 
   async function handle(method, url, rawBody = '', headers = {}) {
     const requestUrl = new URL(url, 'http://127.0.0.1')
+    const frontendOrigin = resolveFrontendCorsOrigin(configuredFrontendOrigin, headers.origin)
     const pathname = requestUrl.pathname
     if (production && String(headers['x-forwarded-proto'] ?? '').toLowerCase() !== 'https') {
       return jsonResponse(426, { ok: false, error: 'HTTPS is required' }, frontendOrigin)
@@ -1029,21 +1055,22 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
 
   const server = http.createServer(async (req, res) => {
     const requestUrl = new URL(req.url ?? '/', 'http://127.0.0.1')
+    const requestFrontendOrigin = resolveFrontendCorsOrigin(configuredFrontendOrigin, req.headers.origin)
     if ((req.method ?? 'GET') === 'GET' && requestUrl.pathname === '/api/tables/stream') {
       if (production && String(req.headers['x-forwarded-proto'] ?? '').toLowerCase() !== 'https') {
-        const result = jsonResponse(426, { ok: false, error: 'HTTPS is required' }, frontendOrigin)
+        const result = jsonResponse(426, { ok: false, error: 'HTTPS is required' }, requestFrontendOrigin)
         res.writeHead(result.statusCode, result.headers)
         res.end(result.body)
         return
       }
       if (hasSensitiveAuthQuery(requestUrl)) {
-        const result = jsonResponse(400, { ok: false, error: 'session token is not allowed in query' }, frontendOrigin)
+        const result = jsonResponse(400, { ok: false, error: 'session token is not allowed in query' }, requestFrontendOrigin)
         res.writeHead(result.statusCode, result.headers)
         res.end(result.body)
         return
       }
       if (!await isMemberSessionAuthorized(req.headers)) {
-        const result = jsonResponse(401, { ok: false, error: 'member session is required' }, frontendOrigin)
+        const result = jsonResponse(401, { ok: false, error: 'member session is required' }, requestFrontendOrigin)
         res.writeHead(result.statusCode, result.headers)
         res.end(result.body)
         return
@@ -1054,7 +1081,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     try {
       rawBody = await readRequestBody(req)
     } catch (error) {
-      const result = jsonResponse(error?.statusCode ?? 400, { ok: false, error: error?.message ?? String(error) }, frontendOrigin)
+      const result = jsonResponse(error?.statusCode ?? 400, { ok: false, error: error?.message ?? String(error) }, requestFrontendOrigin)
       res.writeHead(result.statusCode, result.headers)
       res.end(result.body, () => req.destroy())
       return
@@ -1123,7 +1150,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       'pragma': 'no-cache',
       'connection': 'keep-alive',
       'x-accel-buffering': 'no',
-      'access-control-allow-origin': frontendOrigin,
+      'access-control-allow-origin': resolveFrontendCorsOrigin(configuredFrontendOrigin, headers.origin),
       'access-control-allow-methods': 'GET,POST,OPTIONS',
       'access-control-allow-headers': 'Content-Type,Authorization,X-Admin-Session-Token,X-Member-Session-Token,X-Control-Token',
     })

@@ -17,6 +17,31 @@ test('resolveDeployConfig enables cloud mode without local chrome dependency', (
   assert.equal(config.frontendOrigin, 'https://app.darvenai.example')
 })
 
+test('cloud API allows only canonical and same-project Cloudflare Pages preview origins', async () => {
+  const canonicalOrigin = 'https://darven-ai-baccarat.pages.dev'
+  const app = createApp({
+    autoConnect: false,
+    deployMode: 'cloud',
+    captureSource: 'cloud_browser',
+    frontendOrigin: canonicalOrigin,
+    supabaseClient: { configured: false },
+  })
+
+  const preview = await app.inject({
+    method: 'GET',
+    url: '/api/status',
+    headers: { origin: 'https://9b4df77a.darven-ai-baccarat.pages.dev' },
+  })
+  assert.equal(preview.headers['access-control-allow-origin'], 'https://9b4df77a.darven-ai-baccarat.pages.dev')
+
+  const unrelated = await app.inject({
+    method: 'GET',
+    url: '/api/status',
+    headers: { origin: 'https://attacker.pages.dev' },
+  })
+  assert.equal(unrelated.headers['access-control-allow-origin'], canonicalOrigin)
+})
+
 test('cloud mode auto-connects when AUTO_CONNECT is explicitly true', () => {
   const config = resolveDeployConfig({
     DEPLOY_MODE: 'cloud',
