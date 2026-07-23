@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { fetchTableUiHistory, getBackendPredictionIssue, LiveRoadClient, isLiveTableStale, TableUiHistoryError, type BackendSideActions, type BackendSidePredictions, type LiveTable, type SidePredictionKey, type TableUiHistory } from './lib/liveClient'
+import { backendPredictionReasonsFromTable, fetchTableUiHistory, getBackendPredictionIssue, LiveRoadClient, isLiveTableStale, TableUiHistoryError, type BackendSideActions, type BackendSidePredictions, type LiveTable, type SidePredictionKey, type TableUiHistory } from './lib/liveClient'
 import { type MainOutcome, type Prediction } from './lib/roadParser'
 import { buildDisplayedBigRoad } from './lib/realCardRoad'
 import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from './lib/supabaseClient'
@@ -45,6 +45,11 @@ function tableNumber(table: LiveTable, index: number) {
 function memberTableDisplayId(table: LiveTable) {
   const tableId = canonicalMemberTableId(table)
   return tableId === 'BAG03A' ? 'BAG04' : tableId
+}
+
+function formatPredictionReasonWeight(weight: number) {
+  const percent = Math.round(Number(weight) * 1000) / 10
+  return `${Number.isInteger(percent) ? percent.toFixed(0) : percent.toFixed(1)}%`
 }
 
 function backendPredictionFromTable(table?: LiveTable | null): Prediction | null {
@@ -141,6 +146,7 @@ export default function App() {
     tableUiHistory,
   ), [displaySelected?.trend.big2, displaySelected?.trend.current_round, selectedCanonicalId, selectedShoe, tableUiHistory])
   const prediction = useMemo(() => backendPredictionFromTable(displaySelected), [displaySelected])
+  const predictionReasons = useMemo(() => backendPredictionReasonsFromTable(displaySelected), [displaySelected])
   const bonusPredictions = useMemo(() => backendSidePredictionsFromTable(displaySelected), [displaySelected])
   const sideActions = useMemo(() => backendSideActionsFromTable(displaySelected), [displaySelected])
   const mainScorePercentages = useMemo(() => backendMainScorePercentagesFromTable(displaySelected), [displaySelected])
@@ -345,6 +351,18 @@ export default function App() {
               <PredictionMetric title="和" value={bonusPredictions?.tie == null ? null : Math.round(bonusPredictions.tie)} tone="Tie" active={predictionsActionable && (sideActions?.tie ?? false)} />
               <PredictionMetric title="莊" value={mainScorePercentages?.banker ?? null} tone="Banker" active={predictionsActionable && prediction.recommendation === 'Banker'} />
             </div>
+          : null}
+          {!predictionIssue && predictionReasons.length > 0 ?
+            <details className="prediction-reason-card centered" aria-label="預測原因">
+              <summary>
+                <span className="prediction-reason-title">預測原因</span>
+                <strong>{predictionReasons.map((reason) => reason.text).join('｜')}</strong>
+                <small>點擊查看完整訊號與權重</small>
+              </summary>
+              <div className="prediction-reason-details">
+                {predictionReasons.map((reason) => <span key={reason.key}>{reason.text.replace(/支持[莊閒]$/, '')} {formatPredictionReasonWeight(reason.weight)}</span>)}
+              </div>
+            </details>
           : null}
           {predictionIssue ? <strong className="status stale">{predictionIssue}，預測暫不可用，已停止出手</strong> : null}
         </section>

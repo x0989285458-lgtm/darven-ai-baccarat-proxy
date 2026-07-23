@@ -1,10 +1,32 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchTableUiHistory, LiveRoadClient, isLiveTableStale } from './liveClient'
+import { backendPredictionReasonsFromTable, fetchTableUiHistory, LiveRoadClient, isLiveTableStale } from './liveClient'
 
 describe('LiveRoadClient status messages', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
+  })
+
+  it('explains the formal prediction only from non-zero pre-result sources supporting the issued direction', () => {
+    const table = {
+      prediction: {
+        source: 'backend', strategyVersion: 'v104', predictedResult: 'banker', confidence: 48,
+        featureWeights: { shoe_banker_player_bias: 0.35, roadmap_trend_signals: 0.275, ask_road_signals: 0.275, neutral_reserve: 0.1 },
+        scoreSources: {
+          shoe_banker_player_bias: { banker: 0.58, player: 0.42 },
+          ask_road_signals: { banker: 0.56, player: 0.44 },
+          roadmap_trend_signals: { banker: 0.55, player: 0.45 },
+          neutral_reserve: { banker: 0.5, player: 0.5 },
+          recent_practical_calibration: { banker: 0.9, player: 0.1 },
+        },
+      },
+    }
+
+    expect(backendPredictionReasonsFromTable(table as any)).toEqual([
+      { key: 'shoe_banker_player_bias', text: '靴內莊閒偏態支持莊', weight: 0.35 },
+      { key: 'ask_road_signals', text: '問路訊號支持莊', weight: 0.275 },
+      { key: 'roadmap_trend_signals', text: '路單趨勢支持莊', weight: 0.275 },
+    ])
   })
 
   it('fetches one table ui-history with bearer auth and exposes 401/503 fail-closed status', async () => {

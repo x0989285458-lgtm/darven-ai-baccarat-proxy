@@ -36,7 +36,10 @@ export type LiveTable = {
 export type SidePredictionKey = 'tie' | 'superSix' | 'bankerPair' | 'playerPair' | 'bankerDragon' | 'playerDragon'
 export type BackendSidePredictions = Record<SidePredictionKey, number>
 export type BackendSideActions = Record<SidePredictionKey, boolean>
-export type BackendPrediction = { source?: string; predictionId?: string; issuedAt?: string; strategyVersion: string; buildVersion?: string; targetTableId?: string | number; targetShoe?: string | number; targetRound?: number; predictedResult: 'banker' | 'player'; recommendation?: string; confidence: number; probabilities?: { banker?: number; player?: number; tie?: number }; scoreTotals?: { banker?: number; player?: number }; sidePredictions?: BackendSidePredictions; sideActions?: BackendSideActions }
+export type MainPredictionReasonKey = 'shoe_banker_player_bias' | 'ask_road_signals' | 'roadmap_trend_signals'
+export type MainPredictionSourceScores = { banker?: number; player?: number }
+export type BackendPredictionReason = { key: MainPredictionReasonKey; text: string; weight: number }
+export type BackendPrediction = { source?: string; predictionId?: string; issuedAt?: string; strategyVersion: string; buildVersion?: string; targetTableId?: string | number; targetShoe?: string | number; targetRound?: number; predictedResult: 'banker' | 'player'; recommendation?: string; confidence: number; probabilities?: { banker?: number; player?: number; tie?: number }; scoreTotals?: { banker?: number; player?: number }; featureWeights?: Partial<Record<MainPredictionReasonKey | 'neutral_reserve', number>>; scoreSources?: Partial<Record<MainPredictionReasonKey | 'neutral_reserve' | 'recent_practical_calibration', MainPredictionSourceScores>>; sidePredictions?: BackendSidePredictions; sideActions?: BackendSideActions }
 export type SettledPrediction = { round: number; mainPredictedResult?: 'banker' | 'player'; predictedResult: 'banker' | 'player' | 'tie'; actualResult: 'banker' | 'player' | 'tie'; isHit: boolean; result?: 'hit' | 'miss' | 'uncalculated' }
 export type RealCardRound = { round: number; result: 'banker' | 'player' | 'tie'; bankerPoint: number; playerPoint: number }
 export type TableUiHistory = {
@@ -306,6 +309,32 @@ export function isLiveTableStale(table: Pick<LiveTable, 'sourceUpdatedAt'> | { s
   const timestamp = Date.parse(table.sourceUpdatedAt)
   if (!Number.isFinite(timestamp)) return true
   return now - timestamp > Math.max(1000, Number(maxAgeMs) || 120000)
+}
+
+export function backendPredictionReasonsFromTable(table?: Pick<LiveTable, 'prediction'> | null): BackendPredictionReason[] {
+  const prediction = table?.prediction
+  if (!prediction || !['banker', 'player'].includes(prediction.predictedResult)) return []
+
+  const direction = prediction.predictedResult
+  const opposite = direction === 'banker' ? 'player' : 'banker'
+  const directionLabel = direction === 'banker' ? '莊' : '閒'
+  const configs: Array<{ key: MainPredictionReasonKey; label: string }> = [
+    { key: 'shoe_banker_player_bias', label: '靴內莊閒偏態' },
+    { key: 'ask_road_signals', label: '問路訊號' },
+    { key: 'roadmap_trend_signals', label: '路單趨勢' },
+  ]
+
+  return configs.flatMap(({ key, label }) => {
+    const weight = Number(prediction.featureWeights?.[key])
+    const scores = prediction.scoreSources?.[key]
+    const supporting = Number(scores?.[direction])
+    const opposing = Number(scores?.[opposite])
+    if (!Number.isFinite(weight) || weight <= 0 || !Number.isFinite(supporting) || !Number.isFinite(opposing) || supporting <= opposing) return []
+    return [{ key, text: `${label}支持${directionLabel}`, weight, influence: (supporting - opposing) * weight }]
+  })
+    .sort((left, right) => right.influence - left.influence)
+    .slice(0, 3)
+    .map(({ influence: _influence, ...reason }) => reason)
 }
 
 export function getBackendPredictionIssue(table?: LiveTable | null, now = Date.now()): string | null {

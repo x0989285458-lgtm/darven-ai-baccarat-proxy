@@ -2315,6 +2315,84 @@ body,
 .member-dashboard .dashboard-middle-grid .ai-prediction-line { font-size: clamp(20px, 1.8vw, 27px); }
 .member-dashboard .dashboard-middle-grid .ai-confidence-line { font-size: clamp(15px, 1.25vw, 19px); }
 
+.member-dashboard .prediction-reason-card {
+  width: min(100%, 710px);
+  margin: 4px auto 0;
+  justify-self: center;
+  border: 1px solid rgba(222, 178, 78, .86);
+  border-radius: 10px;
+  background: linear-gradient(145deg, rgba(13, 38, 53, .98), rgba(7, 25, 38, .98));
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .2), inset 0 1px rgba(255, 220, 135, .08);
+  color: #e8eff0;
+  text-align: center;
+}
+
+.member-dashboard .prediction-reason-card summary {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 9px 14px 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.member-dashboard .prediction-reason-card summary::-webkit-details-marker { display: none; }
+
+.member-dashboard .prediction-reason-title {
+  display: inline-flex;
+  min-height: 25px;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 17px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #d7aa4f, #b9872d);
+  color: #071924;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.member-dashboard .prediction-reason-card summary strong {
+  max-width: 100%;
+  color: #edf3f3;
+  font-size: clamp(13px, 1vw, 16px);
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.member-dashboard .prediction-reason-card summary small {
+  color: #d6b76d;
+  font-size: 11px;
+}
+
+.member-dashboard .prediction-reason-card summary small::after {
+  content: '⌄';
+  display: inline-block;
+  margin-left: 5px;
+  transition: transform .18s ease;
+}
+
+.member-dashboard .prediction-reason-card[open] summary small::after { transform: rotate(180deg); }
+
+.member-dashboard .prediction-reason-details {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px 10px;
+}
+
+.member-dashboard .prediction-reason-details span {
+  padding: 4px 9px;
+  border: 1px solid rgba(211, 172, 82, .35);
+  border-radius: 999px;
+  background: rgba(4, 17, 27, .62);
+  color: #dce8e9;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .member-dashboard .dashboard-road-region {
   min-width: 0;
   min-height: 165px;
@@ -3203,8 +3281,8 @@ body,
 
 .member-dashboard .dashboard-middle-grid > .prediction-card,
 .member-dashboard .dashboard-middle-grid > .dashboard-history-panel {
-  height: 310px;
-  min-height: 310px;
+  height: 410px;
+  min-height: 410px;
   margin: 0;
   border: 1px solid rgba(191, 151, 80, .34);
   border-radius: 14px;

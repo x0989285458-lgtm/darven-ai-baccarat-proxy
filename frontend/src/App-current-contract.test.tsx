@@ -27,6 +27,13 @@ function table(overrides: Record<string, unknown> = {}) {
       predictedResult: 'banker',
       confidence: 61,
       probabilities: { banker: 61, player: 30, tie: 9 },
+      featureWeights: { shoe_banker_player_bias: 0.35, roadmap_trend_signals: 0.275, ask_road_signals: 0.275, neutral_reserve: 0.1 },
+      scoreSources: {
+        shoe_banker_player_bias: { banker: 0.58, player: 0.42 },
+        ask_road_signals: { banker: 0.56, player: 0.44 },
+        roadmap_trend_signals: { banker: 0.55, player: 0.45 },
+        neutral_reserve: { banker: 0.5, player: 0.5 },
+      },
       sidePredictions: { tie: 11, superSix: 22, bankerPair: 33, playerPair: 44, bankerDragon: 55, playerDragon: 66 },
       sideActions: { tie: false, superSix: false, bankerPair: false, playerPair: false, bankerDragon: true, playerDragon: false },
     },
@@ -67,6 +74,20 @@ describe('App prediction and session contract', () => {
     expect(Array.from(row.querySelectorAll('.probability-value')).map((node) => node.textContent)).toEqual(['66%', '44%', '22%', '33%', '55%'])
     expect(row.querySelector('[aria-label="和局預測"]')).toBeNull()
     expect(row.querySelectorAll('.prediction-metric.active')).toHaveLength(1)
+  })
+
+  it('renders the approved centered prediction-reason card below the main prediction with expandable formal weights', async () => {
+    stubBackend(table())
+    await renderMemberApp()
+
+    const mainRow = await screen.findByLabelText('莊閒預測機率')
+    const reasonCard = screen.getByLabelText('預測原因')
+    expect(reasonCard).toHaveClass('prediction-reason-card', 'centered')
+    expect(reasonCard).toHaveTextContent('靴內莊閒偏態支持莊｜問路訊號支持莊｜路單趨勢支持莊')
+    expect(mainRow.compareDocumentPosition(reasonCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(reasonCard).toHaveTextContent('靴內莊閒偏態 35%')
+    expect(reasonCard).toHaveTextContent('問路訊號 27.5%')
+    expect(reasonCard).toHaveTextContent('路單趨勢 27.5%')
   })
 
   it('clears every action and reports unavailable when buildVersion is not 098.23', async () => {
