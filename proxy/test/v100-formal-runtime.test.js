@@ -89,3 +89,40 @@ test('a restarted v100 runtime reads the exact durable shoe and fails rank close
   assert.equal(result.predictions[0].rankDataAvailable, false)
   assert.equal(result.predictions[0].side.diagnostics.rank.fallback, 'renormalize')
 })
+
+test('skips Final events already covered by the verified durable ledger and applies only the missing tail', async () => {
+  const applied = []
+  const writer = {
+    configured: true,
+    async readV100RankLedger() {
+      return durable({ completeThroughRound: 22, complete_through_round: 22, targetRound: 23, revision: 22 })
+    },
+    async applyV100RankLedgerEvent(event) {
+      applied.push(event.round)
+      return durable({ completeThroughRound: event.round, complete_through_round: event.round, targetRound: event.round + 1, revision: event.round })
+    },
+  }
+  const runtime = createV100FormalRuntime({ enabled: true, writer, source: 'mt-cloud' })
+  await runtime.processSnapshot({
+    tables: [{ ...table(), round: 23 }],
+    rounds: [21, 22, 23].map((number) => ({ ...round(), round: number })),
+  })
+  assert.deepEqual(applied, [23])
+})
+
+test('never skips a Final event from an invalid durable ledger even when its complete round is higher', async () => {
+  const applied = []
+  const writer = {
+    configured: true,
+    async readV100RankLedger() {
+      return durable({ status: 'invalid', rankDataAvailable: false, completeThroughRound: 22, complete_through_round: 22 })
+    },
+    async applyV100RankLedgerEvent(event) {
+      applied.push(event.round)
+      return durable({ completeThroughRound: event.round, complete_through_round: event.round })
+    },
+  }
+  const runtime = createV100FormalRuntime({ enabled: true, writer, source: 'mt-cloud' })
+  await runtime.processSnapshot({ tables: [{ ...table(), round: 21 }], rounds: [{ ...round(), round: 21 }] })
+  assert.deepEqual(applied, [21])
+})

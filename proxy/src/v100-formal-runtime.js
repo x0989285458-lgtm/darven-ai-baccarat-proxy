@@ -36,8 +36,15 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
     })
     for (const round of ordered) {
       const event = { ...round, source: round.source ?? source }
-      const ledger = await writer.applyV100RankLedgerEvent(event)
       const key = identityKey(event.source, event.tableId, event.shoe)
+      const currentLedger = ledgers.get(key)
+      const durableCompleteThrough = Number(currentLedger?.completeThroughRound ?? currentLedger?.complete_through_round)
+      const canSkipVerifiedFinal = currentLedger?.status === 'contiguous'
+        && currentLedger?.rankDataAvailable === true
+        && Number.isSafeInteger(durableCompleteThrough)
+        && durableCompleteThrough >= Number(event.round)
+      if (canSkipVerifiedFinal) continue
+      const ledger = await writer.applyV100RankLedgerEvent(event)
       loaded.add(key)
       ledgers.set(key, structuredClone(ledger))
     }
