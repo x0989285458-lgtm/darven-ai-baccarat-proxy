@@ -2123,7 +2123,8 @@ export function createSupabaseIngestionClient({
           revision: Number(acknowledgement?.revision) || 0,
         }
       }
-      if (Number(acknowledgement.complete_through_round) !== round) {
+      const acknowledgedRound = Number(acknowledgement.complete_through_round)
+      if (!Number.isSafeInteger(acknowledgedRound) || acknowledgedRound < round) {
         throw new Error('v100 durable rank ledger acknowledgement failed')
       }
       return normalizeV100DurableRankLedger({ ...acknowledgement, source, table_id: tableId, shoe_no: shoe }, { source, tableId, shoe })
