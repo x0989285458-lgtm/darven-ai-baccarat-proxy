@@ -2,6 +2,7 @@ import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 import { BUILD_VERSION } from './build-version.js'
 import { isVerifiedFinalRoundAction, normalizeExactRealCardEvent } from '../../shared/real-card-validator.js'
 import { V104_DIRECTION_WEIGHTS, V104_SHOE_BIAS } from './v104-main-contract.js'
+import { PRODUCTION_TABLE_IDS } from './cloud-capture.js'
 
 const SOURCE = 'ofalive99'
 export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v105'
@@ -2556,17 +2557,61 @@ export function createSupabaseIngestionClient({
         }))
     },
     async getV105FormalHistory({ limit = 10000, requestTimeoutMs = 0 } = {}) {
-      const rows = await getRest('daily_prediction_results', {
-        select: 'id,source,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,prediction_issued_at,created_at,prediction_timing:prediction_features->>prediction_timing,baseline_v104_predicted_result:issued_prediction_payload->>baselineV104PredictedResult,baseline_v104_same_side_streak:issued_prediction_payload->>baselineV104SameSideStreak,issued_same_side_streak:issued_prediction_payload->>sameSideStreak',
+      const projectedSelect = 'id,source,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,prediction_issued_at,created_at,prediction_timing:prediction_features->>prediction_timing,baseline_v104_predicted_result:issued_prediction_payload->>baselineV104PredictedResult,baseline_v104_same_side_streak:issued_prediction_payload->>baselineV104SameSideStreak,issued_same_side_streak:issued_prediction_payload->>sameSideStreak'
+      const fetchInBatches = async (fetcher) => {
+        const results = []
+        for (let index = 0; index < PRODUCTION_TABLE_IDS.length; index += 5) {
+          const batch = PRODUCTION_TABLE_IDS.slice(index, index + 5)
+          results.push(...await Promise.all(batch.map(fetcher)))
+        }
+        return results
+      }
+      const settledByTable = await fetchInBatches((tableId) => getRest('daily_prediction_results', {
+        select: projectedSelect,
         strategy_version: 'in.(v104,v105)',
+        table_id: `eq.${tableId}`,
+        prediction_issued_at: 'not.is.null',
+        settlement_final: 'eq.true',
+        order: 'prediction_issued_at.desc',
+        limit: '70',
+      }, { requestTimeoutMs }))
+      const latestStateByTable = await fetchInBatches((tableId) => getRest('daily_prediction_results', {
+        select: projectedSelect,
+        strategy_version: 'in.(v104,v105)',
+        table_id: `eq.${tableId}`,
         prediction_issued_at: 'not.is.null',
         order: 'prediction_issued_at.desc',
-        limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
-      }, { requestTimeoutMs })
-      return (Array.isArray(rows) ? rows : [])
+        limit: '1',
+      }, { requestTimeoutMs }))
+      const rowsByTable = PRODUCTION_TABLE_IDS.map((tableId, index) => {
+        const settledRows = settledByTable[index]
+        const latestStateRows = latestStateByTable[index]
+        const validSettledRows = (Array.isArray(settledRows) ? settledRows : []).filter((row) => (
+          String(row?.table_id ?? '') === tableId
+          && ['v104', 'v105'].includes(row?.strategy_version)
+          && row?.prediction_timing === 'pre_result_context'
+          && row?.settlement_final === true
+          && Boolean(row?.prediction_issued_at)
+        ))
+        if (validSettledRows.length < 60) throw new Error(`v105 formal hydration requires 60 settled rows for ${tableId}`)
+        const latestState = (Array.isArray(latestStateRows) ? latestStateRows : []).find((row) => (
+          String(row?.table_id ?? '') === tableId
+          && ['v104', 'v105'].includes(row?.strategy_version)
+          && row?.prediction_timing === 'pre_result_context'
+          && Boolean(row?.prediction_issued_at)
+        ))
+        if (!latestState) throw new Error(`v105 formal hydration requires latest issuance state for ${tableId}`)
+        return [...validSettledRows, latestState]
+      })
+      const rowsById = new Map()
+      for (const row of rowsByTable.flat()) {
+        if (row?.id != null) rowsById.set(String(row.id), { ...rowsById.get(String(row.id)), ...row })
+      }
+      return [...rowsById.values()]
         .filter((row) => ['v104', 'v105'].includes(row?.strategy_version)
           && row?.prediction_timing === 'pre_result_context'
           && Boolean(row?.prediction_issued_at))
+        .sort((left, right) => Date.parse(right.prediction_issued_at) - Date.parse(left.prediction_issued_at))
         .map((row) => ({
           ...row,
           prediction_id: row.id,
