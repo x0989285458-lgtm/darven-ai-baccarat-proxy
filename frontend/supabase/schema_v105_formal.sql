@@ -500,19 +500,7 @@ begin
   on conflict (source, table_id, shoe_no, round_no) do update
     set source = excluded.source
     where (to_jsonb(daily_roadmap_events) - 'id' - 'opened_at' - 'created_at' - 'updated_at' - 'remaining_rank_counts' - 'remaining_point_counts')
-      = (to_jsonb(excluded) - 'id' - 'opened_at' - 'created_at' - 'updated_at' - 'remaining_rank_counts' - 'remaining_point_counts')
-      and (
-        daily_roadmap_events.remaining_rank_counts = excluded.remaining_rank_counts
-        or excluded.remaining_rank_counts = '{}'::jsonb
-      )
-      and (
-        daily_roadmap_events.remaining_point_counts = excluded.remaining_point_counts
-        or not exists (
-          select 1
-          from jsonb_each(excluded.remaining_point_counts) as sparse_point(key, value)
-          where value <> 'null'::jsonb
-        )
-      );
+      = (to_jsonb(excluded) - 'id' - 'opened_at' - 'created_at' - 'updated_at' - 'remaining_rank_counts' - 'remaining_point_counts');
   get diagnostics roadmap_written = row_count;
   if roadmap_written <> 1 then raise exception 'conflicting existing roadmap settlement'; end if;
 

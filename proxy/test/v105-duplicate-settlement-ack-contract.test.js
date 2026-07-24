@@ -13,16 +13,14 @@ function roadmapConflictBlock(sql) {
   return sql.slice(conflictStart, diagnosticsStart)
 }
 
-test('v105 duplicate settlement accepts only sparse derived-count replay while still validating immutable roadmap evidence', () => {
+test('v105 duplicate settlement preserves first durable derived counts while still validating immutable roadmap evidence', () => {
   const sql = readFileSync(hotfixUrl, 'utf8')
   const roadmapInsert = sql.indexOf('insert into public.daily_roadmap_events')
   const duplicateAck = sql.indexOf("'duplicate', true")
   assert.ok(roadmapInsert >= 0, 'roadmap insert is required')
   assert.ok(duplicateAck > roadmapInsert, 'duplicate ACK must occur only after immutable roadmap compatibility is checked')
   assert.match(sql, /-\s*'remaining_rank_counts'\s*-\s*'remaining_point_counts'/i)
-  assert.match(sql, /excluded\.remaining_rank_counts\s*=\s*'\{\}'::jsonb/i)
-  assert.match(sql, /jsonb_each\(excluded\.remaining_point_counts\)/i)
-  assert.match(sql, /value\s*<>\s*'null'::jsonb/i)
+  assert.doesNotMatch(roadmapConflictBlock(sql), /daily_roadmap_events\.remaining_(?:rank|point)_counts\s*=\s*excluded/i)
   assert.match(sql, /raise exception 'conflicting existing roadmap settlement'/i)
   assert.match(sql, /revoke all on function public\.settle_v105_prediction\(jsonb, jsonb\) from public, anon, authenticated/i)
   assert.match(sql, /grant execute on function public\.settle_v105_prediction\(jsonb, jsonb\) to service_role/i)
