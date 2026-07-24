@@ -6,8 +6,8 @@ const repo = new URL('../../', import.meta.url)
 const read = (path) => readFileSync(new URL(path, repo), 'utf8')
 const manifest = JSON.parse(read('release/v105-formal-release-manifest.json'))
 
-test('formal.11 installs the recent-performance startup index before proxy cutover', () => {
-  assert.equal(manifest.releaseVersion, 'v105.0.0-formal.11')
+test('formal.12 installs the recent-performance startup index before proxy cutover', () => {
+  assert.equal(manifest.releaseVersion, 'v105.0.0-formal.12')
   assert.equal(manifest.databasePerformanceAdditive, 'frontend/supabase/migrate_v105_formal_recent_performance_index.sql')
   const memoryIndex = manifest.deploymentOrder.indexOf('database-memory-additive')
   const performanceIndex = manifest.deploymentOrder.indexOf('database-performance-additive')

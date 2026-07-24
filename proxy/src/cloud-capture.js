@@ -7,6 +7,22 @@ const DEFAULT_REQUEST_RETRIES = 2
 
 export const PRODUCTION_TABLE_IDS = Object.freeze(['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10'])
 const PRODUCTION_TABLE_ORDER = new Map(PRODUCTION_TABLE_IDS.map((tableId, index) => [tableId, index]))
+const settlementTailsByState = new WeakMap()
+
+function withTableSettlementTail(state, tableId, task) {
+  if (!state || (typeof state !== 'object' && typeof state !== 'function')) return Promise.resolve().then(task)
+  let tails = settlementTailsByState.get(state)
+  if (!tails) {
+    tails = new Map()
+    settlementTailsByState.set(state, tails)
+  }
+  const previous = tails.get(tableId) ?? Promise.resolve()
+  const current = previous.catch(() => {}).then(task)
+  tails.set(tableId, current)
+  return current.finally(() => {
+    if (tails.get(tableId) === current) tails.delete(tableId)
+  })
+}
 
 export function parseCloudCapturePayload(payload = {}, receivedAt = new Date().toISOString()) {
   const tables = selectProductionTables(normalizeCloudTables(payload.tables ?? payload.snapshot?.tables ?? []))
@@ -133,10 +149,27 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
   const formalTables = Array.isArray(v100Result?.tables) ? v100Result.tables : parsed.tables
   state?.setStatus?.(parsed.status)
   state?.setTables?.(formalTables)
+  const roundsByTable = new Map()
   for (const round of parsed.rounds) {
-    const settlement = await state?.upsertRoundEvent?.(round)
-    if (settlement?.ok === false) throw settlement.error ?? new Error('formal settlement failed before ingest acknowledgement')
+    const tableId = String(round?.tableId ?? '')
+    if (!roundsByTable.has(tableId)) roundsByTable.set(tableId, [])
+    roundsByTable.get(tableId).push(round)
   }
+  await Promise.all([...roundsByTable.entries()].map(([tableId, tableRounds]) => withTableSettlementTail(state, tableId, async () => {
+    const shoeOrder = new Map()
+    for (const round of tableRounds) {
+      const shoe = String(round?.shoe ?? '')
+      if (!shoeOrder.has(shoe)) shoeOrder.set(shoe, shoeOrder.size)
+    }
+    tableRounds.sort((left, right) => {
+      const shoeDelta = shoeOrder.get(String(left?.shoe ?? '')) - shoeOrder.get(String(right?.shoe ?? ''))
+      return shoeDelta || Number(left?.round) - Number(right?.round)
+    })
+    for (const round of tableRounds) {
+      const settlement = await state?.upsertRoundEvent?.(round)
+      if (settlement?.ok === false) throw settlement.error ?? new Error('formal settlement failed before ingest acknowledgement')
+    }
+  })))
   if (!writer?.configured) return { v100Formal: v100Result }
   const sessionId = parsed.sessionId ?? 'cloud-browser'
   await writer.writeCloudCaptureStatus?.({ sessionId, captureSource: 'cloud_browser', status: parsed.status })

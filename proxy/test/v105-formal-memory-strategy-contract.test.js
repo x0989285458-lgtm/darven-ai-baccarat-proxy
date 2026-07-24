@@ -9,7 +9,7 @@ test('formal strategy activation builds one stable compact memory version row', 
   assert.equal(typeof onlineCore.buildMemoryStrategyVersionRow, 'function', 'formal strategy memory row builder is not implemented')
 
   const row = onlineCore.buildMemoryStrategyVersionRow({
-    releaseVersion: 'v105.0.0-formal.11',
+    releaseVersion: 'v105.0.0-formal.12',
     strategyVersion: 'v105',
     name: '瑞文AI百家正式策略',
     status: 'active',
@@ -29,7 +29,7 @@ test('formal strategy activation builds one stable compact memory version row', 
   })
 
   assert.deepEqual(row, {
-    version: 'v105.0.0-formal.11',
+    version: 'v105.0.0-formal.12',
     name: '瑞文AI百家正式策略',
     status: 'active',
     main_weights: { 路單趨勢訊號: 0.275, 問路訊號: 0.275, 靴局莊閒偏差: 0.35, 中性保留: 0.1 },
@@ -63,7 +63,7 @@ test('online core upserts a repeated formal strategy version through the project
   assert.equal(typeof client.upsertStrategyVersion, 'function', 'formal strategy memory upsert is not implemented')
 
   const input = {
-    releaseVersion: 'v105.0.0-formal.11',
+    releaseVersion: 'v105.0.0-formal.12',
     strategyVersion: 'v105',
     name: '瑞文AI百家正式策略',
     status: 'active',
@@ -82,7 +82,7 @@ test('online core upserts a repeated formal strategy version through the project
   assert.ok(writes.every((request) => request.options.headers.Prefer === 'resolution=merge-duplicates,return=minimal'))
   assert.deepEqual(writes[0].body, writes[1].body)
   assert.equal(writes[0].body.project_id, 'project-1')
-  assert.equal(writes[0].body.version, 'v105.0.0-formal.11')
+  assert.equal(writes[0].body.version, 'v105.0.0-formal.12')
 })
 
 function jsonResponse(payload, status = 200) {

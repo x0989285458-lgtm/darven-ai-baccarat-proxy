@@ -2,7 +2,7 @@ import { buildLivePrediction } from './supabase-writer.js'
 import { buildV104ShadowPrediction } from './v104-shadow-strategy.js'
 
 export const V105_FORMAL_STRATEGY_VERSION = 'v105'
-export const V105_FORMAL_RELEASE_VERSION = 'v105.0.0-formal.11'
+export const V105_FORMAL_RELEASE_VERSION = 'v105.0.0-formal.12'
 
 export function buildV105FormalPrediction(table = {}, historyRows = [], issuanceContext = {}) {
   const baseline = buildV104ShadowPrediction(table, historyRows, issuanceContext, {

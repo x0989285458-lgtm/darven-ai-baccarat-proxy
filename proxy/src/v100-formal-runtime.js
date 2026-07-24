@@ -16,6 +16,16 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
   const ledgers = new Map()
   const loaded = new Set()
   const latest = new Map()
+  const identityTails = new Map()
+
+  function withIdentityTail(key, task) {
+    const previous = identityTails.get(key) ?? Promise.resolve()
+    const current = previous.catch(() => {}).then(task)
+    identityTails.set(key, current)
+    return current.finally(() => {
+      if (identityTails.get(key) === current) identityTails.delete(key)
+    })
+  }
 
   async function hydrateTable(table = {}) {
     const tableId = String(table.tableId ?? '')
@@ -28,15 +38,9 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
     if (ledger) ledgers.set(key, structuredClone(ledger))
   }
 
-  async function applyRounds(rounds = []) {
-    const ordered = [...rounds].sort((left, right) => {
-      const leftIdentity = identityKey(left.source ?? source, left.tableId, left.shoe)
-      const rightIdentity = identityKey(right.source ?? source, right.tableId, right.shoe)
-      return leftIdentity.localeCompare(rightIdentity) || Number(left.round) - Number(right.round)
-    })
-    for (const round of ordered) {
-      const event = { ...round, source: round.source ?? source }
-      const key = identityKey(event.source, event.tableId, event.shoe)
+  async function applyIdentityRounds(key, events = []) {
+    events.sort((left, right) => Number(left.round) - Number(right.round))
+    for (const event of events) {
       const currentLedger = ledgers.get(key)
       const durableCompleteThrough = Number(currentLedger?.completeThroughRound ?? currentLedger?.complete_through_round)
       const canSkipVerifiedFinal = currentLedger?.status === 'contiguous'
@@ -99,9 +103,31 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
       if (!writer?.configured || typeof writer.readV100RankLedger !== 'function' || typeof writer.applyV100RankLedgerEvent !== 'function') {
         throw new Error('v102 formal runtime requires a configured durable writer')
       }
-      for (const table of tables) await hydrateTable(table)
-      await applyRounds(rounds)
-      const predictions = tables.map(scoreTable).filter(Boolean)
+
+      const workByIdentity = new Map()
+      const workFor = (key) => {
+        if (!workByIdentity.has(key)) workByIdentity.set(key, { tables: [], events: [] })
+        return workByIdentity.get(key)
+      }
+      for (const table of tables) {
+        workFor(identityKey(source, table.tableId, table.shoe)).tables.push(table)
+      }
+      for (const round of rounds) {
+        const event = { ...round, source: round.source ?? source }
+        workFor(identityKey(event.source, event.tableId, event.shoe)).events.push(event)
+      }
+
+      const results = await Promise.allSettled([...workByIdentity.entries()].map(([key, work]) => (
+        withIdentityTail(key, async () => {
+          for (const table of work.tables) await hydrateTable(table)
+          await applyIdentityRounds(key, work.events)
+          return work.tables.map(scoreTable).filter(Boolean)
+        })
+      )))
+      const failure = results.find((result) => result.status === 'rejected')
+      if (failure) throw failure.reason
+
+      const predictions = results.flatMap((result) => result.value)
       const predictionByIdentity = new Map(predictions.map((prediction) => [
         identityKey(source, prediction.targetTableId, prediction.targetShoe),
         prediction,
