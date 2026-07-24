@@ -1,5 +1,5 @@
 {
-  "releaseVersion": "v105.0.0-formal.9",
+  "releaseVersion": "v105.0.0-formal.10",
   "packageVersion": "1.0.14",
   "productVersion": "v105",
   "frontendBuildVersion": "v105",
@@ -10,6 +10,29 @@
   "monitorVersion": "v105",
   "candidateMode": "formal",
   "formalActionsEnabled": true,
+  "memoryActivation": {
+    "handler": "proxy/src/formal-memory-activation.js",
+    "name": "瑞文AI百家正式策略",
+    "requires": {
+      "liveE2EPassed": true,
+      "verifiedTables": 10
+    },
+    "mainWeights": {
+      "路單趨勢訊號": 0.275,
+      "問路訊號": 0.275,
+      "靴局莊閒偏差": 0.35,
+      "中性保留": 0.1
+    },
+    "sideThresholds": {
+      "和": 30,
+      "超六": 50,
+      "莊對": 50,
+      "閒對": 50,
+      "莊龍寶": 40,
+      "閒龍寶": 40
+    },
+    "notes": "正式E2E通過後啟用"
+  },
   "mainStrategy": {
     "source": "v104.0.0-formal.2",
     "directionWeights": {
@@ -28,7 +51,11 @@
       "primaryRoad": "big-road",
       "primaryOverridesContinuation": true,
       "baselinePolicy": "immutable-v104-controlled-overlay",
-      "auxiliaryRoads": ["big-eye", "small-road", "cockroach"],
+      "auxiliaryRoads": [
+        "big-eye",
+        "small-road",
+        "cockroach"
+      ],
       "beadPlateRole": "chronology-reconstruction-and-big-road-validation-only",
       "minimumIndependentAgreements": 1,
       "maximumIndependentConflicts": 0,
@@ -52,11 +79,13 @@
   },
   "deploymentOrder": [
     "database-additive",
+    "database-memory-additive",
     "database-hotfix",
     "proxy",
     "worker",
     "frontend",
     "live-e2e",
+    "memory-activation",
     "v104-pending-drain-zero",
     "database-finalize"
   ],
@@ -65,5 +94,9 @@
   "databaseFinalize": "frontend/supabase/finalize_v105_cutover.sql",
   "rollbackScript": "frontend/supabase/rollback_v105_to_v104.sql",
   "rollbackTarget": "v104",
-  "rollbackRequires": ["v105-issuance-fenced", "v105-active-pending-zero"]
+  "rollbackRequires": [
+    "v105-issuance-fenced",
+    "v105-active-pending-zero"
+  ],
+  "databaseMemoryAdditive": "frontend/supabase/migrate_v105_formal_memory_daily_summary.sql"
 }

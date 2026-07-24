@@ -1,6 +1,7 @@
 import { Pool } from 'pg'
 import { writeLocalBacktestResult } from './local-backtest-store.js'
 import { buildStrategyAnalysis } from './strategy-analysis.js'
+import { createFormalDailySummaryLoader } from './formal-daily-memory-loader.js'
 
 const DEFAULT_PROJECT_SLUG = 'ai-baccarat'
 
@@ -14,6 +15,7 @@ export function createOnlineCoreClient({
   const dbConfigured = Boolean(dbConnectionString)
   const configured = restConfigured || dbConfigured
   const pool = dbConfigured ? new Pool({ connectionString: dbConnectionString, ssl: { rejectUnauthorized: false }, max: 2 }) : null
+  const loadDailySummaryFromDb = pool ? createFormalDailySummaryLoader({ db: pool }) : null
 
   async function request(path, { method = 'GET', body, query = {} } = {}) {
     if (!restConfigured) return { skipped: true, data: null, reason: 'Supabase REST credentials are not configured' }
@@ -95,6 +97,88 @@ export function createOnlineCoreClient({
     return { ok: true, row }
   }
 
+  async function upsertStrategyVersion(input = {}, slug = DEFAULT_PROJECT_SLUG) {
+    if (!configured) return { skipped: true, reason: 'Supabase online core is not configured' }
+    const project = await getProject(slug)
+    if (!project) throw new Error(`Project ${slug} not found`)
+    const row = { project_id: project.id, ...buildMemoryStrategyVersionRow(input) }
+    if (pool) {
+      await pool.query(
+        `insert into public.memory_strategy_versions(project_id, version, name, status, main_weights, side_thresholds, metrics, notes, activated_at)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         on conflict (project_id, version) do update set
+           name = excluded.name,
+           status = excluded.status,
+           main_weights = excluded.main_weights,
+           side_thresholds = excluded.side_thresholds,
+           metrics = excluded.metrics,
+           notes = excluded.notes,
+           activated_at = excluded.activated_at`,
+        [row.project_id, row.version, row.name, row.status, row.main_weights, row.side_thresholds, row.metrics, row.notes, row.activated_at],
+      )
+      return { ok: true, row }
+    }
+    await request('memory_strategy_versions', {
+      method: 'POST',
+      body: row,
+      query: { on_conflict: 'project_id,version' },
+    })
+    return { ok: true, row }
+  }
+
+  async function upsertDailySummary(summary = {}, slug = DEFAULT_PROJECT_SLUG) {
+    if (!configured) return { skipped: true, reason: 'Supabase online core is not configured' }
+    const project = await getProject(slug)
+    if (!project) throw new Error(`Project ${slug} not found`)
+    const row = buildFormalDailyMemoryReportRow(summary, project.id)
+    if (pool) {
+      await pool.query(
+        `insert into public.memory_test_reports(project_id, strategy_version, report_type, report_date, rounds, hits, misses, pushes, main_evaluated, main_hit_rate, side_actions, side_hits, side_hit_rate, report_path, raw_summary, metadata)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+         on conflict (project_id, strategy_version, report_type, report_date) do update set
+           rounds = excluded.rounds,
+           hits = excluded.hits,
+           misses = excluded.misses,
+           pushes = excluded.pushes,
+           main_evaluated = excluded.main_evaluated,
+           main_hit_rate = excluded.main_hit_rate,
+           side_actions = excluded.side_actions,
+           side_hits = excluded.side_hits,
+           side_hit_rate = excluded.side_hit_rate,
+           report_path = excluded.report_path,
+           raw_summary = excluded.raw_summary,
+           metadata = excluded.metadata,
+           updated_at = now()`,
+        [row.project_id, row.strategy_version, row.report_type, row.report_date, row.rounds, row.hits, row.misses, row.pushes, row.main_evaluated, row.main_hit_rate, row.side_actions, row.side_hits, row.side_hit_rate, row.report_path, row.raw_summary, row.metadata],
+      )
+      return { ok: true, row }
+    }
+    await request('memory_test_reports', {
+      method: 'POST',
+      body: row,
+      query: { on_conflict: 'project_id,strategy_version,report_type,report_date' },
+    })
+    return { ok: true, row }
+  }
+
+  async function upsertFormalReleaseReport(input = {}, slug = DEFAULT_PROJECT_SLUG) {
+    if (!configured) return { skipped: true, reason: 'Supabase online core is not configured' }
+    const project = await getProject(slug)
+    if (!project) throw new Error(`Project ${slug} not found`)
+    const row = buildFormalReleaseMemoryReportRow(input, project.id)
+    if (pool) {
+      await pool.query(
+        `insert into public.memory_test_reports(project_id, strategy_version, report_type, report_date, rounds, hits, misses, pushes, main_evaluated, main_hit_rate, side_actions, side_hits, side_hit_rate, report_path, raw_summary, metadata)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+         on conflict (project_id, strategy_version, report_type, report_date) do update set rounds=excluded.rounds, raw_summary=excluded.raw_summary, metadata=excluded.metadata, updated_at=now()`,
+        [row.project_id, row.strategy_version, row.report_type, row.report_date, row.rounds, row.hits, row.misses, row.pushes, row.main_evaluated, row.main_hit_rate, row.side_actions, row.side_hits, row.side_hit_rate, row.report_path, row.raw_summary, row.metadata],
+      )
+      return { ok: true, row }
+    }
+    await request('memory_test_reports', { method: 'POST', body: row, query: { on_conflict: 'project_id,strategy_version,report_type,report_date' } })
+    return { ok: true, row }
+  }
+
   async function getMemoryCenter(slug = DEFAULT_PROJECT_SLUG) {
     if (!configured) return { configured: false, connected: false, project: null, items: [], reports: [], strategies: [] }
     const project = await getProject(slug)
@@ -159,7 +243,94 @@ export function createOnlineCoreClient({
     return { configured: true, connected: true, project: center.project, ...buildStrategyAnalysis(center.reports ?? []) }
   }
 
-  return { configured, getProjectSummary, getMemoryCenter, getStrategyAnalysis, persistTestReport, updateAppSetting, updateFeatureFlag }
+  return { configured, getProjectSummary, getMemoryCenter, getStrategyAnalysis, persistTestReport, upsertStrategyVersion, upsertDailySummary, upsertFormalReleaseReport, loadDailySummary: loadDailySummaryFromDb, updateAppSetting, updateFeatureFlag }
+}
+
+export function buildMemoryStrategyVersionRow({
+  releaseVersion,
+  strategyVersion,
+  name = null,
+  status = 'draft',
+  mainWeights = {},
+  sideThresholds = {},
+  metrics = {},
+  notes = null,
+  activatedAt = null,
+} = {}) {
+  return {
+    version: String(releaseVersion ?? '').trim(),
+    name,
+    status,
+    main_weights: compactNumericMap(mainWeights),
+    side_thresholds: compactNumericMap(sideThresholds),
+    metrics: pruneEmpty({
+      strategyVersion: String(strategyVersion ?? '').trim() || null,
+      verifiedTables: numberOrNull(metrics.verifiedTables),
+      e2ePassed: typeof metrics.e2ePassed === 'boolean' ? metrics.e2ePassed : null,
+    }),
+    notes,
+    activated_at: activatedAt,
+  }
+}
+
+export function buildFormalDailyMemoryReportRow(summary = {}, projectId) {
+  const reportDate = String(summary.reportDate ?? '').trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) throw new Error('formal daily summary requires a YYYY-MM-DD report date')
+  if (String(summary.timezone ?? '') !== 'Asia/Taipei') throw new Error('formal daily summary timezone must be Asia/Taipei')
+  const strategyVersion = String(summary.strategyVersion ?? '')
+  if (strategyVersion !== 'v105') throw new Error('formal daily summary strategy version must be v105')
+  const categories = Object.fromEntries(['莊', '閒', '和', '龍寶', '對子', '超六'].map((name) => {
+    const value = summary.categories?.[name] ?? {}
+    return [name, {
+      hits: numberOrZero(value.hits),
+      total: numberOrZero(value.total),
+      rate: numberOrNull(value.rate),
+    }]
+  }))
+  return {
+    project_id: projectId,
+    strategy_version: strategyVersion,
+    report_type: 'formal_daily_summary',
+    report_date: reportDate,
+    rounds: numberOrZero(summary.rounds),
+    hits: numberOrZero(summary.hits),
+    misses: numberOrZero(summary.misses),
+    pushes: numberOrZero(summary.pushes),
+    main_evaluated: numberOrZero(summary.mainEvaluated),
+    main_hit_rate: numberOrNull(summary.mainHitRate),
+    side_actions: numberOrZero(summary.sideActions),
+    side_hits: numberOrZero(summary.sideHits),
+    side_hit_rate: numberOrNull(summary.sideHitRate),
+    report_path: null,
+    raw_summary: { date: reportDate, categories },
+    metadata: { timezone: 'Asia/Taipei', finalized: true },
+  }
+}
+
+export function buildFormalReleaseMemoryReportRow(input = {}, projectId) {
+  const completedAt = new Date(input.completedAt)
+  if (!Number.isFinite(completedAt.getTime())) throw new Error('formal release report requires a valid completion time')
+  if (input.passed !== true || Number(input.verifiedTables) !== 10) throw new Error('formal release report requires passed E2E across 10 tables')
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(completedAt).map(({ type, value }) => [type, value]))
+  const checks = Object.fromEntries(['proxy', 'database', 'queue', 'cursor', 'frontend'].flatMap((key) => typeof input.checks?.[key] === 'boolean' ? [[key, input.checks[key]]] : []))
+  return {
+    project_id: projectId,
+    strategy_version: String(input.strategyVersion ?? ''),
+    report_type: 'formal_release_e2e',
+    report_date: `${parts.year}-${parts.month}-${parts.day}`,
+    rounds: numberOrZero(input.finalRows),
+    hits: 0,
+    misses: 0,
+    pushes: 0,
+    main_evaluated: 0,
+    main_hit_rate: null,
+    side_actions: 0,
+    side_hits: 0,
+    side_hit_rate: null,
+    report_path: null,
+    raw_summary: { releaseVersion: String(input.releaseVersion ?? ''), verifiedTables: 10, checks },
+    metadata: { timezone: 'Asia/Taipei', finalized: true, e2ePassed: true },
+  }
 }
 
 export function buildMemoryReportRow(report = {}, projectId) {
@@ -284,6 +455,14 @@ function isBacktestReport(report = {}) {
   const type = String(report.reportType ?? report.report_type ?? report.rawSummary?.reportType ?? report.raw_summary?.report_type ?? '').toLowerCase()
   const metadataSource = String(report.metadata?.source ?? '').toLowerCase()
   return type.includes('backtest') || type.includes('grid') || metadataSource.includes('backtest') || metadataSource.includes('grid')
+}
+
+function compactNumericMap(value = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(Object.entries(value).flatMap(([key, item]) => {
+    const parsed = Number(item)
+    return Number.isFinite(parsed) ? [[key, parsed]] : []
+  }))
 }
 
 function numberOrZero(value) {

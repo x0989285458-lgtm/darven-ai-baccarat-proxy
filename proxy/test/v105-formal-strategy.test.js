@@ -13,7 +13,7 @@ const table = {
 
 test('publishes one formal v105 identity', () => {
   assert.equal(V105_FORMAL_STRATEGY_VERSION, 'v105')
-  assert.equal(V105_FORMAL_RELEASE_VERSION, 'v105.0.0-formal.9')
+  assert.equal(V105_FORMAL_RELEASE_VERSION, 'v105.0.0-formal.10')
 })
 
 test('prioritizes the completed generic big-road cycle over continuation in formal v105', () => {

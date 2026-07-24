@@ -1537,6 +1537,7 @@ CREATE TABLE public.memory_test_reports (
     project_id uuid NOT NULL,
     strategy_version text,
     report_type text DEFAULT 'live_test'::text NOT NULL,
+    report_date date,
     rounds integer DEFAULT 0 NOT NULL,
     hits integer DEFAULT 0 NOT NULL,
     misses integer DEFAULT 0 NOT NULL,
@@ -1549,7 +1550,8 @@ CREATE TABLE public.memory_test_reports (
     report_path text,
     raw_summary jsonb DEFAULT '{}'::jsonb NOT NULL,
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -2409,6 +2411,13 @@ CREATE INDEX idx_memory_reports_project_created ON public.memory_test_reports US
 --
 
 CREATE INDEX idx_memory_reports_strategy ON public.memory_test_reports USING btree (project_id, strategy_version);
+
+
+--
+-- Name: memory_test_reports_project_strategy_type_date_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX memory_test_reports_project_strategy_type_date_key ON public.memory_test_reports USING btree (project_id, strategy_version, report_type, report_date);
 
 
 --

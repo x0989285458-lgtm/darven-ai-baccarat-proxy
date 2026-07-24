@@ -22,7 +22,7 @@ test('v104 release manifest and runtime share one formal identity', () => {
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 30, superSix: 50, bankerPair: 50, playerPair: 50, bankerDragon: 40, playerDragon: 40,
   })
-  assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'database-hotfix', 'proxy', 'worker', 'frontend', 'live-e2e', 'v104-pending-drain-zero', 'database-finalize'])
+  assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'database-memory-additive', 'database-hotfix', 'proxy', 'worker', 'frontend', 'live-e2e', 'memory-activation', 'v104-pending-drain-zero', 'database-finalize'])
   assert.equal(manifest.rollbackTarget, 'v104')
   assert.deepEqual(manifest.rollbackRequires, ['v105-issuance-fenced', 'v105-active-pending-zero'])
 })
