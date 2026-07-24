@@ -6,9 +6,9 @@ import { SIDE_PREDICTION_THRESHOLDS } from '../src/supabase-writer.js'
 
 const manifest = JSON.parse(readFileSync(new URL('../../release/v105-formal-release-manifest.json', import.meta.url), 'utf8'))
 
-test('formal.10 manifest activates memory only after live E2E with the exact formal parameters', () => {
-  assert.equal(manifest.releaseVersion, 'v105.0.0-formal.10')
-  assert.equal(V105_FORMAL_RELEASE_VERSION, 'v105.0.0-formal.10')
+test('formal.11 manifest activates memory only after live E2E with the exact formal parameters', () => {
+  assert.equal(manifest.releaseVersion, 'v105.0.0-formal.11')
+  assert.equal(V105_FORMAL_RELEASE_VERSION, 'v105.0.0-formal.11')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 30,
     superSix: 50,

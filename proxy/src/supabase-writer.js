@@ -2626,16 +2626,28 @@ export function createSupabaseIngestionClient({
         }))
     },
     async getRecentPredictionRows({ limit = 10000 } = {}) {
-      const rows = await getRest('daily_prediction_results', {
-        select: 'id,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,side_hits,prediction_features,prediction_issued_at,created_at',
-        settlement_final: 'eq.true',
-        strategy_version: `eq.${ALL_MT_EQUAL_STRATEGY_VERSION}`,
-        order: 'created_at.desc',
-        limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
-      })
-      return (Array.isArray(rows) ? rows : [])
+      const perTableLimit = Math.min(60, Math.max(1, Number(limit) || 60))
+      const projectedSelect = 'id,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,prediction_issued_at,created_at,prediction_timing:prediction_features->>prediction_timing'
+      const rowsByTable = []
+      for (let index = 0; index < PRODUCTION_TABLE_IDS.length; index += 2) {
+        const batch = PRODUCTION_TABLE_IDS.slice(index, index + 2)
+        rowsByTable.push(...await Promise.all(batch.map(async (tableId) => {
+          const rows = await getRest('daily_prediction_results', {
+            select: projectedSelect,
+            table_id: `eq.${tableId}`,
+            settlement_final: 'eq.true',
+            strategy_version: `eq.${ALL_MT_EQUAL_STRATEGY_VERSION}`,
+            prediction_issued_at: 'not.is.null',
+            order: 'created_at.desc',
+            limit: String(perTableLimit),
+          })
+          return (Array.isArray(rows) ? rows : [])
+            .filter((row) => String(row?.table_id ?? '') === tableId)
+        })))
+      }
+      return rowsByTable.flat()
         .filter((row) => row?.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION)
-        .filter((row) => row?.prediction_features?.prediction_timing === 'pre_result_context')
+        .filter((row) => (row?.prediction_timing ?? row?.prediction_features?.prediction_timing) === 'pre_result_context')
         .filter((row) => Boolean(row?.prediction_issued_at))
         .filter(isFinalPredictionSettlement)
     },

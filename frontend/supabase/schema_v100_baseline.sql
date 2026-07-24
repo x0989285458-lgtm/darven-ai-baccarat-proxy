@@ -2190,6 +2190,13 @@ CREATE INDEX daily_prediction_results_created_idx ON public.daily_prediction_res
 
 
 --
+-- Name: daily_prediction_results_v105_recent_table_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX daily_prediction_results_v105_recent_table_idx ON public.daily_prediction_results USING btree (strategy_version, table_id, created_at DESC) WHERE ((settlement_final IS TRUE) AND (prediction_issued_at IS NOT NULL));
+
+
+--
 -- Name: daily_prediction_results_hit_idx; Type: INDEX; Schema: public; Owner: -
 --
 

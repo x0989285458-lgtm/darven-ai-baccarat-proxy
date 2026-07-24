@@ -1,5 +1,5 @@
 {
-  "releaseVersion": "v105.0.0-formal.10",
+  "releaseVersion": "v105.0.0-formal.11",
   "packageVersion": "1.0.14",
   "productVersion": "v105",
   "frontendBuildVersion": "v105",
@@ -80,6 +80,7 @@
   "deploymentOrder": [
     "database-additive",
     "database-memory-additive",
+    "database-performance-additive",
     "database-hotfix",
     "proxy",
     "worker",
@@ -98,5 +99,6 @@
     "v105-issuance-fenced",
     "v105-active-pending-zero"
   ],
-  "databaseMemoryAdditive": "frontend/supabase/migrate_v105_formal_memory_daily_summary.sql"
+  "databaseMemoryAdditive": "frontend/supabase/migrate_v105_formal_memory_daily_summary.sql",
+  "databasePerformanceAdditive": "frontend/supabase/migrate_v105_formal_recent_performance_index.sql"
 }

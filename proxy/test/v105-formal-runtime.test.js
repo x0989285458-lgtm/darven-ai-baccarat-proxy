@@ -86,3 +86,33 @@ test('v105 history reader requires 60 Final rows and the latest issuance state i
   assert.equal(latest.predicted_result, 'player')
   assert.equal(latest.same_side_streak, 3)
 })
+
+
+test('recent performance startup hydration fetches only 60 compact Finals per formal table', async () => {
+  const requested = []
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    fetchImpl: async (url) => {
+      const request = new URL(url)
+      requested.push(request)
+      const tableId = request.searchParams.get('table_id')?.replace(/^eq\./, '')
+      return response([{
+        id: `${tableId}-final`, table_id: tableId, shoe_no: '1', round_no: 1,
+        strategy_version: 'v105', predicted_result: 'banker', actual_result: 'banker',
+        settlement_final: true, prediction_timing: 'pre_result_context',
+        prediction_issued_at: '2026-07-24T00:00:00.000Z', created_at: '2026-07-24T00:01:00.000Z',
+      }])
+    },
+  })
+
+  const rows = await client.getRecentPredictionRows({ limit: 10000 })
+
+  assert.equal(requested.length, PRODUCTION_TABLE_IDS.length)
+  assert.equal(rows.length, PRODUCTION_TABLE_IDS.length)
+  assert.ok(requested.every((request) => request.searchParams.get('limit') === '60'))
+  assert.deepEqual(new Set(requested.map((request) => request.searchParams.get('table_id')?.replace(/^eq\./, ''))), new Set(PRODUCTION_TABLE_IDS))
+  assert.ok(requested.every((request) => request.searchParams.get('settlement_final') === 'eq.true'))
+  assert.ok(requested.every((request) => request.searchParams.get('strategy_version') === 'eq.v105'))
+  assert.ok(requested.every((request) => request.searchParams.get('select')?.includes('prediction_timing:prediction_features->>prediction_timing')))
+  assert.ok(requested.every((request) => !request.searchParams.get('select')?.includes(',prediction_features,')))
+})
