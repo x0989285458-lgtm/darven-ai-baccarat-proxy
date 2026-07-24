@@ -1192,9 +1192,6 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     state,
     server,
     async start() {
-      if (v103Shadow?.enabled === true && typeof v103Shadow.start === 'function') void v103Shadow.start().catch(() => {})
-      if (v104Shadow?.enabled === true && typeof v104Shadow.start === 'function') void v104Shadow.start().catch(() => {})
-      if (v104IterationShadow?.enabled === true && typeof v104IterationShadow.start === 'function') void v104IterationShadow.start().catch(() => {})
       if (requireVerifiedStrategy && supabaseClient?.configured === true && typeof supabaseClient.ensureInitialStrategy === 'function') {
         try {
           await supabaseClient.ensureInitialStrategy()
@@ -1222,7 +1219,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         else if (captureUrl) chromeClient.start()
         else mtClient.connect()
       }
-      return new Promise((resolve) => server.listen(port, listenHost, () => resolve(server)))
+      const listeningServer = await new Promise((resolve) => server.listen(port, listenHost, () => resolve(server)))
+      if (v103Shadow?.enabled === true && typeof v103Shadow.start === 'function') void v103Shadow.start().catch(() => {})
+      if (v104Shadow?.enabled === true && typeof v104Shadow.start === 'function') void v104Shadow.start().catch(() => {})
+      if (v104IterationShadow?.enabled === true && typeof v104IterationShadow.start === 'function') void v104IterationShadow.start().catch(() => {})
+      return listeningServer
     },
     stop() {
       mtClient.stop()

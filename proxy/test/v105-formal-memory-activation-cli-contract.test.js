@@ -23,8 +23,8 @@ test('memory activation CLI accepts only clean E2E evidence for the exact manife
   const files = new Map([
     ['manifest.json', JSON.stringify(manifest)],
     ['mismatch.json', JSON.stringify({ releaseVersion: 'v105.0.0-formal.9', passed: true, verifiedTables: 10, completedAt: '2026-07-24T12:00:00.000Z' })],
-    ['secret.json', JSON.stringify({ releaseVersion: 'v105.0.0-formal.12', passed: true, verifiedTables: 10, completedAt: '2026-07-24T12:00:00.000Z', token: 'must-not-be-accepted' })],
-    ['passed.json', JSON.stringify({ releaseVersion: 'v105.0.0-formal.12', passed: true, verifiedTables: 10, completedAt: '2026-07-24T12:00:00.000Z', finalRows: 917, checks: { proxy: true, database: true, queue: true, cursor: true, frontend: true } })],
+    ['secret.json', JSON.stringify({ releaseVersion: 'v105.0.0-formal.13', passed: true, verifiedTables: 10, completedAt: '2026-07-24T12:00:00.000Z', token: 'must-not-be-accepted' })],
+    ['passed.json', JSON.stringify({ releaseVersion: 'v105.0.0-formal.13', passed: true, verifiedTables: 10, completedAt: '2026-07-24T12:00:00.000Z', finalRows: 917, checks: { proxy: true, database: true, queue: true, cursor: true, frontend: true } })],
   ])
   const readFileImpl = async (path) => {
     if (!files.has(path)) throw new Error(`missing evidence file: ${path}`)
@@ -47,9 +47,9 @@ test('memory activation CLI accepts only clean E2E evidence for the exact manife
   assert.equal(result.ok, true)
   assert.equal(strategyWrites.length, 1)
   assert.equal(reportWrites.length, 1)
-  assert.equal(strategyWrites[0].releaseVersion, 'v105.0.0-formal.12')
+  assert.equal(strategyWrites[0].releaseVersion, 'v105.0.0-formal.13')
   assert.deepEqual(strategyWrites[0].metrics, { verifiedTables: 10, e2ePassed: true })
-  assert.equal(reportWrites[0].releaseVersion, 'v105.0.0-formal.12')
+  assert.equal(reportWrites[0].releaseVersion, 'v105.0.0-formal.13')
   assert.equal(reportWrites[0].strategyVersion, 'v105')
   assert.equal(reportWrites[0].finalRows, 917)
 })
@@ -57,7 +57,7 @@ test('memory activation CLI accepts only clean E2E evidence for the exact manife
 
 test('memory activation CLI rejects non-durable strategy or release-report writes', async () => {
   const readFileImpl = async (path) => JSON.stringify(path === 'manifest.json' ? manifest : {
-    releaseVersion: 'v105.0.0-formal.12',
+    releaseVersion: 'v105.0.0-formal.13',
     passed: true,
     verifiedTables: 10,
     completedAt: '2026-07-24T12:00:00.000Z',
