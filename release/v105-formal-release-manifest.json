@@ -1,5 +1,5 @@
 {
-  "releaseVersion": "v105.0.0-formal.7",
+  "releaseVersion": "v105.0.0-formal.8",
   "packageVersion": "1.0.14",
   "productVersion": "v105",
   "frontendBuildVersion": "v105",
@@ -52,6 +52,7 @@
   },
   "deploymentOrder": [
     "database-additive",
+    "database-hotfix",
     "proxy",
     "worker",
     "frontend",
@@ -60,6 +61,7 @@
     "database-finalize"
   ],
   "databaseAdditive": "frontend/supabase/schema_v105_formal.sql",
+  "databaseHotfix": "frontend/supabase/hotfix_v105_duplicate_settlement_ack.sql",
   "databaseFinalize": "frontend/supabase/finalize_v105_cutover.sql",
   "rollbackScript": "frontend/supabase/rollback_v105_to_v104.sql",
   "rollbackTarget": "v104",
