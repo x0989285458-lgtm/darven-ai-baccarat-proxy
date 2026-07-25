@@ -116,6 +116,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const pendingPredictions = new Map()
   const preparingPredictionPromises = new Map()
   const issuingPredictionPromises = new Map()
+  const readingIssuedPredictionPromises = new Map()
+  const issuedPredictionReadRetryAt = new Map()
   const expiredPredictionKeys = new Set()
   const settlingPredictionPromises = new Map()
   const lifecycleGuardsByTable = new Map()
@@ -476,6 +478,18 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         return await withIngestSessionLock(sessionId, async () => {
           const previous = ingestSequences.get(sessionId)
           if (previous != null && envelope.sequence <= previous.sequence) {
+            if (envelope.sequence === previous.sequence) {
+              const accepted = new Set(previous.ack?.acceptedRoundKeys ?? [])
+              if (!validatedRoundKeys.every((roundKey) => accepted.has(roundKey))) {
+                return jsonResponse(409, { ok: false, accepted: false, error: 'sequence_payload_conflict' }, frontendOrigin)
+              }
+              return jsonResponse(200, {
+                ...previous.ack,
+                duplicate: true,
+                sequence: envelope.sequence,
+                acceptedRoundKeys: validatedRoundKeys,
+              }, frontendOrigin)
+            }
             return jsonResponse(200, { ...previous.ack, duplicate: true, sequence: envelope.sequence }, frontendOrigin)
           }
           const parsed = parseCloudCapturePayload(envelope.snapshot)
@@ -914,12 +928,58 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     return issuance
   }
 
+  function rememberIssuedPredictionReadBackoff(key) {
+    issuedPredictionReadRetryAt.set(key, now() + 2000)
+    while (issuedPredictionReadRetryAt.size > 1000) {
+      issuedPredictionReadRetryAt.delete(issuedPredictionReadRetryAt.keys().next().value)
+    }
+  }
+
+  function startIssuedPredictionRead(table, targetRound, key, durableIssuanceRequired) {
+    if (readingIssuedPredictionPromises.has(key)) return readingIssuedPredictionPromises.get(key)
+    const retryAt = Number(issuedPredictionReadRetryAt.get(key) ?? 0)
+    if (retryAt > now()) return Promise.resolve(null)
+    issuedPredictionReadRetryAt.delete(key)
+    if (typeof supabaseClient?.readIssuedPrediction !== 'function') return Promise.resolve(null)
+    const read = Promise.resolve()
+      .then(() => supabaseClient.readIssuedPrediction({
+        tableId: table.tableId,
+        shoe: table.shoe,
+        round: targetRound,
+        strategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION,
+      }))
+      .then((candidate) => {
+        if (!isExactScreenPrediction(candidate, table, targetRound, durableIssuanceRequired)) {
+          rememberIssuedPredictionReadBackoff(key)
+          return null
+        }
+        issuedPredictionReadRetryAt.delete(key)
+        const exact = deepFreeze(structuredClone({
+          ...candidate,
+          createdAtMs: Number(candidate.createdAtMs ?? Date.parse(candidate.issuedAt)) || now(),
+        }))
+        pendingPredictions.set(key, exact)
+        return exact
+      })
+      .catch((error) => {
+        rememberIssuedPredictionReadBackoff(key)
+        state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+        return null
+      })
+      .finally(() => readingIssuedPredictionPromises.delete(key))
+    readingIssuedPredictionPromises.set(key, read)
+    return read
+  }
+
   async function withLivePrediction(table, actionable = true) {
     if (!actionable || table?.tableId == null || table?.shoe == null || table?.round == null) {
       return { ...table, buildVersion: BUILD_VERSION, prediction: null }
     }
 
-    await savePendingPrediction(table)
+    await Promise.race([
+      savePendingPrediction(table),
+      new Promise((resolve) => setTimeout(() => resolve(null), 25)),
+    ])
     const targetRound = Number(table.round)
     const key = predictionTargetKey(table.tableId, table.shoe, targetRound)
     const durableIssuanceRequired = isDurablePredictionIssuanceRequired()
@@ -929,20 +989,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       rememberExpiredPredictionKey(key)
       exact = null
     }
-    if (!exact && issuingPredictionPromises.has(key)) exact = await issuingPredictionPromises.get(key)
-    if (!exact && durableIssuanceRequired && typeof supabaseClient?.readIssuedPrediction === 'function') {
-
-      try {
-        exact = await supabaseClient.readIssuedPrediction({
-          tableId: table.tableId,
-          shoe: table.shoe,
-          round: targetRound,
-          strategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION,
-        })
-      } catch (error) {
-        state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
-        exact = null
-      }
+    if (!exact && durableIssuanceRequired) {
+      exact = await Promise.race([
+        startIssuedPredictionRead(table, targetRound, key, durableIssuanceRequired),
+        new Promise((resolve) => setTimeout(() => resolve(null), 50)),
+      ])
     }
     if (!exact && !durableIssuanceRequired && !expiredPredictionKeys.has(key) && isPredictionRuntimeReady() && recentPerformanceReady) {
       const tablePerformance = recentTablePerformance.summary(table.tableId)

@@ -693,6 +693,45 @@ test('restored FIFO head is not appended again when queue persisted before its o
   await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
 })
 
+test('restored oversized FIFO head is split without losing keys or changing its head sequence', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-bounded-queue-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  const rounds = Array.from({ length: 12 }, (_, index) => ({
+    tableId: 'BAG01', shoe: 8, round: index + 1, winner: 'banker',
+  }))
+  const roundKeys = rounds.map((round) => `${round.tableId}:${round.shoe}:${round.round}`)
+  await writeFile(queuePath, JSON.stringify({
+    version: 2,
+    entries: [{
+      protocolVersion: 'v105', sessionId: 'vm', timestamp: 1000, captureTimestamp: 1000,
+      sequence: 1000, roundKeys, snapshot: { sessionId: 'vm', tables: [], rounds },
+    }],
+  }))
+  await writeFile(`${queuePath}.cursor.json`, JSON.stringify({
+    version: 3, initialized: true, lastSequence: 1000,
+    observedRoundKeys: roundKeys, acknowledgedRoundKeys: [],
+  }))
+  const sent = []
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    maxRoundsPerEnvelope: 5,
+    getSnapshot: async () => ({ sessionId: 'vm', tables: [], rounds }),
+    fetchImpl: async (_url, options) => {
+      sent.push(JSON.parse(options.body))
+      throw new Error('keep the migrated queue for inspection')
+    },
+    baseBackoffMs: 0,
+  })
+
+  assert.equal(await pusher.tick(), false)
+  const queue = JSON.parse(await readFile(queuePath, 'utf8')).entries
+  assert.deepEqual(queue.map((entry) => entry.roundKeys.length), [5, 5, 2])
+  assert.equal(queue[0].sequence, 1000)
+  assert.deepEqual(queue.flatMap((entry) => entry.roundKeys), roundKeys)
+  assert.deepEqual(sent[0].roundKeys, roundKeys.slice(0, 5))
+})
+
 test('first observation becomes acknowledged only after the proxy explicitly accepts its round key', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
   t.after(() => rm(dir, { recursive: true, force: true }))

@@ -152,3 +152,24 @@ test('coalesces unsent backlog into the tail while preserving the failed FIFO he
   assert.deepEqual(queue[1].roundKeys, ['BAG01:8:2', 'BAG01:8:3'])
   assert.equal(queue[1].snapshot.tables[0].round, 3)
 })
+
+test('new backlog is bounded to small FIFO envelopes', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'v105-bounded-backlog-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'queue.json')
+  const rounds = Array.from({ length: 12 }, (_, index) => ({
+    tableId: 'BAG01', shoe: 8, round: index + 1, winner: 'banker',
+  }))
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://proxy.example/ingest', key: 'worker-key', queuePath,
+    maxRoundsPerEnvelope: 5,
+    getSnapshot: async () => ({ sessionId: 'vm', tables: [], rounds }),
+    fetchImpl: async () => { throw new Error('offline') },
+    baseBackoffMs: 0,
+  })
+
+  assert.equal(await pusher.tick(), false)
+  const queue = JSON.parse(await readFile(queuePath, 'utf8')).entries
+  assert.deepEqual(queue.map((entry) => entry.roundKeys.length), [5, 5, 2])
+  assert.deepEqual(queue.flatMap((entry) => entry.roundKeys), rounds.map((round) => `BAG01:8:${round.round}`))
+})

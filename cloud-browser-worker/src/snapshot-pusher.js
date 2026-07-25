@@ -15,9 +15,11 @@ export function createSnapshotPusher({
   baseBackoffMs = 1000,
   maxBackoffMs = 60000,
   requestTimeoutMs = 15000,
+  maxRoundsPerEnvelope = 5,
   isRoundDeliverable = () => true,
   now = Date.now,
 } = {}) {
+  const roundLimit = Math.max(1, Number(maxRoundsPerEnvelope) || 5)
   let timer = null
   let failures = 0
   let nextAttemptAt = 0
@@ -102,18 +104,35 @@ export function createSnapshotPusher({
     if (pending.length > 0) {
       const pendingRounds = pending.map(({ round }, index) => normalizeRoundForEnvelope(round, pending[index].key))
       const pendingKeys = pending.map(({ key: roundKeyValue }) => roundKeyValue)
-      const tail = queue.at(-1)
-      const mergedTail = queue.length >= 2 && tail?.sessionId === String(snapshot?.sessionId ?? '')
-        ? {
+      for (let offset = 0; offset < pendingKeys.length;) {
+        const tail = queue.at(-1)
+        const tailSpace = queue.length >= 2 && tail?.sessionId === String(snapshot?.sessionId ?? '')
+          ? Math.max(0, roundLimit - tail.roundKeys.length)
+          : 0
+        if (tailSpace > 0) {
+          const count = Math.min(tailSpace, pendingKeys.length - offset)
+          const mergedTail = {
             ...tail,
             timestamp,
             captureTimestamp: timestamp,
-            roundKeys: [...tail.roundKeys, ...pendingKeys],
-            snapshot: { ...snapshot, rounds: [...(tail.snapshot?.rounds ?? []), ...pendingRounds] },
+            roundKeys: [...tail.roundKeys, ...pendingKeys.slice(offset, offset + count)],
+            snapshot: { ...snapshot, rounds: [...(tail.snapshot?.rounds ?? []), ...pendingRounds.slice(offset, offset + count)] },
           }
-        : null
-      if (mergedTail && Buffer.byteLength(JSON.stringify(mergedTail), 'utf8') <= 768 * 1024) queue[queue.length - 1] = mergedTail
-      else queue.push(createEnvelope(snapshot, pendingRounds, pendingKeys, timestamp))
+          if (Buffer.byteLength(JSON.stringify(mergedTail), 'utf8') <= 768 * 1024) {
+            queue[queue.length - 1] = mergedTail
+            offset += count
+            continue
+          }
+        }
+        const count = Math.min(roundLimit, pendingKeys.length - offset)
+        queue.push(createEnvelope(
+          snapshot,
+          pendingRounds.slice(offset, offset + count),
+          pendingKeys.slice(offset, offset + count),
+          timestamp,
+        ))
+        offset += count
+      }
       await saveQueue()
     }
     await saveCursor()
@@ -121,6 +140,35 @@ export function createSnapshotPusher({
       queue.push(createEnvelope(snapshot, [], [], timestamp))
       await saveQueue()
     }
+  }
+
+  function splitOversizedQueueEntries(entries) {
+    const bounded = []
+    let changed = false
+    for (const entry of entries) {
+      const rounds = Array.isArray(entry.snapshot?.rounds) ? entry.snapshot.rounds : []
+      if (rounds.length <= roundLimit) {
+        const previousSequence = bounded.at(-1)?.sequence ?? 0
+        const sequence = bounded.length === 0 ? entry.sequence : Math.max(entry.sequence, previousSequence + 1)
+        bounded.push(sequence === entry.sequence ? entry : { ...entry, sequence })
+        changed ||= sequence !== entry.sequence
+        continue
+      }
+      changed = true
+      for (let offset = 0; offset < rounds.length; offset += roundLimit) {
+        const previousSequence = bounded.at(-1)?.sequence ?? 0
+        const sequence = bounded.length === 0 && offset === 0
+          ? entry.sequence
+          : Math.max(entry.sequence + Math.floor(offset / roundLimit), previousSequence + 1)
+        bounded.push({
+          ...entry,
+          sequence,
+          roundKeys: entry.roundKeys.slice(offset, offset + roundLimit),
+          snapshot: { ...entry.snapshot, rounds: rounds.slice(offset, offset + roundLimit) },
+        })
+      }
+    }
+    return { entries: bounded, changed }
   }
 
   function createEnvelope(snapshot, rounds, roundKeys, timestamp) {
@@ -147,8 +195,10 @@ export function createSnapshotPusher({
         try {
           const entries = Array.isArray(queued.entries) ? queued.entries : [queued]
           const normalizedEntries = entries.map(normalizeQueuedEnvelope)
-          queue = normalizedEntries.filter((item) => !item.drop).map((item) => item.envelope)
-          queueNeedsSave = normalizedEntries.some((item) => item.changed)
+          const retainedEntries = normalizedEntries.filter((item) => !item.drop).map((item) => item.envelope)
+          const bounded = splitOversizedQueueEntries(retainedEntries)
+          queue = bounded.entries
+          queueNeedsSave = normalizedEntries.some((item) => item.changed) || bounded.changed
           queueNeedsResequence = normalizedEntries.some((item) => item.resequence)
           for (const entry of queue) lastSequence = Math.max(lastSequence, entry.sequence)
         } catch (error) {

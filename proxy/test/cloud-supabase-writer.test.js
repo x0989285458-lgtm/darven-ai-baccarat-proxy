@@ -143,6 +143,75 @@ test('client writes cloud capture data to Supabase REST tables', async () => {
   assert.equal(requests[0].init.headers.Authorization, 'Bearer sb_secret_test_key')
 })
 
+test('formal Supabase writes abort within the configured request deadline', async () => {
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co',
+    serviceKey: 'sb_secret_test_key',
+    retryAttempts: 1,
+    requestTimeoutMs: 5,
+    fetchImpl: async (_url, init = {}) => new Promise((resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('request aborted', 'AbortError')))
+    }),
+  })
+
+  await assert.rejects(
+    Promise.race([
+      client.writeCloudCaptureStatus({ sessionId: 'session-timeout', status: { connected: true, tableCount: 10 } }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('formal write remained hung')), 100)),
+    ]),
+    /abort/i,
+  )
+})
+
+test('formal Supabase reads abort within the configured request deadline', async () => {
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co',
+    serviceKey: 'sb_secret_test_key',
+    retryAttempts: 1,
+    requestTimeoutMs: 5,
+    fetchImpl: async (_url, init = {}) => new Promise((resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('request aborted', 'AbortError')))
+    }),
+  })
+
+  await assert.rejects(
+    Promise.race([
+      client.readIssuedPrediction({ tableId: 'BAG01', shoe: 88, round: 20, strategyVersion: 'v105' }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('formal read remained hung')), 100)),
+    ]),
+    /abort/i,
+  )
+})
+
+test('formal Supabase RPC reads and strategy patches share the configured deadline', async () => {
+  const makeClient = () => createSupabaseIngestionClient({
+    url: 'https://example.supabase.co',
+    serviceKey: 'sb_secret_test_key',
+    retryAttempts: 1,
+    requestTimeoutMs: 5,
+    fetchImpl: async (_url, init = {}) => new Promise((resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('request aborted', 'AbortError')))
+    }),
+  })
+
+  await assert.rejects(
+    Promise.race([
+      makeClient().getRecentPredictionRows({ limit: 10 }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('formal RPC read remained hung')), 100)),
+    ]),
+    /abort/i,
+  )
+  const strategyClient = makeClient()
+  await assert.rejects(
+    Promise.race([
+      strategyClient.ensureInitialStrategy(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('formal strategy patch remained hung')), 100)),
+    ]),
+    /active strategy verification failed|abort/i,
+  )
+  assert.equal(strategyClient.getRuntimeStatus().degraded, true)
+})
+
 test('client reads latest cloud capture status and table snapshot from Supabase REST', async () => {
   const requests = []
   const client = createSupabaseIngestionClient({

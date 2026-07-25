@@ -1948,6 +1948,7 @@ export function createSupabaseIngestionClient({
   now = Date.now,
   captureStatusHeartbeatMs = 60000,
   snapshotHeartbeatMs = 60000,
+  requestTimeoutMs: defaultRequestTimeoutMs = 3500,
   shadowRequestTimeoutMs = 9000,
 } = {}) {
   const configured = Boolean(url && serviceKey && fetchImpl)
@@ -1962,6 +1963,7 @@ export function createSupabaseIngestionClient({
   let v104ShadowWriteQueue = Promise.resolve()
   let v104IterationShadowWriteQueue = Promise.resolve()
   const completedRoundKeyLimit = Math.max(1, Number(maxCompletedRoundKeys) || 10000)
+  const formalTimeoutMs = Math.max(1, Number(defaultRequestTimeoutMs) || 3500)
   const shadowTimeoutMs = Math.max(1, Number(shadowRequestTimeoutMs) || 9000)
 
   async function fetchWithOptionalTimeout(endpoint, init, requestTimeoutMs = 0) {
@@ -1976,7 +1978,7 @@ export function createSupabaseIngestionClient({
     }
   }
 
-  async function postRest(path, body, conflict, { requireRepresentation = false, requireObject = false, allowSuppressedRepresentation = false, requestTimeoutMs = 0 } = {}) {
+  async function postRest(path, body, conflict, { requireRepresentation = false, requireObject = false, allowSuppressedRepresentation = false, requestTimeoutMs = formalTimeoutMs } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase backend key is not configured' }
     const endpoint = new URL(`/rest/v1/${path}`, url)
     if (conflict) endpoint.searchParams.set('on_conflict', conflict)
@@ -2012,7 +2014,7 @@ export function createSupabaseIngestionClient({
     })
   }
 
-  async function postRpcRows(path, body, { requestTimeoutMs = 0 } = {}) {
+  async function postRpcRows(path, body, { requestTimeoutMs = formalTimeoutMs } = {}) {
     if (!configured) return []
     const endpoint = new URL(`/rest/v1/rpc/${path}`, url)
     return withRetry(async () => {
@@ -2039,7 +2041,7 @@ export function createSupabaseIngestionClient({
     const endpoint = new URL(`/rest/v1/${path}`, url)
     for (const [key, value] of Object.entries(query)) endpoint.searchParams.set(key, value)
     return withRetry(async () => {
-      const response = await fetchImpl(endpoint, {
+      const response = await fetchWithOptionalTimeout(endpoint, {
         method: 'PATCH',
         headers: {
           ['api' + 'key']: serviceKey,
@@ -2048,7 +2050,7 @@ export function createSupabaseIngestionClient({
           Prefer: 'return=minimal',
         },
         body: JSON.stringify(body),
-      })
+      }, formalTimeoutMs)
       const responseText = await response.text()
       if (!response.ok) throw new Error(`Supabase ${path} patch failed: ${response.status} ${responseText}`)
       return { ok: true, status: response.status }
@@ -2094,7 +2096,7 @@ export function createSupabaseIngestionClient({
     throw lastError
   }
 
-  async function getRest(path, query = {}, { requestTimeoutMs = 0 } = {}) {
+  async function getRest(path, query = {}, { requestTimeoutMs = formalTimeoutMs } = {}) {
     if (!configured) return null
     const endpoint = new URL(`/rest/v1/${path}`, url)
     for (const [key, value] of Object.entries(query)) endpoint.searchParams.set(key, value)

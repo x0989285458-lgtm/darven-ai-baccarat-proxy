@@ -53,6 +53,42 @@ test('cloud ingest treats duplicate sequence as idempotent without rewriting', a
   assert.equal(writes, 1)
 })
 
+test('duplicate accepted sequence returns only the retried subset of previously accepted round keys', async () => {
+  const finalRound = (round) => ({
+    tableId: 'BAG01', shoe: 14509, round, winner: 'banker',
+    playerPoint: 4, bankerPoint: 6,
+    rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
+    sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
+  })
+  const rounds = [finalRound(1), finalRound(2)]
+  const roundKeys = rounds.map((round) => `${round.tableId}:${round.shoe}:${round.round}`)
+  const supabaseClient = {
+    configured: true,
+    writeCloudCaptureStatus: async () => {},
+    writeCloudTableSnapshot: async () => {},
+    writeCloudRoundEvent: async () => {},
+  }
+  const app = createTestApp({ supabaseClient })
+  const request = (selectedRounds, selectedKeys) => ({
+    method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': key },
+    body: body({
+      sequence: 1,
+      roundKeys: selectedKeys,
+      snapshot: {
+        buildVersion: '105', connected: true, authenticated: true,
+        sessionId: 'vm-worker', snapshotAt: new Date(now).toISOString(),
+        tables: [{ tableId: 'BAG01', tableType: 'BAC', shoe: 14509, round: 3 }],
+        rounds: selectedRounds,
+      },
+    }),
+  })
+
+  assert.equal((await app.inject(request(rounds, roundKeys))).statusCode, 200)
+  const duplicate = JSON.parse((await app.inject(request([rounds[0]], [roundKeys[0]]))).body)
+  assert.equal(duplicate.duplicate, true)
+  assert.deepEqual(duplicate.acceptedRoundKeys, [roundKeys[0]])
+})
+
 test('valid cloud ingest updates tables and uses existing Supabase capture flow', async () => {
   const calls = []
   const app = createTestApp({
