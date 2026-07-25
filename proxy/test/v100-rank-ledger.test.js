@@ -285,6 +285,30 @@ test('v102 Supabase client rehydrates only one exact durable ledger identity and
   await assert.rejects(() => mismatch.readV100RankLedger({ source: 'mt-cloud', tableId: 'BAG01', shoe: 'S100' }), /identity mismatch/i)
 })
 
+test('v102 rank-ledger rehydrate prefers the backend-only database primary-key read over stalled REST', async () => {
+  const row = {
+    source: 'mt-cloud', table_id: 'BAG01', shoe_no: 'S100', complete_through_round: 1,
+    seen_dealt_rank_counts: Object.fromEntries(RANKS.map((rank) => [rank, rank === 'A' || rank === '2' ? 3 : 0])),
+    seen_dealt_code_counts: Object.fromEntries(Array.from({ length: 52 }, (_, index) => [index + 1, [1, 2, 14, 15, 27, 28].includes(index + 1) ? 1 : 0])),
+    undealt_after_observed_deals: Object.fromEntries(RANKS.map((rank) => [rank, rank === 'A' || rank === '2' ? 29 : 32])),
+    cards_seen_dealt: 6, status: 'contiguous', ledger_checksum: 'b'.repeat(64), revision: 1,
+    physical_remaining_exact: false, burn_observation_status: 'unavailable',
+  }
+  let fetchCalls = 0
+  let query
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    fetchImpl: async () => { fetchCalls += 1; throw new Error('REST must not be used') },
+    strategyPool: { async query(value) { query = value; return { rows: [row] } } },
+  })
+  const result = await client.readV100RankLedger({ source: 'mt-cloud', tableId: 'BAG01', shoe: 'S100' })
+  assert.equal(result.rankDataAvailable, true)
+  assert.equal(result.completeThroughRound, 1)
+  assert.equal(fetchCalls, 0)
+  assert.match(query.text, /from public\.shoe_rank_ledgers/i)
+  assert.deepEqual(query.values, ['mt-cloud', 'BAG01', 'S100'])
+})
+
 test('fixed eight-deck ledger accepts contiguous verified Final exact10 and exposes observation-only semantics', () => {
   const ledger = createRankLedger()
   const result = ledger.recordFinal(finalRound())

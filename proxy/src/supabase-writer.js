@@ -2188,7 +2188,19 @@ export function createSupabaseIngestionClient({
       const normalizedTable = String(tableId ?? '')
       const normalizedShoe = String(shoe ?? '')
       if (!normalizedSource || !normalizedTable || !normalizedShoe) throw new Error('v100 durable rank ledger identity is incomplete')
-      const rows = await getRest('shoe_rank_ledgers', {
+      const rows = strategyDb && typeof strategyDb.query === 'function'
+        ? (await strategyDb.query({
+            text: `select source, table_id, shoe_no, complete_through_round,
+                          seen_dealt_rank_counts, seen_dealt_code_counts,
+                          undealt_after_observed_deals, cards_seen_dealt, status,
+                          ledger_checksum, revision, physical_remaining_exact,
+                          burn_observation_status
+                     from public.shoe_rank_ledgers
+                    where source = $1 and table_id = $2 and shoe_no = $3
+                    limit 2`,
+            values: [normalizedSource, normalizedTable, normalizedShoe],
+          })).rows
+        : await getRest('shoe_rank_ledgers', {
         select: 'source,table_id,shoe_no,complete_through_round,seen_dealt_rank_counts,seen_dealt_code_counts,undealt_after_observed_deals,cards_seen_dealt,status,ledger_checksum,revision,physical_remaining_exact,burn_observation_status',
         source: `eq.${normalizedSource}`,
         table_id: `eq.${normalizedTable}`,
