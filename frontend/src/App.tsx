@@ -429,8 +429,11 @@ function LoginApp() {
   const [memberAccount, setMemberAccount] = useState('')
   const [verificationPassword, setVerificationPassword] = useState('')
   const [loginMessage, setLoginMessage] = useState('')
+  const [loginSubmitting, setLoginSubmitting] = useState(false)
   const submitLogin = async () => {
+    if (loginSubmitting) return
     if (coreStatus.maintenanceMode) { setLoginMessage('系統維護中，暫停登入'); return }
+    setLoginSubmitting(true)
     setLoginMessage('登入驗證中')
     try {
       const result = await memberLogin({ memberAccount, verificationPassword })
@@ -447,8 +450,10 @@ function LoginApp() {
       window.sessionStorage.removeItem('darven-member-login')
       setLoginMessage('登入成功，正在進入前台')
       window.location.assign('/')
-    } catch {
-      setLoginMessage('登入失敗，請重新整理後再試')
+    } catch (error) {
+      setLoginMessage(error instanceof Error ? error.message : '登入失敗，請重新整理後再試')
+    } finally {
+      setLoginSubmitting(false)
     }
   }
   return <main className="login-shell member-login-shell" data-ui-theme="navy-gold">
@@ -468,7 +473,7 @@ function LoginApp() {
           <input aria-label="驗證密碼" placeholder="請輸入驗證密碼" type="password" value={verificationPassword} onChange={(event) => setVerificationPassword(event.target.value)} />
         </label>
       </div>
-      <button className="login-submit" onClick={submitLogin}>會員登入</button>
+      <button className="login-submit" onClick={submitLogin} disabled={loginSubmitting}>{loginSubmitting ? '驗證中…' : '會員登入'}</button>
       <div className="login-message" aria-live="polite">{loginMessage}</div>
       <div className="login-footer">
         <em className={coreStatus.maintenanceMode ? 'system-status maintenance' : `system-status ${coreStatus.state}`}><span className="status-dot" aria-hidden="true" />{coreStatus.message || (coreStatus.maintenanceMode ? '系統維護中' : '系統狀態檢查中')}</em>

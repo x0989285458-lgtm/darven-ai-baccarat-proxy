@@ -15,8 +15,8 @@ export type OnlineLicenseStatus = {
 
 type AdminSessionPayload = { adminSessionToken?: string }
 
-export async function memberLogin(payload: { memberAccount: string; verificationPassword: string; turnstileToken?: string }, fetchImpl = fetch) {
-  return postJson('/api/online-license/member-login', payload, fetchImpl)
+export async function memberLogin(payload: { memberAccount: string; verificationPassword: string; turnstileToken?: string }, fetchImpl = fetch, timeoutMs = 10000) {
+  return postJson('/api/online-license/member-login', payload, fetchImpl, timeoutMs)
 }
 
 export async function validateMemberSession(memberSessionToken: string, fetchImpl = fetch): Promise<{ ok: boolean; sessionExpiresAt?: string; error?: string }> {
@@ -90,15 +90,25 @@ export async function getCloudDataStatus(fetchImpl = fetch): Promise<{ ok?: bool
   }
 }
 
-async function postJson(path: string, payload: unknown, fetchImpl: typeof fetch) {
-  const response = await fetchImpl(`${proxyUrl}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  const body = typeof response.json === 'function' ? await response.json().catch(() => ({})) : {}
-  if (!response.ok) throw new Error(body.error ?? '線上授權 API 失敗')
-  return body
+async function postJson(path: string, payload: unknown, fetchImpl: typeof fetch, timeoutMs = 10000) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), Math.max(1, timeoutMs))
+  try {
+    const response = await fetchImpl(`${proxyUrl}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    })
+    const body = typeof response.json === 'function' ? await response.json().catch(() => ({})) : {}
+    if (!response.ok) throw new Error(body.error ?? '線上授權 API 失敗')
+    return body
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('連線逾時，請稍後再試')
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 function emptyStatus(): OnlineLicenseStatus {

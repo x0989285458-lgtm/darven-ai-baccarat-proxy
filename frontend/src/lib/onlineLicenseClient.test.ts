@@ -13,6 +13,15 @@ describe('onlineLicenseClient ', () => {
     }))
   })
 
+  it('aborts a hung member login and returns a retryable timeout error', async () => {
+    const fetchImpl = vi.fn((_url, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+    })) as unknown as typeof fetch
+
+    await expect(memberLogin({ memberAccount: 'User001', verificationPassword: 'DVAI1788_001' }, fetchImpl, 5))
+      .rejects.toThrow('連線逾時，請稍後再試')
+  })
+
   it('validates the short-lived member session through the backend bearer token flow', async () => {
     const fetchImpl = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, sessionExpiresAt: '2026-07-13T20:30:00.000Z' }) })) as unknown as typeof fetch
     const result = await validateMemberSession('member-session-1', fetchImpl)
