@@ -97,6 +97,23 @@ test('startup verifies the active strategy before accepting live tables', async 
   }
 })
 
+test('startup keeps the service reachable but prediction-degraded when strategy verification is temporarily unavailable', async () => {
+  const supabaseClient = {
+    configured: true,
+    ensureInitialStrategy: async () => { throw new Error('temporary strategy verification timeout') },
+    getRuntimeStatus: () => ({ ready: false, degraded: true, reason: 'active_strategy_not_verified' }),
+  }
+  const app = createApp({ autoConnect: false, port: 0, requireVerifiedStrategy: true, supabaseClient })
+  await app.start()
+  try {
+    const health = await app.inject({ url: '/health' })
+    assert.equal(health.statusCode, 503)
+    assert.equal(JSON.parse(health.body).runtimeStatus.ready, false)
+  } finally {
+    await app.stop()
+  }
+})
+
 test('explicit live empty tables never resurrect a cached cloud prediction', async () => {
   const stale = { ...table, tableId: 'BAG99', sourceUpdatedAt: new Date().toISOString() }
   const app = createApp({
