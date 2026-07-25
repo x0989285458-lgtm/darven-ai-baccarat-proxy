@@ -54,52 +54,43 @@ test('failed v105 hydration is circuit-broken instead of hammering the database 
   assert.equal(calls, 2)
 })
 
-test('v105 history reader requires 60 Final rows and the latest issuance state independently for every formal table', async () => {
+test('v105 history reader uses one JSON-free settled-history RPC plus one latest issuance read per formal table', async () => {
   const requested = []
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
-    fetchImpl: async (url) => {
+    fetchImpl: async (url, init = {}) => {
       const request = new URL(url)
-      requested.push(request)
+      requested.push({ request, init })
+      if (request.pathname.endsWith('/rpc/get_v105_recent_performance_rows')) {
+        return response(PRODUCTION_TABLE_IDS.flatMap((tableId) => Array.from({ length: 60 }, (_, index) => ({
+          id: `${tableId}-final-${index}`,
+          source: 'ofalive99', table_id: tableId, shoe_no: '1', round_no: index + 1,
+          strategy_version: 'v105', predicted_result: 'banker', actual_result: 'player',
+          settlement_final: true, prediction_timing: 'pre_result_context',
+          prediction_issued_at: `2026-07-22T00:${String(index % 60).padStart(2, '0')}:00.000Z`,
+        }))))
+      }
       const tableId = request.searchParams.get('table_id')?.replace(/^eq\./, '')
-      const base = {
+      return response([{
         source: 'ofalive99', table_id: tableId, shoe_no: '1', predicted_result: 'banker',
         prediction_timing: 'pre_result_context', issued_same_side_streak: '1',
-      }
-      if (request.searchParams.get('settlement_final') === 'eq.true') {
-        return response(Array.from({ length: 70 }, (_, index) => ({
-          ...base,
-          id: `${tableId}-final-${index}`,
-          round_no: index + 1,
-          strategy_version: index === 0 ? 'v105' : 'v104',
-          prediction_issued_at: `2026-07-22T00:${String(index % 60).padStart(2, '0')}:00.000Z`,
-          settlement_final: true,
-          baseline_v104_predicted_result: index === 0 ? 'player' : null,
-          baseline_v104_same_side_streak: index === 0 ? '3' : null,
-        })))
-      }
-      return response([{
-        ...base,
-        id: `${tableId}-latest`,
-        round_no: 99,
-        strategy_version: 'v105',
-        prediction_issued_at: '2026-07-23T00:00:00.000Z',
-        settlement_final: false,
-        baseline_v104_predicted_result: 'player',
-        baseline_v104_same_side_streak: '3',
+        id: `${tableId}-latest`, round_no: 99, strategy_version: 'v105',
+        prediction_issued_at: '2026-07-23T00:00:00.000Z', settlement_final: false,
+        baseline_v104_predicted_result: 'player', baseline_v104_same_side_streak: '3',
       }])
     },
   })
   const rows = await client.getV105FormalHistory()
-  const finalRequests = requested.filter((request) => request.searchParams.get('settlement_final') === 'eq.true')
-  const stateRequests = requested.filter((request) => request.searchParams.get('settlement_final') == null)
-  assert.equal(requested.length, PRODUCTION_TABLE_IDS.length * 2)
-  assert.equal(finalRequests.length, PRODUCTION_TABLE_IDS.length)
+  const rpcRequests = requested.filter(({ request }) => request.pathname.endsWith('/rpc/get_v105_recent_performance_rows'))
+  const stateRequests = requested.filter(({ request }) => request.pathname.endsWith('/daily_prediction_results'))
+  assert.equal(requested.length, PRODUCTION_TABLE_IDS.length + 1)
+  assert.equal(rpcRequests.length, 1)
+  assert.equal(rpcRequests[0].init.method, 'POST')
+  assert.deepEqual(JSON.parse(rpcRequests[0].init.body), { p_per_table_limit: 60 })
   assert.equal(stateRequests.length, PRODUCTION_TABLE_IDS.length)
-  assert.ok(finalRequests.every((request) => request.searchParams.get('limit') === '70'))
-  assert.ok(stateRequests.every((request) => request.searchParams.get('limit') === '1'))
-  assert.deepEqual(new Set(finalRequests.map((request) => request.searchParams.get('table_id')?.replace(/^eq\./, ''))), new Set(PRODUCTION_TABLE_IDS))
-  assert.ok(rows.every((row) => ['v104', 'v105'].includes(row.strategy_version)))
+  assert.ok(stateRequests.every(({ request }) => request.searchParams.get('limit') === '1'))
+  assert.deepEqual(new Set(stateRequests.map(({ request }) => request.searchParams.get('table_id')?.replace(/^eq\./, ''))), new Set(PRODUCTION_TABLE_IDS))
+  assert.ok(rows.every((row) => row.strategy_version === 'v105'))
   const latest = rows.find((row) => row.id === 'BAG01-latest')
   assert.equal(latest.final_v105_predicted_result, 'banker')
   assert.equal(latest.predicted_result, 'player')

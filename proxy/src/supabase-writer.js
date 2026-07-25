@@ -1950,7 +1950,7 @@ export function createSupabaseIngestionClient({
   captureStatusHeartbeatMs = 60000,
   snapshotHeartbeatMs = 60000,
   requestTimeoutMs: defaultRequestTimeoutMs = 3500,
-  startupRequestTimeoutMs = 30000,
+  startupRequestTimeoutMs = 60000,
   shadowRequestTimeoutMs = 9000,
   dbConnectionString = null,
   strategyPool = null,
@@ -2625,15 +2625,14 @@ export function createSupabaseIngestionClient({
         }
         return results
       }
-      const settledByTable = await fetchInBatches((tableId) => getRest('daily_prediction_results', {
-        select: projectedSelect,
-        strategy_version: 'in.(v104,v105)',
-        table_id: `eq.${tableId}`,
-        prediction_issued_at: 'not.is.null',
-        settlement_final: 'eq.true',
-        order: 'prediction_issued_at.desc',
-        limit: '70',
-      }, { requestTimeoutMs }))
+      const settledRows = await postRpcRows('get_v105_recent_performance_rows', {
+        p_per_table_limit: 60,
+      }, { requestTimeoutMs })
+      const settledByTable = new Map(PRODUCTION_TABLE_IDS.map((tableId) => [tableId, []]))
+      for (const row of Array.isArray(settledRows) ? settledRows : []) {
+        const tableId = String(row?.table_id ?? '')
+        if (settledByTable.has(tableId)) settledByTable.get(tableId).push(row)
+      }
       const latestStateByTable = await fetchInBatches((tableId) => getRest('daily_prediction_results', {
         select: projectedSelect,
         strategy_version: 'in.(v104,v105)',
@@ -2643,7 +2642,7 @@ export function createSupabaseIngestionClient({
         limit: '1',
       }, { requestTimeoutMs }))
       const rowsByTable = PRODUCTION_TABLE_IDS.map((tableId, index) => {
-        const settledRows = settledByTable[index]
+        const settledRows = settledByTable.get(tableId)
         const latestStateRows = latestStateByTable[index]
         const validSettledRows = (Array.isArray(settledRows) ? settledRows : []).filter((row) => (
           String(row?.table_id ?? '') === tableId

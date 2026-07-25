@@ -2,7 +2,7 @@ import { buildV105FormalPrediction, V105_FORMAL_STRATEGY_VERSION } from './v105-
 
 const HISTORY_LIMIT = 1000
 
-export function createV105FormalRuntime({ writer = null, requestTimeoutMs = 10000, allowUnconfigured = false, now = Date.now, retryBackoffMs = 300000 } = {}) {
+export function createV105FormalRuntime({ writer = null, requestTimeoutMs = 60000, allowUnconfigured = false, now = Date.now, retryBackoffMs = 300000 } = {}) {
   const issuanceStreaks = new Map()
   let historyRows = []
   let hydrationPromise = null

@@ -62,6 +62,18 @@ test('formal.14 installs the recent-performance index and JSON-free RPC before p
   assert.doesNotMatch(block, /PRODUCTION_TABLE_IDS\.slice/)
 })
 
+test('formal hydration has a dedicated prediction-issued partial index', () => {
+  const migrationPath = new URL('frontend/supabase/migrate_v105_formal_hydration_index.sql', repo)
+  assert.equal(existsSync(migrationPath), true)
+  const migration = read('frontend/supabase/migrate_v105_formal_hydration_index.sql')
+  assert.match(migration, /create\s+index\s+concurrently\s+if\s+not\s+exists\s+daily_prediction_results_v105_hydration_idx/i)
+  assert.match(migration, /\(table_id,\s*prediction_issued_at\s+desc\)/i)
+  assert.doesNotMatch(migration, /strategy_version\s+in/i)
+  assert.match(migration, /prediction_issued_at\s+is\s+not\s+null/i)
+  assert.doesNotMatch(migration, /prediction_features/i)
+  assert.doesNotMatch(migration, /\b(drop|delete|truncate|alter\s+table)\b/i)
+})
+
 test('formal startup hydration completes before non-blocking shadows may query the database', async () => {
   const events = []
   let releaseRecent
