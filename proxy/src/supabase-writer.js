@@ -1,3 +1,4 @@
+import pg from 'pg'
 import { buildRoundCardSnapshot, scoreCardShoeInfluence } from './card-shoe.js'
 import { BUILD_VERSION } from './build-version.js'
 import { isVerifiedFinalRoundAction, normalizeExactRealCardEvent } from '../../shared/real-card-validator.js'
@@ -1951,8 +1952,19 @@ export function createSupabaseIngestionClient({
   requestTimeoutMs: defaultRequestTimeoutMs = 3500,
   startupRequestTimeoutMs = 30000,
   shadowRequestTimeoutMs = 9000,
+  dbConnectionString = null,
+  strategyPool = null,
 } = {}) {
   const configured = Boolean(url && serviceKey && fetchImpl)
+  const strategyDb = strategyPool ?? (dbConnectionString ? new pg.Pool({
+    connectionString: dbConnectionString,
+    ssl: { rejectUnauthorized: false },
+    max: 1,
+    connectionTimeoutMillis: 5000,
+    query_timeout: 8000,
+    statement_timeout: 7000,
+    idleTimeoutMillis: 30000,
+  }) : null)
   const completedRoundKeys = new Set()
   const inFlightRoundWrites = new Map()
   const preparedRoundWrites = new Map()
@@ -1967,6 +1979,22 @@ export function createSupabaseIngestionClient({
   const formalTimeoutMs = Math.max(1, Number(defaultRequestTimeoutMs) || 3500)
   const startupTimeoutMs = Math.max(formalTimeoutMs, Number(startupRequestTimeoutMs) || 30000)
   const shadowTimeoutMs = Math.max(1, Number(shadowRequestTimeoutMs) || 9000)
+
+  async function verifyActiveStrategyFromDatabase() {
+    if (!strategyDb || typeof strategyDb.query !== 'function') return false
+    try {
+      const result = await strategyDb.query(
+        'select version, status from public.ai_strategy_versions where status = $1 order by created_at desc limit 2',
+        ['active'],
+      )
+      const rows = Array.isArray(result?.rows) ? result.rows : []
+      return rows.length === 1
+        && rows[0]?.version === ALL_MT_EQUAL_STRATEGY_VERSION
+        && rows[0]?.status === 'active'
+    } catch {
+      return false
+    }
+  }
 
   async function fetchWithOptionalTimeout(endpoint, init, requestTimeoutMs = 0) {
     if (!(requestTimeoutMs > 0)) return fetchImpl(endpoint, init)
@@ -2535,6 +2563,10 @@ export function createSupabaseIngestionClient({
     },
     async ensureInitialStrategy() {
       try {
+        if (await verifyActiveStrategyFromDatabase()) {
+          runtimeStatus = { ready: true, degraded: false, reason: null, activeStrategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION }
+          return { ok: true, activeStrategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION }
+        }
         await patchRest('ai_strategy_versions', { status: 'archived' }, { status: 'eq.active', version: `neq.${ALL_MT_EQUAL_STRATEGY_VERSION}` }, { requestTimeoutMs: startupTimeoutMs })
         await postRest('ai_strategy_versions', buildFormalActiveStrategy(), 'version', { requestTimeoutMs: startupTimeoutMs })
         const activeRows = await getRest('ai_strategy_versions', { select: 'version,status', status: 'eq.active' }, { requestTimeoutMs: startupTimeoutMs })

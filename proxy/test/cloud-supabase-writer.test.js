@@ -239,6 +239,23 @@ test('startup strategy verification has a wider bounded deadline than live reque
   assert.equal(calls, 3)
 })
 
+test('startup strategy verification trusts one exact active version from the backend-only database before REST mutation', async () => {
+  let fetchCalls = 0
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co',
+    serviceKey: 'service-role-test-key',
+    requireVerifiedStrategy: true,
+    strategyPool: {
+      async query() { return { rows: [{ version: 'v105', status: 'active' }] } },
+    },
+    fetchImpl: async () => { fetchCalls += 1; throw new Error('REST should not be needed') },
+  })
+  const result = await client.ensureInitialStrategy()
+  assert.equal(result.ok, true)
+  assert.equal(client.getRuntimeStatus().ready, true)
+  assert.equal(fetchCalls, 0)
+})
+
 test('client reads latest cloud capture status and table snapshot from Supabase REST', async () => {
   const requests = []
   const client = createSupabaseIngestionClient({
