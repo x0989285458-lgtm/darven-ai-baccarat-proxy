@@ -2,10 +2,18 @@ import crypto from 'node:crypto'
 import pg from 'pg'
 import { ALL_MT_EQUAL_STRATEGY_VERSION } from './supabase-writer.js'
 
-export function createLicenseAdminClient({ dbConnectionString, pool = null } = {}) {
+export function createLicenseAdminClient({ dbConnectionString, pool = null, poolFactory = (options) => new pg.Pool(options) } = {}) {
   const resolvedConnectionString = dbConnectionString ?? process.env.SUPABASE_DB_CONNECTION_STRING
   const configured = Boolean(pool || resolvedConnectionString)
-  const db = pool ?? (resolvedConnectionString ? new pg.Pool({ connectionString: resolvedConnectionString, ssl: { rejectUnauthorized: false }, max: 2 }) : null)
+  const db = pool ?? (resolvedConnectionString ? poolFactory({
+    connectionString: resolvedConnectionString,
+    ssl: { rejectUnauthorized: false },
+    max: 2,
+    connectionTimeoutMillis: 5000,
+    query_timeout: 8000,
+    statement_timeout: 7000,
+    idleTimeoutMillis: 30000,
+  }) : null)
   const dailyAnalyticsCacheMs = 60_000
   let dailyAnalyticsCache = null
   let dailyAnalyticsCacheAt = 0

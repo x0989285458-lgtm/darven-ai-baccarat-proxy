@@ -12,6 +12,17 @@ test('hashes manager passwords with random salt and verifies stable output shape
   assert.notEqual(first.hash, second.hash)
 })
 
+test('license database pool bounds connection and query stalls', () => {
+  let options
+  createLicenseAdminClient({
+    dbConnectionString: 'postgresql://test@example.invalid:5432/postgres',
+    poolFactory(value) { options = value; return { query: async () => ({ rows: [] }) } },
+  })
+  assert.equal(options.connectionTimeoutMillis, 5000)
+  assert.equal(options.query_timeout, 8000)
+  assert.equal(options.statement_timeout, 7000)
+})
+
 test('license admin bootstraps total manager and default plan through backend-only SQL', async () => {
   const queries = []
   const pool = { async query(sql, params = []) { queries.push({ sql, params }); return fakeResult(sql, params) } }

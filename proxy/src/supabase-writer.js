@@ -2016,7 +2016,7 @@ export function createSupabaseIngestionClient({
     })
   }
 
-  async function postRpcRows(path, body, { requestTimeoutMs = formalTimeoutMs } = {}) {
+  async function postRpcRows(path, body, { requestTimeoutMs = 0 } = {}) {
     if (!configured) return []
     const endpoint = new URL(`/rest/v1/rpc/${path}`, url)
     return withRetry(async () => {
@@ -2098,7 +2098,7 @@ export function createSupabaseIngestionClient({
     throw lastError
   }
 
-  async function getRest(path, query = {}, { requestTimeoutMs = formalTimeoutMs } = {}) {
+  async function getRest(path, query = {}, { requestTimeoutMs = 0 } = {}) {
     if (!configured) return null
     const endpoint = new URL(`/rest/v1/${path}`, url)
     for (const [key, value] of Object.entries(query)) endpoint.searchParams.set(key, value)
@@ -2235,7 +2235,7 @@ export function createSupabaseIngestionClient({
         issued_prediction_payload: 'not.is.null',
         order: 'created_at.asc',
         limit: '2',
-      })
+      }, { requestTimeoutMs: formalTimeoutMs })
       if (!Array.isArray(rows) || rows.length === 0) return null
       if (rows.length !== 1) throw new Error('conflicting durable prediction issuance identity')
       const row = rows[0]
@@ -2655,7 +2655,7 @@ export function createSupabaseIngestionClient({
       const perTableLimit = Math.min(60, Math.max(1, Number(limit) || 60))
       const rows = await postRpcRows('get_v105_recent_performance_rows', {
         p_per_table_limit: perTableLimit,
-      })
+      }, { requestTimeoutMs: startupTimeoutMs })
       return rows
         .filter((row) => PRODUCTION_TABLE_IDS.includes(String(row?.table_id ?? '')))
         .filter((row) => row?.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION)
