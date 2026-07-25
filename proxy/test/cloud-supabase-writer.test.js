@@ -149,6 +149,7 @@ test('formal Supabase writes abort within the configured request deadline', asyn
     serviceKey: 'sb_secret_test_key',
     retryAttempts: 1,
     requestTimeoutMs: 5,
+    startupRequestTimeoutMs: 5,
     fetchImpl: async (_url, init = {}) => new Promise((resolve, reject) => {
       init.signal?.addEventListener('abort', () => reject(new DOMException('request aborted', 'AbortError')))
     }),
@@ -169,6 +170,7 @@ test('formal Supabase reads abort within the configured request deadline', async
     serviceKey: 'sb_secret_test_key',
     retryAttempts: 1,
     requestTimeoutMs: 5,
+    startupRequestTimeoutMs: 5,
     fetchImpl: async (_url, init = {}) => new Promise((resolve, reject) => {
       init.signal?.addEventListener('abort', () => reject(new DOMException('request aborted', 'AbortError')))
     }),
@@ -189,6 +191,7 @@ test('formal Supabase RPC reads and strategy patches share the configured deadli
     serviceKey: 'sb_secret_test_key',
     retryAttempts: 1,
     requestTimeoutMs: 5,
+    startupRequestTimeoutMs: 5,
     fetchImpl: async (_url, init = {}) => new Promise((resolve, reject) => {
       init.signal?.addEventListener('abort', () => reject(new DOMException('request aborted', 'AbortError')))
     }),
@@ -210,6 +213,30 @@ test('formal Supabase RPC reads and strategy patches share the configured deadli
     /active strategy verification failed|abort/i,
   )
   assert.equal(strategyClient.getRuntimeStatus().degraded, true)
+})
+
+test('startup strategy verification has a wider bounded deadline than live requests', async () => {
+  let calls = 0
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co',
+    serviceKey: 'sb_secret_test_key',
+    retryAttempts: 1,
+    requestTimeoutMs: 5,
+    startupRequestTimeoutMs: 50,
+    fetchImpl: async (_url, init = {}) => {
+      calls += 1
+      if (calls === 1) await new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, 15)
+        init.signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('request aborted', 'AbortError')) })
+      })
+      const active = calls === 3 ? [{ version: 'v105', status: 'active' }] : []
+      return { ok: true, status: 200, text: async () => JSON.stringify(active), json: async () => active }
+    },
+  })
+
+  const result = await client.ensureInitialStrategy()
+  assert.equal(result.ok, true)
+  assert.equal(calls, 3)
 })
 
 test('client reads latest cloud capture status and table snapshot from Supabase REST', async () => {

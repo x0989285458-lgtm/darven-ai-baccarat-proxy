@@ -1949,6 +1949,7 @@ export function createSupabaseIngestionClient({
   captureStatusHeartbeatMs = 60000,
   snapshotHeartbeatMs = 60000,
   requestTimeoutMs: defaultRequestTimeoutMs = 3500,
+  startupRequestTimeoutMs = 30000,
   shadowRequestTimeoutMs = 9000,
 } = {}) {
   const configured = Boolean(url && serviceKey && fetchImpl)
@@ -1964,6 +1965,7 @@ export function createSupabaseIngestionClient({
   let v104IterationShadowWriteQueue = Promise.resolve()
   const completedRoundKeyLimit = Math.max(1, Number(maxCompletedRoundKeys) || 10000)
   const formalTimeoutMs = Math.max(1, Number(defaultRequestTimeoutMs) || 3500)
+  const startupTimeoutMs = Math.max(formalTimeoutMs, Number(startupRequestTimeoutMs) || 30000)
   const shadowTimeoutMs = Math.max(1, Number(shadowRequestTimeoutMs) || 9000)
 
   async function fetchWithOptionalTimeout(endpoint, init, requestTimeoutMs = 0) {
@@ -2036,7 +2038,7 @@ export function createSupabaseIngestionClient({
     })
   }
 
-  async function patchRest(path, body, query = {}) {
+  async function patchRest(path, body, query = {}, { requestTimeoutMs = formalTimeoutMs } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase backend key is not configured' }
     const endpoint = new URL(`/rest/v1/${path}`, url)
     for (const [key, value] of Object.entries(query)) endpoint.searchParams.set(key, value)
@@ -2050,7 +2052,7 @@ export function createSupabaseIngestionClient({
           Prefer: 'return=minimal',
         },
         body: JSON.stringify(body),
-      }, formalTimeoutMs)
+      }, requestTimeoutMs)
       const responseText = await response.text()
       if (!response.ok) throw new Error(`Supabase ${path} patch failed: ${response.status} ${responseText}`)
       return { ok: true, status: response.status }
@@ -2533,9 +2535,9 @@ export function createSupabaseIngestionClient({
     },
     async ensureInitialStrategy() {
       try {
-        await patchRest('ai_strategy_versions', { status: 'archived' }, { status: 'eq.active', version: `neq.${ALL_MT_EQUAL_STRATEGY_VERSION}` })
-        await postRest('ai_strategy_versions', buildFormalActiveStrategy(), 'version')
-        const activeRows = await getRest('ai_strategy_versions', { select: 'version,status', status: 'eq.active' })
+        await patchRest('ai_strategy_versions', { status: 'archived' }, { status: 'eq.active', version: `neq.${ALL_MT_EQUAL_STRATEGY_VERSION}` }, { requestTimeoutMs: startupTimeoutMs })
+        await postRest('ai_strategy_versions', buildFormalActiveStrategy(), 'version', { requestTimeoutMs: startupTimeoutMs })
+        const activeRows = await getRest('ai_strategy_versions', { select: 'version,status', status: 'eq.active' }, { requestTimeoutMs: startupTimeoutMs })
         if (!Array.isArray(activeRows) || activeRows.length !== 1 || activeRows[0]?.version !== ALL_MT_EQUAL_STRATEGY_VERSION) {
           throw new Error('active strategy verification failed')
         }
