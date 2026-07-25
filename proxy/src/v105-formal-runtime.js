@@ -2,14 +2,20 @@ import { buildV105FormalPrediction, V105_FORMAL_STRATEGY_VERSION } from './v105-
 
 const HISTORY_LIMIT = 1000
 
-export function createV105FormalRuntime({ writer = null, requestTimeoutMs = 10000, allowUnconfigured = false } = {}) {
+export function createV105FormalRuntime({ writer = null, requestTimeoutMs = 10000, allowUnconfigured = false, now = Date.now, retryBackoffMs = 300000 } = {}) {
   const issuanceStreaks = new Map()
   let historyRows = []
   let hydrationPromise = null
   let status = 'initializing'
   let error = null
+  let retryAtMs = 0
 
   async function start() {
+    if (status === 'error') {
+      if (now() < retryAtMs) throw new Error(error ?? 'v105 formal history hydration failed')
+      hydrationPromise = null
+      status = 'initializing'
+    }
     if (!hydrationPromise) {
       hydrationPromise = Promise.resolve().then(async () => {
         if (!writer?.configured || typeof writer.getV105FormalHistory !== 'function') {
@@ -32,11 +38,11 @@ export function createV105FormalRuntime({ writer = null, requestTimeoutMs = 1000
       }).catch((cause) => {
         status = 'error'
         error = cause?.message ?? String(cause)
-        hydrationPromise = null
-        throw cause
+        retryAtMs = now() + Math.max(1000, Number(retryBackoffMs) || 300000)
       })
     }
-    return hydrationPromise
+    await hydrationPromise
+    if (status !== 'ready') throw new Error(error ?? 'v105 formal history hydration failed')
   }
 
   async function buildPrediction(table = {}) {

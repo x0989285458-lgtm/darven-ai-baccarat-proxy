@@ -35,6 +35,25 @@ test('v105 runtime hydrates v104 predecessor history, keeps v105 identity, and e
   assert.equal(prediction.diagnostics.roadCycles.main.direction, 'banker')
 })
 
+test('failed v105 hydration is circuit-broken instead of hammering the database on every worker retry', async () => {
+  let calls = 0
+  let nowMs = 1000
+  const runtime = createV105FormalRuntime({
+    now: () => nowMs,
+    retryBackoffMs: 300000,
+    writer: {
+      configured: true,
+      async getV105FormalHistory() { calls += 1; throw new Error('database overloaded') },
+    },
+  })
+  await assert.rejects(runtime.start(), /database overloaded/)
+  await assert.rejects(runtime.start(), /database overloaded/)
+  assert.equal(calls, 1)
+  nowMs += 300001
+  await assert.rejects(runtime.start(), /database overloaded/)
+  assert.equal(calls, 2)
+})
+
 test('v105 history reader requires 60 Final rows and the latest issuance state independently for every formal table', async () => {
   const requested = []
   const client = createSupabaseIngestionClient({
