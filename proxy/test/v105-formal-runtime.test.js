@@ -98,6 +98,36 @@ test('v105 history reader uses one JSON-free settled-history RPC plus one latest
 })
 
 
+test('v105 formal history prefers backend-only database reads for settled and latest state', async () => {
+  const settled = PRODUCTION_TABLE_IDS.flatMap((tableId) => Array.from({ length: 60 }, (_, index) => ({
+    id: `${tableId}-final-${index}`, source: 'ofalive99', table_id: tableId, shoe_no: '1', round_no: index + 1,
+    strategy_version: 'v105', predicted_result: 'banker', actual_result: 'player', settlement_final: true,
+    prediction_timing: 'pre_result_context', prediction_issued_at: `2026-07-22T00:${String(index % 60).padStart(2, '0')}:00.000Z`,
+  })))
+  const queries = []
+  let fetchCalls = 0
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    fetchImpl: async () => { fetchCalls += 1; throw new Error('REST must not be used') },
+    strategyPool: { async query(value) {
+      queries.push(value)
+      if (/get_v105_recent_performance_rows/i.test(value.text)) return { rows: settled }
+      const tableId = value.values[0]
+      return { rows: [{
+        id: `${tableId}-latest`, source: 'ofalive99', table_id: tableId, shoe_no: '1', round_no: 99,
+        strategy_version: 'v105', predicted_result: 'banker', settlement_final: false,
+        prediction_timing: 'pre_result_context', prediction_issued_at: '2026-07-23T00:00:00.000Z',
+        baseline_v104_predicted_result: 'player', baseline_v104_same_side_streak: '3', issued_same_side_streak: '1',
+      }] }
+    } },
+  })
+  const rows = await client.getV105FormalHistory()
+  assert.equal(fetchCalls, 0)
+  assert.equal(queries.length, PRODUCTION_TABLE_IDS.length + 1)
+  assert.equal(rows.length, 610)
+  assert.deepEqual(new Set(rows.map((row) => row.table_id)), new Set(PRODUCTION_TABLE_IDS))
+})
+
 test('recent performance startup hydration uses one bounded service-only RPC for all formal tables', async () => {
   const requested = []
   const rpcRows = PRODUCTION_TABLE_IDS.map((tableId) => ({
@@ -122,4 +152,25 @@ test('recent performance startup hydration uses one bounded service-only RPC for
   assert.deepEqual(JSON.parse(requested[0].init.body), { p_per_table_limit: 60 })
   assert.equal(rows.length, PRODUCTION_TABLE_IDS.length)
   assert.deepEqual(new Set(rows.map((row) => row.table_id)), new Set(PRODUCTION_TABLE_IDS))
+})
+
+test('recent performance startup prefers the backend-only database function over stalled REST', async () => {
+  const rpcRows = PRODUCTION_TABLE_IDS.map((tableId) => ({
+    id: `${tableId}-final`, table_id: tableId, shoe_no: '1', round_no: 1,
+    strategy_version: 'v105', predicted_result: 'banker', actual_result: 'banker',
+    settlement_final: true, prediction_timing: 'pre_result_context',
+    prediction_issued_at: '2026-07-24T00:00:00.000Z', created_at: '2026-07-24T00:01:00.000Z',
+  }))
+  let query
+  let fetchCalls = 0
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    fetchImpl: async () => { fetchCalls += 1; throw new Error('REST must not be used') },
+    strategyPool: { async query(value) { query = value; return { rows: rpcRows } } },
+  })
+  const rows = await client.getRecentPredictionRows({ limit: 10000 })
+  assert.equal(fetchCalls, 0)
+  assert.match(query.text, /get_v105_recent_performance_rows\(\$1\)/i)
+  assert.deepEqual(query.values, [60])
+  assert.equal(rows.length, PRODUCTION_TABLE_IDS.length)
 })

@@ -8,8 +8,8 @@ const end = writer.indexOf('async getRecentPredictionRows', start)
 const block = writer.slice(start, end)
 
 test('v105 hydration uses one JSON-free settled-history RPC and keeps only latest restart-state JSON reads', () => {
-  assert.match(block, /postRpcRows\('get_v105_recent_performance_rows'/)
-  assert.match(block, /p_per_table_limit:\s*60/)
+  assert.match(block, /readV105RecentPerformanceRows\(60/)
+  assert.doesNotMatch(block, /postRpcRows\('get_v105_recent_performance_rows'/)
   assert.match(block, /PRODUCTION_TABLE_IDS\.map/)
   assert.match(block, /table_id:\s*`eq\.\$\{tableId\}`/)
   assert.match(block, /PRODUCTION_TABLE_IDS\.slice\(index, index \+ 5\)/)

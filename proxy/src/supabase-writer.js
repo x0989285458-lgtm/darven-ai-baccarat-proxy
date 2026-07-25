@@ -1960,9 +1960,9 @@ export function createSupabaseIngestionClient({
     connectionString: dbConnectionString,
     ssl: { rejectUnauthorized: false },
     max: 1,
-    connectionTimeoutMillis: 5000,
-    query_timeout: 8000,
-    statement_timeout: 7000,
+    connectionTimeoutMillis: 10000,
+    query_timeout: 65000,
+    statement_timeout: 60000,
     idleTimeoutMillis: 30000,
   }) : null)
   const completedRoundKeys = new Set()
@@ -2064,6 +2064,21 @@ export function createSupabaseIngestionClient({
       if (!Array.isArray(rows)) throw new Error(`Supabase rpc/${path} returned invalid rows`)
       return rows
     })
+  }
+
+  async function readV105RecentPerformanceRows(perTableLimit, { requestTimeoutMs = startupTimeoutMs } = {}) {
+    const normalizedLimit = Math.min(60, Math.max(1, Number(perTableLimit) || 60))
+    if (strategyDb && typeof strategyDb.query === 'function') {
+      const result = await strategyDb.query({
+        text: 'select * from public.get_v105_recent_performance_rows($1)',
+        values: [normalizedLimit],
+      })
+      if (!Array.isArray(result?.rows)) throw new Error('Direct DB recent-performance function returned invalid rows')
+      return result.rows
+    }
+    return postRpcRows('get_v105_recent_performance_rows', {
+      p_per_table_limit: normalizedLimit,
+    }, { requestTimeoutMs })
   }
 
   async function patchRest(path, body, query = {}, { requestTimeoutMs = formalTimeoutMs } = {}) {
@@ -2637,15 +2652,35 @@ export function createSupabaseIngestionClient({
         }
         return results
       }
-      const settledRows = await postRpcRows('get_v105_recent_performance_rows', {
-        p_per_table_limit: 60,
-      }, { requestTimeoutMs })
+      const settledRows = await readV105RecentPerformanceRows(60, { requestTimeoutMs })
       const settledByTable = new Map(PRODUCTION_TABLE_IDS.map((tableId) => [tableId, []]))
       for (const row of Array.isArray(settledRows) ? settledRows : []) {
         const tableId = String(row?.table_id ?? '')
         if (settledByTable.has(tableId)) settledByTable.get(tableId).push(row)
       }
-      const latestStateByTable = await fetchInBatches((tableId) => getRest('daily_prediction_results', {
+      let latestStateByTable
+      if (strategyDb && typeof strategyDb.query === 'function') {
+        latestStateByTable = []
+        for (const tableId of PRODUCTION_TABLE_IDS) {
+          const result = await strategyDb.query({
+            text: `select id, source, table_id, shoe_no, round_no, strategy_version,
+                          predicted_result, actual_result, is_hit, settlement_final,
+                          prediction_issued_at, created_at,
+                          prediction_features->>'prediction_timing' as prediction_timing,
+                          issued_prediction_payload->>'baselineV104PredictedResult' as baseline_v104_predicted_result,
+                          issued_prediction_payload->>'baselineV104SameSideStreak' as baseline_v104_same_side_streak,
+                          issued_prediction_payload->>'sameSideStreak' as issued_same_side_streak
+                     from public.daily_prediction_results
+                    where table_id = $1
+                      and strategy_version = any($2)
+                      and prediction_issued_at is not null
+                    order by prediction_issued_at desc
+                    limit 1`,
+            values: [tableId, ['v104', 'v105']],
+          })
+          latestStateByTable.push(Array.isArray(result?.rows) ? result.rows : [])
+        }
+      } else latestStateByTable = await fetchInBatches((tableId) => getRest('daily_prediction_results', {
         select: projectedSelect,
         strategy_version: 'in.(v104,v105)',
         table_id: `eq.${tableId}`,
@@ -2696,9 +2731,7 @@ export function createSupabaseIngestionClient({
     },
     async getRecentPredictionRows({ limit = 10000 } = {}) {
       const perTableLimit = Math.min(60, Math.max(1, Number(limit) || 60))
-      const rows = await postRpcRows('get_v105_recent_performance_rows', {
-        p_per_table_limit: perTableLimit,
-      }, { requestTimeoutMs: startupTimeoutMs })
+      const rows = await readV105RecentPerformanceRows(perTableLimit, { requestTimeoutMs: startupTimeoutMs })
       return rows
         .filter((row) => PRODUCTION_TABLE_IDS.includes(String(row?.table_id ?? '')))
         .filter((row) => row?.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION)
