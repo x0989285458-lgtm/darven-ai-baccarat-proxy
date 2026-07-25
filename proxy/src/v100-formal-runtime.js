@@ -8,6 +8,51 @@ function identityKey(source, tableId, shoe) {
   return JSON.stringify([String(source ?? ''), String(tableId ?? ''), String(shoe ?? '')])
 }
 
+const MAX_FORMAL_IDENTITY_CONCURRENCY = 4
+
+async function settleWithConcurrency(items, task, concurrency = MAX_FORMAL_IDENTITY_CONCURRENCY) {
+  const results = new Array(items.length)
+  let nextIndex = 0
+  const worker = async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex
+      nextIndex += 1
+      try {
+        results[index] = { status: 'fulfilled', value: await task(items[index], index) }
+      } catch (reason) {
+        results[index] = { status: 'rejected', reason }
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()))
+  return results
+}
+
+function createConcurrencyPermit(limit) {
+  let active = 0
+  const waiters = []
+  const acquire = () => {
+    if (active < limit) {
+      active += 1
+      return Promise.resolve()
+    }
+    return new Promise((resolve) => waiters.push(resolve))
+  }
+  const release = () => {
+    const next = waiters.shift()
+    if (next) next()
+    else active -= 1
+  }
+  return async (task) => {
+    await acquire()
+    try {
+      return await task()
+    } finally {
+      release()
+    }
+  }
+}
+
 export function resolveV100FormalEnabled(env = process.env) {
   return env?.V100_RELEASE_ENABLED === 'true'
 }
@@ -17,6 +62,7 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
   const loaded = new Set()
   const latest = new Map()
   const identityTails = new Map()
+  const withIdentityPermit = createConcurrencyPermit(MAX_FORMAL_IDENTITY_CONCURRENCY)
 
   function withIdentityTail(key, task) {
     const previous = identityTails.get(key) ?? Promise.resolve()
@@ -117,13 +163,13 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
         workFor(identityKey(event.source, event.tableId, event.shoe)).events.push(event)
       }
 
-      const results = await Promise.allSettled([...workByIdentity.entries()].map(([key, work]) => (
-        withIdentityTail(key, async () => {
+      const results = await settleWithConcurrency([...workByIdentity.entries()], ([key, work]) => (
+        withIdentityTail(key, () => withIdentityPermit(async () => {
           for (const table of work.tables) await hydrateTable(table)
           await applyIdentityRounds(key, work.events)
           return work.tables.map(scoreTable).filter(Boolean)
-        })
-      )))
+        }))
+      ))
       const failure = results.find((result) => result.status === 'rejected')
       if (failure) throw failure.reason
 

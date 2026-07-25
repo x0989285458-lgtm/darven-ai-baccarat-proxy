@@ -23,6 +23,7 @@ def healthy_status(**overrides):
         'authenticated': True,
         'tableCount': 10,
         'lastTablesAt': datetime.now(timezone.utc).isoformat(),
+        'lastRoundAt': datetime.now(timezone.utc).isoformat(),
     }
     value.update(overrides)
     return value
@@ -46,17 +47,27 @@ class WatchdogTablePolicyTests(unittest.TestCase):
         self.assertFalse(self.inspect_with(healthy_status(connected='false'))[3])
         self.assertFalse(self.inspect_with(healthy_status(authenticated='false'))[3])
 
-    def test_uses_freshest_valid_status_timestamp(self):
+    def test_fresh_heartbeat_cannot_mask_stale_authoritative_round_progress(self):
         stale = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
         fresh = datetime.now(timezone.utc).isoformat()
-        malformed = 'not-a-date'
-        self.assertTrue(self.inspect_with(healthy_status(lastTablesAt=stale, lastMessageAt=fresh))[3])
-        self.assertTrue(self.inspect_with(healthy_status(lastTablesAt=malformed, lastRoundAt=fresh))[3])
+        self.assertFalse(self.inspect_with(healthy_status(lastRoundAt=stale, lastTablesAt=fresh, lastMessageAt=fresh))[3])
 
     def test_rejects_missing_stale_and_materially_future_timestamps(self):
-        self.assertFalse(self.inspect_with(healthy_status(lastTablesAt=None))[3])
-        self.assertFalse(self.inspect_with(healthy_status(lastTablesAt=(datetime.now(timezone.utc) - timedelta(minutes=4)).isoformat()))[3])
-        self.assertFalse(self.inspect_with(healthy_status(lastTablesAt=(datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()))[3])
+        self.assertFalse(self.inspect_with(healthy_status(lastRoundAt=None, lastTablesAt=None))[3])
+        self.assertFalse(self.inspect_with(healthy_status(lastRoundAt=(datetime.now(timezone.utc) - timedelta(minutes=4)).isoformat()))[3])
+        self.assertFalse(self.inspect_with(healthy_status(lastRoundAt=(datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()))[3])
+
+
+def formal_worker_snapshot_error(message='TypeError: fetch failed'):
+    return {
+        'connected': False,
+        'authenticated': False,
+        'tableCount': 0,
+        'eventLayer': 'capture_error',
+        'eventComponent': 'cloud_capture',
+        'eventKind': 'worker_snapshot',
+        'eventMessage': message,
+    }
 
 
 class WatchdogRecoveryTests(unittest.TestCase):
@@ -122,34 +133,86 @@ class WatchdogRecoveryTests(unittest.TestCase):
         self.assertEqual(saved[-1]['failure_kind'], 'authorization_lost')
         self.assertIn('授權', output.getvalue())
 
-    def test_stale_authenticated_capture_restarts_worker_once_and_recovers(self):
-        stale = (healthy_status(lastTablesAt=(datetime.now(timezone.utc) - timedelta(minutes=4)).isoformat()), 10, 999, False)
+    def test_stale_authenticated_capture_alerts_without_restarting_worker(self):
+        stale = (healthy_status(lastRoundAt=(datetime.now(timezone.utc) - timedelta(minutes=4)).isoformat()), 10, 999, False)
+        saved = []
+        with patch.object(watchdog, 'load_state', return_value={'alerting': False}), \
+             patch.object(watchdog, 'inspect', return_value=stale), \
+             patch.object(watchdog, 'restart_gcp_worker') as restart, \
+             patch.object(watchdog, 'save_state', side_effect=lambda state: saved.append(state)):
+            watchdog.main()
+        restart.assert_not_called()
+        self.assertEqual(saved[-1]['failure_kind'], 'round_progress_stale')
+
+    def test_proxy_timeout_never_restarts_worker(self):
+        saved = []
+        with patch.object(watchdog, 'load_state', return_value={'alerting': False}), \
+             patch.object(watchdog, 'inspect', side_effect=TimeoutError('proxy timeout')), \
+             patch.object(watchdog, 'restart_gcp_worker') as restart, \
+             patch.object(watchdog, 'save_state', side_effect=lambda state: saved.append(state)):
+            watchdog.main()
+        restart.assert_not_called()
+        self.assertEqual(saved[-1]['failure_kind'], 'proxy_unreachable')
+
+    def test_database_backpressure_never_restarts_worker(self):
+        blocked_status = healthy_status(
+            eventLayer='write_error',
+            eventComponent='supabase_writer',
+            eventKind='persist_capture',
+            eventMessage='database timeout',
+        )
+        blocked = (blocked_status, 10, 999, False)
+        saved = []
+        with patch.object(watchdog, 'load_state', return_value={'alerting': False}), \
+             patch.object(watchdog, 'inspect', return_value=blocked), \
+             patch.object(watchdog, 'restart_gcp_worker') as restart, \
+             patch.object(watchdog, 'save_state', side_effect=lambda state: saved.append(state)):
+            watchdog.main()
+        restart.assert_not_called()
+        self.assertEqual(saved[-1]['failure_kind'], 'persistence_backpressure')
+
+    def test_formal_worker_snapshot_transport_error_restarts_once_and_recovers(self):
+        disconnected = (formal_worker_snapshot_error(), 0, 999, False)
         recovered = (healthy_status(), 10, 1, True)
         with patch.object(watchdog, 'load_state', return_value={'alerting': False}), \
-             patch.object(watchdog, 'inspect', side_effect=[stale, recovered]), \
+             patch.object(watchdog, 'inspect', side_effect=[disconnected, recovered]), \
              patch.object(watchdog, 'restart_gcp_worker') as restart, \
              patch.object(watchdog.time, 'sleep'), \
              patch.object(watchdog, 'save_state') as save:
             watchdog.main()
         restart.assert_called_once_with()
         self.assertFalse(save.call_args.args[0]['alerting'])
+        self.assertIn('last_worker_restart_at', save.call_args.args[0])
 
-    def test_same_incident_never_restarts_again_after_the_first_attempt(self):
-        stale = (healthy_status(lastTablesAt=(datetime.now(timezone.utc) - timedelta(minutes=4)).isoformat()), 10, 999, False)
-        old_attempt = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
-        state = {'alerting': True, 'failure_kind': 'capture_stale', 'last_recovery_attempt_at': old_attempt}
+    def test_formal_worker_snapshot_non_transport_errors_never_restart(self):
+        for message in ('version_mismatch: worker buildVersion must be 105', 'Cloud capture worker failed: 401 unauthorized'):
+            saved = []
+            snapshot_error = (formal_worker_snapshot_error(message), 0, 999, False)
+            with self.subTest(message=message), \
+                 patch.object(watchdog, 'load_state', return_value={'alerting': False}), \
+                 patch.object(watchdog, 'inspect', return_value=snapshot_error), \
+                 patch.object(watchdog, 'restart_gcp_worker') as restart, \
+                 patch.object(watchdog, 'save_state', side_effect=lambda state: saved.append(state)):
+                watchdog.main()
+            restart.assert_not_called()
+            self.assertEqual(saved[-1]['failure_kind'], 'transport_unresolved')
+
+    def test_restart_budget_blocks_repeated_disconnect_after_a_brief_recovery(self):
+        disconnected = (formal_worker_snapshot_error(), 0, 999, False)
+        recent = datetime.now(timezone.utc).isoformat()
+        state = {'alerting': False, 'last_worker_restart_at': recent}
         with patch.object(watchdog, 'load_state', return_value=state), \
-             patch.object(watchdog, 'inspect', return_value=stale), \
+             patch.object(watchdog, 'inspect', return_value=disconnected), \
              patch.object(watchdog, 'restart_gcp_worker') as restart, \
              patch.object(watchdog, 'save_state'):
             watchdog.main()
         restart.assert_not_called()
 
     def test_failed_reinspection_is_reported(self):
-        stale = (healthy_status(lastTablesAt=(datetime.now(timezone.utc) - timedelta(minutes=4)).isoformat()), 10, 999, False)
+        disconnected = (formal_worker_snapshot_error(), 0, 999, False)
         output = io.StringIO()
         with patch.object(watchdog, 'load_state', return_value={'alerting': False}), \
-             patch.object(watchdog, 'inspect', side_effect=[stale, RuntimeError('reinspect failed')]), \
+             patch.object(watchdog, 'inspect', side_effect=[disconnected, RuntimeError('reinspect failed')]), \
              patch.object(watchdog, 'restart_gcp_worker'), \
              patch.object(watchdog.time, 'sleep'), \
              patch.object(watchdog, 'save_state'), \
@@ -158,11 +221,11 @@ class WatchdogRecoveryTests(unittest.TestCase):
         self.assertIn('reinspect failed', output.getvalue())
 
     def test_alerting_state_persists_and_reports_changed_reinspection_error(self):
-        stale = (healthy_status(lastTablesAt=(datetime.now(timezone.utc) - timedelta(minutes=4)).isoformat()), 10, 999, False)
+        disconnected = (formal_worker_snapshot_error(), 0, 999, False)
         output = io.StringIO()
         saved = []
         with patch.object(watchdog, 'load_state', return_value={'alerting': True, 'first_alerted_at': 'earlier', 'last_error': 'old error'}), \
-             patch.object(watchdog, 'inspect', side_effect=[stale, RuntimeError('reinspect failed')]), \
+             patch.object(watchdog, 'inspect', side_effect=[disconnected, RuntimeError('reinspect failed')]), \
              patch.object(watchdog, 'restart_gcp_worker'), \
              patch.object(watchdog.time, 'sleep'), \
              patch.object(watchdog, 'save_state', side_effect=lambda state: saved.append(state)), \

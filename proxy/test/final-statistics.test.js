@@ -42,6 +42,7 @@ test('v102 stable report reads and accepts only complete v102 final settlements'
 
 test('recent calibration rows quarantine predictions without a verified final settlement marker', async () => {
   let requestedUrl
+  let requestedInit
   const finalRow = {
     table_id: 'BAG01', shoe_no: '8', round_no: 3,
     strategy_version: 'v105', predicted_result: 'banker', actual_result: 'banker', is_hit: true,
@@ -54,18 +55,18 @@ test('recent calibration rows quarantine predictions without a verified final se
   }
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-service-key',
-    fetchImpl: async (url) => { requestedUrl = new URL(url); return response([finalRow, legacyRow]) },
+    fetchImpl: async (url, init) => { requestedUrl = new URL(url); requestedInit = init; return response([finalRow, legacyRow]) },
   })
 
   assert.deepEqual(await client.getRecentPredictionRows({ limit: 100 }), [finalRow])
-  assert.match(requestedUrl.searchParams.get('select') ?? '', /settlement_final/)
-  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v105')
-  assert.equal(requestedUrl.searchParams.get('settlement_final'), 'eq.true')
-  assert.equal(requestedUrl.searchParams.has('or'), false)
+  assert.equal(requestedUrl.pathname, '/rest/v1/rpc/get_v105_recent_performance_rows')
+  assert.equal(requestedInit.method, 'POST')
+  assert.deepEqual(JSON.parse(requestedInit.body), { p_per_table_limit: 60 })
 })
 
 test('v102 recent calibration reads and accepts only v102 settlements', async () => {
   let requestedUrl
+  let requestedInit
   const v102Row = {
     table_id: 'BAG01', shoe_no: '100', round_no: 2,
     strategy_version: 'v105', predicted_result: 'banker', actual_result: 'banker', is_hit: true,
@@ -77,11 +78,13 @@ test('v102 recent calibration reads and accepts only v102 settlements', async ()
   }
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-service-key',
-    fetchImpl: async (url) => { requestedUrl = new URL(url); return response([v102Row, v98Row]) },
+    fetchImpl: async (url, init) => { requestedUrl = new URL(url); requestedInit = init; return response([v102Row, v98Row]) },
   })
 
   assert.deepEqual(await client.getRecentPredictionRows({ limit: 100 }), [v102Row])
-  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v105')
+  assert.equal(requestedUrl.pathname, '/rest/v1/rpc/get_v105_recent_performance_rows')
+  assert.equal(requestedInit.method, 'POST')
+  assert.deepEqual(JSON.parse(requestedInit.body), { p_per_table_limit: 60 })
 })
 
 test('v102 recent calibration rejects post-result or non-issued history', async () => {

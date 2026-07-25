@@ -52,8 +52,9 @@ export function parseCloudCapturePayload(payload = {}, receivedAt = new Date().t
 export function createCloudCaptureClient({ url, state, writer = null, v100Formal = null, fetchImpl = globalThis.fetch, pollMs = DEFAULT_POLL_MS, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, requestRetries = DEFAULT_REQUEST_RETRIES, retryDelayMs = 250, adminKey = process.env.WORKER_ADMIN_KEY } = {}) {
   let timer = null
   let stopped = true
+  let tickInFlight = null
 
-  async function tick() {
+  async function runTick() {
     if (!url) {
       state?.recordError?.('CLOUD_BROWSER_URL is missing')
       state?.setStatus?.({ captureSource: 'cloud_browser', captureMode: 'cloud_browser', connected: false, authenticated: false })
@@ -83,6 +84,14 @@ export function createCloudCaptureClient({ url, state, writer = null, v100Formal
       await writer?.writeOperationalEvent?.(event).catch(() => {})
       return null
     }
+  }
+
+  function tick() {
+    if (tickInFlight) return tickInFlight
+    tickInFlight = runTick().finally(() => {
+      tickInFlight = null
+    })
+    return tickInFlight
   }
 
   function start() {

@@ -118,7 +118,7 @@ export class LiveRoadClient {
   private streamAbort?: AbortController
   private reconnectTimer?: number
   private streamWatchdog?: number
-  private lastStreamAt = 0
+  private lastTablesAt = 0
   private stopped = true
   private authorizationLost = false
   private readonly sourceUpdatedAtByTable = new Map<string, number>()
@@ -130,11 +130,12 @@ export class LiveRoadClient {
     this.disconnect(false)
     this.stopped = false
     this.authorizationLost = false
+    this.lastTablesAt = Date.now()
     this.options.onStatus({ state: 'connecting', message: '正在建立即時同步…' })
     void this.connectStream()
     this.streamWatchdog = window.setInterval(() => {
       if (this.stopped) return
-      if (!this.lastStreamAt || Date.now() - this.lastStreamAt > streamStaleMs) void this.poll()
+      if (!this.lastTablesAt || Date.now() - this.lastTablesAt >= streamStaleMs) void this.poll()
     }, pollIntervalMs)
   }
 
@@ -148,6 +149,7 @@ export class LiveRoadClient {
     this.streamWatchdog = undefined
     this.reconnectTimer = undefined
     this.streamAbort = undefined
+    this.lastTablesAt = 0
     if (notify) this.options.onStatus({ state: 'disconnected', message: '已停止讀取雲端資料' })
   }
 
@@ -163,10 +165,8 @@ export class LiveRoadClient {
         return
       }
       if (!response.ok || !response.body) throw new Error(`stream ${response.status}`)
-      this.lastStreamAt = Date.now()
       await consumeSseStream(response.body, (event, data) => {
         if (this.stopped) return
-        this.lastStreamAt = Date.now()
         if (event === 'unauthorized') {
           this.handleUnauthorized()
           this.streamAbort?.abort()
@@ -174,6 +174,7 @@ export class LiveRoadClient {
         }
         if (event === 'heartbeat') return
         if (event !== 'tables') return
+        this.lastTablesAt = Date.now()
         const payload = JSON.parse(data)
         const tables = normalizeProxyTables(Array.isArray(payload?.tables) ? payload.tables : [])
         this.publishTables(tables, `SSE ${tables.length}`)
@@ -210,6 +211,7 @@ export class LiveRoadClient {
       if (!response.ok) throw new Error(`proxy ${response.status}`)
       const payload = await response.json()
       const tables = normalizeProxyTables(Array.isArray(payload) ? payload : [])
+      this.lastTablesAt = Date.now()
       if (proxyStatus && /stale|過期|建置版本不符/i.test(proxyStatus.message)) {
         this.options.onTables([])
         this.options.onStatus(proxyStatus)

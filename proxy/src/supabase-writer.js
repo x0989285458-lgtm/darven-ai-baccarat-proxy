@@ -2012,6 +2012,28 @@ export function createSupabaseIngestionClient({
     })
   }
 
+  async function postRpcRows(path, body, { requestTimeoutMs = 0 } = {}) {
+    if (!configured) return []
+    const endpoint = new URL(`/rest/v1/rpc/${path}`, url)
+    return withRetry(async () => {
+      const response = await fetchWithOptionalTimeout(endpoint, {
+        method: 'POST',
+        headers: {
+          ['api' + 'key']: serviceKey,
+          ['Author' + 'ization']: ['Bearer', serviceKey].join(' '),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      }, requestTimeoutMs)
+      const responseText = await response.text()
+      if (!response.ok) throw new Error(`Supabase rpc/${path} read failed: ${response.status} ${responseText}`)
+      let rows
+      try { rows = JSON.parse(responseText) } catch { rows = null }
+      if (!Array.isArray(rows)) throw new Error(`Supabase rpc/${path} returned invalid rows`)
+      return rows
+    })
+  }
+
   async function patchRest(path, body, query = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase backend key is not configured' }
     const endpoint = new URL(`/rest/v1/${path}`, url)
@@ -2627,25 +2649,11 @@ export function createSupabaseIngestionClient({
     },
     async getRecentPredictionRows({ limit = 10000 } = {}) {
       const perTableLimit = Math.min(60, Math.max(1, Number(limit) || 60))
-      const projectedSelect = 'id,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,prediction_issued_at,created_at,prediction_timing:prediction_features->>prediction_timing'
-      const rowsByTable = []
-      for (let index = 0; index < PRODUCTION_TABLE_IDS.length; index += 2) {
-        const batch = PRODUCTION_TABLE_IDS.slice(index, index + 2)
-        rowsByTable.push(...await Promise.all(batch.map(async (tableId) => {
-          const rows = await getRest('daily_prediction_results', {
-            select: projectedSelect,
-            table_id: `eq.${tableId}`,
-            settlement_final: 'eq.true',
-            strategy_version: `eq.${ALL_MT_EQUAL_STRATEGY_VERSION}`,
-            prediction_issued_at: 'not.is.null',
-            order: 'created_at.desc',
-            limit: String(perTableLimit),
-          })
-          return (Array.isArray(rows) ? rows : [])
-            .filter((row) => String(row?.table_id ?? '') === tableId)
-        })))
-      }
-      return rowsByTable.flat()
+      const rows = await postRpcRows('get_v105_recent_performance_rows', {
+        p_per_table_limit: perTableLimit,
+      })
+      return rows
+        .filter((row) => PRODUCTION_TABLE_IDS.includes(String(row?.table_id ?? '')))
         .filter((row) => row?.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION)
         .filter((row) => (row?.prediction_timing ?? row?.prediction_features?.prediction_timing) === 'pre_result_context')
         .filter((row) => Boolean(row?.prediction_issued_at))

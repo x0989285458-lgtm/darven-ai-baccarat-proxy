@@ -178,6 +178,10 @@ test('v102 readers require complete current final columns and exclude compatibil
   assert.deepEqual((await client.getTableUiSettledPredictions({ tableId: 'BAG01', shoe: 88 })).map((row) => row.round), [4])
   assert.equal(await client.countTodayPredictionRounds(), 1)
   for (const url of requests) {
+    if (url.pathname.endsWith('/rpc/get_v105_recent_performance_rows')) {
+      assert.equal(url.search, '')
+      continue
+    }
     assert.match(url.searchParams.get('select') ?? '', /settlement_final/)
     assert.equal(url.searchParams.get('strategy_version'), 'eq.v105')
     assert.equal(url.searchParams.get('settlement_final'), 'eq.true')

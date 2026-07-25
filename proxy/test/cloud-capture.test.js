@@ -47,6 +47,32 @@ test('cloud capture sends worker admin key header when configured', async () => 
   await client.tick()
 })
 
+test('overlapping cloud capture ticks share one in-flight worker snapshot', async () => {
+  let resolveFetch
+  let fetchCalls = 0
+  const client = createCloudCaptureClient({
+    url: 'https://cloud-worker.example/snapshot',
+    state: createFakeState(),
+    fetchImpl: async () => {
+      fetchCalls += 1
+      return new Promise((resolve) => { resolveFetch = resolve })
+    },
+  })
+
+  const first = client.tick()
+  const second = client.tick()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(fetchCalls, 1)
+  resolveFetch({
+    ok: true,
+    status: 200,
+    json: async () => ({ buildVersion: '105', connected: true, authenticated: true, sessionId: 'single-flight', tables: [] }),
+  })
+  const [firstResult, secondResult] = await Promise.all([first, second])
+  assert.equal(firstResult.sessionId, 'single-flight')
+  assert.equal(secondResult.sessionId, 'single-flight')
+})
+
 test('cloud capture tick fetches worker, updates state, and writes Supabase cloud rows', async () => {
   const writes = []
   const state = createFakeState()

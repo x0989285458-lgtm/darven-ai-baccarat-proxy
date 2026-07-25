@@ -21,6 +21,7 @@ GCP_PROJECT = 'project-fdf510b8-6df7-494d-a36'
 GCP_ZONE = 'asia-east1-b'
 GCP_WORKER = 'darven-mt-taiwan-worker-5'
 RECOVERY_COOLDOWN_SECONDS = 3 * 60
+RESTART_BUDGET_SECONDS = 30 * 60
 
 
 class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -49,6 +50,16 @@ def freshest_status_time(status):
     values = [parse_dt(status.get(key)) for key in ('lastTablesAt', 'lastMessageAt', 'lastRoundAt')]
     valid = [value for value in values if value is not None]
     return max(valid) if valid else None
+
+
+def progress_status_time(status, table_count):
+    if (
+        status.get('connected') is True
+        and status.get('authenticated') is True
+        and table_count == EXPECTED_TABLE_COUNT
+    ):
+        return parse_dt(status.get('lastRoundAt')) or freshest_status_time(status)
+    return freshest_status_time(status)
 
 
 def load_state():
@@ -103,8 +114,11 @@ def restart_gcp_worker():
 def recovery_due(state, failure_kind=None, now=None):
     if state.get('alerting') and failure_kind and state.get('failure_kind') == failure_kind and state.get('last_recovery_attempt_at'):
         return False
-    previous = parse_dt(state.get('last_recovery_attempt_at'))
     current = now or datetime.now(timezone.utc)
+    previous_restart = parse_dt(state.get('last_worker_restart_at'))
+    if previous_restart is not None and (current - previous_restart).total_seconds() < RESTART_BUDGET_SECONDS:
+        return False
+    previous = parse_dt(state.get('last_recovery_attempt_at'))
     return previous is None or (current - previous).total_seconds() >= RECOVERY_COOLDOWN_SECONDS
 
 
@@ -125,7 +139,7 @@ def inspect():
     table_count_value = status.get('tableCount')
     table_count_valid = isinstance(table_count_value, int) and not isinstance(table_count_value, bool)
     table_count = table_count_value if table_count_valid else 0
-    last = freshest_status_time(status)
+    last = progress_status_time(status, table_count)
     raw_age = (datetime.now(timezone.utc) - last).total_seconds() if last else 10**9
     timestamp_healthy = -MAX_FUTURE_SKEW_SECONDS <= raw_age <= THRESHOLD_SECONDS
     age = max(0, raw_age) if timestamp_healthy else raw_age
@@ -141,23 +155,36 @@ def inspect():
 
 def classify_failure(status, table_count, age):
     message = ' '.join(str(status.get(key) or '') for key in ('eventKind', 'eventMessage', 'errorMessage', 'reason')).lower()
+    event_layer = str(status.get('eventLayer') or '').lower()
+    event_kind = str(status.get('eventKind') or '').lower()
     if 'portal_auth_refresh_failed' in message:
         return 'authorization_refresh_failed'
+    if status.get('persistenceStatus') == 'error' or status.get('persistenceError') or event_layer == 'write_error':
+        return 'persistence_backpressure'
     if status.get('connected') is True and status.get('authenticated') is False and table_count == 0:
         return 'authorization_lost'
     if status.get('connected') is not True:
-        return 'worker_or_transport'
+        formal_worker_transport = (
+            event_layer == 'capture_error'
+            and event_kind == 'worker_snapshot'
+            and re.search(r'timeout|timed out|abort|socket|reset|network|fetch failed|econn(?:refused|reset)|unreachable', message)
+        )
+        if formal_worker_transport:
+            return 'worker_transport_confirmed'
+        return 'transport_unresolved'
     if status.get('authenticated') is not True:
         return 'authentication_unknown'
     if table_count != EXPECTED_TABLE_COUNT:
         return 'table_set_invalid'
-    if age > THRESHOLD_SECONDS or age < -MAX_FUTURE_SKEW_SECONDS:
-        return 'capture_stale'
+    if age > THRESHOLD_SECONDS:
+        return 'round_progress_stale'
+    if age < -MAX_FUTURE_SKEW_SECONDS:
+        return 'timestamp_invalid'
     return 'unknown'
 
 
 def restart_allowed(failure_kind):
-    return failure_kind not in {'authorization_lost', 'authorization_refresh_failed'}
+    return failure_kind == 'worker_transport_confirmed'
 
 
 def last_status_text(status):
@@ -167,19 +194,23 @@ def last_status_text(status):
 
 def main():
     state = load_state()
+    inspection_failure_kind = None
     try:
         status, table_count, age, healthy = inspect()
     except Exception as error:
         status, table_count, age, healthy = {}, 0, 10**9, False
         first_error = f'{type(error).__name__}: {error}'
+        inspection_failure_kind = 'proxy_unreachable'
     else:
         first_error = None
 
-    failure_kind = None if healthy else classify_failure(status, table_count, age)
+    failure_kind = None if healthy else (inspection_failure_kind or classify_failure(status, table_count, age))
     attempted = []
     recovery_attempt_at = None
+    last_worker_restart_at = state.get('last_worker_restart_at')
     if not healthy and restart_allowed(failure_kind) and recovery_due(state, failure_kind):
         recovery_attempt_at = datetime.now(timezone.utc).isoformat()
+        last_worker_restart_at = recovery_attempt_at
         try:
             restart_gcp_worker()
             attempted.append('gcp-worker-restart')
@@ -190,9 +221,11 @@ def main():
             attempted.append('gcp-worker-restart:failed')
             first_error = first_error or f'{type(error).__name__}: {error}'
             healthy = False
-            failure_kind = failure_kind or 'worker_or_transport'
+            failure_kind = failure_kind or 'worker_transport_confirmed'
     elif not healthy and failure_kind in {'authorization_lost', 'authorization_refresh_failed'}:
         attempted.append('worker-session-refresh')
+    elif not healthy:
+        attempted.append('保留Worker，禁止未確認重啟')
 
     now = datetime.now(timezone.utc).isoformat()
     if healthy:
@@ -201,13 +234,22 @@ def main():
                   f'桌數：{table_count}\n'
                   f'最後資料：{last_status_text(status)}\n'
                   f'自動處理：{", ".join(attempted) or "不需要"}')
-        save_state({'alerting': False, 'last_ok_at': now})
+        healthy_state = {'alerting': False, 'last_ok_at': now}
+        if last_worker_restart_at:
+            healthy_state['last_worker_restart_at'] = last_worker_restart_at
+        save_state(healthy_state)
         return
 
     if failure_kind == 'authorization_lost':
         error_text = 'MT授權失效，等待Worker自動取得新Session'
     elif failure_kind == 'authorization_refresh_failed':
         error_text = 'MT授權自動更新已失敗兩次，已停止重試並等待人工處理'
+    elif failure_kind == 'persistence_backpressure':
+        error_text = 'Proxy／Supabase持久化阻塞，Worker仍保留運行，禁止以重啟掩蓋積壓'
+    elif failure_kind == 'round_progress_stale':
+        error_text = '10桌仍連線但權威Final超過3分鐘未前進；來源與持久化尚未能可靠分流，禁止直接重啟Worker'
+    elif failure_kind == 'proxy_unreachable':
+        error_text = sanitize_error(first_error or 'Proxy無法連線，禁止誤判為Worker故障')
     else:
         error_text = sanitize_error(first_error or status.get('eventMessage') or status.get('errorMessage') or '上游Worker/Tunnel無回傳')
     if not state.get('alerting'):
@@ -230,6 +272,7 @@ def main():
         'attempted': attempted,
         'failure_kind': failure_kind,
         'last_recovery_attempt_at': recovery_attempt_at or state.get('last_recovery_attempt_at'),
+        'last_worker_restart_at': last_worker_restart_at,
     }
     if error_text:
         next_state['last_error'] = error_text

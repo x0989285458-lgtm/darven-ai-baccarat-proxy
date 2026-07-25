@@ -88,31 +88,28 @@ test('v105 history reader requires 60 Final rows and the latest issuance state i
 })
 
 
-test('recent performance startup hydration fetches only 60 compact Finals per formal table', async () => {
+test('recent performance startup hydration uses one bounded service-only RPC for all formal tables', async () => {
   const requested = []
+  const rpcRows = PRODUCTION_TABLE_IDS.map((tableId) => ({
+    id: `${tableId}-final`, table_id: tableId, shoe_no: '1', round_no: 1,
+    strategy_version: 'v105', predicted_result: 'banker', actual_result: 'banker',
+    settlement_final: true, prediction_timing: 'pre_result_context',
+    prediction_issued_at: '2026-07-24T00:00:00.000Z', created_at: '2026-07-24T00:01:00.000Z',
+  }))
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
-    fetchImpl: async (url) => {
-      const request = new URL(url)
-      requested.push(request)
-      const tableId = request.searchParams.get('table_id')?.replace(/^eq\./, '')
-      return response([{
-        id: `${tableId}-final`, table_id: tableId, shoe_no: '1', round_no: 1,
-        strategy_version: 'v105', predicted_result: 'banker', actual_result: 'banker',
-        settlement_final: true, prediction_timing: 'pre_result_context',
-        prediction_issued_at: '2026-07-24T00:00:00.000Z', created_at: '2026-07-24T00:01:00.000Z',
-      }])
+    fetchImpl: async (url, init = {}) => {
+      requested.push({ url: new URL(url), init })
+      return response(rpcRows)
     },
   })
 
   const rows = await client.getRecentPredictionRows({ limit: 10000 })
 
-  assert.equal(requested.length, PRODUCTION_TABLE_IDS.length)
+  assert.equal(requested.length, 1)
+  assert.equal(requested[0].url.pathname, '/rest/v1/rpc/get_v105_recent_performance_rows')
+  assert.equal(requested[0].init.method, 'POST')
+  assert.deepEqual(JSON.parse(requested[0].init.body), { p_per_table_limit: 60 })
   assert.equal(rows.length, PRODUCTION_TABLE_IDS.length)
-  assert.ok(requested.every((request) => request.searchParams.get('limit') === '60'))
-  assert.deepEqual(new Set(requested.map((request) => request.searchParams.get('table_id')?.replace(/^eq\./, ''))), new Set(PRODUCTION_TABLE_IDS))
-  assert.ok(requested.every((request) => request.searchParams.get('settlement_final') === 'eq.true'))
-  assert.ok(requested.every((request) => request.searchParams.get('strategy_version') === 'eq.v105'))
-  assert.ok(requested.every((request) => request.searchParams.get('select')?.includes('prediction_timing:prediction_features->>prediction_timing')))
-  assert.ok(requested.every((request) => !request.searchParams.get('select')?.includes(',prediction_features,')))
+  assert.deepEqual(new Set(rows.map((row) => row.table_id)), new Set(PRODUCTION_TABLE_IDS))
 })

@@ -13,7 +13,7 @@ test('formal release E2E report is compact and idempotent by release day', async
   const client = onlineCore.createOnlineCoreClient({ url: 'https://example.supabase.co', serviceKey: 'service-key', dbConnectionString: '', fetchImpl })
   assert.equal(typeof client.upsertFormalReleaseReport, 'function', 'formal release report upsert is not implemented')
   const input = {
-    releaseVersion: 'v105.0.0-formal.13', strategyVersion: 'v105', completedAt: '2026-07-24T16:30:00.000Z',
+    releaseVersion: 'v105.0.0-formal.14', strategyVersion: 'v105', completedAt: '2026-07-24T16:30:00.000Z',
     passed: true, verifiedTables: 10, finalRows: 917,
     checks: { proxy: true, database: true, queue: true, cursor: true, frontend: true },
     token: 'must-not-persist', rawEvidence: { cards: ['AS', 'KH'] },
@@ -27,7 +27,7 @@ test('formal release E2E report is compact and idempotent by release day', async
   assert.equal(writes[0].body.report_type, 'formal_release_e2e')
   assert.equal(writes[0].body.report_date, '2026-07-25')
   assert.equal(writes[0].body.strategy_version, 'v105')
-  assert.equal(writes[0].body.raw_summary.releaseVersion, 'v105.0.0-formal.13')
+  assert.equal(writes[0].body.raw_summary.releaseVersion, 'v105.0.0-formal.14')
   assert.equal(writes[0].body.raw_summary.verifiedTables, 10)
   assert.deepEqual(writes[0].body.raw_summary.checks, input.checks)
   assert.equal(writes[0].body.metadata.e2ePassed, true)

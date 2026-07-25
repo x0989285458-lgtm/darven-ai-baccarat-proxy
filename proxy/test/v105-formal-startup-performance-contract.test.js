@@ -7,34 +7,59 @@ const repo = new URL('../../', import.meta.url)
 const read = (path) => readFileSync(new URL(path, repo), 'utf8')
 const manifest = JSON.parse(read('release/v105-formal-release-manifest.json'))
 
-test('formal.13 installs the recent-performance startup index before proxy cutover', () => {
-  assert.equal(manifest.releaseVersion, 'v105.0.0-formal.13')
+test('formal.14 installs the recent-performance index and JSON-free RPC before proxy cutover', () => {
+  assert.equal(manifest.releaseVersion, 'v105.0.0-formal.14')
   assert.equal(manifest.databasePerformanceAdditive, 'frontend/supabase/migrate_v105_formal_recent_performance_index.sql')
+  assert.equal(manifest.databasePerformanceRpcAdditive, 'frontend/supabase/migrate_v105_formal_recent_performance_rpc.sql')
   const memoryIndex = manifest.deploymentOrder.indexOf('database-memory-additive')
   const performanceIndex = manifest.deploymentOrder.indexOf('database-performance-additive')
+  const rpcIndex = manifest.deploymentOrder.indexOf('database-performance-rpc-additive')
   const proxyIndex = manifest.deploymentOrder.indexOf('proxy')
   assert.equal(performanceIndex, memoryIndex + 1)
-  assert.ok(performanceIndex < proxyIndex)
+  assert.equal(rpcIndex, performanceIndex + 1)
+  assert.ok(rpcIndex < proxyIndex)
 
-  const migrationPath = new URL('frontend/supabase/migrate_v105_formal_recent_performance_index.sql', repo)
-  assert.equal(existsSync(migrationPath), true)
-  const migration = read('frontend/supabase/migrate_v105_formal_recent_performance_index.sql')
-  assert.match(migration, /create\s+index\s+concurrently\s+if\s+not\s+exists\s+daily_prediction_results_v105_recent_table_idx/i)
-  assert.match(migration, /\(strategy_version,\s*table_id,\s*created_at\s+desc\)/i)
-  assert.match(migration, /where\s+settlement_final\s+is\s+true\s+and\s+prediction_issued_at\s+is\s+not\s+null/i)
-  assert.doesNotMatch(migration, /\b(drop|delete|truncate|alter\s+table)\b/i)
+  const indexMigrationPath = new URL('frontend/supabase/migrate_v105_formal_recent_performance_index.sql', repo)
+  assert.equal(existsSync(indexMigrationPath), true)
+  const indexMigration = read('frontend/supabase/migrate_v105_formal_recent_performance_index.sql')
+  assert.match(indexMigration, /create\s+index\s+concurrently\s+if\s+not\s+exists\s+daily_prediction_results_v105_recent_table_idx/i)
+  assert.match(indexMigration, /\(strategy_version,\s*table_id,\s*created_at\s+desc\)/i)
+  assert.match(indexMigration, /where\s+settlement_final\s+is\s+true\s+and\s+prediction_issued_at\s+is\s+not\s+null/i)
+  assert.doesNotMatch(indexMigration, /get_v105_recent_performance_rows/i)
+
+  const rpcMigrationPath = new URL('frontend/supabase/migrate_v105_formal_recent_performance_rpc.sql', repo)
+  assert.equal(existsSync(rpcMigrationPath), true)
+  const rpcMigration = read('frontend/supabase/migrate_v105_formal_recent_performance_rpc.sql')
+  assert.match(rpcMigration, /create\s+or\s+replace\s+function\s+public\.get_v105_recent_performance_rows/i)
+  assert.doesNotMatch(rpcMigration, /cross\s+join\s+lateral/i)
+  assert.equal((rpcMigration.match(/\bunion\s+all\b/gi) ?? []).length, 9)
+  for (const tableId of ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']) {
+    assert.match(rpcMigration, new RegExp(`d\\.table_id\\s*=\\s*'${tableId}'`))
+  }
+  assert.match(rpcMigration, /limit\s+least\(60,\s*greatest\(1,/i)
+  assert.equal((rpcMigration.match(/'pre_result_context'::text\s+as\s+prediction_timing/gi) ?? []).length, 10)
+  assert.doesNotMatch(rpcMigration, /prediction_features/i)
+  for (const role of ['public', 'anon', 'authenticated']) {
+    assert.match(rpcMigration, new RegExp(`revoke\\s+all\\s+on\\s+function\\s+public\\.get_v105_recent_performance_rows\\(integer\\)\\s+from\\s+${role}`, 'i'))
+  }
+  assert.match(rpcMigration, /grant\s+execute\s+on\s+function\s+public\.get_v105_recent_performance_rows\(integer\)\s+to\s+service_role/i)
+  assert.doesNotMatch(rpcMigration, /\b(drop|delete|truncate|alter\s+table)\b/i)
 
   const baseline = read('frontend/supabase/schema_v100_baseline.sql')
   assert.match(baseline, /daily_prediction_results_v105_recent_table_idx[\s\S]*strategy_version,\s*table_id,\s*created_at\s+desc/i)
+
+  const formalSchema = read('frontend/supabase/schema_v105_formal.sql')
+  assert.match(formalSchema, /issue_v105_prediction[\s\S]*prediction_issued_at,\s*issued_prediction_payload,\s*settlement_final[\s\S]*now\(\),\s*p_prediction->'issued_prediction_payload',\s*false/i)
+  assert.match(formalSchema, /settle_v105_prediction[\s\S]*prediction_issued_at\s+is\s+null\s+or\s+existing\.issued_prediction_payload\s+is\s+null[\s\S]*immutable pre-result evidence/i)
 
   const writer = read('proxy/src/supabase-writer.js')
   const start = writer.indexOf('async getRecentPredictionRows')
   const end = writer.indexOf('async getTableUiSettledPredictions', start)
   const block = writer.slice(start, end)
-  assert.match(block, /PRODUCTION_TABLE_IDS\.slice\(index,\s*index\s*\+\s*2\)/)
-  assert.match(block, /Math\.min\(60,/)
-  assert.match(block, /prediction_timing:prediction_features->>prediction_timing/)
-  assert.doesNotMatch(block, /,prediction_features,/)
+  assert.match(block, /postRpcRows\('get_v105_recent_performance_rows'/)
+  assert.match(block, /p_per_table_limit:\s*perTableLimit/)
+  assert.doesNotMatch(block, /getRest\('daily_prediction_results'/)
+  assert.doesNotMatch(block, /PRODUCTION_TABLE_IDS\.slice/)
 })
 
 test('formal startup hydration completes before non-blocking shadows may query the database', async () => {

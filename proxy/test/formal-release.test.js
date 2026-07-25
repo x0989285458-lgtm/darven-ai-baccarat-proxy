@@ -83,12 +83,15 @@ test('v104 history derives tie display only from complete persisted v104 evidenc
 
 test('v104 recent calibration hydration queries only the current formal release', async () => {
   let requestedUrl = ''
+  let requestedInit
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
-    fetchImpl: async (url) => { requestedUrl = decodeURIComponent(String(url)); return response([]) },
+    fetchImpl: async (url, init) => { requestedUrl = decodeURIComponent(String(url)); requestedInit = init; return response([]) },
   })
 
   await client.getRecentPredictionRows({ limit: 18 })
 
-  assert.match(requestedUrl, /strategy_version=eq\.v105/)
+  assert.match(requestedUrl, /\/rest\/v1\/rpc\/get_v105_recent_performance_rows$/)
+  assert.equal(requestedInit.method, 'POST')
+  assert.deepEqual(JSON.parse(requestedInit.body), { p_per_table_limit: 18 })
 })

@@ -14,7 +14,7 @@ test('formal release memory activation fails closed until live E2E passes all 10
     },
   }
   const manifest = {
-    releaseVersion: 'v105.0.0-formal.13',
+    releaseVersion: 'v105.0.0-formal.14',
     strategyVersion: 'v105',
     candidateMode: 'formal',
     formalActionsEnabled: true,
@@ -45,7 +45,7 @@ test('formal release memory activation fails closed until live E2E passes all 10
   assert.equal(result.ok, true)
   assert.equal(writes.length, 1)
   assert.deepEqual(writes[0], {
-    releaseVersion: 'v105.0.0-formal.13',
+    releaseVersion: 'v105.0.0-formal.14',
     strategyVersion: 'v105',
     name: '瑞文AI百家正式策略',
     status: 'active',

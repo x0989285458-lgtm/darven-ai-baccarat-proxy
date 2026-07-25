@@ -1,6 +1,6 @@
 {
-  "releaseVersion": "v105.0.0-formal.13",
-  "packageVersion": "1.0.14",
+  "releaseVersion": "v105.0.0-formal.14",
+  "packageVersion": "1.0.15",
   "productVersion": "v105",
   "frontendBuildVersion": "v105",
   "proxyBuildVersion": "v105",
@@ -81,6 +81,7 @@
     "database-additive",
     "database-memory-additive",
     "database-performance-additive",
+    "database-performance-rpc-additive",
     "database-hotfix",
     "proxy",
     "worker",
@@ -100,5 +101,6 @@
     "v105-active-pending-zero"
   ],
   "databaseMemoryAdditive": "frontend/supabase/migrate_v105_formal_memory_daily_summary.sql",
-  "databasePerformanceAdditive": "frontend/supabase/migrate_v105_formal_recent_performance_index.sql"
+  "databasePerformanceAdditive": "frontend/supabase/migrate_v105_formal_recent_performance_index.sql",
+  "databasePerformanceRpcAdditive": "frontend/supabase/migrate_v105_formal_recent_performance_rpc.sql"
 }

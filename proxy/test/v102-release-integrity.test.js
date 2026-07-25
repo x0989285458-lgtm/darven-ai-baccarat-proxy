@@ -11,7 +11,7 @@ test('v104 release manifest and runtime share one formal identity', () => {
   const path = new URL('release/v105-formal-release-manifest.json', repo)
   assert.equal(existsSync(path), true)
   const manifest = JSON.parse(readFileSync(path, 'utf8'))
-  assert.equal(manifest.packageVersion, '1.0.14')
+  assert.equal(manifest.packageVersion, '1.0.15')
   assert.equal(manifest.productVersion, 'v105')
   assert.equal(manifest.proxyBuildVersion, 'v105')
   assert.equal(manifest.workerBuildVersion, '105')
@@ -22,21 +22,21 @@ test('v104 release manifest and runtime share one formal identity', () => {
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 30, superSix: 50, bankerPair: 50, playerPair: 50, bankerDragon: 40, playerDragon: 40,
   })
-  assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'database-memory-additive', 'database-performance-additive', 'database-hotfix', 'proxy', 'worker', 'frontend', 'live-e2e', 'memory-activation', 'v104-pending-drain-zero', 'database-finalize'])
+  assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'database-memory-additive', 'database-performance-additive', 'database-performance-rpc-additive', 'database-hotfix', 'proxy', 'worker', 'frontend', 'live-e2e', 'memory-activation', 'v104-pending-drain-zero', 'database-finalize'])
   assert.equal(manifest.rollbackTarget, 'v104')
   assert.deepEqual(manifest.rollbackRequires, ['v105-issuance-fenced', 'v105-active-pending-zero'])
 })
 
 test('v104 active frontend proxy worker protocol and deployment surfaces match', () => {
   assert.match(read('frontend/src/lib/buildVersion.ts'), /buildVersion:\s*'v105'[\s\S]*strategyVersion:\s*'v105'/)
-  assert.match(read('frontend/package.json'), /"version":\s*"1\.0\.14"/)
-  assert.match(read('proxy/package.json'), /"name":\s*"draven-mt-data-proxy-v105"[\s\S]*"version":\s*"1\.0\.14"/)
+  assert.match(read('frontend/package.json'), /"version":\s*"1\.0\.15"/)
+  assert.match(read('proxy/package.json'), /"name":\s*"draven-mt-data-proxy-v105"[\s\S]*"version":\s*"1\.0\.15"/)
   assert.match(read('proxy/src/server.js'), /WORKER_PROTOCOL_BUILD_VERSION\s*=\s*'105'[\s\S]*WORKER_PROTOCOL_VERSION\s*=\s*'v105'/)
   assert.match(read('proxy/src/cloud-capture.js'), /buildVersion\s*!==\s*'105'/)
   assert.match(read('cloud-browser-worker/src/runtime-config.js'), /BUILD_VERSION\s*=\s*'105'/)
   assert.match(read('cloud-browser-worker/src/snapshot-pusher.js'), /protocolVersion:\s*'v105'/)
   assert.match(read('cloud-browser-worker/Dockerfile'), /org\.opencontainers\.image\.version="v105"/)
-  assert.match(read('cloud-browser-worker/package.json'), /"version":\s*"1\.0\.14"/)
+  assert.match(read('cloud-browser-worker/package.json'), /"version":\s*"1\.0\.15"/)
   assert.match(read('cloud-browser-worker/deploy/vm/release.env.example'), /WORKER_IMAGE=darven-worker:v105-REVIEWED_SHA/)
 })
 

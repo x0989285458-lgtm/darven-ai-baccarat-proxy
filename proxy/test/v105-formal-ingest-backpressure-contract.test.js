@@ -52,6 +52,29 @@ test('formal rank ledger preserves per-identity order while processing independe
   assert.equal(maxActive, 2)
 })
 
+test('formal identity fan-out is bounded to four concurrent durable operations', async () => {
+  let active = 0
+  let maxActive = 0
+  const writer = {
+    configured: true,
+    async readV100RankLedger() { return null },
+    async applyV100RankLedgerEvent(event) {
+      active += 1
+      maxActive = Math.max(maxActive, active)
+      await delay(15)
+      active -= 1
+      return durableFor(event)
+    },
+  }
+  const runtime = createV100FormalRuntime({ enabled: true, writer, source: 'ofalive99' })
+  const rounds = Array.from({ length: 12 }, (_, index) => finalRound(`BAG${String(index + 1).padStart(2, '0')}`, 1))
+
+  await runtime.processSnapshot({ tables: [], rounds })
+
+  assert.ok(maxActive >= 2)
+  assert.ok(maxActive <= 4, `expected at most 4 concurrent identities, got ${maxActive}`)
+})
+
 test('formal settlement preserves per-table order while processing independent tables concurrently', async () => {
   const activeByTable = new Map()
   const settledByTable = new Map()
@@ -176,6 +199,29 @@ test('failed formal fan-out drains every identity before the next snapshot start
   assert.equal(bag02Ledger, 2)
 })
 
+
+test('overlapping snapshot calls share the same four-identity concurrency budget', async () => {
+  let active = 0
+  let maxActive = 0
+  const writer = {
+    configured: true,
+    async readV100RankLedger() { return null },
+    async applyV100RankLedgerEvent(event) {
+      active += 1
+      maxActive = Math.max(maxActive, active)
+      await delay(30)
+      active -= 1
+      return durableFor(event)
+    },
+  }
+  const runtime = createV100FormalRuntime({ enabled: true, writer, source: 'ofalive99' })
+  await Promise.all(Array.from({ length: 8 }, (_, index) => runtime.processSnapshot({
+    tables: [],
+    rounds: [finalRound(`BAG${String(index + 1).padStart(2, '0')}`, 1)],
+  })))
+  assert.ok(maxActive >= 2)
+  assert.ok(maxActive <= 4, `expected one shared limit of 4, got ${maxActive}`)
+})
 
 test('overlapping snapshots keep independent identities concurrent', async () => {
   let active = 0
