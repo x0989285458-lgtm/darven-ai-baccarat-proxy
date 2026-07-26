@@ -57,7 +57,7 @@ const snapshotPusher = createSnapshotPusher({
   targetUrl: process.env.PUSH_TARGET_URL,
   key: process.env.INGEST_KEY,
   getSnapshot,
-  intervalMs: Number(process.env.PUSH_INTERVAL_MS ?? 5000),
+  intervalMs: Number(process.env.PUSH_INTERVAL_MS ?? 3000),
   requestTimeoutMs: Number(process.env.PUSH_REQUEST_TIMEOUT_MS ?? 120000),
   maxRoundsPerDelivery: Number(process.env.PUSH_MAX_ROUNDS_PER_DELIVERY ?? 5),
   queuePath: process.env.PUSH_QUEUE_PATH ?? './data/latest-snapshot.json',
