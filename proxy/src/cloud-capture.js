@@ -145,11 +145,19 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+async function runDurableStage(stage, operation) {
+  try {
+    return await operation()
+  } catch (error) {
+    throw new Error(`${stage}: ${String(error?.message ?? error)}`, { cause: error })
+  }
+}
+
 export async function applyCloudCapturePayload({ parsed, state, writer, v100Formal = null }) {
   let v100Result = null
   if (v100Formal?.enabled === true) {
     try {
-      v100Result = await v100Formal.processSnapshot({ tables: parsed.tables, rounds: parsed.rounds })
+      v100Result = await runDurableStage('durable_rank_ledger', () => v100Formal.processSnapshot({ tables: parsed.tables, rounds: parsed.rounds }))
     } catch (error) {
       state?.setStatus?.({ v104RuntimeStatus: 'error', v104RuntimeError: String(error?.message ?? error) })
       throw error
@@ -164,7 +172,7 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
     if (!roundsByTable.has(tableId)) roundsByTable.set(tableId, [])
     roundsByTable.get(tableId).push(round)
   }
-  await Promise.all([...roundsByTable.entries()].map(([tableId, tableRounds]) => withTableSettlementTail(state, tableId, async () => {
+  await runDurableStage('durable_formal_settlement', () => Promise.all([...roundsByTable.entries()].map(([tableId, tableRounds]) => withTableSettlementTail(state, tableId, async () => {
     const shoeOrder = new Map()
     for (const round of tableRounds) {
       const shoe = String(round?.shoe ?? '')
@@ -178,17 +186,17 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
       const settlement = await state?.upsertRoundEvent?.(round)
       if (settlement?.ok === false) throw settlement.error ?? new Error('formal settlement failed before ingest acknowledgement')
     }
-  })))
+  }))))
   if (!writer?.configured) return { v100Formal: v100Result }
   const sessionId = parsed.sessionId ?? 'cloud-browser'
-  await writer.writeCloudCaptureStatus?.({ sessionId, captureSource: 'cloud_browser', status: parsed.status })
-  await writer.writeCloudTableSnapshot?.({ sessionId, tables: formalTables, status: parsed.status })
+  await runDurableStage('durable_capture_status', () => writer.writeCloudCaptureStatus?.({ sessionId, captureSource: 'cloud_browser', status: parsed.status }))
+  await runDurableStage('durable_table_snapshot', () => writer.writeCloudTableSnapshot?.({ sessionId, tables: formalTables, status: parsed.status }))
   for (let offset = 0; offset < parsed.rounds.length; offset += 5) {
     const batch = parsed.rounds.slice(offset, offset + 5)
-    await Promise.all(batch.map((round) => {
+    await runDurableStage('durable_round_events', () => Promise.all(batch.map((round) => {
       const table = formalTables.find((item) => String(item.tableId) === String(round.tableId)) ?? { tableId: round.tableId }
       return writer.writeCloudRoundEvent?.({ sessionId, round, table })
-    }))
+    })))
   }
   return { v100Formal: v100Result }
 }

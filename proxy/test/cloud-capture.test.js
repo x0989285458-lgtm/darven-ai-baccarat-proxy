@@ -142,6 +142,22 @@ test('persists a backlog with bounded parallel round writes', async () => {
   assert.equal(maxActive, 5)
 })
 
+test('durable capture failures identify the exact persistence stage', async () => {
+  await assert.rejects(
+    applyCloudCapturePayload({
+      parsed: { sessionId: 'stage-test', status: { connected: true }, tables: [], rounds: [] },
+      state: createFakeState(),
+      writer: {
+        configured: true,
+        writeCloudCaptureStatus: async () => { throw new DOMException('request aborted', 'AbortError') },
+        writeCloudTableSnapshot: async () => {},
+        writeCloudRoundEvent: async () => {},
+      },
+    }),
+    /durable_capture_status: request aborted/,
+  )
+})
+
 test('cloud capture records worker HTTP errors without leaking secrets', async () => {
   const state = createFakeState()
   const client = createCloudCaptureClient({
