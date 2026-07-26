@@ -62,7 +62,11 @@ test('capture status writes on state change or sixty-second heartbeat only', asy
   const payload = { sessionId: 'worker-1', status: { connected: true, authenticated: true, tableCount: 15, lastMessageAt: '2026-07-15T00:00:00Z' } }
   assert.equal((await client.writeCloudCaptureStatus(payload)).ok, true)
   nowMs = 10000
-  assert.equal((await client.writeCloudCaptureStatus({ ...payload, status: { ...payload.status, lastMessageAt: '2026-07-15T00:00:10Z' } })).skipped, true)
+  assert.equal((await client.writeCloudCaptureStatus({
+    ...payload,
+    status: { ...payload.status, lastMessageAt: '2026-07-15T00:00:10Z' },
+    metadata: { deliverySequence: 123, queueDepth: 3700 },
+  })).skipped, true)
   nowMs = 60000
   assert.equal((await client.writeCloudCaptureStatus({ ...payload, status: { ...payload.status, lastMessageAt: '2026-07-15T00:01:00Z' } })).ok, true)
   assert.equal(requests.length, 2)

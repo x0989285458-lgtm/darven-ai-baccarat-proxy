@@ -3035,7 +3035,7 @@ export function createSupabaseIngestionClient({
       const key = String(row.session_id ?? 'default')
       const fingerprint = JSON.stringify([
         row.capture_source, row.deploy_mode, row.connected, row.authenticated,
-        row.table_count, row.status_text, row.error_message, row.metadata,
+        row.table_count, row.status_text, row.error_message,
       ])
       const timestamp = Number(now())
       const previous = captureStatusWrites.get(key)
