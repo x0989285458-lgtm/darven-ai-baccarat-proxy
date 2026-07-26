@@ -15,12 +15,13 @@ test('hashes manager passwords with random salt and verifies stable output shape
 test('license database pool bounds connection and query stalls', () => {
   let options
   createLicenseAdminClient({
-    dbConnectionString: 'postgresql://test@example.invalid:5432/postgres',
+    dbConnectionString: 'postgresql://test:secret@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres',
     poolFactory(value) { options = value; return { query: async () => ({ rows: [] }) } },
   })
-  assert.equal(options.connectionTimeoutMillis, 5000)
-  assert.equal(options.query_timeout, 8000)
-  assert.equal(options.statement_timeout, 7000)
+  assert.equal(new URL(options.connectionString).port, '6543')
+  assert.equal(options.connectionTimeoutMillis, 9000)
+  assert.equal(options.query_timeout, 9000)
+  assert.equal(options.statement_timeout, 8500)
 })
 
 test('license admin bootstraps total manager and default plan through backend-only SQL', async () => {
