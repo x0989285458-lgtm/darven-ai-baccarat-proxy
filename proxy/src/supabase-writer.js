@@ -2146,6 +2146,10 @@ export function createSupabaseIngestionClient({
           text: 'select public.persist_latest_cloud_table_snapshot($1::jsonb) as persist_latest_cloud_table_snapshot',
           values: [body?.p_snapshot],
         },
+        'rpc/apply_v105_rank_ledger_event': {
+          text: 'select public.apply_v105_rank_ledger_event($1::jsonb, $2::jsonb) as apply_v105_rank_ledger_event',
+          values: [body?.p_event, body?.p_ledger],
+        },
       }[path]
       if (directRpc) {
         const result = await strategyDb.query(directRpc)
@@ -2290,7 +2294,7 @@ export function createSupabaseIngestionClient({
         || !Number.isSafeInteger(round) || round < 1) {
         throw new Error('v102 durable rank event is invalid')
       }
-      const acknowledgement = await enqueueWrite(() => postDurableRest('rpc/apply_v105_rank_ledger_event', {
+      const acknowledgement = await runDurableWrite(() => postDurableRest('rpc/apply_v105_rank_ledger_event', {
         p_event: {
           source,
           table_id: tableId,

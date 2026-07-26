@@ -226,6 +226,45 @@ test('v102 Supabase client sends only immutable Final evidence and verifies a co
   assert.equal(body.p_ledger, null)
 })
 
+test('formal rank ledger writes use the backend transaction connection without legacy serialization', async () => {
+  const dbState = createRankLedger().recordFinal(finalRound())
+  const acknowledgement = {
+    accepted: true, duplicate: false, status: 'contiguous', complete_through_round: 1, revision: 1,
+    seen_dealt_rank_counts: dbState.seen_dealt_rank_counts,
+    seen_dealt_code_counts: Object.fromEntries(Array.from({ length: 52 }, (_, index) => [index + 1, [1, 2, 14, 15, 27, 28].includes(index + 1) ? 1 : 0])),
+    undealt_after_observed_deals: dbState.undealt_after_observed_deals,
+    cards_seen_dealt: 6, ledger_checksum: 'd'.repeat(64), physical_remaining_exact: false,
+    burn_observation_status: 'unavailable',
+  }
+  let fetchCalls = 0
+  let active = 0
+  let maxActive = 0
+  const queries = []
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    fetchImpl: async () => { fetchCalls += 1; throw new Error('REST must not be used') },
+    strategyPool: { async query(value) {
+      queries.push(value)
+      active += 1
+      maxActive = Math.max(maxActive, active)
+      await new Promise((resolve) => setTimeout(resolve, 15))
+      active -= 1
+      return { rows: [{ apply_v105_rank_ledger_event: acknowledgement }] }
+    } },
+  })
+
+  const [first, second] = await Promise.all([
+    client.applyV100RankLedgerEvent(finalRound({ tableId: 'BAG01' })),
+    client.applyV100RankLedgerEvent(finalRound({ tableId: 'BAG02' })),
+  ])
+  assert.equal(first.rankDataAvailable, true)
+  assert.equal(second.rankDataAvailable, true)
+  assert.equal(fetchCalls, 0)
+  assert.equal(queries.length, 2)
+  assert.equal(maxActive, 2)
+  assert.match(queries[0].text, /public\.apply_v105_rank_ledger_event\(\$1::jsonb, \$2::jsonb\)/)
+})
+
 test('v102 Supabase client rejects a DB ACK whose code counts do not aggregate to its rank counts', async () => {
   const seen = Object.fromEntries(RANKS.map((rank) => [rank, rank === 'A' || rank === '2' ? 3 : 0]))
   const undealt = Object.fromEntries(RANKS.map((rank) => [rank, 32 - seen[rank]]))
