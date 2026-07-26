@@ -1950,6 +1950,7 @@ export function createSupabaseIngestionClient({
   captureStatusHeartbeatMs = 60000,
   snapshotHeartbeatMs = 60000,
   requestTimeoutMs: defaultRequestTimeoutMs = 3500,
+  durableWriteRequestTimeoutMs = defaultRequestTimeoutMs,
   startupRequestTimeoutMs = 60000,
   shadowRequestTimeoutMs = 9000,
   dbConnectionString = null,
@@ -1977,6 +1978,7 @@ export function createSupabaseIngestionClient({
   let v104IterationShadowWriteQueue = Promise.resolve()
   const completedRoundKeyLimit = Math.max(1, Number(maxCompletedRoundKeys) || 10000)
   const formalTimeoutMs = Math.max(1, Number(defaultRequestTimeoutMs) || 3500)
+  const durableWriteTimeoutMs = Math.max(formalTimeoutMs, Number(durableWriteRequestTimeoutMs) || formalTimeoutMs)
   const startupTimeoutMs = Math.max(formalTimeoutMs, Number(startupRequestTimeoutMs) || 30000)
   const shadowTimeoutMs = Math.max(1, Number(shadowRequestTimeoutMs) || 9000)
 
@@ -2042,6 +2044,10 @@ export function createSupabaseIngestionClient({
       }
       return { ok: true, status: response.status }
     })
+  }
+
+  function postDurableRest(path, body, conflict, options = {}) {
+    return postRest(path, body, conflict, { ...options, requestTimeoutMs: durableWriteTimeoutMs })
   }
 
   async function postRpcRows(path, body, { requestTimeoutMs = 0 } = {}) {
@@ -2169,7 +2175,7 @@ export function createSupabaseIngestionClient({
         || !Number.isSafeInteger(round) || round < 1) {
         throw new Error('v102 durable rank event is invalid')
       }
-      const acknowledgement = await enqueueWrite(() => postRest('rpc/apply_v105_rank_ledger_event', {
+      const acknowledgement = await enqueueWrite(() => postDurableRest('rpc/apply_v105_rank_ledger_event', {
         p_event: {
           source,
           table_id: tableId,
@@ -2232,7 +2238,7 @@ export function createSupabaseIngestionClient({
       if (!source || !tableId || !normalizedShoe || !Number.isSafeInteger(visibleRound) || visibleRound < 1) {
         throw new Error('prediction lifecycle reconciliation identity is incomplete')
       }
-      const acknowledgement = await enqueueWrite(() => postRest('rpc/reconcile_v105_prediction_lifecycle', {
+      const acknowledgement = await enqueueWrite(() => postDurableRest('rpc/reconcile_v105_prediction_lifecycle', {
         p_source: String(source),
         p_table_id: String(tableId),
         p_current_shoe: normalizedShoe,
@@ -2262,7 +2268,7 @@ export function createSupabaseIngestionClient({
         || !row.strategy_version || !['banker', 'player'].includes(row.predicted_result)) {
         throw new Error('prediction issuance payload is incomplete')
       }
-      const acknowledgement = await enqueueWrite(() => postRest('rpc/issue_v105_prediction', { p_prediction: row }, undefined, { requireObject: true }))
+      const acknowledgement = await enqueueWrite(() => postDurableRest('rpc/issue_v105_prediction', { p_prediction: row }, undefined, { requireObject: true }))
       const prediction = acknowledgement?.prediction
       if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
         || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at
@@ -2870,7 +2876,7 @@ export function createSupabaseIngestionClient({
           throw new Error('prediction identity is required for production settlement')
         }
         const acknowledgement = hasPredictionIdentity
-          ? await postRest('rpc/settle_v105_prediction', {
+          ? await postDurableRest('rpc/settle_v105_prediction', {
               p_roadmap: compactEvent,
               p_settlement: {
                 prediction_id: precomputedPrediction.predictionId,
@@ -2888,7 +2894,7 @@ export function createSupabaseIngestionClient({
                 side_hits: compactPrediction.prediction_features?.side_hits ?? {},
               },
             }, undefined, { requireObject: true })
-          : await postRest('rpc/persist_v105_settled_round', {
+          : await postDurableRest('rpc/persist_v105_settled_round', {
               p_roadmap: compactEvent,
               p_prediction: compactPrediction,
             }, undefined, { requireObject: true })
@@ -2921,7 +2927,7 @@ export function createSupabaseIngestionClient({
       if (previous?.fingerprint === fingerprint && timestamp - previous.writtenAt < heartbeatMs) {
         return { skipped: true, reason: 'unchanged_before_heartbeat', row }
       }
-      await enqueueWrite(() => postRest('cloud_capture_status', row, 'session_id'))
+      await enqueueWrite(() => postDurableRest('cloud_capture_status', row, 'session_id'))
       captureStatusWrites.set(key, { fingerprint, writtenAt: timestamp })
       return { ok: true, row }
     },
@@ -2940,7 +2946,7 @@ export function createSupabaseIngestionClient({
       if (previous?.connectionFingerprint === connectionFingerprint && timestamp - previous.writtenAt < heartbeatMs) {
         return { skipped: true, reason: 'snapshot_before_heartbeat', row }
       }
-      const result = await enqueueWrite(() => postRest('rpc/persist_latest_cloud_table_snapshot', { p_snapshot: row }, null, { requireObject: true }))
+      const result = await enqueueWrite(() => postDurableRest('rpc/persist_latest_cloud_table_snapshot', { p_snapshot: row }, null, { requireObject: true }))
       if (result?.skipped) return result
       snapshotWrites.set(key, { connectionFingerprint, writtenAt: timestamp })
       return { ok: true, row, result }
@@ -2984,7 +2990,7 @@ export function createSupabaseIngestionClient({
     },
     async writeCloudRoundEvent(payload) {
       const row = buildCloudRoundEventRow(payload)
-      await enqueueWrite(() => postRest('cloud_table_rounds', row, 'source,table_id,shoe_no,round_no'))
+      await enqueueWrite(() => postDurableRest('cloud_table_rounds', row, 'source,table_id,shoe_no,round_no'))
       return { ok: true, row }
     },
     async writeCloudStrategyReport(payload) {

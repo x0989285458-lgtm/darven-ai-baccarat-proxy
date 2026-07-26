@@ -164,6 +164,19 @@ test('formal Supabase writes abort within the configured request deadline', asyn
   )
 })
 
+test('durable ingest writes use their own bounded deadline instead of the short live-read deadline', async () => {
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'sb_secret_test_key', retryAttempts: 1,
+    requestTimeoutMs: 5, durableWriteRequestTimeoutMs: 40,
+    fetchImpl: async (_url, init = {}) => new Promise((resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('request aborted', 'AbortError')))
+    }),
+  })
+  const started = Date.now()
+  await assert.rejects(client.writeCloudCaptureStatus({ sessionId: 'durable-timeout', status: { connected: true, tableCount: 10 } }), /abort/i)
+  assert.ok(Date.now() - started >= 30)
+})
+
 test('formal Supabase reads abort within the configured request deadline', async () => {
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co',
