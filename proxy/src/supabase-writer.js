@@ -1973,7 +1973,7 @@ export function createSupabaseIngestionClient({
   const strategyDb = strategyPool ?? (dbConnectionString ? strategyPoolFactory({
     connectionString: resolveBackendReadConnectionString(dbConnectionString),
     ssl: { rejectUnauthorized: false },
-    max: 1,
+    max: 4,
     connectionTimeoutMillis: 60000,
     query_timeout: 65000,
     statement_timeout: 60000,
@@ -2061,6 +2061,39 @@ export function createSupabaseIngestionClient({
 
   async function postDurableRest(path, body, conflict, options = {}) {
     if (strategyDb && typeof strategyDb.query === 'function') {
+      if (path === 'cloud_capture_status') {
+        await strategyDb.query({
+          text: `insert into public.cloud_capture_status
+            (session_id, capture_source, deploy_mode, connected, authenticated, table_count, last_message_at, last_round_at, status_text, error_message, metadata, updated_at)
+            values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, now())
+            on conflict (session_id) do update set
+              capture_source = excluded.capture_source, deploy_mode = excluded.deploy_mode,
+              connected = excluded.connected, authenticated = excluded.authenticated,
+              table_count = excluded.table_count, last_message_at = excluded.last_message_at,
+              last_round_at = excluded.last_round_at, status_text = excluded.status_text,
+              error_message = excluded.error_message, metadata = excluded.metadata, updated_at = now()`,
+          values: [body.session_id, body.capture_source, body.deploy_mode, body.connected, body.authenticated,
+            body.table_count, body.last_message_at, body.last_round_at, body.status_text, body.error_message, body.metadata],
+        })
+        return []
+      }
+      if (path === 'cloud_table_rounds') {
+        await strategyDb.query({
+          text: `insert into public.cloud_table_rounds
+            (session_id, source, table_id, table_name, shoe_no, round_no, main_result, banker_points, player_points, raw_event, table_snapshot, received_at, metadata)
+            values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12, $13::jsonb)
+            on conflict (source, table_id, shoe_no, round_no) do update set
+              session_id = excluded.session_id, table_name = excluded.table_name,
+              main_result = excluded.main_result, banker_points = excluded.banker_points,
+              player_points = excluded.player_points, raw_event = excluded.raw_event,
+              table_snapshot = excluded.table_snapshot, received_at = excluded.received_at,
+              metadata = excluded.metadata`,
+          values: [body.session_id, body.source, body.table_id, body.table_name, body.shoe_no, body.round_no,
+            body.main_result, body.banker_points, body.player_points, body.raw_event, body.table_snapshot,
+            body.received_at, body.metadata],
+        })
+        return []
+      }
       const directRpc = {
         'rpc/settle_v105_prediction': {
           text: 'select public.settle_v105_prediction($1::jsonb, $2::jsonb) as settle_v105_prediction',
@@ -2069,6 +2102,10 @@ export function createSupabaseIngestionClient({
         'rpc/persist_v105_settled_round': {
           text: 'select public.persist_v105_settled_round($1::jsonb, $2::jsonb) as persist_v105_settled_round',
           values: [body?.p_roadmap, body?.p_prediction],
+        },
+        'rpc/persist_latest_cloud_table_snapshot': {
+          text: 'select public.persist_latest_cloud_table_snapshot($1::jsonb) as persist_latest_cloud_table_snapshot',
+          values: [body?.p_snapshot],
         },
       }[path]
       if (directRpc) {
@@ -2083,6 +2120,10 @@ export function createSupabaseIngestionClient({
       }
     }
     return postRest(path, body, conflict, { ...options, requestTimeoutMs: durableWriteTimeoutMs })
+  }
+
+  function runDurableWrite(operation) {
+    return strategyDb ? operation() : enqueueWrite(operation)
   }
 
   async function postRpcRows(path, body, { requestTimeoutMs = 0 } = {}) {
@@ -2901,7 +2942,7 @@ export function createSupabaseIngestionClient({
       }
       if (inFlightRoundWrites.has(roundKey)) return inFlightRoundWrites.get(roundKey)
 
-      const writePromise = enqueueWrite(async () => {
+      const executeWrite = async () => {
         if (completedRoundKeys.has(roundKey)) {
           preparedRoundWrites.delete(preparationKey)
           return { skipped: true, reason: 'duplicate_round', event, prediction, compactEvent, compactPrediction }
@@ -2943,7 +2984,8 @@ export function createSupabaseIngestionClient({
         }
         preparedRoundWrites.delete(preparationKey)
         return { event, prediction, compactEvent, compactPrediction }
-      }).finally(() => {
+      }
+      const writePromise = (strategyDb ? executeWrite() : enqueueWrite(executeWrite)).finally(() => {
         inFlightRoundWrites.delete(roundKey)
       })
       inFlightRoundWrites.set(roundKey, writePromise)
@@ -2962,7 +3004,7 @@ export function createSupabaseIngestionClient({
       if (previous?.fingerprint === fingerprint && timestamp - previous.writtenAt < heartbeatMs) {
         return { skipped: true, reason: 'unchanged_before_heartbeat', row }
       }
-      await enqueueWrite(() => postDurableRest('cloud_capture_status', row, 'session_id'))
+      await runDurableWrite(() => postDurableRest('cloud_capture_status', row, 'session_id'))
       captureStatusWrites.set(key, { fingerprint, writtenAt: timestamp })
       return { ok: true, row }
     },
@@ -2981,7 +3023,7 @@ export function createSupabaseIngestionClient({
       if (previous?.connectionFingerprint === connectionFingerprint && timestamp - previous.writtenAt < heartbeatMs) {
         return { skipped: true, reason: 'snapshot_before_heartbeat', row }
       }
-      const result = await enqueueWrite(() => postDurableRest('rpc/persist_latest_cloud_table_snapshot', { p_snapshot: row }, null, { requireObject: true }))
+      const result = await runDurableWrite(() => postDurableRest('rpc/persist_latest_cloud_table_snapshot', { p_snapshot: row }, null, { requireObject: true }))
       if (result?.skipped) return result
       snapshotWrites.set(key, { connectionFingerprint, writtenAt: timestamp })
       return { ok: true, row, result }
@@ -3025,7 +3067,7 @@ export function createSupabaseIngestionClient({
     },
     async writeCloudRoundEvent(payload) {
       const row = buildCloudRoundEventRow(payload)
-      await enqueueWrite(() => postDurableRest('cloud_table_rounds', row, 'source,table_id,shoe_no,round_no'))
+      await runDurableWrite(() => postDurableRest('cloud_table_rounds', row, 'source,table_id,shoe_no,round_no'))
       return { ok: true, row }
     },
     async writeCloudStrategyReport(payload) {

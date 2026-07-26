@@ -31,7 +31,7 @@ test('backend transaction connection survives idle periods and allows one bounde
   assert.equal(new URL(config.connectionString).port, '6543')
   assert.equal(config.connectionTimeoutMillis, 60000)
   assert.equal(config.idleTimeoutMillis, 0)
-  assert.equal(config.max, 1)
+  assert.equal(config.max, 4)
 })
 
 test('builds cloud capture status row without leaking tokenized URL', () => {
@@ -165,6 +165,30 @@ test('client writes cloud capture data to Supabase REST tables', async () => {
     '/rest/v1/cloud_strategy_adjustment_stats',
   ])
   assert.equal(requests[0].init.headers.Authorization, 'Bearer sb_secret_test_key')
+})
+
+test('formal capture status snapshot and round writes share the backend transaction connection', async () => {
+  const queries = []
+  let fetchCalls = 0
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    fetchImpl: async () => { fetchCalls += 1; throw new Error('REST must not be used') },
+    strategyPool: { async query(value) {
+      queries.push(value)
+      if (/persist_latest_cloud_table_snapshot/.test(value.text)) {
+        return { rows: [{ persist_latest_cloud_table_snapshot: { persisted: true } }] }
+      }
+      return { rows: [] }
+    } },
+  })
+  await client.writeCloudCaptureStatus({ sessionId: 'formal-session', status: { connected: true, authenticated: true, tableCount: 10 } })
+  await client.writeCloudTableSnapshot({ sessionId: 'formal-session', tables: [], status: { connected: true, authenticated: true } })
+  await client.writeCloudRoundEvent({ sessionId: 'formal-session', round: { tableId: 'BAG01', shoe: 88, round: 21, rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 3, 9] }, table: { tableId: 'BAG01' } })
+  assert.equal(fetchCalls, 0)
+  assert.equal(queries.length, 3)
+  assert.match(queries[0].text, /insert into public\.cloud_capture_status/)
+  assert.match(queries[1].text, /public\.persist_latest_cloud_table_snapshot\(\$1::jsonb\)/)
+  assert.match(queries[2].text, /insert into public\.cloud_table_rounds/)
 })
 
 test('formal Supabase writes abort within the configured request deadline', async () => {

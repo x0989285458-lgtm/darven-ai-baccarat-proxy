@@ -99,6 +99,33 @@ test('formal settlement uses the backend transaction connection and preserves th
   assert.match(queries[0].text, /public\.settle_v105_prediction\(\$1::jsonb, \$2::jsonb\)/)
 })
 
+test('independent direct formal settlements are not trapped behind the legacy REST write queue', async () => {
+  let active = 0
+  let maxActive = 0
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    strategyPool: { async query(value) {
+      active += 1
+      maxActive = Math.max(maxActive, active)
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      active -= 1
+      const predictionId = value.values[1].prediction_id
+      return { rows: [{ settle_v105_prediction: {
+        persisted: true, roadmapDurable: true, predictionDurable: true, prediction_id: predictionId,
+      } }] }
+    } },
+  })
+  const firstTable = table()
+  const secondTable = { ...table(), tableId: 'BAG02' }
+  const firstPrediction = { ...buildLivePrediction(firstTable), predictionId: '11111111-1111-1111-1111-111111111111' }
+  const secondPrediction = { ...buildLivePrediction(secondTable), predictionId: '22222222-2222-2222-2222-222222222222' }
+  await Promise.all([
+    client.persistRound({ tableId: 'BAG01', shoe: 88, round: 21, rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 3, 9] }, firstTable, firstPrediction),
+    client.persistRound({ tableId: 'BAG02', shoe: 88, round: 21, rawResult: [3, 6, 4, 8, -1, -1, -1, -1, 7, 4] }, secondTable, secondPrediction),
+  ])
+  assert.equal(maxActive, 2)
+})
+
 test('settlement fails closed unless the acknowledgement prediction_id exactly matches the issued prediction', async () => {
   const baseTable = table()
   const pending = { ...buildLivePrediction(baseTable), predictionId: '11111111-1111-1111-1111-111111111111', issuedAt: '2026-07-16T01:00:01.000Z' }
