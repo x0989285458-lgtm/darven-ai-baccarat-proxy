@@ -52,8 +52,6 @@ export function createSnapshotPusher({
 
       const delivery = buildDeliveryEnvelope(timestamp)
       const envelope = delivery.envelope
-      queue[0] = { ...queue[0], timestamp }
-      await saveQueue()
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), requestTimeoutMs)
       try {

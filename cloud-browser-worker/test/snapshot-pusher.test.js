@@ -259,7 +259,9 @@ test('pusher restores the queued envelope, keeps collecting, and only 2xx acknow
   assert.equal(sent[0].sessionId, 'vm')
   assert.deepEqual(sent[0].roundKeys, ['BAG01:8:9'])
   assert.deepEqual(sent[0].snapshot, { ...original.snapshot, buildVersion: '105' })
-  assert.deepEqual(JSON.parse(await readFile(queuePath, 'utf8')).entries[0], sent[0])
+  const queuedAfterRedirect = JSON.parse(await readFile(queuePath, 'utf8')).entries[0]
+  assert.equal(queuedAfterRedirect.timestamp, 1000, 'transport retry time is not a durable capture identity')
+  assert.deepEqual({ ...queuedAfterRedirect, timestamp: sent[0].timestamp }, sent[0])
   assert.equal(await pusher.tick(), true)
   assert.equal(snapshotCalls, 2)
   assert.deepEqual({ ...sent[1], timestamp: sent[0].timestamp }, sent[0])
