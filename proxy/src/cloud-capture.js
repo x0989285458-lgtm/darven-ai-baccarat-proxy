@@ -189,8 +189,10 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
   }))))
   if (!writer?.configured) return { v100Formal: v100Result }
   const sessionId = parsed.sessionId ?? 'cloud-browser'
-  await runDurableStage('durable_capture_status', () => writer.writeCloudCaptureStatus?.({ sessionId, captureSource: 'cloud_browser', status: parsed.status }))
-  await runDurableStage('durable_table_snapshot', () => writer.writeCloudTableSnapshot?.({ sessionId, tables: formalTables, status: parsed.status }))
+  const ancillaryWrites = [
+    runDurableStage('durable_capture_status', () => writer.writeCloudCaptureStatus?.({ sessionId, captureSource: 'cloud_browser', status: parsed.status })),
+    runDurableStage('durable_table_snapshot', () => writer.writeCloudTableSnapshot?.({ sessionId, tables: formalTables, status: parsed.status })),
+  ]
   for (let offset = 0; offset < parsed.rounds.length; offset += 5) {
     const batch = parsed.rounds.slice(offset, offset + 5)
     await runDurableStage('durable_round_events', () => Promise.all(batch.map((round) => {
@@ -198,6 +200,7 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
       return writer.writeCloudRoundEvent?.({ sessionId, round, table })
     })))
   }
+  await Promise.all(ancillaryWrites)
   return { v100Formal: v100Result }
 }
 
