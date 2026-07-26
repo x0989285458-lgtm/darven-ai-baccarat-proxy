@@ -8,7 +8,19 @@ import {
   buildLivePrediction,
   buildStrategyAdjustmentStatsRows,
   createSupabaseIngestionClient,
+  resolveBackendReadConnectionString,
 } from '../src/supabase-writer.js'
+
+test('backend formal reads use Supabase transaction pooler without rewriting unrelated database URLs', () => {
+  const session = 'postgresql://user:secret@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres'
+  const transaction = new URL(resolveBackendReadConnectionString(session))
+  assert.equal(transaction.port, '6543')
+  assert.equal(transaction.hostname, 'aws-1-ap-southeast-1.pooler.supabase.com')
+  assert.equal(decodeURIComponent(transaction.password), 'secret')
+
+  const direct = 'postgresql://user:secret@db.example.com:5432/postgres'
+  assert.equal(resolveBackendReadConnectionString(direct), direct)
+})
 
 test('builds cloud capture status row without leaking tokenized URL', () => {
   const row = buildCloudCaptureStatusRow({

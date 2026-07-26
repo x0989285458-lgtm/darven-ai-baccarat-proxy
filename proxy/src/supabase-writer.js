@@ -1938,6 +1938,18 @@ function normalizeV100DurableRankLedger(row = {}, expectedIdentity = {}) {
   }
 }
 
+export function resolveBackendReadConnectionString(connectionString) {
+  const raw = String(connectionString ?? '')
+  try {
+    const parsed = new URL(raw)
+    if (/\.pooler\.supabase\.com$/i.test(parsed.hostname) && parsed.port === '5432') {
+      parsed.port = '6543'
+      return parsed.toString()
+    }
+  } catch {}
+  return raw
+}
+
 export function createSupabaseIngestionClient({
   url = process.env.SUPABASE_URL,
   serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY,
@@ -1958,7 +1970,7 @@ export function createSupabaseIngestionClient({
 } = {}) {
   const configured = Boolean(url && serviceKey && fetchImpl)
   const strategyDb = strategyPool ?? (dbConnectionString ? new pg.Pool({
-    connectionString: dbConnectionString,
+    connectionString: resolveBackendReadConnectionString(dbConnectionString),
     ssl: { rejectUnauthorized: false },
     max: 1,
     connectionTimeoutMillis: 10000,
