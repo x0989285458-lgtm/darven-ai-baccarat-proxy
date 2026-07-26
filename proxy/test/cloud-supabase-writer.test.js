@@ -18,7 +18,7 @@ test('formal issued-prediction identity reads use the backend transaction connec
     strategyVersion: 'v105', predictionTiming: 'pre_result_context',
   }
   const client = createSupabaseIngestionClient({
-    url: 'https://example.invalid', serviceKey: 'fixture-key',
+    url: 'https://example.invalid', serviceKey: 'fixture-key', requestTimeoutMs: 30000,
     fetchImpl: async () => { throw new Error('REST must not be used') },
     strategyPool: { query: async (query) => {
       queries.push(query)
@@ -34,6 +34,7 @@ test('formal issued-prediction identity reads use the backend transaction connec
   assert.equal(issued.predictionId, 'prediction-1')
   assert.equal(queries.length, 1)
   assert.match(queries[0].text, /from public\.daily_prediction_results/i)
+  assert.equal(queries[0].query_timeout, 30000)
   assert.deepEqual(queries[0].values, ['ofalive99', 'BAG01', '8', 9, 'v105'])
 })
 

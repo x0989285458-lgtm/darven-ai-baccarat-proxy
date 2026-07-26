@@ -2419,6 +2419,7 @@ export function createSupabaseIngestionClient({
                     order by created_at asc
                     limit 2`,
             values: [SOURCE, String(tableId), String(shoe), targetRound, String(strategyVersion)],
+            query_timeout: formalTimeoutMs,
           })).rows
         : await getRest('daily_prediction_results', {
             select: 'id,source,table_id,shoe_no,round_no,strategy_version,prediction_issued_at,issued_prediction_payload,settlement_final',
