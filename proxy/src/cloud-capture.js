@@ -154,13 +154,17 @@ async function runDurableStage(stage, operation) {
 }
 
 export async function applyCloudCapturePayload({ parsed, state, writer, v100Formal = null }) {
+  const durableTimings = {}
   let v100Result = null
   if (v100Formal?.enabled === true) {
+    const startedAt = Date.now()
     try {
       v100Result = await runDurableStage('durable_rank_ledger', () => v100Formal.processSnapshot({ tables: parsed.tables, rounds: parsed.rounds }))
     } catch (error) {
       state?.setStatus?.({ v104RuntimeStatus: 'error', v104RuntimeError: String(error?.message ?? error) })
       throw error
+    } finally {
+      durableTimings.rankLedgerMs = Date.now() - startedAt
     }
   }
   const formalTables = Array.isArray(v100Result?.tables) ? v100Result.tables : parsed.tables
@@ -172,6 +176,7 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
     if (!roundsByTable.has(tableId)) roundsByTable.set(tableId, [])
     roundsByTable.get(tableId).push(round)
   }
+  const settlementStartedAt = Date.now()
   await runDurableStage('durable_formal_settlement', () => Promise.all([...roundsByTable.entries()].map(([tableId, tableRounds]) => withTableSettlementTail(state, tableId, async () => {
     const shoeOrder = new Map()
     for (const round of tableRounds) {
@@ -187,8 +192,10 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
       if (settlement?.ok === false) throw settlement.error ?? new Error('formal settlement failed before ingest acknowledgement')
     }
   }))))
-  if (!writer?.configured) return { v100Formal: v100Result }
+  durableTimings.formalSettlementMs = Date.now() - settlementStartedAt
+  if (!writer?.configured) return { v100Formal: v100Result, durableTimings }
   const sessionId = parsed.sessionId ?? 'cloud-browser'
+  const ancillaryStartedAt = Date.now()
   const ancillaryWrites = [
     runDurableStage('durable_capture_status', () => writer.writeCloudCaptureStatus?.({ sessionId, captureSource: 'cloud_browser', status: parsed.status })),
     runDurableStage('durable_table_snapshot', () => writer.writeCloudTableSnapshot?.({ sessionId, tables: formalTables, status: parsed.status })),
@@ -205,7 +212,9 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
       : Promise.all(payloads.map((payload) => writer.writeCloudRoundEvent?.(payload))))
   }
   await Promise.all(ancillaryWrites)
-  return { v100Formal: v100Result }
+  durableTimings.ancillaryMs = Date.now() - ancillaryStartedAt
+  durableTimings.totalMs = Number(durableTimings.rankLedgerMs ?? 0) + Number(durableTimings.formalSettlementMs ?? 0) + Number(durableTimings.ancillaryMs ?? 0)
+  return { v100Formal: v100Result, durableTimings }
 }
 
 export function canonicalProductionTableId(value) {

@@ -493,15 +493,17 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             return jsonResponse(200, { ...previous.ack, duplicate: true, sequence: envelope.sequence }, frontendOrigin)
           }
           const parsed = parseCloudCapturePayload(envelope.snapshot)
+          let captureResult = null
           try {
             assertDurableIngestWriter(supabaseClient, parsed.rounds.length)
-            await applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Formal })
+            captureResult = await applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Formal })
           } catch (error) {
             const durableError = new Error(error?.message ?? String(error))
             durableError.statusCode = 503
             durableError.durableFailure = true
             throw durableError
           }
+          state.setStatus({ durableTimings: captureResult?.durableTimings ?? null })
           const ack = {
             ok: true,
             accepted: true,
