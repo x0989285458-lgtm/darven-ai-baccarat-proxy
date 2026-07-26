@@ -2404,18 +2404,34 @@ export function createSupabaseIngestionClient({
     async readIssuedPrediction({ tableId, shoe, round, strategyVersion } = {}) {
       const targetRound = Number(round)
       if (!tableId || shoe == null || !Number.isSafeInteger(targetRound) || targetRound < 1 || !strategyVersion) return null
-      const rows = await getRest('daily_prediction_results', {
-        select: 'id,source,table_id,shoe_no,round_no,strategy_version,prediction_issued_at,issued_prediction_payload,settlement_final',
-        source: `eq.${SOURCE}`,
-        table_id: `eq.${tableId}`,
-        shoe_no: `eq.${shoe}`,
-        round_no: `eq.${targetRound}`,
-        strategy_version: `eq.${strategyVersion}`,
-        prediction_issued_at: 'not.is.null',
-        issued_prediction_payload: 'not.is.null',
-        order: 'created_at.asc',
-        limit: '2',
-      }, { requestTimeoutMs: formalTimeoutMs })
+      const rows = strategyDb
+        ? (await strategyDb.query({
+            text: `select id, source, table_id, shoe_no, round_no, strategy_version,
+                          prediction_issued_at, issued_prediction_payload, settlement_final
+                     from public.daily_prediction_results
+                    where source = $1
+                      and table_id = $2
+                      and shoe_no = $3
+                      and round_no = $4
+                      and strategy_version = $5
+                      and prediction_issued_at is not null
+                      and issued_prediction_payload is not null
+                    order by created_at asc
+                    limit 2`,
+            values: [SOURCE, String(tableId), String(shoe), targetRound, String(strategyVersion)],
+          })).rows
+        : await getRest('daily_prediction_results', {
+            select: 'id,source,table_id,shoe_no,round_no,strategy_version,prediction_issued_at,issued_prediction_payload,settlement_final',
+            source: `eq.${SOURCE}`,
+            table_id: `eq.${tableId}`,
+            shoe_no: `eq.${shoe}`,
+            round_no: `eq.${targetRound}`,
+            strategy_version: `eq.${strategyVersion}`,
+            prediction_issued_at: 'not.is.null',
+            issued_prediction_payload: 'not.is.null',
+            order: 'created_at.asc',
+            limit: '2',
+          }, { requestTimeoutMs: formalTimeoutMs })
       if (!Array.isArray(rows) || rows.length === 0) return null
       if (rows.length !== 1) throw new Error('conflicting durable prediction issuance identity')
       const row = rows[0]

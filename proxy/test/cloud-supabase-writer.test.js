@@ -11,6 +11,32 @@ import {
   resolveBackendReadConnectionString,
 } from '../src/supabase-writer.js'
 
+test('formal issued-prediction identity reads use the backend transaction connection without REST', async () => {
+  const queries = []
+  const prediction = {
+    targetTableId: 'BAG01', targetShoe: 8, targetRound: 9,
+    strategyVersion: 'v105', predictionTiming: 'pre_result_context',
+  }
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.invalid', serviceKey: 'fixture-key',
+    fetchImpl: async () => { throw new Error('REST must not be used') },
+    strategyPool: { query: async (query) => {
+      queries.push(query)
+      return { rows: [{
+        id: 'prediction-1', source: 'ofalive99', table_id: 'BAG01', shoe_no: '8', round_no: 9,
+        strategy_version: 'v105', prediction_issued_at: '2026-07-26T00:00:00.000Z',
+        issued_prediction_payload: prediction, settlement_final: false,
+      }] }
+    } },
+  })
+
+  const issued = await client.readIssuedPrediction({ tableId: 'BAG01', shoe: 8, round: 9, strategyVersion: 'v105' })
+  assert.equal(issued.predictionId, 'prediction-1')
+  assert.equal(queries.length, 1)
+  assert.match(queries[0].text, /from public\.daily_prediction_results/i)
+  assert.deepEqual(queries[0].values, ['ofalive99', 'BAG01', '8', 9, 'v105'])
+})
+
 test('backend formal reads use Supabase transaction pooler without rewriting unrelated database URLs', () => {
   const session = 'postgresql://user:secret@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres'
   const transaction = new URL(resolveBackendReadConnectionString(session))
