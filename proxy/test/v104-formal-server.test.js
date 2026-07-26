@@ -100,6 +100,52 @@ test('server passes the dedicated configured v105 hydration timeout to the forma
   }
 })
 
+test('failed recent performance startup hydration retries on a later table update before formal issuance', async () => {
+  let nowMs = Date.parse('2026-07-21T01:00:00.000Z')
+  let recentCalls = 0
+  let issuanceCalls = 0
+  const writer = {
+    configured: true,
+    getRuntimeStatus() { return { ready: true, degraded: false, activeStrategyVersion: 'v105' } },
+    async ensureInitialStrategy() { return { ok: true, activeStrategyVersion: 'v105' } },
+    async getRecentPredictionRows() {
+      recentCalls += 1
+      if (recentCalls === 1) throw new Error('temporary recent history read failure')
+      return []
+    },
+    async reconcilePredictionLifecycle() {},
+    async issuePrediction(candidate) {
+      issuanceCalls += 1
+      return { ...candidate, predictionId: `retry-${issuanceCalls}`, issuedAt: new Date(nowMs).toISOString() }
+    },
+  }
+  const formalRuntime = {
+    async start() {},
+    async buildPrediction(input) { return buildV105FormalPrediction(input, [], {}) },
+    recordIssuance() {}, recordSettlement() {},
+    snapshot() { return { strategyVersion: 'v105', status: 'ready' } },
+  }
+  const app = createApp({
+    autoConnect: false, port: 0, production: true, requireVerifiedStrategy: true,
+    memberAuthRequired: false, supabaseClient: writer, v104FormalRuntime: formalRuntime,
+    recentPerformanceRetryMs: 1000, now: () => nowMs,
+  })
+  await app.start()
+  try {
+    assert.equal(recentCalls, 1)
+    app.state.setTables([table])
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    assert.equal(issuanceCalls, 0)
+    nowMs += 1001
+    app.state.setTables([{ ...table, tableId: 'BAG02', sourceUpdatedAt: new Date(nowMs).toISOString() }])
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    assert.equal(recentCalls, 2)
+    assert.equal(issuanceCalls, 1)
+  } finally {
+    await app.stop()
+  }
+})
+
 test('cloud ingest withholds ACK until v104 Final settlement is durable and returns 503 on failure', async () => {
   let releaseSettlement
   let settlementStarted
