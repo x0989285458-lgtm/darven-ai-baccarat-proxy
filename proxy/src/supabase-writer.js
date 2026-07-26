@@ -1967,16 +1967,17 @@ export function createSupabaseIngestionClient({
   shadowRequestTimeoutMs = 9000,
   dbConnectionString = null,
   strategyPool = null,
+  strategyPoolFactory = (config) => new pg.Pool(config),
 } = {}) {
   const configured = Boolean(url && serviceKey && fetchImpl)
-  const strategyDb = strategyPool ?? (dbConnectionString ? new pg.Pool({
+  const strategyDb = strategyPool ?? (dbConnectionString ? strategyPoolFactory({
     connectionString: resolveBackendReadConnectionString(dbConnectionString),
     ssl: { rejectUnauthorized: false },
     max: 1,
-    connectionTimeoutMillis: 10000,
+    connectionTimeoutMillis: 60000,
     query_timeout: 65000,
     statement_timeout: 60000,
-    idleTimeoutMillis: 30000,
+    idleTimeoutMillis: 0,
   }) : null)
   const completedRoundKeys = new Set()
   const inFlightRoundWrites = new Map()
