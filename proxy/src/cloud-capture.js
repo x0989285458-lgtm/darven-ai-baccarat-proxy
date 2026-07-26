@@ -195,10 +195,14 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
   ]
   for (let offset = 0; offset < parsed.rounds.length; offset += 5) {
     const batch = parsed.rounds.slice(offset, offset + 5)
-    await runDurableStage('durable_round_events', () => Promise.all(batch.map((round) => {
-      const table = formalTables.find((item) => String(item.tableId) === String(round.tableId)) ?? { tableId: round.tableId }
-      return writer.writeCloudRoundEvent?.({ sessionId, round, table })
-    })))
+    const payloads = batch.map((round) => ({
+      sessionId,
+      round,
+      table: formalTables.find((item) => String(item.tableId) === String(round.tableId)) ?? { tableId: round.tableId },
+    }))
+    await runDurableStage('durable_round_events', () => writer.writeCloudRoundEvents
+      ? writer.writeCloudRoundEvents(payloads)
+      : Promise.all(payloads.map((payload) => writer.writeCloudRoundEvent?.(payload))))
   }
   await Promise.all(ancillaryWrites)
   return { v100Formal: v100Result }

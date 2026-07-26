@@ -3065,6 +3065,32 @@ export function createSupabaseIngestionClient({
       }
       return stats
     },
+    async writeCloudRoundEvents(payloads = []) {
+      const rows = (Array.isArray(payloads) ? payloads : []).map((payload) => buildCloudRoundEventRow(payload))
+      if (rows.length === 0) return { ok: true, rows }
+      if (strategyDb) {
+        await strategyDb.query({
+          text: `insert into public.cloud_table_rounds
+            (session_id, source, table_id, table_name, shoe_no, round_no, main_result, banker_points, player_points, raw_event, table_snapshot, received_at, metadata)
+            select session_id, source, table_id, table_name, shoe_no, round_no, main_result, banker_points, player_points,
+              raw_event, table_snapshot, received_at, metadata
+            from jsonb_to_recordset($1::jsonb) as x(
+              session_id text, source text, table_id text, table_name text, shoe_no text, round_no integer,
+              main_result text, banker_points integer, player_points integer, raw_event jsonb,
+              table_snapshot jsonb, received_at timestamptz, metadata jsonb)
+            on conflict (source, table_id, shoe_no, round_no) do update set
+              session_id = excluded.session_id, table_name = excluded.table_name,
+              main_result = excluded.main_result, banker_points = excluded.banker_points,
+              player_points = excluded.player_points, raw_event = excluded.raw_event,
+              table_snapshot = excluded.table_snapshot, received_at = excluded.received_at,
+              metadata = excluded.metadata`,
+          values: [JSON.stringify(rows)],
+        })
+      } else {
+        await enqueueWrite(() => postRest('cloud_table_rounds', rows, 'source,table_id,shoe_no,round_no', { requestTimeoutMs: durableWriteTimeoutMs }))
+      }
+      return { ok: true, rows }
+    },
     async writeCloudRoundEvent(payload) {
       const row = buildCloudRoundEventRow(payload)
       await runDurableWrite(() => postDurableRest('cloud_table_rounds', row, 'source,table_id,shoe_no,round_no'))

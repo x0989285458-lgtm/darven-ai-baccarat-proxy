@@ -191,6 +191,25 @@ test('formal capture status snapshot and round writes share the backend transact
   assert.match(queries[2].text, /insert into public\.cloud_table_rounds/)
 })
 
+test('formal round batch uses one backend transaction query for the complete bounded envelope', async () => {
+  const queries = []
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    strategyPool: { async query(value) { queries.push(value); return { rows: [] } } },
+  })
+  const payloads = [1, 2, 3].map((roundNo) => ({
+    sessionId: 'formal-session',
+    round: { tableId: `BAG0${roundNo}`, shoe: 88, round: roundNo, rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 3, 9] },
+    table: { tableId: `BAG0${roundNo}` },
+  }))
+  const result = await client.writeCloudRoundEvents(payloads)
+  assert.equal(result.ok, true)
+  assert.equal(result.rows.length, 3)
+  assert.equal(queries.length, 1)
+  assert.match(queries[0].text, /jsonb_to_recordset\(\$1::jsonb\)/)
+  assert.equal(JSON.parse(queries[0].values[0]).length, 3)
+})
+
 test('formal Supabase writes abort within the configured request deadline', async () => {
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co',
