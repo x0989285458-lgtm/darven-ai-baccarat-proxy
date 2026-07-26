@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import { gzip, gunzip } from 'node:zlib'
 import { sanitizeProductionSnapshot } from './table-policy.js'
@@ -23,11 +23,14 @@ export function createSnapshotPusher({
   maxRoundsPerEnvelope = 5,
   maxRoundsPerDelivery = maxRoundsPerEnvelope,
   queueCompressionThresholdBytes = 1024 * 1024,
+  queueJournalThresholdEntries = 100,
   isRoundDeliverable = () => true,
   now = Date.now,
 } = {}) {
   const roundLimit = Math.max(1, Number(maxRoundsPerEnvelope) || 5)
   const deliveryRoundLimit = Math.max(roundLimit, Number(maxRoundsPerDelivery) || roundLimit)
+  const journalThreshold = Math.max(1, Number(queueJournalThresholdEntries) || 100)
+  const journalPath = `${queuePath}.journal`
   let timer = null
   let failures = 0
   let nextAttemptAt = 0
@@ -142,9 +145,11 @@ export function createSnapshotPusher({
     if (pending.length > 0) {
       const pendingRounds = pending.map(({ round }, index) => normalizeRoundForEnvelope(round, pending[index].key))
       const pendingKeys = pending.map(({ key: roundKeyValue }) => roundKeyValue)
+      const useJournal = queue.length + Math.ceil(pendingKeys.length / roundLimit) >= journalThreshold
+      const journalEntries = []
       for (let offset = 0; offset < pendingKeys.length;) {
         const tail = queue.at(-1)
-        const tailSpace = queue.length >= 2 && tail?.sessionId === String(snapshot?.sessionId ?? '')
+        const tailSpace = !useJournal && queue.length >= 2 && tail?.sessionId === String(snapshot?.sessionId ?? '')
           ? Math.max(0, roundLimit - tail.roundKeys.length)
           : 0
         if (tailSpace > 0) {
@@ -163,15 +168,18 @@ export function createSnapshotPusher({
           }
         }
         const count = Math.min(roundLimit, pendingKeys.length - offset)
-        queue.push(createEnvelope(
+        const entry = createEnvelope(
           snapshot,
           pendingRounds.slice(offset, offset + count),
           pendingKeys.slice(offset, offset + count),
           timestamp,
-        ))
+        )
+        queue.push(entry)
+        if (useJournal) journalEntries.push(entry)
         offset += count
       }
-      await saveQueue()
+      if (useJournal) await appendQueueJournal(journalEntries)
+      else await saveQueue()
     }
     await saveCursor()
     if (pending.length === 0 && queue.length === 0) {
@@ -243,6 +251,21 @@ export function createSnapshotPusher({
           await quarantineState(queuePath, 'queue', error)
         }
       }
+      const journalEntries = await readQueueJournal()
+      if (journalEntries.length > 0) {
+        const seenSequences = new Set(queue.map((entry) => entry.sequence))
+        for (const rawEntry of journalEntries) {
+          const normalized = normalizeQueuedEnvelope(rawEntry)
+          if (normalized.drop || seenSequences.has(normalized.envelope.sequence)) continue
+          const boundedJournalEntries = splitOversizedQueueEntries([normalized.envelope]).entries
+          for (const entry of boundedJournalEntries) {
+            if (seenSequences.has(entry.sequence)) continue
+            queue.push(entry)
+            seenSequences.add(entry.sequence)
+            lastSequence = Math.max(lastSequence, entry.sequence)
+          }
+        }
+      }
       const cursor = await readStateFile(cursorPath, 'cursor')
       if (cursor) {
         try {
@@ -304,6 +327,33 @@ export function createSnapshotPusher({
       return value
     } catch (error) {
       await quarantineState(filePath, label, error)
+    }
+  }
+
+  async function readQueueJournal() {
+    let text
+    try {
+      text = await readFile(journalPath, 'utf8')
+    } catch (error) {
+      if (error?.code === 'ENOENT') return []
+      throw error
+    }
+    try {
+      return text.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line))
+    } catch (error) {
+      await quarantineState(journalPath, 'queue journal', error)
+    }
+  }
+
+  async function appendQueueJournal(entries) {
+    if (entries.length === 0) return
+    await mkdir(path.dirname(journalPath), { recursive: true })
+    const handle = await open(journalPath, 'a', 0o600)
+    try {
+      await handle.writeFile(entries.map((entry) => JSON.stringify(entry)).join('\n') + '\n')
+      await handle.sync()
+    } finally {
+      await handle.close()
     }
   }
 
@@ -376,6 +426,7 @@ export function createSnapshotPusher({
   async function saveQueue() {
     if (queue.length === 0) {
       await rm(queuePath, { force: true })
+      await rm(journalPath, { force: true })
       return
     }
     const serialized = JSON.stringify({ version: 2, entries: queue })
@@ -384,6 +435,7 @@ export function createSnapshotPusher({
       ? await gzipAsync(Buffer.from(serialized), { level: 1 })
       : serialized
     await saveBytes(queuePath, content)
+    await rm(journalPath, { force: true })
   }
 
   async function saveCursor() {

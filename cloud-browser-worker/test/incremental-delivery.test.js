@@ -32,6 +32,38 @@ test('durable FIFO retains a failed head while collecting the next round', async
   function snapshot(rounds) { return { sessionId: 'vm', tables: [], rounds: rounds.map((round) => ({ tableId: 'BAG01', shoe: 8, round, winner: 'banker' })) } }
 })
 
+test('backlog journals newly observed rounds before push and compacts them only after exact ACK', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'v105-journal-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'queue.json')
+  const first = createSnapshotPusher({
+    targetUrl: 'https://proxy.example/ingest', key: 'worker-key', queuePath,
+    queueJournalThresholdEntries: 1, maxRoundsPerEnvelope: 1, maxRoundsPerDelivery: 1, baseBackoffMs: 0,
+    getSnapshot: async () => snapshot([1]),
+    fetchImpl: async () => { throw new Error('offline') },
+  })
+  assert.equal(await first.tick(), false)
+  const journal = await readFile(`${queuePath}.journal`, 'utf8')
+  assert.match(journal, /BAG01:8:1/)
+
+  const sent = []
+  const restarted = createSnapshotPusher({
+    targetUrl: 'https://proxy.example/ingest', key: 'worker-key', queuePath,
+    queueJournalThresholdEntries: 1, maxRoundsPerEnvelope: 1, maxRoundsPerDelivery: 1,
+    getSnapshot: async () => snapshot([1, 2]),
+    fetchImpl: async (_url, options) => {
+      const body = JSON.parse(options.body); sent.push(body)
+      return { ok: true, status: 200, json: async () => ({ accepted: true, sessionId: body.sessionId, sequence: body.sequence, acceptedRoundKeys: body.roundKeys }) }
+    },
+  })
+  assert.equal(await restarted.tick(), true)
+  assert.deepEqual(sent[0].roundKeys, ['BAG01:8:1'])
+  assert.deepEqual(JSON.parse(await readFile(queuePath, 'utf8')).entries.flatMap((entry) => entry.roundKeys), ['BAG01:8:2'])
+  await assert.rejects(readFile(`${queuePath}.journal`), { code: 'ENOENT' })
+
+  function snapshot(rounds) { return { sessionId: 'vm', tables: [], rounds: rounds.map((round) => ({ tableId: 'BAG01', shoe: 8, round, winner: 'banker' })) } }
+})
+
 test('waits for real summary cards before observing queueing or ACKing a round identity', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'v098-real-cards-'))
   t.after(() => rm(dir, { recursive: true, force: true }))

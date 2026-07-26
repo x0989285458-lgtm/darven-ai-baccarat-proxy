@@ -9,6 +9,7 @@ from pathlib import Path
 
 QUEUE_NAME = "latest-snapshot.json"
 CURSOR_NAME = f"{QUEUE_NAME}.cursor.json"
+JOURNAL_NAME = f"{QUEUE_NAME}.journal"
 MAX_CURSOR_ENTRIES = 10000
 
 
@@ -30,8 +31,20 @@ def queue_entries(value) -> list[dict]:
     return [item for item in entries if isinstance(item, dict)]
 
 
+def read_journal(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+
+
 def snapshot(state_dir: Path) -> dict:
     queue = queue_entries(read_json(state_dir / QUEUE_NAME))
+    seen_sequences = {int(item.get("sequence") or 0) for item in queue}
+    for item in read_journal(state_dir / JOURNAL_NAME):
+        sequence = int(item.get("sequence") or 0)
+        if sequence not in seen_sequences:
+            queue.append(item)
+            seen_sequences.add(sequence)
     cursor = read_json(state_dir / CURSOR_NAME) or {}
     corrupt = sorted(path.name for path in state_dir.glob("*.corrupt*"))
     head = queue[0] if queue else {}
