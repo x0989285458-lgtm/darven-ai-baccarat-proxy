@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createSnapshotPusher } from '../src/snapshot-pusher.js'
 
-test('formal backlog delivery removes idle gaps while preserving bounded payload and request limits', async () => {
+test('formal backlog delivery preserves the stable cadence and bounded payload and request limits', async () => {
   const server = await readFile(new URL('../src/server.js', import.meta.url), 'utf8')
-  assert.match(server, /PUSH_INTERVAL_MS\s*\?\?\s*1000/)
+  assert.match(server, /PUSH_INTERVAL_MS\s*\?\?\s*5000/)
   assert.match(server, /PUSH_REQUEST_TIMEOUT_MS\s*\?\?\s*120000/)
   assert.match(server, /PUSH_MAX_ROUNDS_PER_DELIVERY\s*\?\?\s*5/)
 })
