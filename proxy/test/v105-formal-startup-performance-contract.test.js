@@ -74,6 +74,12 @@ test('formal hydration has a dedicated prediction-issued partial index', () => {
   assert.doesNotMatch(migration, /\b(drop|delete|truncate|alter\s+table)\b/i)
 })
 
+test('formal production Supabase reads and durable writes both use a bounded thirty-second timeout', () => {
+  const server = read('proxy/src/server.js')
+  assert.match(server, /createSupabaseIngestionClient\(\{[\s\S]*requestTimeoutMs:\s*Number\(process\.env\.SUPABASE_REQUEST_TIMEOUT_MS\s*\?\?\s*30000\)/)
+  assert.match(server, /durableWriteRequestTimeoutMs:\s*Number\(process\.env\.DURABLE_INGEST_REQUEST_TIMEOUT_MS\s*\?\?\s*30000\)/)
+})
+
 test('formal startup hydration completes before non-blocking shadows may query the database', async () => {
   const events = []
   let releaseRecent
