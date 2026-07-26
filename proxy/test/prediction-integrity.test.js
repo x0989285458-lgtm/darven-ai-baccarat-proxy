@@ -75,6 +75,30 @@ test('writer settles by prediction_id and suppresses an identical duplicate sett
   assert.equal(requests[0].body.p_settlement.settlement_final, true)
 })
 
+test('formal settlement uses the backend transaction connection and preserves the exact RPC acknowledgement', async () => {
+  const queries = []
+  let fetchCalls = 0
+  const predictionId = '11111111-1111-1111-1111-111111111111'
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    fetchImpl: async () => { fetchCalls += 1; throw new Error('REST must not be used') },
+    strategyPool: { async query(value) {
+      queries.push(value)
+      return { rows: [{ settle_v105_prediction: {
+        persisted: true, roadmapDurable: true, predictionDurable: true, prediction_id: predictionId,
+      } }] }
+    } },
+  })
+  const baseTable = table()
+  const pending = { ...buildLivePrediction(baseTable), predictionId, issuedAt: '2026-07-16T01:00:01.000Z' }
+  const completed = { tableId: 'BAG01', shoe: 88, round: 21, rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 3, 9], sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary' }
+  const result = await client.persistRound(completed, baseTable, pending)
+  assert.equal(result.prediction.strategy_version, 'v105')
+  assert.equal(fetchCalls, 0)
+  assert.equal(queries.length, 1)
+  assert.match(queries[0].text, /public\.settle_v105_prediction\(\$1::jsonb, \$2::jsonb\)/)
+})
+
 test('settlement fails closed unless the acknowledgement prediction_id exactly matches the issued prediction', async () => {
   const baseTable = table()
   const pending = { ...buildLivePrediction(baseTable), predictionId: '11111111-1111-1111-1111-111111111111', issuedAt: '2026-07-16T01:00:01.000Z' }

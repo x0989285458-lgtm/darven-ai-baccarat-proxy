@@ -2058,7 +2058,29 @@ export function createSupabaseIngestionClient({
     })
   }
 
-  function postDurableRest(path, body, conflict, options = {}) {
+  async function postDurableRest(path, body, conflict, options = {}) {
+    if (strategyDb && typeof strategyDb.query === 'function') {
+      const directRpc = {
+        'rpc/settle_v105_prediction': {
+          text: 'select public.settle_v105_prediction($1::jsonb, $2::jsonb) as settle_v105_prediction',
+          values: [body?.p_roadmap, body?.p_settlement],
+        },
+        'rpc/persist_v105_settled_round': {
+          text: 'select public.persist_v105_settled_round($1::jsonb, $2::jsonb) as persist_v105_settled_round',
+          values: [body?.p_roadmap, body?.p_prediction],
+        },
+      }[path]
+      if (directRpc) {
+        const result = await strategyDb.query(directRpc)
+        const row = Array.isArray(result?.rows) ? result.rows[0] : null
+        const functionName = path.slice('rpc/'.length)
+        const acknowledgement = row?.[functionName] ?? row
+        if (!acknowledgement || typeof acknowledgement !== 'object' || Array.isArray(acknowledgement)) {
+          throw new Error(`Direct DB ${functionName} returned invalid acknowledgement`)
+        }
+        return acknowledgement
+      }
+    }
     return postRest(path, body, conflict, { ...options, requestTimeoutMs: durableWriteTimeoutMs })
   }
 
