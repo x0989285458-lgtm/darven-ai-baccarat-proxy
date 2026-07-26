@@ -84,7 +84,7 @@ test('formal settlement uses the backend transaction connection and preserves th
     fetchImpl: async () => { fetchCalls += 1; throw new Error('REST must not be used') },
     strategyPool: { async query(value) {
       queries.push(value)
-      return { rows: [{ settle_v105_prediction: {
+      return { rows: [{ ordinality: 1, acknowledgement: {
         persisted: true, roadmapDurable: true, predictionDurable: true, prediction_id: predictionId,
       } }] }
     } },
@@ -96,23 +96,23 @@ test('formal settlement uses the backend transaction connection and preserves th
   assert.equal(result.prediction.strategy_version, 'v105')
   assert.equal(fetchCalls, 0)
   assert.equal(queries.length, 1)
-  assert.match(queries[0].text, /public\.settle_v105_prediction\(\$1::jsonb, \$2::jsonb\)/)
+  assert.match(queries[0].text, /jsonb_array_elements\(\$1::jsonb\)/)
 })
 
-test('independent direct formal settlements are not trapped behind the legacy REST write queue', async () => {
-  let active = 0
-  let maxActive = 0
+test('independent direct formal settlements share one bounded database batch and preserve per-item acknowledgements', async () => {
+  const queries = []
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
     strategyPool: { async query(value) {
-      active += 1
-      maxActive = Math.max(maxActive, active)
-      await new Promise((resolve) => setTimeout(resolve, 20))
-      active -= 1
-      const predictionId = value.values[1].prediction_id
-      return { rows: [{ settle_v105_prediction: {
-        persisted: true, roadmapDurable: true, predictionDurable: true, prediction_id: predictionId,
-      } }] }
+      queries.push(value)
+      const payloads = JSON.parse(value.values[0])
+      return { rows: payloads.map((payload, index) => ({
+        ordinality: index + 1,
+        acknowledgement: {
+          persisted: true, roadmapDurable: true, predictionDurable: true,
+          prediction_id: payload.p_settlement.prediction_id,
+        },
+      })) }
     } },
   })
   const firstTable = table()
@@ -123,7 +123,9 @@ test('independent direct formal settlements are not trapped behind the legacy RE
     client.persistRound({ tableId: 'BAG01', shoe: 88, round: 21, rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 3, 9] }, firstTable, firstPrediction),
     client.persistRound({ tableId: 'BAG02', shoe: 88, round: 21, rawResult: [3, 6, 4, 8, -1, -1, -1, -1, 7, 4] }, secondTable, secondPrediction),
   ])
-  assert.equal(maxActive, 2)
+  assert.equal(queries.length, 1)
+  assert.match(queries[0].text, /jsonb_array_elements\(\$1::jsonb\).*with ordinality/s)
+  assert.equal(JSON.parse(queries[0].values[0]).length, 2)
 })
 
 test('settlement fails closed unless the acknowledgement prediction_id exactly matches the issued prediction', async () => {

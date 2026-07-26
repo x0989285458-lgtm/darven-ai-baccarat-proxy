@@ -2059,6 +2059,44 @@ export function createSupabaseIngestionClient({
     })
   }
 
+  const pendingDirectSettlements = []
+  let directSettlementFlushScheduled = false
+
+  function enqueueDirectSettlement(body) {
+    return new Promise((resolve, reject) => {
+      pendingDirectSettlements.push({ body, resolve, reject })
+      if (directSettlementFlushScheduled) return
+      directSettlementFlushScheduled = true
+      queueMicrotask(flushDirectSettlements)
+    })
+  }
+
+  async function flushDirectSettlements() {
+    directSettlementFlushScheduled = false
+    const batch = pendingDirectSettlements.splice(0)
+    if (batch.length === 0) return
+    try {
+      const result = await strategyDb.query({
+        text: `select item.ordinality::integer as ordinality,
+          public.settle_v105_prediction(item.payload->'p_roadmap', item.payload->'p_settlement') as acknowledgement
+          from jsonb_array_elements($1::jsonb) with ordinality as item(payload, ordinality)
+          order by item.ordinality`,
+        values: [JSON.stringify(batch.map((item) => item.body))],
+      })
+      const rows = Array.isArray(result?.rows) ? result.rows : []
+      if (rows.length !== batch.length) throw new Error('Direct DB settlement batch returned incomplete acknowledgements')
+      for (let index = 0; index < batch.length; index += 1) {
+        const acknowledgement = rows[index]?.acknowledgement
+        if (!acknowledgement || typeof acknowledgement !== 'object' || Array.isArray(acknowledgement)) {
+          throw new Error('Direct DB settle_v105_prediction returned invalid acknowledgement')
+        }
+        batch[index].resolve(acknowledgement)
+      }
+    } catch (error) {
+      for (const item of batch) item.reject(error)
+    }
+  }
+
   async function postDurableRest(path, body, conflict, options = {}) {
     if (strategyDb && typeof strategyDb.query === 'function') {
       if (path === 'cloud_capture_status') {
@@ -2094,6 +2132,7 @@ export function createSupabaseIngestionClient({
         })
         return []
       }
+      if (path === 'rpc/settle_v105_prediction') return enqueueDirectSettlement(body)
       const directRpc = {
         'rpc/settle_v105_prediction': {
           text: 'select public.settle_v105_prediction($1::jsonb, $2::jsonb) as settle_v105_prediction',
