@@ -11,6 +11,36 @@ import {
   resolveBackendReadConnectionString,
 } from '../src/supabase-writer.js'
 
+const FORMAL_TABLES = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
+
+test('v105 formal history hydrates all latest table states in one bounded direct query', async () => {
+  const queries = []
+  const settled = FORMAL_TABLES.flatMap((tableId) => Array.from({ length: 60 }, (_, index) => ({
+    id: `${tableId}-settled-${index}`,
+    table_id: tableId,
+    strategy_version: 'v104',
+    prediction_timing: 'pre_result_context',
+    prediction_issued_at: `2026-07-25T00:${String(index).padStart(2, '0')}:00.000Z`,
+    settlement_final: true,
+  })))
+  const latest = FORMAL_TABLES.map((tableId) => ({
+    id: `${tableId}-latest`, table_id: tableId, strategy_version: 'v104',
+    prediction_timing: 'pre_result_context', prediction_issued_at: '2026-07-26T00:00:00.000Z',
+  }))
+  const client = createSupabaseIngestionClient({
+    strategyPool: { query: async (query) => {
+      queries.push(query)
+      return { rows: queries.length === 1 ? settled : latest }
+    } },
+  })
+
+  const rows = await client.getV105FormalHistory({ limit: 1000, requestTimeoutMs: 30000 })
+  assert.equal(rows.length, 610)
+  assert.equal(queries.length, 2)
+  assert.match(queries[1].text, /distinct on \(table_id\)/i)
+  assert.deepEqual(queries[1].values, [FORMAL_TABLES, ['v104', 'v105']])
+})
+
 test('formal issued-prediction identity reads use the backend transaction connection without REST', async () => {
   const queries = []
   const prediction = {

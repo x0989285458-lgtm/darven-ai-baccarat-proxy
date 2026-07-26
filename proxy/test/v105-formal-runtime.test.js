@@ -112,18 +112,17 @@ test('v105 formal history prefers backend-only database reads for settled and la
     strategyPool: { async query(value) {
       queries.push(value)
       if (/get_v105_recent_performance_rows/i.test(value.text)) return { rows: settled }
-      const tableId = value.values[0]
-      return { rows: [{
+      return { rows: PRODUCTION_TABLE_IDS.map((tableId) => ({
         id: `${tableId}-latest`, source: 'ofalive99', table_id: tableId, shoe_no: '1', round_no: 99,
         strategy_version: 'v105', predicted_result: 'banker', settlement_final: false,
         prediction_timing: 'pre_result_context', prediction_issued_at: '2026-07-23T00:00:00.000Z',
         baseline_v104_predicted_result: 'player', baseline_v104_same_side_streak: '3', issued_same_side_streak: '1',
-      }] }
+      })) }
     } },
   })
   const rows = await client.getV105FormalHistory()
   assert.equal(fetchCalls, 0)
-  assert.equal(queries.length, PRODUCTION_TABLE_IDS.length + 1)
+  assert.equal(queries.length, 2)
   assert.equal(rows.length, 610)
   assert.deepEqual(new Set(rows.map((row) => row.table_id)), new Set(PRODUCTION_TABLE_IDS))
 })

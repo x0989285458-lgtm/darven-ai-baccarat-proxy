@@ -2802,26 +2802,28 @@ export function createSupabaseIngestionClient({
       }
       let latestStateByTable
       if (strategyDb && typeof strategyDb.query === 'function') {
-        latestStateByTable = []
-        for (const tableId of PRODUCTION_TABLE_IDS) {
-          const result = await strategyDb.query({
-            text: `select id, source, table_id, shoe_no, round_no, strategy_version,
-                          predicted_result, actual_result, is_hit, settlement_final,
-                          prediction_issued_at, created_at,
-                          prediction_features->>'prediction_timing' as prediction_timing,
-                          issued_prediction_payload->>'baselineV104PredictedResult' as baseline_v104_predicted_result,
-                          issued_prediction_payload->>'baselineV104SameSideStreak' as baseline_v104_same_side_streak,
-                          issued_prediction_payload->>'sameSideStreak' as issued_same_side_streak
-                     from public.daily_prediction_results
-                    where table_id = $1
-                      and strategy_version = any($2)
-                      and prediction_issued_at is not null
-                    order by prediction_issued_at desc
-                    limit 1`,
-            values: [tableId, ['v104', 'v105']],
-          })
-          latestStateByTable.push(Array.isArray(result?.rows) ? result.rows : [])
-        }
+        const result = await strategyDb.query({
+          text: `select distinct on (table_id)
+                        id, source, table_id, shoe_no, round_no, strategy_version,
+                        predicted_result, actual_result, is_hit, settlement_final,
+                        prediction_issued_at, created_at,
+                        prediction_features->>'prediction_timing' as prediction_timing,
+                        issued_prediction_payload->>'baselineV104PredictedResult' as baseline_v104_predicted_result,
+                        issued_prediction_payload->>'baselineV104SameSideStreak' as baseline_v104_same_side_streak,
+                        issued_prediction_payload->>'sameSideStreak' as issued_same_side_streak
+                   from public.daily_prediction_results
+                  where table_id = any($1)
+                    and strategy_version = any($2)
+                    and prediction_issued_at is not null
+                  order by table_id, prediction_issued_at desc`,
+          values: [PRODUCTION_TABLE_IDS, ['v104', 'v105']],
+        })
+        const rows = Array.isArray(result?.rows) ? result.rows : []
+        const latestByTable = new Map(rows.map((row) => [String(row?.table_id ?? ''), row]))
+        latestStateByTable = PRODUCTION_TABLE_IDS.map((tableId) => {
+          const row = latestByTable.get(tableId)
+          return row ? [row] : []
+        })
       } else latestStateByTable = await fetchInBatches((tableId) => getRest('daily_prediction_results', {
         select: projectedSelect,
         strategy_version: 'in.(v104,v105)',
