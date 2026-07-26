@@ -21,11 +21,13 @@ export function createSnapshotPusher({
   maxBackoffMs = 60000,
   requestTimeoutMs = 15000,
   maxRoundsPerEnvelope = 5,
+  maxRoundsPerDelivery = maxRoundsPerEnvelope,
   queueCompressionThresholdBytes = 1024 * 1024,
   isRoundDeliverable = () => true,
   now = Date.now,
 } = {}) {
   const roundLimit = Math.max(1, Number(maxRoundsPerEnvelope) || 5)
+  const deliveryRoundLimit = Math.max(roundLimit, Number(maxRoundsPerDelivery) || roundLimit)
   let timer = null
   let failures = 0
   let nextAttemptAt = 0
@@ -97,11 +99,11 @@ export function createSnapshotPusher({
     let roundKeys = []
     let rounds = []
     let envelope = { ...head, timestamp }
-    for (const entry of queue.slice(0, roundLimit)) {
+    for (const entry of queue.slice(0, deliveryRoundLimit)) {
       if (entry.sessionId !== head.sessionId || entry.protocolVersion !== head.protocolVersion) break
       const entryKeys = Array.isArray(entry.roundKeys) ? entry.roundKeys : []
       const entryRounds = Array.isArray(entry.snapshot?.rounds) ? entry.snapshot.rounds : []
-      if (roundKeys.length + entryKeys.length > roundLimit) break
+      if (roundKeys.length + entryKeys.length > deliveryRoundLimit) break
       const candidate = {
         ...entry,
         timestamp,

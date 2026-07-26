@@ -59,6 +59,7 @@ const snapshotPusher = createSnapshotPusher({
   getSnapshot,
   intervalMs: Number(process.env.PUSH_INTERVAL_MS ?? 5000),
   requestTimeoutMs: Number(process.env.PUSH_REQUEST_TIMEOUT_MS ?? 120000),
+  maxRoundsPerDelivery: Number(process.env.PUSH_MAX_ROUNDS_PER_DELIVERY ?? 10),
   queuePath: process.env.PUSH_QUEUE_PATH ?? './data/latest-snapshot.json',
   isRoundDeliverable: isFinalRealCardRound,
 })

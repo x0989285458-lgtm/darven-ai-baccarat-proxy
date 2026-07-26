@@ -872,6 +872,43 @@ test('delivery coalesces consecutive FIFO heads into one bounded exact-ACK envel
   await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
 })
 
+test('delivery limit can drain multiple bounded FIFO entries without widening durable entry size', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-delivery-limit-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  const rounds = [1, 2, 3].map((round) => ({
+    tableId: 'BAG01', shoe: 8, round, winner: 'banker',
+    rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
+    sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
+  }))
+  const entries = rounds.map((round, index) => ({
+    protocolVersion: 'v105', sessionId: 'vm', timestamp: 1000 + index, captureTimestamp: 1000 + index,
+    sequence: 1000 + index, roundKeys: [`BAG01:8:${round.round}`],
+    snapshot: { sessionId: 'vm', buildVersion: '105', tables: [], rounds: [round] },
+  }))
+  await writeFile(queuePath, JSON.stringify({ version: 2, entries }))
+  await writeFile(`${queuePath}.cursor.json`, JSON.stringify({
+    version: 3, initialized: true, lastSequence: 1002,
+    observedRoundKeys: entries.flatMap((entry) => entry.roundKeys), acknowledgedRoundKeys: [],
+  }))
+  const sent = []
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    maxRoundsPerEnvelope: 1, maxRoundsPerDelivery: 2, now: () => 3000,
+    getSnapshot: async () => ({ sessionId: 'vm', buildVersion: '105', tables: [], rounds }),
+    isRoundDeliverable: () => true,
+    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
+  })
+
+  assert.equal(await pusher.tick(), true)
+  assert.deepEqual(sent[0].roundKeys, ['BAG01:8:1', 'BAG01:8:2'])
+  const queued = JSON.parse(await readFile(queuePath, 'utf8')).entries
+  assert.equal(queued.length, 1)
+  assert.deepEqual(queued[0].roundKeys, ['BAG01:8:3'])
+  assert.equal(await pusher.tick(), true)
+  await assert.rejects(readFile(queuePath), { code: 'ENOENT' })
+})
+
 test('large durable queue is atomically compressed and restores without losing its exact head', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-gzip-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
