@@ -1,7 +1,12 @@
 import path from 'node:path'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { promisify } from 'node:util'
+import { gzip, gunzip } from 'node:zlib'
 import { sanitizeProductionSnapshot } from './table-policy.js'
 import { BUILD_VERSION } from './runtime-config.js'
+
+const gzipAsync = promisify(gzip)
+const gunzipAsync = promisify(gunzip)
 
 export function createSnapshotPusher({
   targetUrl,
@@ -16,6 +21,7 @@ export function createSnapshotPusher({
   maxBackoffMs = 60000,
   requestTimeoutMs = 15000,
   maxRoundsPerEnvelope = 5,
+  queueCompressionThresholdBytes = 1024 * 1024,
   isRoundDeliverable = () => true,
   now = Date.now,
 } = {}) {
@@ -285,7 +291,9 @@ export function createSnapshotPusher({
   async function readStateFile(filePath, label) {
     let text
     try {
-      text = await readFile(filePath, 'utf8')
+      const bytes = await readFile(filePath)
+      const compressed = bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b
+      text = (compressed ? await gunzipAsync(bytes) : bytes).toString('utf8')
     } catch (error) {
       if (error?.code === 'ENOENT') return null
       throw error
@@ -355,9 +363,13 @@ export function createSnapshotPusher({
   }
 
   async function saveJson(filePath, value) {
+    await saveBytes(filePath, JSON.stringify(value))
+  }
+
+  async function saveBytes(filePath, value) {
     await mkdir(path.dirname(filePath), { recursive: true })
     const temporary = `${filePath}.tmp`
-    await writeFile(temporary, JSON.stringify(value), { encoding: 'utf8', mode: 0o600 })
+    await writeFile(temporary, value, { mode: 0o600 })
     await rename(temporary, filePath)
   }
 
@@ -366,7 +378,12 @@ export function createSnapshotPusher({
       await rm(queuePath, { force: true })
       return
     }
-    await saveJson(queuePath, { version: 2, entries: queue })
+    const serialized = JSON.stringify({ version: 2, entries: queue })
+    const threshold = Math.max(1, Number(queueCompressionThresholdBytes) || 1024 * 1024)
+    const content = Buffer.byteLength(serialized, 'utf8') >= threshold
+      ? await gzipAsync(Buffer.from(serialized), { level: 1 })
+      : serialized
+    await saveBytes(queuePath, content)
   }
 
   async function saveCursor() {

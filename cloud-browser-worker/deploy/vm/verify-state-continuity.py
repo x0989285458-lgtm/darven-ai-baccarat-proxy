@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 from pathlib import Path
 
@@ -14,7 +15,10 @@ MAX_CURSOR_ENTRIES = 10000
 def read_json(path: Path):
     if not path.exists():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    raw = path.read_bytes()
+    if raw.startswith(b"\x1f\x8b"):
+        raw = gzip.decompress(raw)
+    return json.loads(raw.decode("utf-8"))
 
 
 def queue_entries(value) -> list[dict]:

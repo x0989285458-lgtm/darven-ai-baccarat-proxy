@@ -870,6 +870,36 @@ test('delivery coalesces consecutive FIFO heads into one bounded exact-ACK envel
   await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
 })
 
+test('large durable queue is atomically compressed and restores without losing its exact head', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-gzip-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  const final = {
+    tableId: 'BAG01', shoe: 8, round: 1, winner: 'banker',
+    rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
+    sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
+  }
+  const snapshot = { sessionId: 'vm', buildVersion: '105', tables: [], rounds: [final] }
+  const first = createSnapshotPusher({
+    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    queueCompressionThresholdBytes: 1, getSnapshot: async () => snapshot, isRoundDeliverable: () => true,
+    fetchImpl: async () => { throw new Error('offline') }, baseBackoffMs: 0,
+  })
+  assert.equal(await first.tick(), false)
+  const compressed = await readFile(queuePath)
+  assert.deepEqual([...compressed.subarray(0, 2)], [0x1f, 0x8b])
+
+  const sent = []
+  const restarted = createSnapshotPusher({
+    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    queueCompressionThresholdBytes: 1, getSnapshot: async () => snapshot, isRoundDeliverable: () => true,
+    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
+  })
+  assert.equal(await restarted.tick(), true)
+  assert.deepEqual(sent[0].roundKeys, ['BAG01:8:1'])
+  await assert.rejects(readFile(queuePath), { code: 'ENOENT' })
+})
+
 async function listen(server) {
   await new Promise((resolve, reject) => {
     server.once('error', reject)
