@@ -57,7 +57,7 @@ test('backend transaction connection survives idle periods and allows one bounde
   })
   assert.equal(new URL(config.connectionString).port, '6543')
   assert.equal(config.connectionTimeoutMillis, 60000)
-  assert.equal(config.idleTimeoutMillis, 0)
+  assert.equal(config.idleTimeoutMillis, 30000)
   assert.equal(config.max, 4)
 })
 

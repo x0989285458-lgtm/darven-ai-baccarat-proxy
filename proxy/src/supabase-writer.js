@@ -1977,7 +1977,7 @@ export function createSupabaseIngestionClient({
     connectionTimeoutMillis: 60000,
     query_timeout: 65000,
     statement_timeout: 60000,
-    idleTimeoutMillis: 0,
+    idleTimeoutMillis: 30000,
   }) : null)
   const completedRoundKeys = new Set()
   const inFlightRoundWrites = new Map()
