@@ -74,6 +74,27 @@ test('formal hydration has a dedicated prediction-issued partial index', () => {
   assert.doesNotMatch(migration, /\b(drop|delete|truncate|alter\s+table)\b/i)
 })
 
+test('formal latest-state hydration has a table-strategy-issued composite index', () => {
+  const migrationPath = new URL('frontend/supabase/migrate_v105_formal_latest_strategy_index.sql', repo)
+  assert.equal(existsSync(migrationPath), true)
+  const migration = read('frontend/supabase/migrate_v105_formal_latest_strategy_index.sql')
+  assert.match(migration, /create\s+index\s+concurrently\s+if\s+not\s+exists\s+daily_prediction_results_v105_latest_strategy_idx/i)
+  assert.match(migration, /\(table_id,\s*strategy_version,\s*prediction_issued_at\s+desc\)/i)
+  assert.match(migration, /prediction_issued_at\s+is\s+not\s+null/i)
+  assert.doesNotMatch(migration, /\b(drop|delete|truncate|alter\s+table)\b/i)
+})
+
+test('formal reset bootstrap reads only v105 and its v104 predecessor', () => {
+  const migrationPath = new URL('frontend/supabase/migrate_v105_formal_reset_bootstrap_rpc.sql', repo)
+  assert.equal(existsSync(migrationPath), true)
+  const migration = read('frontend/supabase/migrate_v105_formal_reset_bootstrap_rpc.sql')
+  assert.match(migration, /values\s*\(\s*'v105'::text\s*\),\s*\(\s*'v104'::text\s*\)/i)
+  assert.doesNotMatch(migration, /'v10[0-3]'/i)
+  assert.match(migration, /security\s+definer/i)
+  assert.match(migration, /revoke\s+all[\s\S]*from\s+anon/i)
+  assert.match(migration, /grant\s+execute[\s\S]*to\s+service_role/i)
+})
+
 test('formal production Supabase reads and durable writes both use a bounded thirty-second timeout', () => {
   const server = read('proxy/src/server.js')
   assert.match(server, /createSupabaseIngestionClient\(\{[\s\S]*requestTimeoutMs:\s*Number\(process\.env\.SUPABASE_REQUEST_TIMEOUT_MS\s*\?\?\s*30000\)/)

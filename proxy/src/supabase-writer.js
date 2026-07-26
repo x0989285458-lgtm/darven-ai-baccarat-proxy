@@ -2803,19 +2803,24 @@ export function createSupabaseIngestionClient({
       let latestStateByTable
       if (strategyDb && typeof strategyDb.query === 'function') {
         const result = await strategyDb.query({
-          text: `select distinct on (table_id)
-                        id, source, table_id, shoe_no, round_no, strategy_version,
-                        predicted_result, actual_result, is_hit, settlement_final,
-                        prediction_issued_at, created_at,
-                        prediction_features->>'prediction_timing' as prediction_timing,
-                        issued_prediction_payload->>'baselineV104PredictedResult' as baseline_v104_predicted_result,
-                        issued_prediction_payload->>'baselineV104SameSideStreak' as baseline_v104_same_side_streak,
-                        issued_prediction_payload->>'sameSideStreak' as issued_same_side_streak
-                   from public.daily_prediction_results
-                  where table_id = any($1)
-                    and strategy_version = any($2)
-                    and prediction_issued_at is not null
-                  order by table_id, prediction_issued_at desc`,
+          text: `select d.*
+                   from unnest($1::text[]) with ordinality as requested(table_id, table_order)
+                   cross join lateral (
+                     select id, source, table_id, shoe_no, round_no, strategy_version,
+                            predicted_result, actual_result, is_hit, settlement_final,
+                            prediction_issued_at, created_at,
+                            prediction_features->>'prediction_timing' as prediction_timing,
+                            issued_prediction_payload->>'baselineV104PredictedResult' as baseline_v104_predicted_result,
+                            issued_prediction_payload->>'baselineV104SameSideStreak' as baseline_v104_same_side_streak,
+                            issued_prediction_payload->>'sameSideStreak' as issued_same_side_streak
+                       from public.daily_prediction_results
+                      where table_id = requested.table_id
+                        and strategy_version = any($2)
+                        and prediction_issued_at is not null
+                      order by prediction_issued_at desc
+                      limit 1
+                   ) d
+                  order by requested.table_order`,
           values: [PRODUCTION_TABLE_IDS, ['v104', 'v105']],
         })
         const rows = Array.isArray(result?.rows) ? result.rows : []

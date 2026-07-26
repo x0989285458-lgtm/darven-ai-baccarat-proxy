@@ -76,7 +76,7 @@ test('server hydrates the v104 formal runtime before opening the listener', asyn
   }
 })
 
-test('server passes the configured formal hydration timeout to the v104 history reader', async () => {
+test('server passes the dedicated configured v105 hydration timeout to the formal history reader', async () => {
   let observedTimeout
   const writer = {
     configured: true,
@@ -90,10 +90,11 @@ test('server passes the configured formal hydration timeout to the v104 history 
     memberAuthRequired: false,
     supabaseClient: writer,
     v104FormalRequestTimeoutMs: 30000,
+    v105FormalHydrationTimeoutMs: 60000,
   })
   await app.start()
   try {
-    assert.equal(observedTimeout, 30000)
+    assert.equal(observedTimeout, 60000)
   } finally {
     await app.stop()
   }

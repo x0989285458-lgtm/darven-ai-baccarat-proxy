@@ -37,7 +37,8 @@ test('v105 formal history hydrates all latest table states in one bounded direct
   const rows = await client.getV105FormalHistory({ limit: 1000, requestTimeoutMs: 30000 })
   assert.equal(rows.length, 610)
   assert.equal(queries.length, 2)
-  assert.match(queries[1].text, /distinct on \(table_id\)/i)
+  assert.match(queries[1].text, /cross join lateral/i)
+  assert.match(queries[1].text, /order by prediction_issued_at desc\s+limit 1/i)
   assert.deepEqual(queries[1].values, [FORMAL_TABLES, ['v104', 'v105']])
 })
 
