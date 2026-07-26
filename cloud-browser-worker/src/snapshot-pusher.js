@@ -44,8 +44,9 @@ export function createSnapshotPusher({
       await collectSnapshot(timestamp)
       if (timestamp < nextAttemptAt || queue.length === 0) return false
 
-      const envelope = { ...queue[0], timestamp }
-      queue[0] = envelope
+      const delivery = buildDeliveryEnvelope(timestamp)
+      const envelope = delivery.envelope
+      queue[0] = { ...queue[0], timestamp }
       await saveQueue()
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), requestTimeoutMs)
@@ -60,7 +61,7 @@ export function createSnapshotPusher({
         const acknowledgement = await readAcknowledgement(response, envelope)
         if (!acknowledgement) throw new Error(`push failed with invalid acknowledgement (${response?.status ?? 'unknown'})`)
         for (const roundKey of acknowledgement.acceptedRoundKeys) acknowledgedRoundKeys.add(roundKey)
-        queue.shift()
+        queue.splice(0, delivery.entryCount)
         trimCursor()
         await saveQueue()
         await saveCursor()
@@ -80,6 +81,37 @@ export function createSnapshotPusher({
     } finally {
       active = false
     }
+  }
+
+  function buildDeliveryEnvelope(timestamp) {
+    const head = queue[0]
+    if (!head) return { envelope: null, entryCount: 0 }
+    if (!Array.isArray(head.roundKeys) || head.roundKeys.length === 0) {
+      return { envelope: { ...head, timestamp }, entryCount: 1 }
+    }
+    let entryCount = 0
+    let roundKeys = []
+    let rounds = []
+    let envelope = { ...head, timestamp }
+    for (const entry of queue.slice(0, roundLimit)) {
+      if (entry.sessionId !== head.sessionId || entry.protocolVersion !== head.protocolVersion) break
+      const entryKeys = Array.isArray(entry.roundKeys) ? entry.roundKeys : []
+      const entryRounds = Array.isArray(entry.snapshot?.rounds) ? entry.snapshot.rounds : []
+      if (roundKeys.length + entryKeys.length > roundLimit) break
+      const candidate = {
+        ...entry,
+        timestamp,
+        sequence: entry.sequence,
+        roundKeys: [...roundKeys, ...entryKeys],
+        snapshot: { ...entry.snapshot, rounds: [...rounds, ...entryRounds] },
+      }
+      if (Buffer.byteLength(JSON.stringify(candidate), 'utf8') > 768 * 1024) break
+      envelope = candidate
+      roundKeys = candidate.roundKeys
+      rounds = candidate.snapshot.rounds
+      entryCount += 1
+    }
+    return { envelope, entryCount: Math.max(1, entryCount) }
   }
 
   async function collectSnapshot(timestamp) {

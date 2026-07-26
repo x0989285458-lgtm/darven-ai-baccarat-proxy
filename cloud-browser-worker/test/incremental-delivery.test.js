@@ -12,15 +12,23 @@ test('durable FIFO retains a failed head while collecting the next round', async
   const queuePath = path.join(dir, 'queue.json')
   const snapshots = [snapshot([1]), snapshot([1, 2]), snapshot([1, 2, 3])]
   let attempt = 0
+  const sent = []
   const pusher = createSnapshotPusher({ targetUrl: 'https://proxy.example/ingest', key: 'worker-key', queuePath, baseBackoffMs: 0,
     getSnapshot: async () => snapshots.shift(),
-    fetchImpl: async (_url, options) => { attempt += 1; if (attempt === 2) throw new Error('offline'); const body = JSON.parse(options.body); return { ok: true, status: 200, json: async () => ({ accepted: true, sessionId: body.sessionId, sequence: body.sequence, acceptedRoundKeys: body.roundKeys }) } },
+    fetchImpl: async (_url, options) => {
+      attempt += 1
+      const body = JSON.parse(options.body)
+      sent.push(body)
+      if (attempt === 2) throw new Error('offline')
+      return { ok: true, status: 200, json: async () => ({ accepted: true, sessionId: body.sessionId, sequence: body.sequence, acceptedRoundKeys: body.roundKeys }) }
+    },
   })
   assert.equal(await pusher.tick(), true)
   assert.equal(await pusher.tick(), false)
+  assert.deepEqual(JSON.parse(await readFile(queuePath, 'utf8')).entries.flatMap((entry) => entry.roundKeys), ['BAG01:8:2'])
   assert.equal(await pusher.tick(), true)
-  const queue = JSON.parse(await readFile(queuePath, 'utf8'))
-  assert.deepEqual(queue.entries.flatMap((entry) => entry.roundKeys), ['BAG01:8:3'])
+  assert.deepEqual(sent[2].roundKeys, ['BAG01:8:2', 'BAG01:8:3'])
+  await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
   function snapshot(rounds) { return { sessionId: 'vm', tables: [], rounds: rounds.map((round) => ({ tableId: 'BAG01', shoe: 8, round, winner: 'banker' })) } }
 })
 

@@ -634,13 +634,18 @@ test('durable FIFO keeps collecting new rounds while its unacknowledged head ret
   const snapshots = [snapshot([1]), snapshot([1, 2]), snapshot([1, 2, 3]), snapshot([1, 2, 3])]
   const sent = []
   let attempt = 0
+  let lostAcceptedSequence = 0
   const pusher = createSnapshotPusher({
     targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
     getSnapshot: async () => snapshots.shift(),
     fetchImpl: async (_url, options) => {
       attempt += 1
       sent.push(JSON.parse(options.body))
-      if (attempt === 2) throw new Error('head not acknowledged')
+      if (attempt === 2) {
+        lostAcceptedSequence = sent.at(-1).sequence
+        throw new Error('server committed but acknowledgement was lost')
+      }
+      if (attempt === 3) assert.ok(sent.at(-1).sequence > lostAcceptedSequence)
       return acceptedResponse(options)
     },
     baseBackoffMs: 0,
@@ -648,12 +653,9 @@ test('durable FIFO keeps collecting new rounds while its unacknowledged head ret
 
   assert.equal(await pusher.tick(), true, 'first observation is baseline only')
   assert.equal(await pusher.tick(), false, 'round 2 remains at the FIFO head')
-  assert.equal(await pusher.tick(), true, 'round 3 is appended while round 2 is retried')
-  const queued = JSON.parse(await readFile(queuePath, 'utf8'))
-  assert.deepEqual(queued.entries.flatMap((entry) => entry.roundKeys), ['BAG01:8:3'])
-  assert.deepEqual(sent[2].roundKeys, ['BAG01:8:2'])
-  assert.equal(await pusher.tick(), true)
-  assert.deepEqual(sent[3].roundKeys, ['BAG01:8:3'])
+  assert.equal(await pusher.tick(), true, 'round 3 is appended and coalesced behind round 2')
+  assert.deepEqual(sent[2].roundKeys, ['BAG01:8:2', 'BAG01:8:3'])
+  await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
 
   function snapshot(numbers) {
     return { sessionId: 'vm', tables: [], rounds: numbers.map((number) => ({ tableId: 'BAG01', shoe: 8, round: number, winner: 'banker' })) }
@@ -831,6 +833,41 @@ test('structurally invalid durable state is quarantined before the pusher stops'
 
   await assert.rejects(pusher.tick(), /corrupt queue/i)
   assert.ok((await readdir(dir)).some((name) => name.startsWith('latest.json.corrupt-')))
+})
+
+test('delivery coalesces consecutive FIFO heads into one bounded exact-ACK envelope', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-coalesce-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  const rounds = [1, 2, 3].map((roundNo) => ({
+    tableId: `BAG0${roundNo}`, shoe: 8, round: roundNo, winner: 'banker',
+    rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
+    sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
+  }))
+  const entries = rounds.map((round, index) => ({
+    protocolVersion: 'v105', sessionId: 'vm', timestamp: 1000 + index, captureTimestamp: 1000 + index,
+    sequence: 1000 + index, roundKeys: [`${round.tableId}:8:${round.round}`],
+    snapshot: { sessionId: 'vm', buildVersion: '105', tables: [], rounds: [round] },
+  }))
+  await writeFile(queuePath, JSON.stringify({ version: 2, entries }))
+  await writeFile(`${queuePath}.cursor.json`, JSON.stringify({
+    version: 3, initialized: true, lastSequence: 1002,
+    observedRoundKeys: entries.flatMap((entry) => entry.roundKeys), acknowledgedRoundKeys: [],
+  }))
+  const sent = []
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    now: () => 3000, getSnapshot: async () => ({ sessionId: 'vm', buildVersion: '105', tables: [], rounds }),
+    isRoundDeliverable: () => true,
+    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
+  })
+
+  assert.equal(await pusher.tick(), true)
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].sequence, 1002)
+  assert.deepEqual(sent[0].roundKeys, ['BAG01:8:1', 'BAG02:8:2', 'BAG03:8:3'])
+  assert.equal(sent[0].snapshot.rounds.length, 3)
+  await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
 })
 
 async function listen(server) {
