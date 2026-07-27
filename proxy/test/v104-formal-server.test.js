@@ -146,6 +146,149 @@ test('failed recent performance startup hydration retries on a later table updat
   }
 })
 
+test('same-screen snapshot retries formal issuance after the first durable write fails without repeating lifecycle reconciliation', async () => {
+  let nowMs = Date.parse('2026-07-27T16:00:00.000Z')
+  let reconcileCalls = 0
+  let issuanceCalls = 0
+  let buildCalls = 0
+  const writer = {
+    configured: true,
+    getRuntimeStatus() { return { ready: true, degraded: false, activeStrategyVersion: 'v105' } },
+    async ensureInitialStrategy() { return { ok: true, activeStrategyVersion: 'v105' } },
+    async getRecentPredictionRows() { return [] },
+    async reconcilePredictionLifecycle() { reconcileCalls += 1 },
+    async issuePrediction(candidate) {
+      issuanceCalls += 1
+      if (issuanceCalls === 1) throw new Error('temporary issuance write failure')
+      return { ...candidate, predictionId: 'same-screen-retry', issuedAt: new Date(nowMs).toISOString() }
+    },
+  }
+  const formalRuntime = {
+    async start() {},
+    async buildPrediction(input) { buildCalls += 1; return buildV105FormalPrediction(input, [], {}) },
+    recordIssuance() {}, recordSettlement() {},
+    snapshot() { return { strategyVersion: 'v105', status: 'ready' } },
+  }
+  const app = createApp({
+    autoConnect: false, port: 0, production: true, requireVerifiedStrategy: true,
+    memberAuthRequired: false, supabaseClient: writer, v104FormalRuntime: formalRuntime,
+    predictionIssuanceRetryMs: 10000, now: () => nowMs,
+  })
+  await app.start()
+  try {
+    app.state.setTables([{ ...table, sourceUpdatedAt: new Date(nowMs).toISOString() }])
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    assert.equal(issuanceCalls, 1)
+    assert.equal(buildCalls, 1)
+    nowMs += 5000
+    app.state.setTables([{ ...table, sourceUpdatedAt: new Date(nowMs).toISOString() }])
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    assert.equal(issuanceCalls, 1)
+    assert.equal(buildCalls, 1)
+    nowMs += 5001
+    app.state.setTables([{ ...table, sourceUpdatedAt: new Date(nowMs).toISOString() }])
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    assert.equal(reconcileCalls, 1)
+    assert.equal(issuanceCalls, 2)
+    assert.equal(buildCalls, 2)
+    nowMs += 5000
+    app.state.setTables([{ ...table, sourceUpdatedAt: new Date(nowMs).toISOString() }])
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    assert.equal(issuanceCalls, 2)
+    assert.equal(buildCalls, 2)
+  } finally {
+    await app.stop()
+  }
+})
+
+test('regressed round and old-shoe snapshots never retry formal issuance', async () => {
+  let nowMs = Date.parse('2026-07-27T16:05:00.000Z')
+  let issuanceCalls = 0
+  const writer = {
+    configured: true,
+    getRuntimeStatus() { return { ready: true, degraded: false, activeStrategyVersion: 'v105' } },
+    async ensureInitialStrategy() { return { ok: true, activeStrategyVersion: 'v105' } },
+    async getRecentPredictionRows() { return [] },
+    async reconcilePredictionLifecycle() {},
+    async issuePrediction() {
+      issuanceCalls += 1
+      throw new Error('keep issuance empty for stale-screen regression')
+    },
+  }
+  const formalRuntime = {
+    async start() {},
+    async buildPrediction(input) { return buildV105FormalPrediction(input, [], {}) },
+    recordIssuance() {}, recordSettlement() {},
+    snapshot() { return { strategyVersion: 'v105', status: 'ready' } },
+  }
+  const app = createApp({
+    autoConnect: false, port: 0, production: true, requireVerifiedStrategy: true,
+    memberAuthRequired: false, supabaseClient: writer, v104FormalRuntime: formalRuntime,
+    now: () => nowMs,
+  })
+  const update = async (shoe, round) => {
+    nowMs += 5000
+    app.state.setTables([{ ...table, shoe, round, sourceUpdatedAt: new Date(nowMs).toISOString() }])
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+  await app.start()
+  try {
+    await update(88, 20)
+    await update(88, 21)
+    assert.equal(issuanceCalls, 2)
+    await update(88, 20)
+    assert.equal(issuanceCalls, 2)
+    await update(89, 1)
+    assert.equal(issuanceCalls, 3)
+    await update(88, 22)
+    assert.equal(issuanceCalls, 3)
+  } finally {
+    await app.stop()
+  }
+})
+
+test('delayed stale reconciliation cannot issue after a newer shoe becomes current', async () => {
+  let releaseOld
+  let signalOldStarted
+  const oldStarted = new Promise((resolve) => { signalOldStarted = resolve })
+  const oldGate = new Promise((resolve) => { releaseOld = resolve })
+  const issued = []
+  const writer = {
+    configured: true,
+    getRuntimeStatus() { return { ready: true, degraded: false, activeStrategyVersion: 'v105' } },
+    async ensureInitialStrategy() { return { ok: true, activeStrategyVersion: 'v105' } },
+    async getRecentPredictionRows() { return [] },
+    async reconcilePredictionLifecycle({ currentShoe }) {
+      if (String(currentShoe) === '88') { signalOldStarted(); await oldGate }
+    },
+    async issuePrediction(candidate) {
+      issued.push(`${candidate.targetShoe}:${candidate.targetRound}`)
+      return { ...candidate, predictionId: `race-${issued.length}`, issuedAt: new Date().toISOString() }
+    },
+  }
+  const formalRuntime = {
+    async start() {},
+    async buildPrediction(input) { return buildV105FormalPrediction(input, [], {}) },
+    recordIssuance() {}, recordSettlement() {},
+    snapshot() { return { strategyVersion: 'v105', status: 'ready' } },
+  }
+  const app = createApp({ autoConnect: false, port: 0, production: true, requireVerifiedStrategy: true,
+    memberAuthRequired: false, supabaseClient: writer, v104FormalRuntime: formalRuntime })
+  await app.start()
+  try {
+    app.state.setTables([{ ...table, shoe: 88, round: 20, sourceUpdatedAt: '2026-07-27T16:10:00.000Z' }])
+    await oldStarted
+    app.state.setTables([{ ...table, shoe: 89, round: 2, sourceUpdatedAt: '2026-07-27T16:10:05.000Z' }])
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    releaseOld()
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    assert.deepEqual(issued, ['89:3'])
+  } finally {
+    releaseOld()
+    await app.stop()
+  }
+})
+
 test('cloud ingest withholds ACK until v104 Final settlement is durable and returns 503 on failure', async () => {
   let releaseSettlement
   let settlementStarted
