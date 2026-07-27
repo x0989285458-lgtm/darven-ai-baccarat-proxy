@@ -61,6 +61,11 @@ begin
 end;
 $$;
 
+insert into public.v104_iteration_shadow_v5_sequence_counters (
+  release_candidate, settlement_count
+) values ('v104.5.0-seven-head-shadow.5',0)
+on conflict (release_candidate) do nothing;
+
 update public.v104_iteration_shadow_v5_runtime_settings
 set enabled=true,
     status='shadow',

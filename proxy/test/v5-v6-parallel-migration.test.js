@@ -9,6 +9,8 @@ test('v5 parallel migration rebinds only runtime guards to active v105 and prese
   const sql = fs.readFileSync(path, 'utf8')
   assert.match(sql, /v104_iteration_shadow_v5_runtime_settings_active_strategy_version_check/i)
   assert.match(sql, /active_strategy_version\s+in\s*\(\s*'v104'\s*,\s*'v105'\s*\)/i)
+  assert.match(sql, /insert\s+into\s+public\.v104_iteration_shadow_v5_sequence_counters[\s\S]*values\s*\(\s*'v104\.5\.0-seven-head-shadow\.5'\s*,\s*0/i)
+  assert.match(sql, /on\s+conflict\s*\(\s*release_candidate\s*\)\s+do\s+nothing/i)
   assert.match(sql, /set\s+enabled\s*=\s*true\s*,\s*status\s*=\s*'shadow'\s*,\s*active_strategy_version\s*=\s*'v105'/i)
   assert.match(sql, /pg_get_functiondef\s*\(\s*function_name\s*\)/i)
   for (const name of [
