@@ -95,6 +95,17 @@ test('formal reset bootstrap reads only v105 and its v104 predecessor', () => {
   assert.match(migration, /grant\s+execute[\s\S]*to\s+service_role/i)
 })
 
+test('formal maintenance replaces the legacy JSON settlement index and skips wide JSON statistics', () => {
+  const migration = read('supabase/migrations/20260727183000_v105_disable_wide_json_statistics.sql')
+  assert.match(migration, /create\s+index\s+if\s+not\s+exists\s+idx_daily_prediction_results_final_created_at_scalar/i)
+  assert.match(migration, /where\s+settlement_final\s+is\s+true/i)
+  assert.match(migration, /drop\s+index\s+if\s+exists\s+public\.idx_daily_prediction_results_final_created_at/i)
+  for (const column of ['prediction_features', 'probabilities', 'feature_weights', 'short_run_adjustment', 'issued_prediction_payload', 'side_actual_results', 'side_hits']) {
+    assert.match(migration, new RegExp(`alter\\s+column\\s+${column}\\s+set\\s+statistics\\s+0`, 'i'))
+  }
+  assert.doesNotMatch(migration, /\b(delete|truncate)\b/i)
+})
+
 test('formal production Supabase reads and durable writes both use a bounded thirty-second timeout', () => {
   const server = read('proxy/src/server.js')
   assert.match(server, /createSupabaseIngestionClient\(\{[\s\S]*requestTimeoutMs:\s*Number\(process\.env\.SUPABASE_REQUEST_TIMEOUT_MS\s*\?\?\s*30000\)/)
