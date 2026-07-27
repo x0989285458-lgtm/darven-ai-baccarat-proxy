@@ -5,7 +5,6 @@ import { buildDisplayedBigRoad } from './lib/realCardRoad'
 import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from './lib/supabaseClient'
 import { checkOnlineCoreStatus, getOnlineMemoryCenter, getOnlineStrategyAnalysis, updateOnlineAppSetting, type OnlineCoreStatus, type OnlineMemoryCenter, type OnlineStrategyAnalysis } from './lib/onlineCoreClient'
 import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents, deleteOnlineLicense, extendOnlineLicense, getCloudDataStatus, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, validateMemberSession, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
-import { ShadowIterationPanel } from './ShadowIterationPanel'
 
 const SUPER_ADMIN = 'dv1788'
 const MEMBER_SESSION_TOKEN_KEY = 'darven-member-session-token'
@@ -890,8 +889,6 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
         </div>
       </section>
     </section>
-
-    {isSuper && adminSessionToken ? <ShadowIterationPanel adminSessionToken={adminSessionToken} /> : null}
 
     <section className="admin-panel list-panel weak-panel" aria-label="弱桌分析">
       <h2>弱桌分析</h2>
