@@ -42,6 +42,44 @@ test('v105 formal history hydrates all latest table states in one bounded direct
   assert.deepEqual(queries[1].values, [FORMAL_TABLES, ['v104', 'v105']])
 })
 
+test('v105 formal history accepts an explicitly empty reset and partial v105-only restart history', async () => {
+  const emptyClient = createSupabaseIngestionClient({
+    strategyPool: { query: async () => ({ rows: [] }) },
+  })
+  assert.deepEqual(await emptyClient.getV105FormalHistory({ requestTimeoutMs: 30000 }), [])
+
+  let queryCount = 0
+  const partial = {
+    id: 'v105-reset-1', table_id: 'BAG01', strategy_version: 'v105',
+    prediction_timing: 'pre_result_context', prediction_issued_at: '2026-07-27T00:00:00.000Z',
+    settlement_final: true,
+  }
+  const partialClient = createSupabaseIngestionClient({
+    strategyPool: { query: async () => ({ rows: ++queryCount === 1 ? [partial] : [partial] }) },
+  })
+  const rows = await partialClient.getV105FormalHistory({ requestTimeoutMs: 30000 })
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].prediction_id, partial.id)
+  assert.equal(rows[0].table_id, partial.table_id)
+  assert.equal(rows[0].strategy_version, 'v105')
+})
+
+test('v105 formal history still fails closed on incomplete predecessor hydration', async () => {
+  let queryCount = 0
+  const partialV104 = {
+    id: 'v104-partial', table_id: 'BAG01', strategy_version: 'v104',
+    prediction_timing: 'pre_result_context', prediction_issued_at: '2026-07-26T00:00:00.000Z',
+    settlement_final: true,
+  }
+  const client = createSupabaseIngestionClient({
+    strategyPool: { query: async () => ({ rows: ++queryCount === 1 ? [partialV104] : [partialV104] }) },
+  })
+  await assert.rejects(
+    client.getV105FormalHistory({ requestTimeoutMs: 30000 }),
+    /requires 60 settled rows for BAG01/,
+  )
+})
+
 test('formal issued-prediction identity reads use the backend transaction connection without REST', async () => {
   const queries = []
   const prediction = {

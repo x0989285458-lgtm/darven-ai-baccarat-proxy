@@ -2837,6 +2837,10 @@ export function createSupabaseIngestionClient({
         order: 'prediction_issued_at.desc',
         limit: '1',
       }, { requestTimeoutMs }))
+      const predecessorHistoryPresent = [
+        ...[...settledByTable.values()].flat(),
+        ...(Array.isArray(latestStateByTable) ? latestStateByTable.flat() : []),
+      ].some((row) => row?.strategy_version === 'v104')
       const rowsByTable = PRODUCTION_TABLE_IDS.map((tableId, index) => {
         const settledRows = settledByTable.get(tableId)
         const latestStateRows = latestStateByTable[index]
@@ -2847,13 +2851,14 @@ export function createSupabaseIngestionClient({
           && row?.settlement_final === true
           && Boolean(row?.prediction_issued_at)
         ))
-        if (validSettledRows.length < 60) throw new Error(`v105 formal hydration requires 60 settled rows for ${tableId}`)
         const latestState = (Array.isArray(latestStateRows) ? latestStateRows : []).find((row) => (
           String(row?.table_id ?? '') === tableId
           && ['v104', 'v105'].includes(row?.strategy_version)
           && row?.prediction_timing === 'pre_result_context'
           && Boolean(row?.prediction_issued_at)
         ))
+        if (!predecessorHistoryPresent) return latestState ? [...validSettledRows, latestState] : validSettledRows
+        if (validSettledRows.length < 60) throw new Error(`v105 formal hydration requires 60 settled rows for ${tableId}`)
         if (!latestState) throw new Error(`v105 formal hydration requires latest issuance state for ${tableId}`)
         return [...validSettledRows, latestState]
       })
