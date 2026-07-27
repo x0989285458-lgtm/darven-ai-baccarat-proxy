@@ -1950,6 +1950,52 @@ export function resolveBackendReadConnectionString(connectionString) {
   return raw
 }
 
+function createStrategyQueryScheduler(strategyDb, { maxConcurrent = 4, maxStandardConcurrent = 3, queueTimeoutMs = 30000 } = {}) {
+  const priorityQueue = []
+  const standardQueue = []
+  let active = 0
+  let standardActive = 0
+
+  function drain() {
+    while (active < maxConcurrent) {
+      const item = (standardActive < maxStandardConcurrent ? standardQueue.shift() : null)
+        ?? priorityQueue.shift()
+      if (!item) return
+      clearTimeout(item.timeout)
+      active += 1
+      if (!item.priority) standardActive += 1
+      Promise.resolve()
+        .then(() => strategyDb.query(...item.args))
+        .then(item.resolve, item.reject)
+        .finally(() => {
+          active -= 1
+          if (!item.priority) standardActive -= 1
+          drain()
+        })
+    }
+  }
+
+  function query(priority, args) {
+    return new Promise((resolve, reject) => {
+      const queue = priority ? priorityQueue : standardQueue
+      const item = { priority, args, resolve, reject, timeout: null }
+      item.timeout = setTimeout(() => {
+        const index = queue.indexOf(item)
+        if (index < 0) return
+        queue.splice(index, 1)
+        reject(new Error('strategy query queue deadline exceeded'))
+      }, Math.max(1, Number(queueTimeoutMs) || 30000))
+      queue.push(item)
+      drain()
+    })
+  }
+
+  return {
+    query: (...args) => query(false, args),
+    queryPriority: (...args) => query(true, args),
+  }
+}
+
 export function createSupabaseIngestionClient({
   url = process.env.SUPABASE_URL,
   serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY,
@@ -1970,7 +2016,7 @@ export function createSupabaseIngestionClient({
   strategyPoolFactory = (config) => new pg.Pool(config),
 } = {}) {
   const configured = Boolean(url && serviceKey && fetchImpl)
-  const strategyDb = strategyPool ?? (dbConnectionString ? strategyPoolFactory({
+  const rawStrategyDb = strategyPool ?? (dbConnectionString ? strategyPoolFactory({
     connectionString: resolveBackendReadConnectionString(dbConnectionString),
     ssl: { rejectUnauthorized: false },
     max: 4,
@@ -1996,6 +2042,11 @@ export function createSupabaseIngestionClient({
   const durableWriteTimeoutMs = Math.max(formalTimeoutMs, Number(durableWriteRequestTimeoutMs) || formalTimeoutMs)
   const startupTimeoutMs = Math.max(formalTimeoutMs, Number(startupRequestTimeoutMs) || 30000)
   const shadowTimeoutMs = Math.max(1, Number(shadowRequestTimeoutMs) || 9000)
+  const strategyQueryScheduler = rawStrategyDb && typeof rawStrategyDb.query === 'function'
+    ? createStrategyQueryScheduler(rawStrategyDb, { queueTimeoutMs: durableWriteTimeoutMs })
+    : null
+  const strategyDb = strategyQueryScheduler ? { query: (...args) => strategyQueryScheduler.query(...args) } : null
+  const priorityStrategyDb = strategyQueryScheduler ? { query: (...args) => strategyQueryScheduler.queryPriority(...args) } : null
 
   async function verifyActiveStrategyFromDatabase() {
     if (!strategyDb || typeof strategyDb.query !== 'function') return false
@@ -2078,7 +2129,7 @@ export function createSupabaseIngestionClient({
     const batch = pendingDirectSettlements.splice(0)
     if (batch.length === 0) return
     try {
-      const result = await strategyDb.query({
+      const result = await priorityStrategyDb.query({
         text: `select item.ordinality::integer as ordinality,
           public.settle_v105_prediction(item.payload->'p_roadmap', item.payload->'p_settlement') as acknowledgement
           from jsonb_array_elements($1::jsonb) with ordinality as item(payload, ordinality)
@@ -2154,7 +2205,8 @@ export function createSupabaseIngestionClient({
         },
       }[path]
       if (directRpc) {
-        const result = await strategyDb.query(directRpc)
+        const directDb = options.priority === true ? priorityStrategyDb : strategyDb
+        const result = await directDb.query(directRpc)
         const row = Array.isArray(result?.rows) ? result.rows[0] : null
         const functionName = path.slice('rpc/'.length)
         const acknowledgement = row?.[functionName] ?? row
@@ -2318,7 +2370,7 @@ export function createSupabaseIngestionClient({
           raw_result_exact10: normalized.rawResult,
         },
         p_ledger: null,
-      }, undefined, { requireObject: true }))
+      }, undefined, { requireObject: true, priority: true }))
       if (acknowledgement?.accepted !== true) {
         const status = String(acknowledgement?.status ?? 'unavailable')
         if (!['gap', 'conflicted', 'invalid'].includes(status)) throw new Error('v100 durable rank ledger acknowledgement failed')
@@ -2342,8 +2394,8 @@ export function createSupabaseIngestionClient({
       const normalizedTable = String(tableId ?? '')
       const normalizedShoe = String(shoe ?? '')
       if (!normalizedSource || !normalizedTable || !normalizedShoe) throw new Error('v100 durable rank ledger identity is incomplete')
-      const rows = strategyDb && typeof strategyDb.query === 'function'
-        ? (await strategyDb.query({
+      const rows = priorityStrategyDb && typeof priorityStrategyDb.query === 'function'
+        ? (await priorityStrategyDb.query({
             text: `select source, table_id, shoe_no, complete_through_round,
                           seen_dealt_rank_counts, seen_dealt_code_counts,
                           undealt_after_observed_deals, cards_seen_dealt, status,
@@ -2415,11 +2467,12 @@ export function createSupabaseIngestionClient({
       }
       return structuredClone(prediction)
     },
-    async readIssuedPrediction({ tableId, shoe, round, strategyVersion } = {}) {
+    async readIssuedPrediction({ tableId, shoe, round, strategyVersion } = {}, { priority = null } = {}) {
       const targetRound = Number(round)
       if (!tableId || shoe == null || !Number.isSafeInteger(targetRound) || targetRound < 1 || !strategyVersion) return null
-      const rows = strategyDb
-        ? (await strategyDb.query({
+      const directDb = priority === 'settlement' ? priorityStrategyDb : strategyDb
+      const rows = directDb
+        ? (await directDb.query({
             text: `select id, source, table_id, shoe_no, round_no, strategy_version,
                           prediction_issued_at, issued_prediction_payload, settlement_final
                      from public.daily_prediction_results

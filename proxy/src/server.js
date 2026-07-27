@@ -97,7 +97,7 @@ export function resolveFrontendCorsOrigin(configuredOrigin, requestOrigin) {
   }
 }
 
-export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), v104FormalRequestTimeoutMs = Number(process.env.V104_FORMAL_REQUEST_TIMEOUT_MS ?? 10000), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null, v104ShadowRuntime = null, v104IterationShadowRuntime = null, v105ShadowRuntime = null, v105ShadowV7Runtime = null, v104FormalRuntime = null, dailyMemoryRollover = null } = {}) {
+export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), v104FormalRequestTimeoutMs = Number(process.env.V104_FORMAL_REQUEST_TIMEOUT_MS ?? 10000), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null, v104ShadowRuntime = null, v104IterationShadowRuntime = null, v105ShadowRuntime = null, v105ShadowV7Runtime = null, v104FormalRuntime = null, dailyMemoryRollover = null } = {}) {
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
     CAPTURE_SOURCE: requestedCaptureSource,
@@ -139,6 +139,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   let recentPerformanceHydrationPromise = null
   let recentPerformanceRetryAtMs = 0
   const resolvedRecentPerformanceRetryMs = Math.max(1000, Number(recentPerformanceRetryMs) || 30000)
+  const resolvedIngestDeadlineMs = Math.min(110000, Math.max(1, Number(ingestDeadlineMs) || 110000))
   let tablesReceivedAtMs = 0
   let v103Shadow = null
   let v104Shadow = null
@@ -194,7 +195,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             shoe: round.shoe,
             round: round.round,
             strategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION,
-          })
+          }, { priority: 'settlement' })
         }
       } catch (error) {
         state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
@@ -502,7 +503,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         const envelope = parseJsonBody(rawBody)
         const validatedRoundKeys = validateIngestEnvelope(envelope, now())
         const sessionId = String(envelope.snapshot.sessionId ?? envelope.snapshot.session_id ?? 'cloud-browser')
-        return await withIngestSessionLock(sessionId, async () => {
+        const ingestOperation = withIngestSessionLock(sessionId, async () => {
           const previous = ingestSequences.get(sessionId)
           if (previous != null && envelope.sequence <= previous.sequence) {
             if (envelope.sequence === previous.sequence) {
@@ -549,7 +550,12 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           })
           return jsonResponse(200, ack, frontendOrigin)
         })
+        return await withDeadline(ingestOperation, resolvedIngestDeadlineMs, 'durable ingest deadline exceeded')
       } catch (error) {
+        if (error?.message === 'durable ingest deadline exceeded') {
+          error.statusCode = 503
+          error.durableFailure = true
+        }
         if (error?.versionMismatch) {
           state.setStatus({ health: 'degraded', reason: 'version_mismatch', expectedProtocolVersion: WORKER_PROTOCOL_VERSION, receivedProtocolVersion: error.receivedProtocolVersion ?? null })
         }
@@ -1413,6 +1419,20 @@ function hasSensitiveAuthQuery(requestUrl) {
 function parseJsonBody(rawBody) {
   if (!rawBody) return {}
   return JSON.parse(rawBody)
+}
+
+async function withDeadline(operation, timeoutMs, message) {
+  let timer
+  try {
+    return await Promise.race([
+      Promise.resolve(operation),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), Math.max(1, Number(timeoutMs) || 1))
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 function validateIngestEnvelope(envelope, currentTime) {

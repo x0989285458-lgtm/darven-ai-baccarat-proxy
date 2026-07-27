@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createV100FormalRuntime } from '../src/v100-formal-runtime.js'
 import { applyCloudCapturePayload } from '../src/cloud-capture.js'
+import { buildLivePrediction, createSupabaseIngestionClient } from '../src/supabase-writer.js'
+import { createApp } from '../src/server.js'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const finalRound = (tableId, round) => ({
@@ -243,4 +245,264 @@ test('overlapping snapshots keep independent identities concurrent', async () =>
     runtime.processSnapshot({ tables: [], rounds: [finalRound('BAG02', 1)] }),
   ])
   assert.equal(maxActive, 2)
+})
+
+test('formal Final settlement keeps a reserved checkout when concurrent ingest envelopes persist ancillary data', async () => {
+  let active = 0
+  let ancillaryStarted = 0
+  let releaseAncillary
+  const ancillaryGate = new Promise((resolve) => { releaseAncillary = resolve })
+  const waiters = []
+  const wakeWaiters = () => {
+    while (active < 4 && waiters.length > 0) waiters.shift()()
+  }
+  const acquire = () => new Promise((resolve, reject) => {
+    if (active < 4) {
+      active += 1
+      resolve()
+      return
+    }
+    const start = () => {
+      clearTimeout(timeout)
+      active += 1
+      resolve()
+    }
+    const timeout = setTimeout(() => {
+      const index = waiters.indexOf(start)
+      if (index >= 0) waiters.splice(index, 1)
+      reject(new Error('timeout exceeded when trying to connect'))
+    }, 25)
+    waiters.push(start)
+  })
+  const release = () => {
+    active -= 1
+    wakeWaiters()
+  }
+  const baseTable = { tableId: 'BAG10', shoe: 'S1', round: 20 }
+  const issued = {
+    ...buildLivePrediction(baseTable),
+    predictionId: '11111111-1111-1111-1111-111111111111',
+    issuedAt: '2026-07-27T00:00:00.000Z',
+  }
+  const strategyPool = {
+    async query(query) {
+      await acquire()
+      const text = String(query?.text ?? query)
+      try {
+        if (/cloud_capture_status|persist_latest_cloud_table_snapshot/i.test(text)) {
+          ancillaryStarted += 1
+          await ancillaryGate
+          if (/persist_latest_cloud_table_snapshot/i.test(text)) {
+            return { rows: [{ persist_latest_cloud_table_snapshot: { persisted: true } }] }
+          }
+          return { rows: [] }
+        }
+        if (/from public\.daily_prediction_results/i.test(text)) {
+          return { rows: [{
+            id: issued.predictionId, source: 'ofalive99', table_id: 'BAG10', shoe_no: 'S1', round_no: 21,
+            strategy_version: 'v105', prediction_issued_at: issued.issuedAt,
+            issued_prediction_payload: issued, settlement_final: false,
+          }] }
+        }
+        if (/jsonb_array_elements/i.test(text)) {
+          releaseAncillary()
+          const batch = JSON.parse(query.values[0])
+          return { rows: batch.map((item, index) => ({
+            ordinality: index + 1,
+            acknowledgement: {
+              persisted: true, roadmapDurable: true, predictionDurable: true,
+              prediction_id: item.p_settlement.prediction_id,
+            },
+          })) }
+        }
+        if (/cloud_table_rounds/i.test(text)) return { rows: [] }
+        throw new Error(`unexpected query in checkout test: ${text}`)
+      } finally {
+        release()
+      }
+    },
+  }
+  const writer = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    requestTimeoutMs: 100, durableWriteRequestTimeoutMs: 100, strategyPool,
+  })
+  const passiveState = { setStatus() {}, setTables() {}, async upsertRoundEvent() { return { ok: true } } }
+  const ancillaryPayload = (sessionId) => applyCloudCapturePayload({
+    parsed: { sessionId, status: { connected: true }, tables: [], rounds: [] },
+    state: passiveState,
+    writer,
+  })
+  const ancillary = [ancillaryPayload('ancillary-1'), ancillaryPayload('ancillary-2')]
+  while (ancillaryStarted < 3) await new Promise((resolve) => setImmediate(resolve))
+  await new Promise((resolve) => setImmediate(resolve))
+
+  const final = finalRound('BAG10', 21)
+  const settlementState = {
+    setStatus() {}, setTables() {},
+    async upsertRoundEvent(round) {
+      const prediction = await writer.readIssuedPrediction({
+        tableId: round.tableId, shoe: round.shoe, round: round.round,
+        strategyVersion: 'v105',
+      }, { priority: 'settlement' })
+      await writer.persistRound(round, baseTable, prediction)
+      return { ok: true }
+    },
+  }
+  try {
+    const result = await applyCloudCapturePayload({
+      parsed: { sessionId: 'formal-final', status: { connected: true }, tables: [baseTable], rounds: [final] },
+      state: settlementState,
+      writer,
+    })
+    assert.ok(result.durableTimings.formalSettlementMs < 100)
+  } finally {
+    releaseAncillary()
+    await Promise.allSettled(ancillary)
+  }
+})
+
+test('sustained priority traffic cannot starve an ACK-required standard durable write', async () => {
+  const started = []
+  const blocked = []
+  let releaseAll = false
+  const resultFor = (text) => /persist_latest_cloud_table_snapshot/i.test(text)
+    ? { rows: [{ persist_latest_cloud_table_snapshot: { persisted: true } }] }
+    : { rows: [] }
+  const strategyPool = {
+    query(query) {
+      const text = String(query?.text ?? query)
+      const kind = /persist_latest_cloud_table_snapshot/i.test(text) ? 'standard' : 'priority'
+      started.push(kind)
+      if (releaseAll) return Promise.resolve(resultFor(text))
+      return new Promise((resolve) => blocked.push({ text, resolve }))
+    },
+  }
+  const writer = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    requestTimeoutMs: 100, durableWriteRequestTimeoutMs: 100, strategyPool,
+  })
+  const priorityRead = (round) => writer.readIssuedPrediction({
+    tableId: 'BAG01', shoe: 'S1', round, strategyVersion: 'v105',
+  }, { priority: 'settlement' })
+  const calls = [1, 2, 3, 4].map(priorityRead)
+  while (started.length < 4) await new Promise((resolve) => setImmediate(resolve))
+  calls.push(writer.writeCloudTableSnapshot({
+    sessionId: 'fairness-worker', tables: [{ tableId: 'BAG01' }], status: { connected: true },
+  }))
+  calls.push(...[5, 6, 7, 8].map(priorityRead))
+
+  try {
+    blocked.shift().resolve({ rows: [] })
+    while (started.length < 5) await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(started[4], 'standard')
+  } finally {
+    releaseAll = true
+    while (blocked.length > 0) {
+      const item = blocked.shift()
+      item.resolve(resultFor(item.text))
+    }
+    await Promise.allSettled(calls)
+  }
+})
+
+test('cloud ingest fails closed within its proxy deadline before the worker request timeout', async () => {
+  let releaseSnapshot
+  const snapshotGate = new Promise((resolve) => { releaseSnapshot = resolve })
+  const writer = {
+    configured: true,
+    async writeCloudCaptureStatus() {},
+    async writeCloudTableSnapshot() { await snapshotGate },
+  }
+  const app = createApp({
+    autoConnect: false,
+    ingestKey: 'worker-key',
+    now: () => 1_000_000,
+    ingestDeadlineMs: 20,
+    supabaseClient: writer,
+  })
+  const request = app.inject({
+    method: 'POST',
+    url: '/api/cloud-ingest/snapshot',
+    headers: { 'x-worker-key': 'worker-key' },
+    body: JSON.stringify({
+      protocolVersion: 'v105', timestamp: 1_000_000, sequence: 1, roundKeys: [],
+      snapshot: {
+        buildVersion: '105', sessionId: 'deadline-worker', connected: true, authenticated: true,
+        tables: [{ tableId: 'BAG01', shoe: 'S1', round: 1 }], rounds: [],
+      },
+    }),
+  })
+  try {
+    const response = await Promise.race([
+      request,
+      delay(75).then(() => ({ statusCode: 599, body: JSON.stringify({ error: 'test deadline exceeded' }) })),
+    ])
+    assert.equal(response.statusCode, 503)
+    assert.deepEqual(JSON.parse(response.body), {
+      ok: false,
+      accepted: false,
+      error: 'durable ingest deadline exceeded',
+    })
+  } finally {
+    releaseSnapshot()
+    await request
+  }
+})
+
+test('timed-out ingest keeps the session lock until its underlying durable work settles', async () => {
+  let releaseSnapshot
+  const snapshotGate = new Promise((resolve) => { releaseSnapshot = resolve })
+  let snapshotCalls = 0
+  let activeSnapshots = 0
+  let maxActiveSnapshots = 0
+  const writer = {
+    configured: true,
+    async writeCloudCaptureStatus() {},
+    async writeCloudTableSnapshot() {
+      snapshotCalls += 1
+      activeSnapshots += 1
+      maxActiveSnapshots = Math.max(maxActiveSnapshots, activeSnapshots)
+      try {
+        await snapshotGate
+      } finally {
+        activeSnapshots -= 1
+      }
+    },
+  }
+  const app = createApp({
+    autoConnect: false,
+    ingestKey: 'worker-key',
+    now: () => 1_000_000,
+    ingestDeadlineMs: 20,
+    supabaseClient: writer,
+  })
+  const request = () => app.inject({
+    method: 'POST',
+    url: '/api/cloud-ingest/snapshot',
+    headers: { 'x-worker-key': 'worker-key' },
+    body: JSON.stringify({
+      protocolVersion: 'v105', timestamp: 1_000_000, sequence: 1, roundKeys: [],
+      snapshot: {
+        buildVersion: '105', sessionId: 'deadline-lock-worker', connected: true, authenticated: true,
+        tables: [{ tableId: 'BAG01', shoe: 'S1', round: 1 }], rounds: [],
+      },
+    }),
+  })
+
+  const first = await request()
+  assert.equal(first.statusCode, 503)
+  const retryPromise = request()
+  await delay(30)
+  assert.equal(snapshotCalls, 1)
+  assert.equal(maxActiveSnapshots, 1)
+
+  const retry = await retryPromise
+  assert.equal(retry.statusCode, 503)
+  assert.equal(JSON.parse(retry.body).accepted, false)
+  releaseSnapshot()
+  const completedRetry = await request()
+  assert.equal(completedRetry.statusCode, 200)
+  assert.equal(JSON.parse(completedRetry.body).duplicate, true)
+  assert.equal(snapshotCalls, 1)
+  assert.equal(maxActiveSnapshots, 1)
 })
