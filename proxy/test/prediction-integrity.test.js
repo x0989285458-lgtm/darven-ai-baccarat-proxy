@@ -34,6 +34,32 @@ test('writer issuance returns the first durable immutable payload and prediction
   assert.equal(requests[0].body.p_prediction.resolved_at, null)
 })
 
+test('direct issuance uses the transaction connection and preserves the exact RPC acknowledgement', async () => {
+  const candidate = buildLivePrediction(table())
+  const issued = { ...candidate, predictionId: '11111111-1111-1111-1111-111111111111', issuedAt: '2026-07-16T01:00:01.000Z' }
+  const acknowledgement = { prediction_id: issued.predictionId, prediction_issued_at: issued.issuedAt, prediction: issued }
+  const queries = []
+  let fetchCalls = 0
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    fetchImpl: async () => { fetchCalls += 1; throw new Error('REST must not be used') },
+    strategyPool: { async query(value) {
+      queries.push(value)
+      return { rows: [{ issue_v105_prediction: acknowledgement }] }
+    } },
+  })
+
+  assert.deepEqual(await client.issuePrediction(candidate), issued)
+  assert.equal(fetchCalls, 0)
+  assert.equal(queries.length, 1)
+  assert.match(queries[0].text, /select public\.issue_v105_prediction\(\$1::jsonb\) as issue_v105_prediction/)
+  assert.equal(queries[0].values.length, 1)
+  assert.equal(queries[0].values[0].table_id, candidate.targetTableId)
+  assert.equal(queries[0].values[0].shoe_no, candidate.targetShoe)
+  assert.equal(queries[0].values[0].round_no, candidate.targetRound)
+  assert.equal(queries[0].values[0].strategy_version, candidate.strategyVersion)
+})
+
 test('settlement covers banker/player hit-miss quadrants and tie PUSH without changing the issued direction', () => {
   const baseTable = table()
   const pending = buildLivePrediction(baseTable)

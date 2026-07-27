@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createApp } from '../src/server.js'
-import { createSupabaseIngestionClient } from '../src/supabase-writer.js'
+import { buildLivePrediction, createSupabaseIngestionClient } from '../src/supabase-writer.js'
 
 const strategyVersion = 'v98'
 
@@ -30,6 +30,61 @@ test('writer verifies exact reconcile ACK identity and lifecycle counts', async 
 
   const mismatch = createSupabaseIngestionClient({ url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false, fetchImpl: async () => response({ source: 'ofalive99', table_id: 'BAG03A', current_shoe: '902', current_visible_round: 12, pending: 0, expired_no_final: 0, abandoned_shoe_change: 0, updated_total: 0 }) })
   await assert.rejects(mismatch.reconcilePredictionLifecycle({ source: 'ofalive99', tableId: 'BAG03A', currentShoe: 901, currentVisibleRound: 12 }), /reconciliation acknowledgement failed/)
+})
+
+test('direct reconcile uses the transaction connection with all identity parameters and preserves the ACK', async () => {
+  const acknowledgement = { source: 'ofalive99', table_id: 'BAG03A', current_shoe: '901', current_visible_round: 12, pending: 2, expired_no_final: 3, abandoned_shoe_change: 4, updated_total: 9 }
+  const queries = []
+  let fetchCalls = 0
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    fetchImpl: async () => { fetchCalls += 1; throw new Error('REST must not be used') },
+    strategyPool: { async query(value) {
+      queries.push(value)
+      return { rows: [{ reconcile_v105_prediction_lifecycle: acknowledgement }] }
+    } },
+  })
+
+  const result = await client.reconcilePredictionLifecycle({ source: 'ofalive99', tableId: 'BAG03A', currentShoe: 901, currentVisibleRound: 12 })
+  assert.deepEqual(result, { source: 'ofalive99', tableId: 'BAG03A', currentShoe: '901', currentVisibleRound: 12, counts: { pending: 2, expiredNoFinal: 3, abandonedShoeChange: 4, updatedTotal: 9 } })
+  assert.equal(fetchCalls, 0)
+  assert.equal(queries.length, 1)
+  assert.match(queries[0].text, /select public\.reconcile_v105_prediction_lifecycle\(\$1::text, \$2::text, \$3::text, \$4::integer\) as reconcile_v105_prediction_lifecycle/)
+  assert.deepEqual(queries[0].values, ['ofalive99', 'BAG03A', '901', 12])
+})
+
+test('direct reconcile and issuance share one ordered write queue without overlap', async () => {
+  const candidate = buildLivePrediction(table())
+  const issued = { ...candidate, predictionId: '11111111-1111-1111-1111-111111111111', issuedAt: '2026-07-17T01:00:01.000Z' }
+  const events = []
+  let releaseReconcile
+  let markReconcileStarted
+  const reconcileStarted = new Promise((resolve) => { markReconcileStarted = resolve })
+  const reconcileGate = new Promise((resolve) => { releaseReconcile = resolve })
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    fetchImpl: async () => { throw new Error('REST must not be used') },
+    strategyPool: { async query(value) {
+      if (value.text.includes('reconcile_v105_prediction_lifecycle')) {
+        events.push('reconcile:start')
+        markReconcileStarted()
+        await reconcileGate
+        events.push('reconcile:end')
+        return { rows: [{ reconcile_v105_prediction_lifecycle: { source: 'ofalive99', table_id: 'BAG01', current_shoe: '88', current_visible_round: 20, pending: 0, expired_no_final: 0, abandoned_shoe_change: 0, updated_total: 0 } }] }
+      }
+      events.push('issue:start')
+      return { rows: [{ issue_v105_prediction: { prediction_id: issued.predictionId, prediction_issued_at: issued.issuedAt, prediction: issued } }] }
+    } },
+  })
+
+  const reconcile = client.reconcilePredictionLifecycle({ source: 'ofalive99', tableId: 'BAG01', currentShoe: 88, currentVisibleRound: 20 })
+  await reconcileStarted
+  const issuance = client.issuePrediction(candidate)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(events, ['reconcile:start'])
+  releaseReconcile()
+  await Promise.all([reconcile, issuance])
+  assert.deepEqual(events, ['reconcile:start', 'reconcile:end', 'issue:start'])
 })
 
 test('runtime reconciles once per changed screen identity per table, including ten tables and restart', async () => {

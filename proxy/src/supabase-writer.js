@@ -2203,6 +2203,14 @@ export function createSupabaseIngestionClient({
           text: 'select public.apply_v105_rank_ledger_event($1::jsonb, $2::jsonb) as apply_v105_rank_ledger_event',
           values: [body?.p_event, body?.p_ledger],
         },
+        'rpc/issue_v105_prediction': {
+          text: 'select public.issue_v105_prediction($1::jsonb) as issue_v105_prediction',
+          values: [body?.p_prediction],
+        },
+        'rpc/reconcile_v105_prediction_lifecycle': {
+          text: 'select public.reconcile_v105_prediction_lifecycle($1::text, $2::text, $3::text, $4::integer) as reconcile_v105_prediction_lifecycle',
+          values: [body?.p_source, body?.p_table_id, body?.p_current_shoe, body?.p_current_visible_round],
+        },
       }[path]
       if (directRpc) {
         const directDb = options.priority === true ? priorityStrategyDb : strategyDb
