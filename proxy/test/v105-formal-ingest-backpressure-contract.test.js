@@ -371,6 +371,40 @@ test('formal Final settlement keeps a reserved checkout when concurrent ingest e
   }
 })
 
+test('strategy queue deadline identifies the exact queued SQL target', async () => {
+  let releaseAll = false
+  const releases = []
+  const strategyPool = {
+    async query(query) {
+      const text = String(query?.text ?? query)
+      if (/persist_latest_cloud_table_snapshot/i.test(text)) {
+        if (!releaseAll) await new Promise((resolve) => releases.push(resolve))
+        return { rows: [{ persist_latest_cloud_table_snapshot: { persisted: true } }] }
+      }
+      if (/cloud_capture_status/i.test(text)) return { rows: [] }
+      throw new Error(`unexpected diagnostic query: ${text}`)
+    },
+  }
+  const writer = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    requestTimeoutMs: 20, durableWriteRequestTimeoutMs: 20, strategyPool,
+  })
+  const blockers = Array.from({ length: 6 }, (_, index) => writer.writeCloudTableSnapshot({
+    sessionId: `diagnostic-blocker-${index}`, tables: [{ tableId: 'BAG01' }], status: { connected: true },
+  }))
+  await delay(10)
+  try {
+    await assert.rejects(
+      writer.writeCloudCaptureStatus({ sessionId: 'diagnostic-status', connected: true }),
+      /strategy query queue deadline exceeded.*cloud_capture_status/i,
+    )
+  } finally {
+    releaseAll = true
+    for (const release of releases.splice(0)) release()
+    await Promise.allSettled(blockers)
+  }
+})
+
 test('strategy scheduler uses six standard slots when database headroom is available', async () => {
   let started = 0
   let releaseAll = false

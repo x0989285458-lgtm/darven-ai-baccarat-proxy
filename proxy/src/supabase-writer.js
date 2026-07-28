@@ -1981,15 +1981,23 @@ function createStrategyQueryScheduler(strategyDb, { maxConcurrent = 8, maxStanda
     }
   }
 
+  function queryLabel(args) {
+    const text = String(args?.[0]?.text ?? args?.[0] ?? '')
+    const functionMatch = text.match(/\bpublic\.([a-z][a-z0-9_]*)\s*\(/i)
+    if (functionMatch) return functionMatch[1]
+    const relationMatch = text.match(/\b(?:into|update|from)\s+public\.([a-z][a-z0-9_]*)/i)
+    return relationMatch?.[1] ?? 'unknown_query'
+  }
+
   function query(priority, args) {
     return new Promise((resolve, reject) => {
       const queue = priority ? priorityQueue : standardQueue
-      const item = { priority, args, resolve, reject, timeout: null }
+      const item = { priority, args, label: queryLabel(args), resolve, reject, timeout: null }
       item.timeout = setTimeout(() => {
         const index = queue.indexOf(item)
         if (index < 0) return
         queue.splice(index, 1)
-        reject(new Error('strategy query queue deadline exceeded'))
+        reject(new Error(`strategy query queue deadline exceeded: ${item.label}`))
       }, Math.max(1, Number(queueTimeoutMs) || 30000))
       queue.push(item)
       drain()
