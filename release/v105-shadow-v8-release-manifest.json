@@ -1,0 +1,38 @@
+{
+  "release": "v105-shadow-v8.1",
+  "packageVersion": "1.0.15",
+  "strategyVersion": "v105-shadow-v8-run-length-ask-road",
+  "formalStrategyVersion": "v105",
+  "baseCommit": "75321e69de223d91b310dbdd6170e5f0ae5d3ba9",
+  "shadowContract": {
+    "shadowOnly": true,
+    "activationEligible": false,
+    "memberVisible": false,
+    "writesSideActions": false,
+    "fixedTables": 10,
+    "independentDatabase": true,
+    "counterStartsAtZero": true,
+    "continuesUntilManualStop": true,
+    "automaticStop": false
+  },
+  "deployment": {
+    "order": [
+      "database-additive",
+      "catalog-acl-readback",
+      "postgrest-smoke",
+      "render-proxy",
+      "production-e2e"
+    ],
+    "migration": "supabase/migrations/20260727220000_v105_shadow_v8.sql",
+    "runtimeFlag": "V105_SHADOW_V8_ENABLED",
+    "runtimeFlagDefault": true,
+    "formalQueueAckWaitsForV8": false
+  },
+  "rollback": {
+    "drainSafe": true,
+    "stopIssuance": "supabase/operations/stop_v105_shadow_v8_issuance.sql",
+    "finalizeAfterPendingZero": "supabase/operations/finalize_v105_shadow_v8_stop.sql",
+    "preserveHistory": true,
+    "restoreFormalVersion": "v105"
+  }
+}

@@ -153,6 +153,12 @@ begin
      or p_prediction->'prediction_payload'->>'predictedResult' is distinct from p_prediction->>'predicted_result'
      or (p_prediction->'prediction_payload'->>'confidence')::numeric is distinct from (p_prediction->>'confidence')::numeric
      or (p_prediction->'prediction_payload'->>'sameSideStreak')::integer is distinct from (p_prediction->>'same_side_streak')::integer
+     or coalesce((p_prediction->>'independent_support_count')::integer,-1) not between 0 and 2
+     or (p_prediction->'prediction_payload'->>'independentSupportCount')::integer is distinct from (p_prediction->>'independent_support_count')::integer
+     or p_prediction->>'shoe_bias_suppressed' not in ('true','false')
+     or (p_prediction->'prediction_payload'->>'shoeBiasSuppressed')::boolean is distinct from (p_prediction->>'shoe_bias_suppressed')::boolean
+     or p_prediction->>'lock_risk' not in ('true','false')
+     or (p_prediction->'prediction_payload'->>'lockRisk')::boolean is distinct from (p_prediction->>'lock_risk')::boolean
      or jsonb_typeof(p_prediction->'prediction_payload'->'heads') is distinct from 'object'
      or not ((p_prediction->'prediction_payload'->'heads') ?& array['main','tie','superSix','bankerDragon','playerDragon','bankerPair','playerPair'])
      or (select count(*) from jsonb_object_keys(p_prediction->'prediction_payload'->'heads')) <> 7
@@ -202,6 +208,19 @@ declare
   existing public.v105_shadow_v8_settlements%rowtype;
   counters public.v105_shadow_v8_sequence_counters%rowtype;
   next_sequence bigint;
+  expected text;
+  head_key text;
+  head jsonb;
+  issued_head jsonb;
+  issued_action boolean;
+  expected_head_status text;
+  expected_hit boolean;
+  payout numeric;
+  fixed_stake numeric;
+  weighted_stake numeric;
+  fixed_net numeric;
+  weighted_net numeric;
+  issued_units numeric;
 begin
   if p_settlement->>'strategy_version' is distinct from 'v105-shadow-v8-run-length-ask-road'
      or p_settlement->'settlement_final' is distinct from 'true'::jsonb
@@ -219,9 +238,108 @@ begin
      or issued.table_id is distinct from p_settlement->>'table_id'
      or issued.shoe_no is distinct from p_settlement->>'shoe_no'
      or issued.round_no is distinct from (p_settlement->>'round_no')::integer
-     or issued.predicted_result is distinct from p_settlement->>'predicted_result' then
+     or issued.predicted_result is distinct from p_settlement->>'predicted_result'
+     or not ((p_settlement->'head_results') ?& array['main','tie','superSix','bankerDragon','playerDragon','bankerPair','playerPair'])
+     or (select count(*) from jsonb_object_keys(p_settlement->'head_results')) <> 7 then
     raise exception 'v105-shadow-v8-run-length-ask-road settlement identity mismatch';
   end if;
+
+  if jsonb_typeof(p_settlement->'actual_facts'->'bankerCardRanks') is distinct from 'array'
+     or jsonb_typeof(p_settlement->'actual_facts'->'playerCardRanks') is distinct from 'array' then
+    raise exception 'V8 exact card ranks are required';
+  end if;
+  if jsonb_array_length(p_settlement->'actual_facts'->'bankerCardRanks') not between 2 and 3
+     or jsonb_array_length(p_settlement->'actual_facts'->'playerCardRanks') not between 2 and 3
+     or exists (select 1 from jsonb_array_elements_text(p_settlement->'actual_facts'->'bankerCardRanks') value where value !~ '^[0-9]+$' or value::integer not between 1 and 13)
+     or exists (select 1 from jsonb_array_elements_text(p_settlement->'actual_facts'->'playerCardRanks') value where value !~ '^[0-9]+$' or value::integer not between 1 and 13) then
+    raise exception 'V8 exact card ranks are invalid';
+  end if;
+  if (p_settlement->'actual_facts'->>'bankerPoints')::integer is distinct from
+       (select mod(sum(least(value::integer,10)),10) from jsonb_array_elements_text(p_settlement->'actual_facts'->'bankerCardRanks') value)
+     or (p_settlement->'actual_facts'->>'playerPoints')::integer is distinct from
+       (select mod(sum(least(value::integer,10)),10) from jsonb_array_elements_text(p_settlement->'actual_facts'->'playerCardRanks') value)
+     or p_settlement->>'actual_result' is distinct from (case
+       when (p_settlement->'actual_facts'->>'bankerPoints')::integer > (p_settlement->'actual_facts'->>'playerPoints')::integer then 'banker'
+       when (p_settlement->'actual_facts'->>'playerPoints')::integer > (p_settlement->'actual_facts'->>'bankerPoints')::integer then 'player' else 'tie' end)
+     or (p_settlement->'actual_facts'->>'bankerPair')::boolean is distinct from
+       ((p_settlement->'actual_facts'->'bankerCardRanks'->>0)::integer = (p_settlement->'actual_facts'->'bankerCardRanks'->>1)::integer)
+     or (p_settlement->'actual_facts'->>'playerPair')::boolean is distinct from
+       ((p_settlement->'actual_facts'->'playerCardRanks'->>0)::integer = (p_settlement->'actual_facts'->'playerCardRanks'->>1)::integer)
+     or (p_settlement->'actual_facts'->>'bankerNatural')::boolean is distinct from
+       (jsonb_array_length(p_settlement->'actual_facts'->'bankerCardRanks')=2 and (p_settlement->'actual_facts'->>'bankerPoints')::integer in (8,9))
+     or (p_settlement->'actual_facts'->>'playerNatural')::boolean is distinct from
+       (jsonb_array_length(p_settlement->'actual_facts'->'playerCardRanks')=2 and (p_settlement->'actual_facts'->>'playerPoints')::integer in (8,9)) then
+    raise exception 'V8 actual facts do not match exact cards';
+  end if;
+  if (p_settlement->'actual_facts'->>'tie')::boolean is distinct from (p_settlement->>'actual_result'='tie')
+     or (p_settlement->'actual_facts'->>'bankerPoints')::integer not between 0 and 9
+     or (p_settlement->'actual_facts'->>'playerPoints')::integer not between 0 and 9
+     or (p_settlement->'actual_facts'->>'pointDiff')::integer is distinct from abs((p_settlement->'actual_facts'->>'bankerPoints')::integer-(p_settlement->'actual_facts'->>'playerPoints')::integer)
+     or (p_settlement->'actual_facts'->>'superSix')::boolean is distinct from (p_settlement->>'actual_result'='banker' and (p_settlement->'actual_facts'->>'bankerPoints')::integer=6)
+     or (p_settlement->'actual_facts'->>'bankerDragon')::boolean is distinct from (p_settlement->>'actual_result'='banker' and ((p_settlement->'actual_facts'->>'bankerNatural')::boolean or (p_settlement->'actual_facts'->>'pointDiff')::integer>=4))
+     or (p_settlement->'actual_facts'->>'playerDragon')::boolean is distinct from (p_settlement->>'actual_result'='player' and ((p_settlement->'actual_facts'->>'playerNatural')::boolean or (p_settlement->'actual_facts'->>'pointDiff')::integer>=4)) then
+    raise exception 'V8 actual facts are inconsistent';
+  end if;
+
+  expected := case when p_settlement->>'actual_result'='tie' then 'push'
+    when p_settlement->>'actual_result'=issued.predicted_result then 'hit' else 'miss' end;
+  if p_settlement->>'settlement_status' is distinct from expected
+     or (expected='push' and p_settlement->'is_hit' is distinct from 'null'::jsonb)
+     or (expected='hit' and (p_settlement->>'is_hit')::boolean is distinct from true)
+     or (expected='miss' and (p_settlement->>'is_hit')::boolean is distinct from false) then
+    raise exception 'V8 main outcome is inconsistent';
+  end if;
+
+  foreach head_key in array array['main','tie','superSix','bankerDragon','playerDragon','bankerPair','playerPair'] loop
+    head := p_settlement->'head_results'->head_key;
+    issued_head := issued.prediction_payload->'heads'->head_key;
+    issued_action := case when head_key='main' then true else coalesce((issued_head->>'action')::boolean,false) end;
+    if jsonb_typeof(head) is distinct from 'object' or (head->>'action')::boolean is distinct from issued_action then
+      raise exception 'V8 head action mismatch: %',head_key;
+    end if;
+    if not issued_action then
+      if head->>'status' is distinct from 'no_action' or head->'isHit' is distinct from 'null'::jsonb
+         or (head->>'fixedStakeUnits')::numeric is distinct from 0::numeric
+         or (head->>'weightedStakeUnits')::numeric is distinct from 0::numeric
+         or (head->>'fixedNetUnits')::numeric is distinct from 0::numeric
+         or (head->>'weightedNetUnits')::numeric is distinct from 0::numeric then
+        raise exception 'V8 no-action result mismatch: %',head_key;
+      end if;
+      continue;
+    end if;
+    if head_key='main' then
+      expected_head_status := expected;
+      payout := case when issued.predicted_result='banker' then 0.95 else 1 end;
+    else
+      expected_hit := (p_settlement->'actual_facts'->>head_key)::boolean;
+      expected_head_status := case when expected_hit then 'hit' else 'miss' end;
+      payout := case
+        when not expected_hit then 0
+        when head_key='tie' then 8
+        when head_key='superSix' then 12
+        when head_key in ('bankerPair','playerPair') then 11
+        when (head_key='bankerDragon' and (p_settlement->'actual_facts'->>'bankerNatural')::boolean)
+          or (head_key='playerDragon' and (p_settlement->'actual_facts'->>'playerNatural')::boolean) then 1
+        else case (p_settlement->'actual_facts'->>'pointDiff')::integer when 4 then 1 when 5 then 2 when 6 then 4 when 7 then 6 when 8 then 10 when 9 then 30 else 0 end
+      end;
+    end if;
+    if head->>'status' is distinct from expected_head_status
+       or (expected_head_status='push' and head->'isHit' is distinct from 'null'::jsonb)
+       or (expected_head_status='hit' and (head->>'isHit')::boolean is distinct from true)
+       or (expected_head_status='miss' and (head->>'isHit')::boolean is distinct from false) then
+      raise exception 'V8 head outcome mismatch: %',head_key;
+    end if;
+    fixed_stake := (head->>'fixedStakeUnits')::numeric;
+    weighted_stake := (head->>'weightedStakeUnits')::numeric;
+    fixed_net := (head->>'fixedNetUnits')::numeric;
+    weighted_net := (head->>'weightedNetUnits')::numeric;
+    issued_units := (issued_head->>'units')::numeric;
+    if fixed_stake is distinct from 1::numeric or weighted_stake is distinct from issued_units
+       or fixed_net is distinct from (case expected_head_status when 'push' then 0 when 'hit' then round(payout,3) else -1 end)
+       or weighted_net is distinct from (case expected_head_status when 'push' then 0 when 'hit' then round(weighted_stake*payout,3) else round(-weighted_stake,3) end) then
+      raise exception 'V8 payout mismatch: %',head_key;
+    end if;
+  end loop;
 
   select * into existing from public.v105_shadow_v8_settlements where prediction_id=issued.id;
   if found then

@@ -127,7 +127,12 @@ export function createV105ShadowV8Runtime({
   function settleRound(round = {}) {
     if (!enabled || !TABLE_ALLOWLIST.has(String(round?.tableId ?? ''))) return Promise.resolve(null)
     const key = identityKey(round.tableId, round.shoe, round.round)
-    if (settlementPromises.has(key)) return settlementPromises.get(key)
+    const fingerprint = settlementInputFingerprint(round)
+    const inFlight = settlementPromises.get(key)
+    if (inFlight) {
+      if (inFlight.fingerprint !== fingerprint) return Promise.reject(new Error('v105 shadow v8 conflicting in-flight Final'))
+      return inFlight.promise
+    }
     const operation = Promise.resolve().then(async () => {
       await start()
       let issued = issuances.get(key)
@@ -152,8 +157,10 @@ export function createV105ShadowV8Runtime({
       status = 'error'
       error = cause?.message ?? String(cause)
       throw cause
-    }).finally(() => settlementPromises.delete(key))
-    settlementPromises.set(key, operation)
+    }).finally(() => {
+      if (settlementPromises.get(key)?.promise === operation) settlementPromises.delete(key)
+    })
+    settlementPromises.set(key, { fingerprint, promise: operation })
     return operation
   }
 
@@ -239,6 +246,25 @@ function historyRow(issued) {
 
 function identityKey(tableId, shoe, round) {
   return JSON.stringify(['ofalive99', String(tableId ?? ''), String(shoe ?? ''), Number(round), V105_SHADOW_V8_VERSION])
+}
+
+function settlementInputFingerprint(round = {}) {
+  return JSON.stringify(canonicalValue(round))
+}
+
+function canonicalValue(value) {
+  if (Array.isArray(value)) return value.map(canonicalValue)
+  if (value instanceof Date) return value.toISOString()
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().flatMap((key) => {
+      const nested = value[key]
+      return nested === undefined || typeof nested === 'function' || typeof nested === 'symbol'
+        ? []
+        : [[key, canonicalValue(nested)]]
+    }))
+  }
+  if (typeof value === 'number' && !Number.isFinite(value)) return String(value)
+  return value
 }
 
 function rowTime(row) {

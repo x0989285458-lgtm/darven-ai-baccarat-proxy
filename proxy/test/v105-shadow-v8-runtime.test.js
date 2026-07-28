@@ -52,6 +52,32 @@ test('V8 settles verified Final with its own identity', async () => {
   assert.equal(store.settlements[0].settlementFinal, true)
 })
 
+test('V8 rejects a conflicting concurrent Final instead of sharing the in-flight settlement', async () => {
+  const { createV105ShadowV8Runtime } = await import('../src/v105-shadow-v8-runtime.js')
+  let entered
+  let release
+  const enteredGate = new Promise((resolve) => { entered = resolve })
+  const writeGate = new Promise((resolve) => { release = resolve })
+  const store = writer()
+  let calls = 0
+  store.settleV105ShadowV8Prediction = async (settlement) => {
+    calls += 1
+    store.settlements.push(structuredClone(settlement))
+    entered()
+    await writeGate
+    return { predictionId: settlement.predictionId, settlement_sequence: 1 }
+  }
+  const runtime = createV105ShadowV8Runtime({ writer: store })
+  await runtime.observeTable(table())
+  const first = runtime.settleRound({ ...table(), round:21, sourceAction:'/summary', winner:'banker', resolvedAt:'2026-07-27T10:00:01.000Z' })
+  await enteredGate
+  const conflict = runtime.settleRound({ ...table(), round:21, sourceAction:'/summary', winner:'player', resolvedAt:'2026-07-27T10:00:01.000Z' })
+  release()
+  await assert.rejects(conflict, /conflicting in-flight Final/)
+  await first
+  assert.equal(calls, 1)
+})
+
 test('V8 bounds pending issuances and live history without losing the newest identities', async () => {
   const { createV105ShadowV8Runtime } = await import('../src/v105-shadow-v8-runtime.js')
   const store = writer()
