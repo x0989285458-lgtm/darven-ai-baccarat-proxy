@@ -6,6 +6,9 @@ import { applyCloudCapturePayload } from '../src/cloud-capture.js'
 import { buildLivePrediction, createSupabaseIngestionClient } from '../src/supabase-writer.js'
 import { createApp } from '../src/server.js'
 
+const lifecycleIndexMigrationUrl = new URL('../../supabase/migrations/20260729011133_v105_lifecycle_pending_index.sql', import.meta.url)
+const lifecycleIndexRollbackUrl = new URL('../../supabase/operations/rollback_v105_lifecycle_pending_index.sql', import.meta.url)
+
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const finalRound = (tableId, round) => ({
   source: 'ofalive99', tableId, shoe: 'S1', round,
@@ -21,6 +24,17 @@ function durableFor(event) {
     targetRound: event.round + 1, remainingRankCounts: {},
   }
 }
+
+test('v105 lifecycle pending index is concurrent, exact, partial, and independently reversible', () => {
+  const migration = readFileSync(lifecycleIndexMigrationUrl, 'utf8')
+  const rollback = readFileSync(lifecycleIndexRollbackUrl, 'utf8')
+  assert.match(migration, /create index concurrently if not exists daily_prediction_results_v105_pending_lifecycle_idx/i)
+  assert.match(migration, /on public\.daily_prediction_results\s*\(source,\s*table_id,\s*strategy_version,\s*shoe_no,\s*round_no\)/i)
+  assert.match(migration, /where prediction_issued_at is not null\s+and settlement_final is not true/i)
+  assert.doesNotMatch(migration, /\bbegin\s*;/i)
+  assert.doesNotMatch(migration, /\bcommit\s*;/i)
+  assert.match(rollback, /drop index concurrently if exists public\.daily_prediction_results_v105_pending_lifecycle_idx/i)
+})
 
 test('formal rank ledger preserves per-identity order while processing independent tables concurrently', async () => {
   const activeByTable = new Map()
