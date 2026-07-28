@@ -2016,7 +2016,7 @@ export function createSupabaseIngestionClient({
   requestTimeoutMs: defaultRequestTimeoutMs = 3500,
   durableWriteRequestTimeoutMs = defaultRequestTimeoutMs,
   startupRequestTimeoutMs = 60000,
-  shadowRequestTimeoutMs = 9000,
+  shadowRequestTimeoutMs = 30000,
   dbConnectionString = null,
   strategyPool = null,
   strategyPoolFactory = (config) => new pg.Pool(config),
@@ -2048,7 +2048,7 @@ export function createSupabaseIngestionClient({
   const formalTimeoutMs = Math.max(1, Number(defaultRequestTimeoutMs) || 3500)
   const durableWriteTimeoutMs = Math.max(formalTimeoutMs, Number(durableWriteRequestTimeoutMs) || formalTimeoutMs)
   const startupTimeoutMs = Math.max(formalTimeoutMs, Number(startupRequestTimeoutMs) || 30000)
-  const shadowTimeoutMs = Math.max(1, Number(shadowRequestTimeoutMs) || 9000)
+  const shadowTimeoutMs = Math.max(1, Number(shadowRequestTimeoutMs) || 30000)
   const strategyQueryScheduler = rawStrategyDb && typeof rawStrategyDb.query === 'function'
     ? createStrategyQueryScheduler(rawStrategyDb, { queueTimeoutMs: durableWriteTimeoutMs })
     : null

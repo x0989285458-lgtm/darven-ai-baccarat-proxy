@@ -11,7 +11,7 @@ export function resolveV105ShadowV7Enabled(env = process.env) {
   return env?.V105_SHADOW_V7_ENABLED !== 'false'
 }
 
-export function createV105ShadowV7Runtime({ enabled = true, writer = null, requestTimeoutMs = 10000 } = {}) {
+export function createV105ShadowV7Runtime({ enabled = true, writer = null, requestTimeoutMs = 30000 } = {}) {
   const issuances = new Map()
   const issuanceStreaks = new Map()
   const tableQueues = new Map()

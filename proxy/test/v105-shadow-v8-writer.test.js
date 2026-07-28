@@ -1,10 +1,21 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { createSupabaseIngestionClient } from '../src/supabase-writer.js'
 import { buildV105ShadowV8Prediction } from '../src/v105-shadow-v8-contract.js'
 
 const candidate = buildV105ShadowV8Prediction({ tableId:'BAG01', shoe:105, round:20, bankerCount:12, playerCount:8, bigRoadRaw:'B#P' })
 const response = (payload) => ({ ok:true, status:200, text:async()=>JSON.stringify(payload), json:async()=>payload })
+
+test('V7 and V8 shadow network deadlines match the formal 30-second durable deadline', () => {
+  const writer = readFileSync(new URL('../src/supabase-writer.js', import.meta.url), 'utf8')
+  const v7 = readFileSync(new URL('../src/v105-shadow-v7-runtime.js', import.meta.url), 'utf8')
+  const v8 = readFileSync(new URL('../src/v105-shadow-v8-runtime.js', import.meta.url), 'utf8')
+  assert.match(writer, /shadowRequestTimeoutMs = 30000/)
+  assert.match(writer, /Number\(shadowRequestTimeoutMs\) \|\| 30000/)
+  assert.match(v7, /requestTimeoutMs = 30000/)
+  assert.match(v8, /requestTimeoutMs = 30000/)
+})
 
 test('V8 writer uses only independent v105_shadow_v8 RPCs, history, and zeroed counter', async () => {
   const requests=[]

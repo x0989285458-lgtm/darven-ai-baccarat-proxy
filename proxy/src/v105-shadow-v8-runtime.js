@@ -14,7 +14,7 @@ export function resolveV105ShadowV8Enabled(env = process.env) {
 export function createV105ShadowV8Runtime({
   enabled = true,
   writer = null,
-  requestTimeoutMs = 10000,
+  requestTimeoutMs = 30000,
   maxPendingIssuances = 2000,
   maxHistoryRows = 10000,
   maxQueuedObservationsPerTable = 2,
