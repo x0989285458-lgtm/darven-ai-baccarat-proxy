@@ -268,10 +268,10 @@ test('formal Final settlement keeps a reserved checkout when concurrent ingest e
   const ancillaryGate = new Promise((resolve) => { releaseAncillary = resolve })
   const waiters = []
   const wakeWaiters = () => {
-    while (active < 4 && waiters.length > 0) waiters.shift()()
+    while (active < 8 && waiters.length > 0) waiters.shift()()
   }
   const acquire = () => new Promise((resolve, reject) => {
-    if (active < 4) {
+    if (active < 8) {
       active += 1
       resolve()
       return
@@ -368,6 +368,36 @@ test('formal Final settlement keeps a reserved checkout when concurrent ingest e
   } finally {
     releaseAncillary()
     await Promise.allSettled(ancillary)
+  }
+})
+
+test('strategy scheduler uses six standard slots when database headroom is available', async () => {
+  let started = 0
+  let releaseAll = false
+  const releases = []
+  const strategyPool = {
+    async query(query) {
+      const text = String(query?.text ?? query)
+      if (!/persist_latest_cloud_table_snapshot/i.test(text)) throw new Error(`unexpected query in scheduler headroom test: ${text}`)
+      started += 1
+      if (!releaseAll) await new Promise((resolve) => releases.push(resolve))
+      return { rows: [{ persist_latest_cloud_table_snapshot: { persisted: true } }] }
+    },
+  }
+  const writer = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    requestTimeoutMs: 100, durableWriteRequestTimeoutMs: 100, strategyPool,
+  })
+  const calls = Array.from({ length: 6 }, (_, index) => writer.writeCloudTableSnapshot({
+    sessionId: `standard-headroom-${index}`, tables: [{ tableId: 'BAG01' }], status: { connected: true },
+  }))
+  await delay(20)
+  try {
+    assert.equal(started, 6, 'all six standard slots should start without queueing')
+  } finally {
+    releaseAll = true
+    for (const release of releases.splice(0)) release()
+    await Promise.allSettled(calls)
   }
 })
 

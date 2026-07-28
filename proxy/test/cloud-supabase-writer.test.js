@@ -118,7 +118,7 @@ test('backend formal reads use Supabase transaction pooler without rewriting unr
   assert.equal(resolveBackendReadConnectionString(direct), direct)
 })
 
-test('backend transaction connection survives idle periods and allows one bounded cold connection', () => {
+test('backend transaction pool survives idle periods and remains bounded to eight connections', () => {
   let config = null
   createSupabaseIngestionClient({
     dbConnectionString: 'postgresql://user:secret@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres',
@@ -127,7 +127,7 @@ test('backend transaction connection survives idle periods and allows one bounde
   assert.equal(new URL(config.connectionString).port, '6543')
   assert.equal(config.connectionTimeoutMillis, 60000)
   assert.equal(config.idleTimeoutMillis, 30000)
-  assert.equal(config.max, 4)
+  assert.equal(config.max, 8)
 })
 
 test('builds cloud capture status row without leaking tokenized URL', () => {
