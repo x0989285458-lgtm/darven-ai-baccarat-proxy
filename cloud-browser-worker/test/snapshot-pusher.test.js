@@ -11,6 +11,89 @@ test('formal backlog delivery preserves the stable five-second cadence with boun
   assert.match(server, /PUSH_INTERVAL_MS\s*\?\?\s*5000/)
   assert.match(server, /PUSH_REQUEST_TIMEOUT_MS\s*\?\?\s*120000/)
   assert.match(server, /PUSH_MAX_ROUNDS_PER_DELIVERY\s*\?\?\s*5/)
+  assert.match(server, /PUSH_MAX_DRAIN_PER_TICK\s*\?\?\s*5/)
+})
+
+test('one tick drains a bounded restored backlog in FIFO order', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-bounded-drain-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  const entries = [1000, 1001, 1002].map((sequence) => ({
+    protocolVersion: 'v101', sessionId: 'vm', timestamp: sequence, captureTimestamp: sequence,
+    sequence, roundKeys: [], snapshot: { sessionId: 'vm', buildVersion: '101', tables: [], rounds: [] },
+  }))
+  await writeFile(queuePath, JSON.stringify({ version: 2, entries }))
+  await writeFile(`${queuePath}.cursor.json`, JSON.stringify({
+    version: 3, initialized: true, lastSequence: 1002,
+    observedRoundKeys: [], acknowledgedRoundKeys: [],
+  }))
+  const sent = []
+  let clock = 2000
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    maxDrainPerTick: 3,
+    now: () => clock,
+    getSnapshot: async () => ({ sessionId: 'vm', buildVersion: '101', tables: [], rounds: [] }),
+    fetchImpl: async (_url, options) => {
+      sent.push(JSON.parse(options.body))
+      clock += 6 * 60 * 1000
+      return acceptedResponse(options)
+    },
+  })
+
+  assert.equal(await pusher.tick(), true)
+  assert.deepEqual(sent.map((entry) => entry.sequence), [1000, 1001, 1002])
+  assert.deepEqual(sent.map((entry) => entry.timestamp), [2000, 362000, 722000])
+  await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
+})
+
+test('a later drain failure preserves its FIFO head and backs off from failure time', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-drain-backoff-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  const entries = [1000, 1001, 1002].map((sequence) => ({
+    protocolVersion: 'v101', sessionId: 'vm', timestamp: sequence, captureTimestamp: sequence,
+    sequence, roundKeys: [], snapshot: { sessionId: 'vm', buildVersion: '101', tables: [], rounds: [] },
+  }))
+  await writeFile(queuePath, JSON.stringify({ version: 2, entries }))
+  await writeFile(`${queuePath}.cursor.json`, JSON.stringify({
+    version: 3, initialized: true, lastSequence: 1002,
+    observedRoundKeys: [], acknowledgedRoundKeys: [],
+  }))
+  let clock = 2000
+  let secondAttempts = 0
+  const sent = []
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    maxDrainPerTick: 3, baseBackoffMs: 60000, maxBackoffMs: 60000,
+    now: () => clock,
+    getSnapshot: async () => ({ sessionId: 'vm', buildVersion: '101', tables: [], rounds: [] }),
+    fetchImpl: async (_url, options) => {
+      const body = JSON.parse(options.body)
+      sent.push(body.sequence)
+      if (body.sequence === 1001 && secondAttempts++ === 0) {
+        clock = 122000
+        throw new Error('slow durable ingest failed')
+      }
+      return acceptedResponse(options)
+    },
+  })
+
+  assert.equal(await pusher.tick(), true)
+  assert.deepEqual(sent, [1000, 1001])
+  let queue = JSON.parse(await readFile(queuePath, 'utf8'))
+  assert.deepEqual(queue.entries.map((entry) => entry.sequence), [1001, 1002])
+
+  clock = 122001
+  assert.equal(await pusher.tick(), false)
+  assert.deepEqual(sent, [1000, 1001], 'retry must wait from the actual failure time')
+  queue = JSON.parse(await readFile(queuePath, 'utf8'))
+  assert.equal(queue.entries[0].sequence, 1001)
+
+  clock = 182000
+  assert.equal(await pusher.tick(), true)
+  assert.deepEqual(sent, [1000, 1001, 1001, 1002])
+  await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
 })
 
 test('v104 migration restamps retained v098 and v102 snapshots so an empty head cannot block the v104 FIFO', async (t) => {

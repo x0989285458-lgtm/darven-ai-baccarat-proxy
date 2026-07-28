@@ -16,6 +16,7 @@ export function createSnapshotPusher({
   queuePath = './data/latest-snapshot.json',
   cursorPath = `${queuePath}.cursor.json`,
   maxCursorEntries = 10000,
+  maxDrainPerTick = 1,
   intervalMs = 5000,
   baseBackoffMs = 1000,
   maxBackoffMs = 60000,
@@ -55,35 +56,43 @@ export function createSnapshotPusher({
       await collectSnapshot(timestamp)
       if (timestamp < nextAttemptAt || queue.length === 0) return false
 
-      const delivery = buildDeliveryEnvelope(timestamp)
-      const envelope = delivery.envelope
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), requestTimeoutMs)
-      try {
-        const response = await fetchImpl(targetUrl, {
-          method: 'POST',
-          redirect: 'error',
-          headers: { 'content-type': 'application/json', 'x-worker-key': key },
-          body: JSON.stringify(envelope),
-          signal: controller.signal,
-        })
-        const acknowledgement = await readAcknowledgement(response, envelope)
-        if (!acknowledgement) throw new Error(`push failed with invalid acknowledgement (${response?.status ?? 'unknown'})`)
-        for (const roundKey of acknowledgement.acceptedRoundKeys) acknowledgedRoundKeys.add(roundKey)
-        queue.splice(0, delivery.entryCount)
-        trimCursor()
-        await saveQueue()
-        await saveCursor()
-        failures = 0
-        nextAttemptAt = 0
-        return true
-      } catch {
-        failures += 1
-        nextAttemptAt = timestamp + Math.min(maxBackoffMs, baseBackoffMs * (2 ** (failures - 1)))
-        return false
-      } finally {
-        clearTimeout(timeout)
+      const drainLimit = Math.max(1, Number(maxDrainPerTick) || 1)
+      let acknowledgedAny = false
+      for (let drained = 0; drained < drainLimit && queue.length > 0; drained += 1) {
+        const requestTimestamp = Math.max(timestamp, Number(now()) || timestamp)
+        const delivery = buildDeliveryEnvelope(requestTimestamp)
+        const envelope = delivery.envelope
+        if (!envelope) break
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), requestTimeoutMs)
+        try {
+          const response = await fetchImpl(targetUrl, {
+            method: 'POST',
+            redirect: 'error',
+            headers: { 'content-type': 'application/json', 'x-worker-key': key },
+            body: JSON.stringify(envelope),
+            signal: controller.signal,
+          })
+          const acknowledgement = await readAcknowledgement(response, envelope)
+          if (!acknowledgement) throw new Error(`push failed with invalid acknowledgement (${response?.status ?? 'unknown'})`)
+          for (const roundKey of acknowledgement.acceptedRoundKeys) acknowledgedRoundKeys.add(roundKey)
+          queue.splice(0, delivery.entryCount)
+          trimCursor()
+          await saveQueue()
+          await saveCursor()
+          failures = 0
+          nextAttemptAt = 0
+          acknowledgedAny = true
+        } catch {
+          failures += 1
+          const failureTimestamp = Math.max(timestamp, Number(now()) || timestamp)
+          nextAttemptAt = failureTimestamp + Math.min(maxBackoffMs, baseBackoffMs * (2 ** (failures - 1)))
+          return acknowledgedAny
+        } finally {
+          clearTimeout(timeout)
+        }
       }
+      return acknowledgedAny
     } catch (error) {
       stateInvalid = true
       throw error
