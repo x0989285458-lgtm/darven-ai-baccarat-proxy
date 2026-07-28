@@ -2042,8 +2042,8 @@ export function createSupabaseIngestionClient({
   let v104ShadowWriteQueue = Promise.resolve()
   let v104IterationShadowWriteQueue = Promise.resolve()
   let v105ShadowWriteQueue = Promise.resolve()
-  let v105ShadowV7WriteQueue = Promise.resolve()
-  let v105ShadowV8WriteQueue = Promise.resolve()
+  const v105ShadowV7WriteQueues = new Map()
+  const v105ShadowV8WriteQueues = new Map()
   const completedRoundKeyLimit = Math.max(1, Number(maxCompletedRoundKeys) || 10000)
   const formalTimeoutMs = Math.max(1, Number(defaultRequestTimeoutMs) || 3500)
   const durableWriteTimeoutMs = Math.max(formalTimeoutMs, Number(durableWriteRequestTimeoutMs) || formalTimeoutMs)
@@ -2287,16 +2287,24 @@ export function createSupabaseIngestionClient({
     return next
   }
 
-  function enqueueV105ShadowV7Write(operation) {
-    const next = v105ShadowV7WriteQueue.catch(() => {}).then(operation)
-    v105ShadowV7WriteQueue = next.catch(() => {})
+  function enqueueKeyedShadowWrite(queues, key, operation) {
+    const queueKey = String(key ?? '') || 'global'
+    const previous = queues.get(queueKey) ?? Promise.resolve()
+    const next = previous.catch(() => {}).then(operation)
+    const settled = next.catch(() => {})
+    queues.set(queueKey, settled)
+    void settled.finally(() => {
+      if (queues.get(queueKey) === settled) queues.delete(queueKey)
+    })
     return next
   }
 
-  function enqueueV105ShadowV8Write(operation) {
-    const next = v105ShadowV8WriteQueue.catch(() => {}).then(operation)
-    v105ShadowV8WriteQueue = next.catch(() => {})
-    return next
+  function enqueueV105ShadowV7Write(key, operation) {
+    return enqueueKeyedShadowWrite(v105ShadowV7WriteQueues, key, operation)
+  }
+
+  function enqueueV105ShadowV8Write(key, operation) {
+    return enqueueKeyedShadowWrite(v105ShadowV8WriteQueues, key, operation)
   }
 
   async function withRetry(operation) {
@@ -2686,7 +2694,7 @@ export function createSupabaseIngestionClient({
     },
     async issueV105ShadowV7Prediction(candidate = {}) {
       const row = buildV104IterationShadowIssuanceRpcRow(candidate)
-      const acknowledgement = await enqueueV105ShadowV7Write(() => postRest('rpc/issue_v105_shadow_v7_prediction', { p_prediction: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
+      const acknowledgement = await enqueueV105ShadowV7Write(row.table_id, () => postRest('rpc/issue_v105_shadow_v7_prediction', { p_prediction: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
       const prediction = acknowledgement?.prediction
       if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
         || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at
@@ -2724,7 +2732,7 @@ export function createSupabaseIngestionClient({
     },
     async settleV105ShadowV7Prediction(settlement = {}) {
       const row = buildV104IterationShadowSettlementRpcRow(settlement)
-      const acknowledgement = await enqueueV105ShadowV7Write(() => postRest('rpc/settle_v105_shadow_v7_prediction', { p_settlement: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
+      const acknowledgement = await enqueueV105ShadowV7Write(row.table_id, () => postRest('rpc/settle_v105_shadow_v7_prediction', { p_settlement: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
       if (String(acknowledgement?.prediction_id ?? '') !== String(settlement.predictionId ?? '')) throw new Error('v105 shadow v7 settlement acknowledgement failed')
       return { ...acknowledgement, predictionId: acknowledgement.prediction_id }
     },
@@ -2747,7 +2755,7 @@ export function createSupabaseIngestionClient({
     },
     async issueV105ShadowV8Prediction(candidate = {}) {
       const row = buildV104IterationShadowIssuanceRpcRow(candidate)
-      const acknowledgement = await enqueueV105ShadowV8Write(() => postRest('rpc/issue_v105_shadow_v8_prediction', { p_prediction: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
+      const acknowledgement = await enqueueV105ShadowV8Write(row.table_id, () => postRest('rpc/issue_v105_shadow_v8_prediction', { p_prediction: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
       const prediction = acknowledgement?.prediction
       if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
         || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at
@@ -2788,7 +2796,7 @@ export function createSupabaseIngestionClient({
     },
     async settleV105ShadowV8Prediction(settlement = {}) {
       const row = buildV104IterationShadowSettlementRpcRow(settlement)
-      const acknowledgement = await enqueueV105ShadowV8Write(() => postRest('rpc/settle_v105_shadow_v8_prediction', { p_settlement: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
+      const acknowledgement = await enqueueV105ShadowV8Write(row.table_id, () => postRest('rpc/settle_v105_shadow_v8_prediction', { p_settlement: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
       if (String(acknowledgement?.prediction_id ?? '') !== String(settlement.predictionId ?? '')) throw new Error('v105 shadow v8 settlement acknowledgement failed')
       return { ...acknowledgement, predictionId: acknowledgement.prediction_id }
     },

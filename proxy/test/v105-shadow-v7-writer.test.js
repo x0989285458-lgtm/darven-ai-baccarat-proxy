@@ -29,6 +29,32 @@ test('V7 writer uses only independent v105_shadow_v7 RPCs, history, and zeroed c
   ])
 })
 
+test('V7 serializes one table without blocking another table', async () => {
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  const second = { ...candidate, targetTableId: 'BAG02' }
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    fetchImpl: async (_url, options) => {
+      const row = JSON.parse(options.body).p_prediction
+      const prediction = row.prediction_payload
+      if (prediction.targetTableId === 'BAG01') await gate
+      return response({ prediction_id: `v7-${prediction.targetTableId}`, prediction_issued_at: '2026-07-27T10:00:00.000Z', prediction })
+    },
+  })
+  const firstPromise = client.issueV105ShadowV7Prediction(candidate)
+  try {
+    const secondIssued = await Promise.race([
+      client.issueV105ShadowV7Prediction(second),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('BAG02 was blocked behind BAG01')), 30)),
+    ])
+    assert.equal(secondIssued.targetTableId, 'BAG02')
+  } finally {
+    release()
+    await firstPromise
+  }
+})
+
 test('a stalled V7 queue cannot block formal or V6 writer calls', async () => {
   let release
   const gate = new Promise((resolve) => { release = resolve })
