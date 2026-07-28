@@ -2043,6 +2043,7 @@ export function createSupabaseIngestionClient({
   let v104IterationShadowWriteQueue = Promise.resolve()
   let v105ShadowWriteQueue = Promise.resolve()
   let v105ShadowV7WriteQueue = Promise.resolve()
+  let v105ShadowV8WriteQueue = Promise.resolve()
   const completedRoundKeyLimit = Math.max(1, Number(maxCompletedRoundKeys) || 10000)
   const formalTimeoutMs = Math.max(1, Number(defaultRequestTimeoutMs) || 3500)
   const durableWriteTimeoutMs = Math.max(formalTimeoutMs, Number(durableWriteRequestTimeoutMs) || formalTimeoutMs)
@@ -2289,6 +2290,12 @@ export function createSupabaseIngestionClient({
   function enqueueV105ShadowV7Write(operation) {
     const next = v105ShadowV7WriteQueue.catch(() => {}).then(operation)
     v105ShadowV7WriteQueue = next.catch(() => {})
+    return next
+  }
+
+  function enqueueV105ShadowV8Write(operation) {
+    const next = v105ShadowV8WriteQueue.catch(() => {}).then(operation)
+    v105ShadowV8WriteQueue = next.catch(() => {})
     return next
   }
 
@@ -2736,6 +2743,70 @@ export function createSupabaseIngestionClient({
         limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
       }, { requestTimeoutMs: shadowTimeoutMs })
       return (Array.isArray(rows) ? rows : []).filter((row) => row?.strategy_version === 'v105-shadow-v7-ask-road'
+        && row?.prediction_timing === 'pre_result_context' && Boolean(row?.prediction_issued_at))
+    },
+    async issueV105ShadowV8Prediction(candidate = {}) {
+      const row = buildV104IterationShadowIssuanceRpcRow(candidate)
+      const acknowledgement = await enqueueV105ShadowV8Write(() => postRest('rpc/issue_v105_shadow_v8_prediction', { p_prediction: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
+      const prediction = acknowledgement?.prediction
+      if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
+        || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at
+        || String(prediction.source ?? '') !== String(candidate.source ?? '')
+        || String(prediction.targetTableId ?? '') !== String(candidate.targetTableId ?? '')
+        || String(prediction.targetShoe ?? '') !== String(candidate.targetShoe ?? '')
+        || Number(prediction.targetRound) !== Number(candidate.targetRound)
+        || prediction.strategyVersion !== 'v105-shadow-v8-run-length-ask-road'
+        || prediction.releaseCandidate !== 'v105-shadow-v8-run-length-ask-road'
+        || prediction.formalStrategyVersion !== 'v105' || prediction.predictionTiming !== 'pre_result_context'
+        || prediction.shadowOnly !== true || prediction.activationEligible !== false
+        || prediction.memberVisible !== false || prediction.writesSideActions !== false
+        || !prediction.askRoadSignal || typeof prediction.askRoadSignal !== 'object') {
+        throw new Error('v105 shadow v8 issuance acknowledgement failed')
+      }
+      return structuredClone({ ...prediction, predictionId: acknowledgement.prediction_id, issuedAt: acknowledgement.prediction_issued_at })
+    },
+    async readV105ShadowV8Issuance({ source = SOURCE, tableId, shoe, round } = {}) {
+      const targetRound = Number(round)
+      if (!source || !tableId || shoe == null || !Number.isSafeInteger(targetRound) || targetRound < 1) return null
+      const rows = await getRest('v105_shadow_v8_issuances', {
+        select: 'id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,prediction_payload',
+        source: `eq.${source}`, table_id: `eq.${tableId}`, shoe_no: `eq.${shoe}`, round_no: `eq.${targetRound}`,
+        strategy_version: 'eq.v105-shadow-v8-run-length-ask-road', prediction_timing: 'eq.pre_result_context', prediction_issued_at: 'not.is.null', limit: '2',
+      }, { requestTimeoutMs: shadowTimeoutMs })
+      if (!Array.isArray(rows) || rows.length === 0) return null
+      if (rows.length !== 1) throw new Error('conflicting v105 shadow v8 issuance identity')
+      const row = rows[0]
+      const prediction = row?.prediction_payload
+      if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
+        || String(row.source) !== String(source) || String(row.table_id) !== String(tableId)
+        || String(row.shoe_no) !== String(shoe) || Number(row.round_no) !== targetRound
+        || row.strategy_version !== 'v105-shadow-v8-run-length-ask-road' || prediction.strategyVersion !== 'v105-shadow-v8-run-length-ask-road'
+        || row.prediction_timing !== 'pre_result_context' || !row.id || !row.prediction_issued_at) {
+        throw new Error('v105 shadow v8 issuance read failed')
+      }
+      return structuredClone({ ...prediction, predictionId: row.id, issuedAt: row.prediction_issued_at })
+    },
+    async settleV105ShadowV8Prediction(settlement = {}) {
+      const row = buildV104IterationShadowSettlementRpcRow(settlement)
+      const acknowledgement = await enqueueV105ShadowV8Write(() => postRest('rpc/settle_v105_shadow_v8_prediction', { p_settlement: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
+      if (String(acknowledgement?.prediction_id ?? '') !== String(settlement.predictionId ?? '')) throw new Error('v105 shadow v8 settlement acknowledgement failed')
+      return { ...acknowledgement, predictionId: acknowledgement.prediction_id }
+    },
+    async getV105ShadowV8Counters() {
+      const rows = await getRest('v105_shadow_v8_sequence_counters', {
+        select: 'settlement_count,main_action_count,tie_action_count,super_six_action_count,banker_dragon_action_count,player_dragon_action_count,banker_pair_action_count,player_pair_action_count,updated_at',
+        release_candidate: 'eq.v105-shadow-v8-run-length-ask-road', limit: '1',
+      }, { requestTimeoutMs: shadowTimeoutMs })
+      return Array.isArray(rows) && rows.length === 1 ? rows[0] : null
+    },
+    async getV105ShadowV8History({ limit = 10000 } = {}) {
+      const rows = await getRest('v105_shadow_v8_history', {
+        select: 'prediction_id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,predicted_result,confidence,prediction_payload,same_side_streak,independent_support_count,shoe_bias_suppressed,lock_risk,actual_result,actual_facts,is_hit,settlement_status,settlement_final,settlement_source_action,head_results,resolved_at,settlement_sequence',
+        strategy_version: 'eq.v105-shadow-v8-run-length-ask-road', prediction_timing: 'eq.pre_result_context',
+        prediction_issued_at: 'not.is.null', order: 'prediction_issued_at.desc,prediction_id.desc',
+        limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
+      }, { requestTimeoutMs: shadowTimeoutMs })
+      return (Array.isArray(rows) ? rows : []).filter((row) => row?.strategy_version === 'v105-shadow-v8-run-length-ask-road'
         && row?.prediction_timing === 'pre_result_context' && Boolean(row?.prediction_issued_at))
     },
     async issueV104IterationShadowPrediction(candidate = {}) {
