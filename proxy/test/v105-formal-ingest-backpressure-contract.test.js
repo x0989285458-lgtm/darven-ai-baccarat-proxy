@@ -485,7 +485,7 @@ test('formal issuance uses the reserved priority slot when shadow-standard traff
   }
 })
 
-test('formal settlement burst uses three priority slots while preserving one standard slot', async () => {
+test('formal settlement burst keeps four reserved priority slots beside six standard slots', async () => {
   let standardStarted = 0
   let formalStarted = 0
   let releaseAll = false
@@ -526,10 +526,10 @@ test('formal settlement burst uses three priority slots while preserving one sta
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
     requestTimeoutMs: 100, durableWriteRequestTimeoutMs: 100, strategyPool,
   })
-  const standardCalls = [1, 2, 3].map((index) => writer.writeCloudTableSnapshot({
-    sessionId: `standard-${index}`, tables: [{ tableId: `BAG0${index}` }], status: { connected: true },
+  const standardCalls = [1, 2, 3, 4, 5, 6].map((index) => writer.writeCloudTableSnapshot({
+    sessionId: `standard-${index}`, tables: [{ tableId: `BAG${index}` }], status: { connected: true },
   }))
-  while (standardStarted < 3) await new Promise((resolve) => setImmediate(resolve))
+  while (standardStarted < 6) await new Promise((resolve) => setImmediate(resolve))
 
   const tableIds = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05']
   const formalCalls = tableIds.map((tableId, index) => {
@@ -542,11 +542,8 @@ test('formal settlement burst uses three priority slots while preserving one sta
     return writer.persistRound(finalRound(tableId, 21), table, prediction)
   })
   while (formalStarted < 1) await new Promise((resolve) => setImmediate(resolve))
-
-  standardReleases.shift()()
-  standardReleases.shift()()
   await new Promise((resolve) => setImmediate(resolve))
-  assert.equal(formalStarted, 3)
+  assert.equal(formalStarted, 4)
 
   releaseAll = true
   for (const release of standardReleases.splice(0)) release()

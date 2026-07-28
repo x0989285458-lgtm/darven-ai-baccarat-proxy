@@ -1950,7 +1950,7 @@ export function resolveBackendReadConnectionString(connectionString) {
   return raw
 }
 
-function createStrategyQueryScheduler(strategyDb, { maxConcurrent = 8, maxStandardConcurrent = 6, maxPriorityConcurrent = 3, queueTimeoutMs = 30000 } = {}) {
+function createStrategyQueryScheduler(strategyDb, { maxConcurrent = 10, maxStandardConcurrent = 6, maxPriorityConcurrent = 4, queueTimeoutMs = 30000 } = {}) {
   const priorityQueue = []
   const standardQueue = []
   let active = 0
@@ -2033,7 +2033,7 @@ export function createSupabaseIngestionClient({
   const rawStrategyDb = strategyPool ?? (dbConnectionString ? strategyPoolFactory({
     connectionString: resolveBackendReadConnectionString(dbConnectionString),
     ssl: { rejectUnauthorized: false },
-    max: 8,
+    max: 10,
     connectionTimeoutMillis: 60000,
     query_timeout: 65000,
     statement_timeout: 60000,
