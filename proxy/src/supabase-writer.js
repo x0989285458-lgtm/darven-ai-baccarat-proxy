@@ -2435,7 +2435,7 @@ export function createSupabaseIngestionClient({
         || !row.strategy_version || !['banker', 'player'].includes(row.predicted_result)) {
         throw new Error('prediction issuance payload is incomplete')
       }
-      const acknowledgement = await enqueueWrite(() => postDurableRest('rpc/issue_v105_prediction', { p_prediction: row }, undefined, { requireObject: true }))
+      const acknowledgement = await enqueueWrite(() => postDurableRest('rpc/issue_v105_prediction', { p_prediction: row }, undefined, { requireObject: true, priority: true }))
       const prediction = acknowledgement?.prediction
       if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
         || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at

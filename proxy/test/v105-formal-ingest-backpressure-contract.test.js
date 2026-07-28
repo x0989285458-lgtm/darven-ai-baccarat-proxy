@@ -357,6 +357,56 @@ test('formal Final settlement keeps a reserved checkout when concurrent ingest e
   }
 })
 
+test('formal issuance uses the reserved priority slot when shadow-standard traffic is saturated', async () => {
+  let standardStarted = 0
+  let issueStarted = 0
+  let releaseAll = false
+  const standardReleases = []
+  const candidate = buildLivePrediction({ tableId: 'BAG10', shoe: 'S2', round: 30 })
+  const issued = {
+    ...candidate,
+    predictionId: '22222222-2222-2222-2222-222222222222',
+    issuedAt: '2026-07-29T00:00:00.000Z',
+  }
+  const strategyPool = {
+    async query(query) {
+      const text = String(query?.text ?? query)
+      if (/persist_latest_cloud_table_snapshot/i.test(text)) {
+        standardStarted += 1
+        if (!releaseAll) await new Promise((resolve) => standardReleases.push(resolve))
+        return { rows: [{ persist_latest_cloud_table_snapshot: { persisted: true } }] }
+      }
+      if (/issue_v105_prediction/i.test(text)) {
+        issueStarted += 1
+        return { rows: [{ issue_v105_prediction: {
+          prediction_id: issued.predictionId,
+          prediction_issued_at: issued.issuedAt,
+          prediction: issued,
+        } }] }
+      }
+      throw new Error(`unexpected query in formal issuance priority test: ${text}`)
+    },
+  }
+  const writer = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    requestTimeoutMs: 100, durableWriteRequestTimeoutMs: 100, strategyPool,
+  })
+  const standardCalls = [1, 2, 3].map((index) => writer.writeCloudTableSnapshot({
+    sessionId: `shadow-standard-${index}`, tables: [{ tableId: `BAG0${index}` }], status: { connected: true },
+  }))
+  while (standardStarted < 3) await new Promise((resolve) => setImmediate(resolve))
+  const issuance = writer.issuePrediction(candidate)
+  await delay(20)
+
+  try {
+    assert.equal(issueStarted, 1, 'formal issuance must use the reserved priority slot')
+  } finally {
+    releaseAll = true
+    for (const release of standardReleases.splice(0)) release()
+    await Promise.allSettled([...standardCalls, issuance])
+  }
+})
+
 test('formal settlement burst uses three priority slots while preserving one standard slot', async () => {
   let standardStarted = 0
   let formalStarted = 0
