@@ -64,6 +64,53 @@ test('v105-shadow-v6-road-pattern conservatively falls back to the original v5 m
   assert.deepEqual(shadow.heads.main, baseline.heads.main)
 })
 
+test('v105-shadow-v6-road-pattern ignores unrelated history before cloning its large payload', async () => {
+  const module = await import('../src/v105-shadow-contract.js')
+  const unrelated = Array.from({ length: 1000 }, (_, index) => {
+    const row = {
+      strategy_version: 'v105-shadow-v6-road-pattern',
+      prediction_timing: 'pre_result_context',
+      prediction_issued_at: new Date(index * 1000).toISOString(),
+      settlement_final: true,
+      table_id: 'BAG02',
+      predicted_result: 'banker',
+      actual_result: 'banker',
+    }
+    Object.defineProperty(row, 'prediction_payload', {
+      enumerable: true,
+      get() { throw new Error('unrelated V6 history payload was cloned') },
+    })
+    return row
+  })
+  const prediction = module.buildV105ShadowPrediction(table, unrelated)
+  assert.equal(prediction.targetTableId, 'BAG01')
+  assert.equal(prediction.strategyVersion, 'v105-shadow-v6-road-pattern')
+})
+
+test('V6 history requires pre-result timing, issued timestamp, final settlement, target table, and newest 60', async () => {
+  const module = await import('../src/v105-shadow-contract.js')
+  const invalidRows = [
+    { prediction_issued_at: '2026-07-27T00:00:00Z', settlement_final: true },
+    { prediction_timing: 'post_result_context', prediction_issued_at: '2026-07-27T00:00:00Z', settlement_final: true },
+    { prediction_timing: 'pre_result_context', settlement_final: true },
+    { prediction_timing: 'pre_result_context', prediction_issued_at: '2026-07-27T00:00:00Z', settlement_final: false },
+    { prediction_timing: 'pre_result_context', prediction_issued_at: '2026-07-27T00:00:00Z', settlement_final: true, table_id: 'BAG02' },
+  ].map((fields) => {
+    const row = { strategy_version: 'v105-shadow-v6-road-pattern', table_id: 'BAG01', ...fields }
+    Object.defineProperty(row, 'prediction_payload', {
+      enumerable: true,
+      get() { throw new Error('invalid V6 history payload was cloned') },
+    })
+    return row
+  })
+  const validRows = Array.from({ length: 61 }, (_, index) => ({
+    strategy_version: 'v105-shadow-v6-road-pattern', table_id: 'BAG01',
+    prediction_timing: 'pre_result_context', prediction_issued_at: new Date(index * 1000).toISOString(),
+    settlement_final: true, predicted_result: index === 60 ? 'player' : 'banker', actual_result: 'banker',
+  }))
+  assert.doesNotThrow(() => module.buildV105ShadowPrediction(table, [...invalidRows, ...validRows]))
+})
+
 test('v105-shadow-v6-road-pattern settlement accepts verified Final and rejects every old shadow identity', async () => {
   const module = await import('../src/v105-shadow-contract.js').catch(() => null)
   assert.ok(module, 'v105 shadow contract must exist')

@@ -2187,6 +2187,18 @@ export function createSupabaseIngestionClient({
           text: 'select public.reconcile_v105_prediction_lifecycle($1::text, $2::text, $3::text, $4::integer) as reconcile_v105_prediction_lifecycle',
           values: [body?.p_source, body?.p_table_id, body?.p_current_shoe, body?.p_current_visible_round],
         },
+        'rpc/persist_v105_capture_envelope': {
+          text: 'select public.persist_v105_capture_envelope($1::jsonb) as persist_v105_capture_envelope',
+          values: [body?.p_capture],
+        },
+        'rpc/complete_v105_capture_settlement_outbox': {
+          text: 'select public.complete_v105_capture_settlement_outbox($1::text, $2::bigint, $3::uuid, $4::integer) as complete_v105_capture_settlement_outbox',
+          values: [body?.p_session_id, body?.p_sequence, body?.p_claim_token, body?.p_attempt],
+        },
+        'rpc/fail_v105_capture_settlement_outbox': {
+          text: 'select public.fail_v105_capture_settlement_outbox($1::text, $2::bigint, $3::uuid, $4::integer, $5::text) as fail_v105_capture_settlement_outbox',
+          values: [body?.p_session_id, body?.p_sequence, body?.p_claim_token, body?.p_attempt, body?.p_error],
+        },
       }[path]
       if (directRpc) {
         const directDb = options.priority === true ? priorityStrategyDb : strategyDb
@@ -3319,6 +3331,101 @@ export function createSupabaseIngestionClient({
       })
       inFlightRoundWrites.set(roundKey, writePromise)
       return writePromise
+    },
+    async persistCaptureEnvelope({ sessionId, sequence, roundKeys = [], status = {}, tables = [], rounds = [], capturedAt = null } = {}) {
+      const normalizedSessionId = String(sessionId ?? '')
+      const normalizedSequence = Number(sequence)
+      if (!normalizedSessionId || !Number.isSafeInteger(normalizedSequence) || normalizedSequence < 1) {
+        throw new Error('capture envelope identity is required')
+      }
+      const acceptedRoundKeys = Array.isArray(roundKeys) ? roundKeys.map(String) : []
+      const captureTime = capturedAt ?? status.lastMessageAt ?? new Date(normalizedSequence).toISOString()
+      const statusRow = buildCloudCaptureStatusRow({
+        sessionId: normalizedSessionId, captureSource: 'cloud_browser', status,
+        metadata: { sequence: normalizedSequence },
+      })
+      const snapshotRow = {
+        ...buildCloudTableSnapshotRow({
+          sessionId: normalizedSessionId, tables, status,
+          metadata: { sequence: normalizedSequence },
+        }),
+        snapshot_at: captureTime,
+      }
+      const roundRows = (Array.isArray(rounds) ? rounds : []).map((round) => ({
+        ...buildCloudRoundEventRow({
+          sessionId: normalizedSessionId,
+          round: { ...round, receivedAt: round?.receivedAt ?? captureTime },
+          table: (Array.isArray(tables) ? tables : []).find((table) => String(table?.tableId) === String(round?.tableId)) ?? { tableId: round?.tableId },
+          metadata: { sequence: normalizedSequence },
+        }),
+        received_at: round?.receivedAt ?? captureTime,
+      }))
+      statusRow.last_message_at = captureTime
+      statusRow.last_round_at = roundRows.length > 0
+        ? roundRows.map((row) => row.received_at).sort().at(-1)
+        : null
+      const acknowledgement = await postDurableRest('rpc/persist_v105_capture_envelope', {
+        p_capture: {
+          session_id: normalizedSessionId,
+          sequence: normalizedSequence,
+          round_keys: acceptedRoundKeys,
+          status: statusRow,
+          snapshot: snapshotRow,
+          rounds: roundRows,
+          work: { sessionId: normalizedSessionId, status, tables, rounds },
+        },
+      }, undefined, { requireObject: true, priority: true })
+      const acknowledgedKeys = Array.isArray(acknowledgement?.accepted_round_keys)
+        ? acknowledgement.accepted_round_keys.map(String)
+        : []
+      if (acknowledgement?.persisted !== true
+          || acknowledgedKeys.length !== acceptedRoundKeys.length
+          || acceptedRoundKeys.some((key, index) => acknowledgedKeys[index] !== key)) {
+        throw new Error('durable capture outbox acknowledgement failed')
+      }
+      return { ...acknowledgement, acceptedRoundKeys: acknowledgedKeys }
+    },
+    async claimCaptureOutbox({ limit = 10 } = {}) {
+      const normalizedLimit = Math.max(1, Math.min(100, Number(limit) || 10))
+      if (priorityStrategyDb && typeof priorityStrategyDb.query === 'function') {
+        const result = await priorityStrategyDb.query({
+          text: 'select * from public.claim_v105_capture_settlement_outbox($1::integer)',
+          values: [normalizedLimit],
+        })
+        if (!Array.isArray(result?.rows)) throw new Error('Direct DB capture outbox claim returned invalid rows')
+        return result.rows
+      }
+      return postRpcRows('claim_v105_capture_settlement_outbox', {
+        p_limit: normalizedLimit,
+      }, { requestTimeoutMs: durableWriteTimeoutMs })
+    },
+    async completeCaptureOutbox({ sessionId, sequence, claimToken, attempt } = {}) {
+      return postDurableRest('rpc/complete_v105_capture_settlement_outbox', {
+        p_session_id: String(sessionId ?? ''), p_sequence: Number(sequence),
+        p_claim_token: String(claimToken ?? ''), p_attempt: Number(attempt),
+      }, undefined, { requireObject: true, priority: true })
+    },
+    async failCaptureOutbox({ sessionId, sequence, claimToken, attempt, error } = {}) {
+      return postDurableRest('rpc/fail_v105_capture_settlement_outbox', {
+        p_session_id: String(sessionId ?? ''), p_sequence: Number(sequence),
+        p_claim_token: String(claimToken ?? ''), p_attempt: Number(attempt), p_error: redactSecrets(error),
+      }, undefined, { requireObject: true, priority: true })
+    },
+    async getCaptureOutboxHealth() {
+      if (priorityStrategyDb && typeof priorityStrategyDb.query === 'function') {
+        const result = await priorityStrategyDb.query({
+          text: 'select public.get_v105_capture_outbox_health() as health',
+          values: [],
+        })
+        const health = result?.rows?.[0]?.health
+        if (!health || typeof health !== 'object' || Array.isArray(health)) {
+          throw new Error('Direct DB capture outbox health returned invalid data')
+        }
+        return health
+      }
+      return postDurableRest('rpc/get_v105_capture_outbox_health', {}, undefined, {
+        requireObject: true, priority: true,
+      })
     },
     async writeCloudCaptureStatus(payload) {
       const row = buildCloudCaptureStatusRow(payload)

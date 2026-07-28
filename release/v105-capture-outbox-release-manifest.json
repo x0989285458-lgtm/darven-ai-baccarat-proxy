@@ -1,0 +1,52 @@
+{
+  "releaseVersion": "v105-capture-outbox.1",
+  "releaseName": "抓牌Outbox解耦正式版",
+  "baseRelease": "v105-shadow-v8.8",
+  "baseCommit": "b98eba10aa5d4e45dfb5d5e9461d432c18e08299",
+  "packageVersion": "1.0.15",
+  "formalStrategyVersion": "v105",
+  "strategyChanged": false,
+  "frontendChanged": false,
+  "workerChanged": false,
+  "deploymentOrder": [
+    "capture-outbox-database-additive",
+    "capture-outbox-catalog-acl-readback",
+    "capture-outbox-schema-cache-readiness",
+    "capture-outbox-consumer-ready",
+    "render-proxy",
+    "production-e2e"
+  ],
+  "captureOutbox": {
+    "migration": "supabase/migrations/20260729043000_v105_capture_settlement_outbox.sql",
+    "schemaCacheReadiness": [
+      "persist_v105_capture_envelope",
+      "claim_v105_capture_settlement_outbox",
+      "complete_v105_capture_settlement_outbox",
+      "fail_v105_capture_settlement_outbox",
+      "get_v105_capture_outbox_health"
+    ],
+    "ackBoundary": "raw-final-snapshot-status-outbox-atomic-commit",
+    "consumer": "restart-recoverable",
+    "operationsRunbook": "docs/runbooks/v105-capture-outbox-operations.md",
+    "rollback": {
+      "requiredOutboxCounts": {
+        "pending": 0,
+        "error": 0,
+        "processing": 0,
+        "dead_letter": 0
+      },
+      "keepNewConsumerUntilDrainZero": true,
+      "preserveAcknowledgedFinals": true,
+      "proxyRollbackOnly": true,
+      "retainAdditiveDatabaseSchema": true
+    }
+  },
+  "productionGate": {
+    "verifiedTables": 10,
+    "minimumObservationMinutes": 30,
+    "healthP95Milliseconds": 1000,
+    "workerQueueMustConverge": true,
+    "outboxMustConverge": true,
+    "watchdogMustRemainHealthy": true
+  }
+}

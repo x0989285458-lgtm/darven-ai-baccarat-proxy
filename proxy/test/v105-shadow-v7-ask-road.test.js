@@ -78,6 +78,28 @@ test('V7 falls back bit-for-bit to the V6 direction and six side heads when ask-
   assert.deepEqual(v7.roadPatternWindows, v6.roadPatternWindows)
 })
 
+test('V7 prediction ignores unrelated history before cloning its large payload', () => {
+  const unrelated = Array.from({ length: 1000 }, (_, index) => {
+    const row = {
+      strategy_version: V105_SHADOW_V7_VERSION,
+      prediction_timing: 'pre_result_context',
+      prediction_issued_at: new Date(index * 1000).toISOString(),
+      settlement_final: true,
+      table_id: 'BAG02',
+      predicted_result: 'banker',
+      actual_result: 'banker',
+    }
+    Object.defineProperty(row, 'prediction_payload', {
+      enumerable: true,
+      get() { throw new Error('unrelated V7 history payload was cloned') },
+    })
+    return row
+  })
+  const prediction = buildV105ShadowV7Prediction(base(), unrelated)
+  assert.equal(prediction.targetTableId, 'BAG01')
+  assert.equal(prediction.strategyVersion, V105_SHADOW_V7_VERSION)
+})
+
 test('V7 does not reverse a clear V6 road pattern when ask-road conflicts', () => {
   const prediction = buildV105ShadowV7Prediction(base({
     bigRoadRaw: '0001,0001#0002#0001,0001',

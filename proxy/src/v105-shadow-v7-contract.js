@@ -43,8 +43,17 @@ export function analyzeV105ShadowV7AskRoad(table = {}, v6Direction = null, v6Roa
 }
 
 export function buildV105ShadowV7Prediction(table = {}, historyRows = [], issuanceContext = {}) {
+  const targetTableId = String(table?.tableId ?? '')
   const v6History = (Array.isArray(historyRows) ? historyRows : [])
-    .filter((row) => (row?.strategy_version ?? row?.strategyVersion) === V105_SHADOW_V7_VERSION)
+    .filter((row) => (
+      (row?.strategy_version ?? row?.strategyVersion) === V105_SHADOW_V7_VERSION
+      && (row?.prediction_timing ?? row?.predictionTiming) === 'pre_result_context'
+      && Boolean(row?.prediction_issued_at ?? row?.predictionIssuedAt)
+      && (row?.settlement_final ?? row?.settlementFinal) === true
+      && String(row?.table_id ?? row?.tableId ?? '') === targetTableId
+    ))
+    .sort((left, right) => historyTime(left) - historyTime(right))
+    .slice(-60)
     .map((row) => ({
       ...structuredClone(row),
       strategy_version: V6_VERSION,
@@ -134,6 +143,10 @@ function exactAppendedColor(current, candidate) {
   if (candidate.length !== current.length + 1) return null
   if (current.some((color, index) => candidate[index] !== color)) return null
   return candidate.at(-1) ?? null
+}
+
+function historyTime(row) {
+  return Date.parse(row?.prediction_issued_at ?? row?.predictionIssuedAt ?? '') || 0
 }
 
 function deepFreeze(value) {

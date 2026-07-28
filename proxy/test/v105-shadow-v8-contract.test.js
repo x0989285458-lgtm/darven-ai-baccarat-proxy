@@ -96,6 +96,29 @@ test('V8 uses all available history when fewer than 24 colors exist', () => {
   assert.deepEqual(result.windows.background24, ['1','1','2','1'])
 })
 
+test('V8 prediction ignores unrelated history before cloning its large payload', () => {
+  const unrelated = Array.from({ length: 1000 }, (_, index) => {
+    const row = {
+      strategy_version: V105_SHADOW_V8_VERSION,
+      prediction_timing: 'pre_result_context',
+      prediction_issued_at: new Date(index * 1000).toISOString(),
+      settlement_final: true,
+      table_id: 'BAG02',
+      predicted_result: 'banker',
+      actual_result: 'banker',
+    }
+    Object.defineProperty(row, 'prediction_payload', {
+      enumerable: true,
+      get() { throw new Error('unrelated history payload was cloned') },
+    })
+    return row
+  })
+  const prediction = buildV105ShadowV8Prediction(screenshotA, unrelated)
+
+  assert.equal(prediction.targetTableId, 'BAG01')
+  assert.equal(prediction.strategyVersion, V105_SHADOW_V8_VERSION)
+})
+
 test('V8 classifies single jump, double jump, long and short dragons, room rhythms, repeated lengths, and continuous turns', () => {
   const cases = [
     [['1','2','1','2','1'], 'single_jump'],

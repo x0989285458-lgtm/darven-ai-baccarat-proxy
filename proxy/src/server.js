@@ -98,7 +98,7 @@ export function resolveFrontendCorsOrigin(configuredOrigin, requestOrigin) {
   }
 }
 
-export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), v104FormalRequestTimeoutMs = Number(process.env.V104_FORMAL_REQUEST_TIMEOUT_MS ?? 10000), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null, v104ShadowRuntime = null, v104IterationShadowRuntime = null, v105ShadowRuntime = null, v105ShadowV7Runtime = null, v105ShadowV8Runtime = null, v104FormalRuntime = null, dailyMemoryRollover = null } = {}) {
+export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 30000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), v104FormalRequestTimeoutMs = Number(process.env.V104_FORMAL_REQUEST_TIMEOUT_MS ?? 10000), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null, v104ShadowRuntime = null, v104IterationShadowRuntime = null, v105ShadowRuntime = null, v105ShadowV7Runtime = null, v105ShadowV8Runtime = null, v104FormalRuntime = null, dailyMemoryRollover = null } = {}) {
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
     CAPTURE_SOURCE: requestedCaptureSource,
@@ -114,8 +114,15 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const shouldAutoConnect = autoConnect ?? deployConfig.autoConnect
   const strictRealCardRounds = process.env.REQUIRE_REAL_CARD_ROUNDS !== 'false'
   const adminSessions = new Map()
-  const ingestSequences = new Map()
+  const legacyIngestSequences = new Map()
   const ingestSessionLocks = new Map()
+  let outboxDrainPromise = null
+  let outboxWakeTimer = null
+  let outboxWakePromise = null
+  let resolveOutboxWake = null
+  let outboxStopping = false
+  let outboxRetryCount = 0
+  let outboxHealthRetryCount = 0
   const pendingPredictions = new Map()
   const preparingPredictionPromises = new Map()
   const issuingPredictionPromises = new Map()
@@ -143,6 +150,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const resolvedRecentPerformanceRetryMs = Math.max(1000, Number(recentPerformanceRetryMs) || 30000)
   const resolvedPredictionIssuanceRetryMs = Math.max(1000, Number(predictionIssuanceRetryMs) || 10000)
   const resolvedIngestDeadlineMs = Math.min(110000, Math.max(1, Number(ingestDeadlineMs) || 110000))
+  const resolvedOutboxWorkDeadlineMs = Math.max(1, Number(outboxWorkDeadlineMs) || 30000)
+  const resolvedOutboxBackoffMs = Math.max(1, Number(outboxBackoffMs) || 1000)
   let tablesReceivedAtMs = 0
   let v103Shadow = null
   let v104Shadow = null
@@ -345,6 +354,131 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
   }
 
+  function scheduleCaptureOutboxDrain(delayMs = 0) {
+    if (outboxStopping || outboxWakeTimer) return outboxWakePromise
+    let resolveThisWake
+    const thisWake = new Promise((resolve) => { resolveThisWake = resolve })
+    outboxWakePromise = thisWake
+    resolveOutboxWake = resolveThisWake
+    outboxWakeTimer = setTimeout(() => {
+      outboxWakeTimer = null
+      if (outboxWakePromise === thisWake) outboxWakePromise = null
+      if (resolveOutboxWake === resolveThisWake) resolveOutboxWake = null
+      void drainCaptureOutbox()
+        .catch(() => {})
+        .finally(() => {
+          resolveThisWake()
+        })
+    }, Math.max(0, Number(delayMs) || 0))
+    outboxWakeTimer.unref?.()
+    return thisWake
+  }
+
+  function retryCaptureOutboxDrain() {
+    outboxRetryCount += 1
+    const delayMs = Math.min(30000, resolvedOutboxBackoffMs * (2 ** Math.min(outboxRetryCount - 1, 5)))
+    scheduleCaptureOutboxDrain(delayMs)
+  }
+
+  function retryCaptureOutboxHealth() {
+    outboxHealthRetryCount += 1
+    const delayMs = Math.min(30000, resolvedOutboxBackoffMs * (2 ** Math.min(outboxHealthRetryCount - 1, 5)))
+    scheduleCaptureOutboxDrain(delayMs)
+  }
+
+  function drainCaptureOutbox() {
+    if (outboxDrainPromise) return outboxDrainPromise
+    outboxDrainPromise = (async () => {
+      if (outboxStopping || typeof supabaseClient?.claimCaptureOutbox !== 'function') return { processed: 0, failed: 0 }
+      let processed = 0
+      let failed = 0
+      let shouldContinue = false
+      let nextWakeDelayMs = 0
+      try {
+        for (let batchNumber = 0; batchNumber < 10 && !outboxStopping; batchNumber += 1) {
+          const rows = await supabaseClient.claimCaptureOutbox({ limit: 10 })
+          outboxRetryCount = 0
+        if (!Array.isArray(rows) || rows.length === 0) break
+        for (const row of rows) {
+          const sessionId = String(row?.session_id ?? '')
+          const sequence = Number(row?.sequence)
+          const claimToken = String(row?.claim_token ?? '')
+          const attempt = Number(row?.attempts)
+          try {
+            const work = row?.payload?.work
+            if (!work || typeof work !== 'object') throw new Error('capture outbox work payload is missing')
+            const parsed = work.status && Array.isArray(work.tables) && Array.isArray(work.rounds)
+              ? { sessionId: work.sessionId ?? sessionId, status: work.status, tables: work.tables, rounds: work.rounds }
+              : parseCloudCapturePayload({ ...work, buildVersion: work.buildVersion ?? WORKER_PROTOCOL_BUILD_VERSION })
+            await withDeadline((async () => {
+              await applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Formal, persistAncillary: false })
+              await supabaseClient.completeCaptureOutbox?.({ sessionId, sequence, claimToken, attempt })
+            })(),
+              resolvedOutboxWorkDeadlineMs,
+              `capture outbox work deadline exceeded for ${sessionId}:${sequence}`,
+            )
+            processed += 1
+          } catch (error) {
+            failed += 1
+            state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+            let failureAck
+            let failureError
+            for (let failureTry = 0; failureTry < 3; failureTry += 1) {
+              try {
+                failureAck = await withDeadline(
+                  supabaseClient.failCaptureOutbox?.({ sessionId, sequence, claimToken, attempt, error: error?.message ?? String(error) }),
+                  resolvedOutboxWorkDeadlineMs,
+                  `capture outbox failure acknowledgement deadline exceeded for ${sessionId}:${sequence}`,
+                )
+                failureError = null
+                break
+              } catch (candidateError) {
+                failureError = candidateError
+                if (failureTry < 2) await new Promise((resolve) => setTimeout(resolve, resolvedOutboxBackoffMs * (2 ** failureTry)))
+              }
+            }
+            if (failureError) throw failureError
+            shouldContinue = true
+            nextWakeDelayMs = failureAck?.isolated === true
+              ? 0
+              : Math.max(nextWakeDelayMs, Number(failureAck?.retry_after_ms) || resolvedOutboxBackoffMs)
+          }
+        }
+          if (rows.length < 10) break
+          if (batchNumber === 9) shouldContinue = true
+        }
+      } catch (error) {
+        retryCaptureOutboxDrain()
+        throw error
+      }
+      if (shouldContinue) scheduleCaptureOutboxDrain(nextWakeDelayMs)
+      if (typeof supabaseClient?.getCaptureOutboxHealth === 'function') {
+        try {
+          const captureOutbox = await supabaseClient.getCaptureOutboxHealth()
+          outboxHealthRetryCount = 0
+          state.setStatus({ captureOutbox })
+          const nextWakeAt = Date.parse(captureOutbox?.next_wakeup_at ?? '')
+          const unfinished = Number(captureOutbox?.pending) + Number(captureOutbox?.error) + Number(captureOutbox?.processing)
+          if (!outboxStopping && unfinished > 0 && Number.isFinite(nextWakeAt)) {
+            scheduleCaptureOutboxDrain(Math.max(0, nextWakeAt - Date.now() + 5))
+          }
+        } catch (error) {
+          state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+          retryCaptureOutboxHealth()
+        }
+      }
+      return { processed, failed }
+    })().finally(() => { outboxDrainPromise = null })
+    return outboxDrainPromise
+  }
+
+  async function waitForCaptureOutboxIdle() {
+    while (outboxDrainPromise || outboxWakePromise) {
+      if (outboxDrainPromise) await outboxDrainPromise.catch(() => {})
+      else if (outboxWakePromise) await outboxWakePromise
+    }
+  }
+
   async function handle(method, url, rawBody = '', headers = {}) {
     const requestUrl = new URL(url, 'http://127.0.0.1')
     const frontendOrigin = resolveFrontendCorsOrigin(configuredFrontendOrigin, headers.origin)
@@ -518,28 +652,67 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         const validatedRoundKeys = validateIngestEnvelope(envelope, now())
         const sessionId = String(envelope.snapshot.sessionId ?? envelope.snapshot.session_id ?? 'cloud-browser')
         const ingestOperation = withIngestSessionLock(sessionId, async () => {
-          const previous = ingestSequences.get(sessionId)
-          if (previous != null && envelope.sequence <= previous.sequence) {
-            if (envelope.sequence === previous.sequence) {
-              const accepted = new Set(previous.ack?.acceptedRoundKeys ?? [])
-              if (!validatedRoundKeys.every((roundKey) => accepted.has(roundKey))) {
-                return jsonResponse(409, { ok: false, accepted: false, error: 'sequence_payload_conflict' }, frontendOrigin)
+          const usesDurableOutbox = typeof supabaseClient?.persistCaptureEnvelope === 'function'
+          if (!usesDurableOutbox) {
+            const previous = legacyIngestSequences.get(sessionId)
+            if (previous != null && envelope.sequence <= previous.sequence) {
+              if (envelope.sequence === previous.sequence) {
+                const accepted = new Set(previous.ack?.acceptedRoundKeys ?? [])
+                if (!validatedRoundKeys.every((roundKey) => accepted.has(roundKey))) {
+                  return jsonResponse(409, { ok: false, accepted: false, error: 'sequence_payload_conflict' }, frontendOrigin)
+                }
+                return jsonResponse(200, {
+                  ...previous.ack, duplicate: true, sequence: envelope.sequence,
+                  acceptedRoundKeys: validatedRoundKeys,
+                }, frontendOrigin)
               }
-              return jsonResponse(200, {
-                ...previous.ack,
-                duplicate: true,
-                sequence: envelope.sequence,
-                acceptedRoundKeys: validatedRoundKeys,
-              }, frontendOrigin)
+              return jsonResponse(200, { ...previous.ack, duplicate: true, sequence: envelope.sequence }, frontendOrigin)
             }
-            return jsonResponse(200, { ...previous.ack, duplicate: true, sequence: envelope.sequence }, frontendOrigin)
           }
           const parsed = parseCloudCapturePayload(envelope.snapshot)
           let captureResult = null
+          let duplicateCapture = false
           try {
             assertDurableIngestWriter(supabaseClient, parsed.rounds.length)
-            captureResult = await applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Formal })
+            if (production && typeof supabaseClient?.persistCaptureEnvelope !== 'function') {
+              throw new Error('durable capture outbox writer is required')
+            }
+            if (typeof supabaseClient?.persistCaptureEnvelope === 'function') {
+              const rawOutboxStartedAt = Date.now()
+              const rawAcknowledgement = await supabaseClient.persistCaptureEnvelope({
+                sessionId,
+                sequence: envelope.sequence,
+                roundKeys: validatedRoundKeys,
+                tables: parsed.tables,
+                rounds: parsed.rounds,
+                status: parsed.status,
+                capturedAt: new Date(Number(envelope.captureTimestamp ?? envelope.timestamp)).toISOString(),
+              })
+              const accepted = Array.isArray(rawAcknowledgement?.acceptedRoundKeys)
+                ? rawAcknowledgement.acceptedRoundKeys.map(String)
+                : []
+              if (accepted.length !== validatedRoundKeys.length
+                  || validatedRoundKeys.some((roundKey, index) => accepted[index] !== roundKey)) {
+                throw new Error('durable capture outbox acknowledgement mismatch')
+              }
+              duplicateCapture = rawAcknowledgement?.duplicate === true
+              if (!duplicateCapture) {
+                state.setStatus(parsed.status)
+                state.setTables(parsed.tables)
+              }
+              captureResult = { durableTimings: { rawOutboxMs: Math.max(0, Date.now() - rawOutboxStartedAt) } }
+              if (!duplicateCapture) {
+                void drainCaptureOutbox().catch((error) => {
+                  state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+                })
+              }
+            } else {
+              captureResult = await applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Formal })
+            }
           } catch (error) {
+            if (/capture identity conflict|sequence_payload_conflict/i.test(error?.message ?? '')) {
+              return jsonResponse(409, { ok: false, accepted: false, error: 'sequence_payload_conflict' }, frontendOrigin)
+            }
             const durableError = new Error(error?.message ?? String(error))
             durableError.statusCode = 503
             durableError.durableFailure = true
@@ -549,12 +722,12 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           const ack = {
             ok: true,
             accepted: true,
-            duplicate: false,
+            duplicate: duplicateCapture,
             sessionId,
             sequence: envelope.sequence,
             acceptedRoundKeys: validatedRoundKeys,
           }
-          ingestSequences.set(sessionId, { sequence: envelope.sequence, ack })
+          if (!usesDurableOutbox) legacyIngestSequences.set(sessionId, { sequence: envelope.sequence, ack })
           state.setStatus({
             health: 'ok', reason: null,
             expectedProtocolVersion: WORKER_PROTOCOL_VERSION,
@@ -1363,17 +1536,32 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       if (v105Shadow?.enabled === true && typeof v105Shadow.start === 'function') void Promise.resolve().then(() => v105Shadow.start()).catch(() => {})
       if (v105ShadowV7?.enabled === true && typeof v105ShadowV7.start === 'function') void Promise.resolve().then(() => v105ShadowV7.start()).catch(() => {})
       if (v105ShadowV8?.enabled === true && typeof v105ShadowV8.start === 'function') void Promise.resolve().then(() => v105ShadowV8.start()).catch(() => {})
+      void drainCaptureOutbox().catch((error) => {
+        state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+      })
       return listeningServer
     },
-    stop() {
+    async stop() {
+      outboxStopping = true
+      if (outboxWakeTimer) {
+        clearTimeout(outboxWakeTimer)
+        outboxWakeTimer = null
+        resolveOutboxWake?.()
+        resolveOutboxWake = null
+        outboxWakePromise = null
+      }
       mtClient.stop()
       chromeClient.stop()
       cloudCaptureClient.stop()
-      return new Promise((resolve) => server.close(() => resolve()))
+      await outboxDrainPromise?.catch(() => {})
+      if (!server.listening) return
+      await new Promise((resolve) => server.close(() => resolve()))
     },
     async inject({ method = 'GET', url = '/', body = '', headers = {} } = {}) {
       return handle(method, url, body, headers)
     },
+    drainCaptureOutbox,
+    waitForCaptureOutboxIdle,
     cloudCaptureClient,
   }
 }

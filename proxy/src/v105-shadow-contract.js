@@ -151,8 +151,21 @@ function emptyRoadPatternAnalysis(reason) {
 }
 
 export function buildV105ShadowPrediction(table = {}, historyRows = [], issuanceContext = {}) {
+  const targetTableId = String(table?.tableId ?? '')
   const isolatedHistory = (Array.isArray(historyRows) ? historyRows : [])
-    .filter((row) => (row?.strategy_version ?? row?.strategyVersion) === V105_SHADOW_VERSION)
+    .filter((row) => {
+      const strategyVersion = row?.strategy_version ?? row?.strategyVersion
+      const timing = row?.prediction_timing ?? row?.predictionTiming
+      const issuedAt = row?.prediction_issued_at ?? row?.predictionIssuedAt
+      const settled = row?.settlement_final ?? row?.settlementFinal
+      return strategyVersion === V105_SHADOW_VERSION
+        && timing === 'pre_result_context'
+        && Boolean(issuedAt)
+        && settled === true
+        && String(row?.table_id ?? row?.tableId ?? '') === targetTableId
+    })
+    .sort((left, right) => historyTime(right) - historyTime(left))
+    .slice(0, 60)
     .map((row) => ({
       ...structuredClone(row),
       strategy_version: V104_ITERATION_SHADOW_VERSION,
@@ -187,6 +200,11 @@ export function buildV105ShadowPrediction(table = {}, historyRows = [], issuance
     decodedRecentRuns: structuredClone(roadPattern.decodedRecentRuns),
     roadPatternWindows: structuredClone(roadPattern.windows),
   })
+}
+
+function historyTime(row = {}) {
+  const parsed = Date.parse(row?.settled_at ?? row?.settledAt ?? row?.prediction_issued_at ?? row?.predictionIssuedAt ?? '')
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 export function buildV105ShadowSettlement(round = {}, issued = {}) {

@@ -119,8 +119,17 @@ export function analyzeV105ShadowV8AskRoad(table = {}, v6Direction = null, v6Roa
 }
 
 export function buildV105ShadowV8Prediction(table = {}, historyRows = [], issuanceContext = {}) {
+  const targetTableId = String(table?.tableId ?? '')
   const v6History = (Array.isArray(historyRows) ? historyRows : [])
-    .filter((row) => (row?.strategy_version ?? row?.strategyVersion) === V105_SHADOW_V8_VERSION)
+    .filter((row) => (
+      (row?.strategy_version ?? row?.strategyVersion) === V105_SHADOW_V8_VERSION
+      && (row?.prediction_timing ?? row?.predictionTiming) === 'pre_result_context'
+      && Boolean(row?.prediction_issued_at ?? row?.predictionIssuedAt)
+      && (row?.settlement_final ?? row?.settlementFinal) === true
+      && String(row?.table_id ?? row?.tableId ?? '') === targetTableId
+    ))
+    .sort((left, right) => historyTime(left) - historyTime(right))
+    .slice(-60)
     .map((row) => ({
       ...structuredClone(row),
       strategy_version: V6_VERSION,
@@ -263,6 +272,10 @@ function hasRepeatedPair(lengths, first, second) {
 
 function opposite(color) {
   return color === '1' ? '2' : color === '2' ? '1' : null
+}
+
+function historyTime(row) {
+  return Date.parse(row?.prediction_issued_at ?? row?.predictionIssuedAt ?? '') || 0
 }
 
 function deepFreeze(value) {

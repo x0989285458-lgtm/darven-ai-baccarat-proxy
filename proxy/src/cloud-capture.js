@@ -153,7 +153,7 @@ async function runDurableStage(stage, operation) {
   }
 }
 
-export async function applyCloudCapturePayload({ parsed, state, writer, v100Formal = null }) {
+export async function applyCloudCapturePayload({ parsed, state, writer, v100Formal = null, persistAncillary = true }) {
   const durableTimings = {}
   let v100Result = null
   if (v100Formal?.enabled === true) {
@@ -193,7 +193,7 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
     }
   }))))
   durableTimings.formalSettlementMs = Date.now() - settlementStartedAt
-  if (!writer?.configured) return { v100Formal: v100Result, durableTimings }
+  if (!writer?.configured || !persistAncillary) return { v100Formal: v100Result, durableTimings }
   const sessionId = parsed.sessionId ?? 'cloud-browser'
   const ancillaryStartedAt = Date.now()
   const ancillaryWrites = [
