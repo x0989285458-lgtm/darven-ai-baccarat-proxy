@@ -110,7 +110,7 @@ test('formal settlement uses the backend transaction connection and preserves th
     fetchImpl: async () => { fetchCalls += 1; throw new Error('REST must not be used') },
     strategyPool: { async query(value) {
       queries.push(value)
-      return { rows: [{ ordinality: 1, acknowledgement: {
+      return { rows: [{ settle_v105_prediction: {
         persisted: true, roadmapDurable: true, predictionDurable: true, prediction_id: predictionId,
       } }] }
     } },
@@ -122,23 +122,26 @@ test('formal settlement uses the backend transaction connection and preserves th
   assert.equal(result.prediction.strategy_version, 'v105')
   assert.equal(fetchCalls, 0)
   assert.equal(queries.length, 1)
-  assert.match(queries[0].text, /jsonb_array_elements\(\$1::jsonb\)/)
+  assert.match(queries[0].text, /public\.settle_v105_prediction\(\$1::jsonb, \$2::jsonb\)/)
+  assert.equal(queries[0].values[1].prediction_id, predictionId)
 })
 
-test('independent direct formal settlements share one bounded database batch and preserve per-item acknowledgements', async () => {
+test('independent direct formal settlements use bounded concurrent priority queries and preserve per-item acknowledgements', async () => {
   const queries = []
+  let active = 0
+  let maxActive = 0
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
     strategyPool: { async query(value) {
       queries.push(value)
-      const payloads = JSON.parse(value.values[0])
-      return { rows: payloads.map((payload, index) => ({
-        ordinality: index + 1,
-        acknowledgement: {
+      active += 1
+      maxActive = Math.max(maxActive, active)
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      active -= 1
+      return { rows: [{ settle_v105_prediction: {
           persisted: true, roadmapDurable: true, predictionDurable: true,
-          prediction_id: payload.p_settlement.prediction_id,
-        },
-      })) }
+          prediction_id: value.values[1].prediction_id,
+      } }] }
     } },
   })
   const firstTable = table()
@@ -149,9 +152,9 @@ test('independent direct formal settlements share one bounded database batch and
     client.persistRound({ tableId: 'BAG01', shoe: 88, round: 21, rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 3, 9] }, firstTable, firstPrediction),
     client.persistRound({ tableId: 'BAG02', shoe: 88, round: 21, rawResult: [3, 6, 4, 8, -1, -1, -1, -1, 7, 4] }, secondTable, secondPrediction),
   ])
-  assert.equal(queries.length, 1)
-  assert.match(queries[0].text, /jsonb_array_elements\(\$1::jsonb\).*with ordinality/s)
-  assert.equal(JSON.parse(queries[0].values[0]).length, 2)
+  assert.equal(queries.length, 2)
+  assert.equal(maxActive, 2)
+  assert.ok(queries.every((query) => /public\.settle_v105_prediction\(\$1::jsonb, \$2::jsonb\)/.test(query.text)))
 })
 
 test('settlement fails closed unless the acknowledgement prediction_id exactly matches the issued prediction', async () => {

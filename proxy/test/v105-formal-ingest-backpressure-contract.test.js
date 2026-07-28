@@ -304,16 +304,12 @@ test('formal Final settlement keeps a reserved checkout when concurrent ingest e
             issued_prediction_payload: issued, settlement_final: false,
           }] }
         }
-        if (/jsonb_array_elements/i.test(text)) {
+        if (/settle_v105_prediction/i.test(text)) {
           releaseAncillary()
-          const batch = JSON.parse(query.values[0])
-          return { rows: batch.map((item, index) => ({
-            ordinality: index + 1,
-            acknowledgement: {
-              persisted: true, roadmapDurable: true, predictionDurable: true,
-              prediction_id: item.p_settlement.prediction_id,
-            },
-          })) }
+          return { rows: [{ settle_v105_prediction: {
+            persisted: true, roadmapDurable: true, predictionDurable: true,
+            prediction_id: query.values[1].prediction_id,
+          } }] }
         }
         if (/cloud_table_rounds/i.test(text)) return { rows: [] }
         throw new Error(`unexpected query in checkout test: ${text}`)
@@ -361,6 +357,75 @@ test('formal Final settlement keeps a reserved checkout when concurrent ingest e
   }
 })
 
+test('formal settlement burst uses three priority slots while preserving one standard slot', async () => {
+  let standardStarted = 0
+  let formalStarted = 0
+  let releaseAll = false
+  const standardReleases = []
+  const formalReleases = []
+  const strategyPool = {
+    async query(query) {
+      const text = String(query?.text ?? query)
+      if (/persist_latest_cloud_table_snapshot/i.test(text)) {
+        standardStarted += 1
+        if (!releaseAll) await new Promise((resolve) => standardReleases.push(resolve))
+        return { rows: [{ persist_latest_cloud_table_snapshot: { persisted: true } }] }
+      }
+      if (/jsonb_array_elements/i.test(text)) {
+        formalStarted += 1
+        if (!releaseAll) await new Promise((resolve) => formalReleases.push(resolve))
+        const payloads = JSON.parse(query.values[0])
+        return { rows: payloads.map((item, index) => ({
+          ordinality: index + 1,
+          acknowledgement: {
+            persisted: true, roadmapDurable: true, predictionDurable: true,
+            prediction_id: item.p_settlement.prediction_id,
+          },
+        })) }
+      }
+      if (/settle_v105_prediction/i.test(text)) {
+        formalStarted += 1
+        if (!releaseAll) await new Promise((resolve) => formalReleases.push(resolve))
+        return { rows: [{ settle_v105_prediction: {
+          persisted: true, roadmapDurable: true, predictionDurable: true,
+          prediction_id: query.values[1].prediction_id,
+        } }] }
+      }
+      throw new Error(`unexpected query in priority burst test: ${text}`)
+    },
+  }
+  const writer = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    requestTimeoutMs: 100, durableWriteRequestTimeoutMs: 100, strategyPool,
+  })
+  const standardCalls = [1, 2, 3].map((index) => writer.writeCloudTableSnapshot({
+    sessionId: `standard-${index}`, tables: [{ tableId: `BAG0${index}` }], status: { connected: true },
+  }))
+  while (standardStarted < 3) await new Promise((resolve) => setImmediate(resolve))
+
+  const tableIds = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05']
+  const formalCalls = tableIds.map((tableId, index) => {
+    const table = { tableId, shoe: 'S1', round: 20 }
+    const prediction = {
+      ...buildLivePrediction(table),
+      predictionId: `${index + 1}1111111-1111-1111-1111-111111111111`,
+      issuedAt: '2026-07-28T00:00:00.000Z',
+    }
+    return writer.persistRound(finalRound(tableId, 21), table, prediction)
+  })
+  while (formalStarted < 1) await new Promise((resolve) => setImmediate(resolve))
+
+  standardReleases.shift()()
+  standardReleases.shift()()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(formalStarted, 3)
+
+  releaseAll = true
+  for (const release of standardReleases.splice(0)) release()
+  for (const release of formalReleases.splice(0)) release()
+  await Promise.all([...standardCalls, ...formalCalls])
+})
+
 test('sustained priority traffic cannot starve an ACK-required standard durable write', async () => {
   const started = []
   const blocked = []
@@ -384,17 +449,16 @@ test('sustained priority traffic cannot starve an ACK-required standard durable 
   const priorityRead = (round) => writer.readIssuedPrediction({
     tableId: 'BAG01', shoe: 'S1', round, strategyVersion: 'v105',
   }, { priority: 'settlement' })
-  const calls = [1, 2, 3, 4].map(priorityRead)
-  while (started.length < 4) await new Promise((resolve) => setImmediate(resolve))
+  const calls = [1, 2, 3].map(priorityRead)
+  while (started.length < 3) await new Promise((resolve) => setImmediate(resolve))
   calls.push(writer.writeCloudTableSnapshot({
     sessionId: 'fairness-worker', tables: [{ tableId: 'BAG01' }], status: { connected: true },
   }))
-  calls.push(...[5, 6, 7, 8].map(priorityRead))
+  calls.push(...[4, 5, 6, 7].map(priorityRead))
 
   try {
-    blocked.shift().resolve({ rows: [] })
-    while (started.length < 5) await new Promise((resolve) => setImmediate(resolve))
-    assert.equal(started[4], 'standard')
+    while (started.length < 4) await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(started[3], 'standard')
   } finally {
     releaseAll = true
     while (blocked.length > 0) {

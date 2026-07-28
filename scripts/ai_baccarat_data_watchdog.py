@@ -235,6 +235,17 @@ def main():
                   f'最後資料：{last_status_text(status)}\n'
                   f'自動處理：{", ".join(attempted) or "不需要"}')
         healthy_state = {'alerting': False, 'last_ok_at': now}
+        last_failure = state.get('last_failure')
+        if state.get('alerting'):
+            last_failure = {
+                'kind': state.get('failure_kind'),
+                'first_alerted_at': state.get('first_alerted_at') or state.get('alerted_at'),
+                'last_checked_at': state.get('last_checked_at'),
+                'error': state.get('last_error'),
+                'error_at': state.get('last_error_at'),
+            }
+        if isinstance(last_failure, dict):
+            healthy_state['last_failure'] = last_failure
         if last_worker_restart_at:
             healthy_state['last_worker_restart_at'] = last_worker_restart_at
         save_state(healthy_state)

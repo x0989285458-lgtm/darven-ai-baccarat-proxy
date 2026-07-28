@@ -1950,26 +1950,32 @@ export function resolveBackendReadConnectionString(connectionString) {
   return raw
 }
 
-function createStrategyQueryScheduler(strategyDb, { maxConcurrent = 4, maxStandardConcurrent = 3, queueTimeoutMs = 30000 } = {}) {
+function createStrategyQueryScheduler(strategyDb, { maxConcurrent = 4, maxStandardConcurrent = 3, maxPriorityConcurrent = 3, queueTimeoutMs = 30000 } = {}) {
   const priorityQueue = []
   const standardQueue = []
   let active = 0
   let standardActive = 0
+  let priorityActive = 0
 
   function drain() {
     while (active < maxConcurrent) {
-      const item = (standardActive < maxStandardConcurrent ? standardQueue.shift() : null)
-        ?? priorityQueue.shift()
+      const item = priorityQueue.length > 0 && priorityActive < maxPriorityConcurrent
+        ? priorityQueue.shift()
+        : standardQueue.length > 0 && standardActive < maxStandardConcurrent
+          ? standardQueue.shift()
+          : null
       if (!item) return
       clearTimeout(item.timeout)
       active += 1
-      if (!item.priority) standardActive += 1
+      if (item.priority) priorityActive += 1
+      else standardActive += 1
       Promise.resolve()
         .then(() => strategyDb.query(...item.args))
         .then(item.resolve, item.reject)
         .finally(() => {
           active -= 1
-          if (!item.priority) standardActive -= 1
+          if (item.priority) priorityActive -= 1
+          else standardActive -= 1
           drain()
         })
     }
@@ -2112,44 +2118,6 @@ export function createSupabaseIngestionClient({
     })
   }
 
-  const pendingDirectSettlements = []
-  let directSettlementFlushScheduled = false
-
-  function enqueueDirectSettlement(body) {
-    return new Promise((resolve, reject) => {
-      pendingDirectSettlements.push({ body, resolve, reject })
-      if (directSettlementFlushScheduled) return
-      directSettlementFlushScheduled = true
-      queueMicrotask(flushDirectSettlements)
-    })
-  }
-
-  async function flushDirectSettlements() {
-    directSettlementFlushScheduled = false
-    const batch = pendingDirectSettlements.splice(0)
-    if (batch.length === 0) return
-    try {
-      const result = await priorityStrategyDb.query({
-        text: `select item.ordinality::integer as ordinality,
-          public.settle_v105_prediction(item.payload->'p_roadmap', item.payload->'p_settlement') as acknowledgement
-          from jsonb_array_elements($1::jsonb) with ordinality as item(payload, ordinality)
-          order by item.ordinality`,
-        values: [JSON.stringify(batch.map((item) => item.body))],
-      })
-      const rows = Array.isArray(result?.rows) ? result.rows : []
-      if (rows.length !== batch.length) throw new Error('Direct DB settlement batch returned incomplete acknowledgements')
-      for (let index = 0; index < batch.length; index += 1) {
-        const acknowledgement = rows[index]?.acknowledgement
-        if (!acknowledgement || typeof acknowledgement !== 'object' || Array.isArray(acknowledgement)) {
-          throw new Error('Direct DB settle_v105_prediction returned invalid acknowledgement')
-        }
-        batch[index].resolve(acknowledgement)
-      }
-    } catch (error) {
-      for (const item of batch) item.reject(error)
-    }
-  }
-
   async function postDurableRest(path, body, conflict, options = {}) {
     if (strategyDb && typeof strategyDb.query === 'function') {
       if (path === 'cloud_capture_status') {
@@ -2185,7 +2153,6 @@ export function createSupabaseIngestionClient({
         })
         return []
       }
-      if (path === 'rpc/settle_v105_prediction') return enqueueDirectSettlement(body)
       const directRpc = {
         'rpc/settle_v105_prediction': {
           text: 'select public.settle_v105_prediction($1::jsonb, $2::jsonb) as settle_v105_prediction',
@@ -3244,7 +3211,7 @@ export function createSupabaseIngestionClient({
                 side_actual_results: compactPrediction.prediction_features?.side_actual_results ?? {},
                 side_hits: compactPrediction.prediction_features?.side_hits ?? {},
               },
-            }, undefined, { requireObject: true })
+            }, undefined, { requireObject: true, priority: true })
           : await postDurableRest('rpc/persist_v105_settled_round', {
               p_roadmap: compactEvent,
               p_prediction: compactPrediction,

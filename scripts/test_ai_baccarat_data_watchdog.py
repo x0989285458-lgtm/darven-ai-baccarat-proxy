@@ -197,6 +197,29 @@ class WatchdogRecoveryTests(unittest.TestCase):
             restart.assert_not_called()
             self.assertEqual(saved[-1]['failure_kind'], 'transport_unresolved')
 
+    def test_healthy_recovery_preserves_last_failure_evidence(self):
+        state = {
+            'alerting': True,
+            'failure_kind': 'proxy_unreachable',
+            'first_alerted_at': '2026-07-28T13:20:00+00:00',
+            'last_checked_at': '2026-07-28T13:23:00+00:00',
+            'last_error': 'TimeoutError: proxy timeout',
+            'last_error_at': '2026-07-28T13:23:00+00:00',
+        }
+        with patch.object(watchdog, 'load_state', return_value=state), \
+             patch.object(watchdog, 'inspect', return_value=(healthy_status(), 10, 1, True)), \
+             patch.object(watchdog, 'save_state') as save:
+            watchdog.main()
+        saved = save.call_args.args[0]
+        self.assertFalse(saved['alerting'])
+        self.assertEqual(saved['last_failure'], {
+            'kind': 'proxy_unreachable',
+            'first_alerted_at': '2026-07-28T13:20:00+00:00',
+            'last_checked_at': '2026-07-28T13:23:00+00:00',
+            'error': 'TimeoutError: proxy timeout',
+            'error_at': '2026-07-28T13:23:00+00:00',
+        })
+
     def test_restart_budget_blocks_repeated_disconnect_after_a_brief_recovery(self):
         disconnected = (formal_worker_snapshot_error(), 0, 999, False)
         recent = datetime.now(timezone.utc).isoformat()

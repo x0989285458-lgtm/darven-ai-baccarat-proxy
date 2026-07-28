@@ -14,7 +14,7 @@ test('formal backlog delivery preserves the stable five-second cadence with boun
   assert.match(server, /PUSH_MAX_DRAIN_PER_TICK\s*\?\?\s*5/)
 })
 
-test('one tick drains a bounded restored backlog in FIFO order', async (t) => {
+test('one tick re-collects after a slow ACK before continuing the bounded FIFO drain', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-bounded-drain-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
@@ -28,12 +28,16 @@ test('one tick drains a bounded restored backlog in FIFO order', async (t) => {
     observedRoundKeys: [], acknowledgedRoundKeys: [],
   }))
   const sent = []
+  let captureCalls = 0
   let clock = 2000
   const pusher = createSnapshotPusher({
     targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
     maxDrainPerTick: 3,
     now: () => clock,
-    getSnapshot: async () => ({ sessionId: 'vm', buildVersion: '101', tables: [], rounds: [] }),
+    getSnapshot: async () => {
+      captureCalls += 1
+      return { sessionId: 'vm', buildVersion: '101', tables: [], rounds: [] }
+    },
     fetchImpl: async (_url, options) => {
       sent.push(JSON.parse(options.body))
       clock += 6 * 60 * 1000
@@ -44,6 +48,7 @@ test('one tick drains a bounded restored backlog in FIFO order', async (t) => {
   assert.equal(await pusher.tick(), true)
   assert.deepEqual(sent.map((entry) => entry.sequence), [1000, 1001, 1002])
   assert.deepEqual(sent.map((entry) => entry.timestamp), [2000, 362000, 722000])
+  assert.equal(captureCalls, 3)
   await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
 })
 

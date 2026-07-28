@@ -52,13 +52,20 @@ export function createSnapshotPusher({
     try {
       await restoreState()
       if (stateInvalid) return false
-      const timestamp = Number(now())
+      let timestamp = Number(now())
       await collectSnapshot(timestamp)
+      let lastCaptureAt = timestamp
       if (timestamp < nextAttemptAt || queue.length === 0) return false
 
       const drainLimit = Math.max(1, Number(maxDrainPerTick) || 1)
       let acknowledgedAny = false
       for (let drained = 0; drained < drainLimit && queue.length > 0; drained += 1) {
+        const currentTimestamp = Number(now()) || timestamp
+        if (drained > 0 && currentTimestamp - lastCaptureAt >= intervalMs) {
+          timestamp = currentTimestamp
+          await collectSnapshot(timestamp)
+          lastCaptureAt = timestamp
+        }
         const requestTimestamp = Math.max(timestamp, Number(now()) || timestamp)
         const delivery = buildDeliveryEnvelope(requestTimestamp)
         const envelope = delivery.envelope
