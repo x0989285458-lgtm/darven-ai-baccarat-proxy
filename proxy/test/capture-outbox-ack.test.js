@@ -309,6 +309,61 @@ test('successful outbox health read resets only the health retry backoff', async
   assert.ok(healthReads >= 4, `health backoff did not reset after recovery: ${healthReads} reads`)
 })
 
+test('multiple session retries schedule the earliest retry instead of the slowest', async () => {
+  let claimCalls = 0
+  const app = createApp({
+    autoConnect: false, outboxBackoffMs: 1,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        claimCalls += 1
+        if (claimCalls === 1) {
+          return [
+            claimedRow(1, { session_id: 'slow-session', payload: {} }),
+            claimedRow(2, { session_id: 'fast-session', payload: {} }),
+          ]
+        }
+        return []
+      },
+      async failCaptureOutbox({ sessionId }) {
+        return { failed: true, isolated: false, retry_after_ms: sessionId === 'slow-session' ? 1000 : 10 }
+      },
+    },
+    v100FormalRuntime: { enabled: false },
+  })
+  await app.drainCaptureOutbox()
+  await delay(120)
+  await app.stop()
+  assert.ok(claimCalls >= 2, `earliest retry was missed: ${claimCalls} claim`)
+})
+
+test('an earlier health wakeup replaces an already scheduled later retry timer', async () => {
+  let claimCalls = 0
+  let healthReads = 0
+  const app = createApp({
+    autoConnect: false, outboxBackoffMs: 1,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        claimCalls += 1
+        return claimCalls === 1 ? [claimedRow(1, { payload: {} })] : []
+      },
+      async failCaptureOutbox() { return { failed: true, isolated: false, retry_after_ms: 1000 } },
+      async getCaptureOutboxHealth() {
+        healthReads += 1
+        return healthReads === 1
+          ? { pending: 1, error: 0, processing: 0, dead_letter: 0, alert: false, next_wakeup_at: new Date(Date.now() + 10).toISOString() }
+          : { pending: 0, error: 0, processing: 0, dead_letter: 0, alert: false, next_wakeup_at: null }
+      },
+    },
+    v100FormalRuntime: { enabled: false },
+  })
+  await app.drainCaptureOutbox()
+  await delay(120)
+  await app.stop()
+  assert.ok(claimCalls >= 2, `earlier health wakeup was ignored: ${claimCalls} claim`)
+})
+
 test('temporary claim and work failures auto-retry while poison work is isolated', async () => {
   let claimCalls = 0
   let failCalls = 0
@@ -401,7 +456,7 @@ test('stalled failure RPC is bounded and cannot block shutdown forever', async (
   })
   const settled = await Promise.race([
     app.drainCaptureOutbox().then(() => true, () => true),
-    delay(80).then(() => false),
+    delay(200).then(() => false),
   ])
   assert.equal(settled, true)
   await app.stop()

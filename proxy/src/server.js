@@ -118,6 +118,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const ingestSessionLocks = new Map()
   let outboxDrainPromise = null
   let outboxWakeTimer = null
+  let outboxWakeAtMs = null
   let outboxWakePromise = null
   let resolveOutboxWake = null
   let outboxStopping = false
@@ -355,13 +356,27 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   }
 
   function scheduleCaptureOutboxDrain(delayMs = 0) {
-    if (outboxStopping || outboxWakeTimer) return outboxWakePromise
+    if (outboxStopping) return outboxWakePromise
+    const normalizedDelayMs = Math.max(0, Number(delayMs) || 0)
+    const targetWakeAtMs = Date.now() + normalizedDelayMs
+    if (outboxWakeTimer) {
+      if (Number.isFinite(outboxWakeAtMs) && outboxWakeAtMs <= targetWakeAtMs) return outboxWakePromise
+      clearTimeout(outboxWakeTimer)
+      outboxWakeTimer = null
+      outboxWakeAtMs = null
+      const resolveSupersededWake = resolveOutboxWake
+      outboxWakePromise = null
+      resolveOutboxWake = null
+      resolveSupersededWake?.()
+    }
     let resolveThisWake
     const thisWake = new Promise((resolve) => { resolveThisWake = resolve })
     outboxWakePromise = thisWake
     resolveOutboxWake = resolveThisWake
+    outboxWakeAtMs = targetWakeAtMs
     outboxWakeTimer = setTimeout(() => {
       outboxWakeTimer = null
+      outboxWakeAtMs = null
       if (outboxWakePromise === thisWake) outboxWakePromise = null
       if (resolveOutboxWake === resolveThisWake) resolveOutboxWake = null
       void drainCaptureOutbox()
@@ -369,7 +384,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         .finally(() => {
           resolveThisWake()
         })
-    }, Math.max(0, Number(delayMs) || 0))
+    }, normalizedDelayMs)
     outboxWakeTimer.unref?.()
     return thisWake
   }
@@ -393,7 +408,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       let processed = 0
       let failed = 0
       let shouldContinue = false
-      let nextWakeDelayMs = 0
+      let nextWakeDelayMs = null
       try {
         for (let batchNumber = 0; batchNumber < 10 && !outboxStopping; batchNumber += 1) {
           const rows = await supabaseClient.claimCaptureOutbox({ limit: 10 })
@@ -439,9 +454,12 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             }
             if (failureError) throw failureError
             shouldContinue = true
-            nextWakeDelayMs = failureAck?.isolated === true
+            const candidateWakeDelayMs = failureAck?.isolated === true
               ? 0
-              : Math.max(nextWakeDelayMs, Number(failureAck?.retry_after_ms) || resolvedOutboxBackoffMs)
+              : (Number(failureAck?.retry_after_ms) || resolvedOutboxBackoffMs)
+            nextWakeDelayMs = nextWakeDelayMs == null
+              ? candidateWakeDelayMs
+              : Math.min(nextWakeDelayMs, candidateWakeDelayMs)
           }
         }
           if (rows.length < 10) break
@@ -451,7 +469,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         retryCaptureOutboxDrain()
         throw error
       }
-      if (shouldContinue) scheduleCaptureOutboxDrain(nextWakeDelayMs)
+      if (shouldContinue) scheduleCaptureOutboxDrain(nextWakeDelayMs ?? 0)
       if (typeof supabaseClient?.getCaptureOutboxHealth === 'function') {
         try {
           const captureOutbox = await supabaseClient.getCaptureOutboxHealth()
@@ -1546,6 +1564,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       if (outboxWakeTimer) {
         clearTimeout(outboxWakeTimer)
         outboxWakeTimer = null
+        outboxWakeAtMs = null
         resolveOutboxWake?.()
         resolveOutboxWake = null
         outboxWakePromise = null
