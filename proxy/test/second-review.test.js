@@ -115,13 +115,16 @@ test('startup keeps the service reachable but prediction-degraded when strategy 
 })
 
 test('explicit live empty tables never resurrect a cached cloud prediction', async () => {
-  const stale = { ...table, tableId: 'BAG99', sourceUpdatedAt: new Date().toISOString() }
+  const nowMs = Date.parse('2026-07-29T15:00:00.000Z')
+  const staleAt = new Date(nowMs - 1_000).toISOString()
+  const stale = { ...table, tableId: 'BAG99', sourceUpdatedAt: staleAt }
   const app = createApp({
     autoConnect: false,
+    now: () => nowMs,
     requireVerifiedStrategy: false,
     supabaseClient: {
       configured: true,
-      getLatestCloudTableSnapshot: async () => ({ snapshot_at: new Date().toISOString(), tables: [stale] }),
+      getLatestCloudTableSnapshot: async () => ({ snapshot_at: staleAt, tables: [stale] }),
     },
   })
   app.state.setTables([table])

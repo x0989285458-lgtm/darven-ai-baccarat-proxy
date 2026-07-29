@@ -126,3 +126,25 @@ test('never skips a Final event from an invalid durable ledger even when its com
   await runtime.processSnapshot({ tables: [{ ...table(), round: 21 }], rounds: [{ ...round(), round: 21 }] })
   assert.deepEqual(applied, [21])
 })
+
+test('formal rank-ledger work is serialized so one capture cannot starve service requests', async () => {
+  let active = 0
+  let maxActive = 0
+  const writer = {
+    configured: true,
+    async readV100RankLedger(identity) {
+      active += 1
+      maxActive = Math.max(maxActive, active)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      active -= 1
+      return durable({ identity, completeThroughRound: 0, complete_through_round: 0, targetRound: 1 })
+    },
+    async applyV100RankLedgerEvent() { throw new Error('no rounds expected') },
+  }
+  const runtime = createV100FormalRuntime({ enabled: true, writer, source: 'mt-cloud' })
+  await runtime.processSnapshot({
+    tables: ['BAG01', 'BAG02', 'BAG03'].map((tableId) => ({ ...table(), tableId })),
+    rounds: [],
+  })
+  assert.equal(maxActive, 1)
+})

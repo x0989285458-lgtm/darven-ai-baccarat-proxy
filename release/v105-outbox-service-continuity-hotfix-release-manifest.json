@@ -1,0 +1,32 @@
+{
+  "releaseName": "v105抓牌Outbox服務不中斷修正版1",
+  "releaseVersion": "v105-outbox-service-continuity.1",
+  "gitTag": "v105-outbox-service-continuity.1",
+  "applicationVersion": "1.0.17",
+  "baseCommit": "7ec78bed6b7f87f12d40d1714373dc40736f72b6",
+  "strategyVersion": "v105",
+  "protocolVersion": "v105",
+  "databaseMigrationRequired": false,
+  "behavior": {
+    "outboxClaimLimit": 1,
+    "eventLoopYieldBetweenRows": true,
+    "formalIdentityConcurrency": 1,
+    "eventLoopYieldBetweenIdentities": true,
+    "predictionRulesChanged": false,
+    "predictionWeightsChanged": false,
+    "settlementSemanticsChanged": false
+  },
+  "deploymentOrder": [
+    "proxy-render-exact-commit",
+    "worker-vm-exact-commit",
+    "frontend-pages-exact-commit",
+    "watchdog-health-readback",
+    "live-five-minute-e2e"
+  ],
+  "rollback": {
+    "targetTag": "v105-capture-liveness.1",
+    "preserveQueueCursorJournal": true,
+    "preserveOutboxHistory": true,
+    "requireUnfinishedOutboxZeroBeforeConsumerRollback": true
+  }
+}

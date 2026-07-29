@@ -441,20 +441,25 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     return thisWake
   }
 
-  function retryCaptureOutboxDrain() {
+  function nextCaptureOutboxDrainRetryDelay() {
     outboxRetryCount += 1
-    const delayMs = Math.min(30000, resolvedOutboxBackoffMs * (2 ** Math.min(outboxRetryCount - 1, 5)))
-    scheduleCaptureOutboxDrain(delayMs)
+    return Math.min(30000, resolvedOutboxBackoffMs * (2 ** Math.min(outboxRetryCount - 1, 5)))
   }
 
-  function retryCaptureOutboxHealth() {
+  function nextCaptureOutboxHealthRetryDelay() {
     outboxHealthRetryCount += 1
-    const delayMs = Math.min(30000, resolvedOutboxBackoffMs * (2 ** Math.min(outboxHealthRetryCount - 1, 5)))
-    scheduleCaptureOutboxDrain(delayMs)
+    return Math.min(30000, resolvedOutboxBackoffMs * (2 ** Math.min(outboxHealthRetryCount - 1, 5)))
   }
 
   function drainCaptureOutbox() {
     if (outboxDrainPromise) return outboxDrainPromise
+    let deferredWakeDelayMs = null
+    const deferWake = (delayMs) => {
+      const normalizedDelayMs = Math.max(0, Number(delayMs) || 0)
+      deferredWakeDelayMs = deferredWakeDelayMs == null
+        ? normalizedDelayMs
+        : Math.min(deferredWakeDelayMs, normalizedDelayMs)
+    }
     outboxDrainPromise = (async () => {
       if (outboxStopping || typeof supabaseClient?.claimCaptureOutbox !== 'function') return { processed: 0, failed: 0 }
       let processed = 0
@@ -462,11 +467,10 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       let shouldContinue = false
       let nextWakeDelayMs = null
       try {
-        for (let batchNumber = 0; batchNumber < 10 && !outboxStopping; batchNumber += 1) {
-          const rows = await supabaseClient.claimCaptureOutbox({ limit: 10 })
-          outboxRetryCount = 0
-        if (!Array.isArray(rows) || rows.length === 0) break
-        for (const row of rows) {
+        const rows = await supabaseClient.claimCaptureOutbox({ limit: 1 })
+        outboxRetryCount = 0
+        if (Array.isArray(rows) && rows.length > 0) {
+          const row = rows[0]
           const sessionId = String(row?.session_id ?? '')
           const sequence = Number(row?.sequence)
           const claimToken = String(row?.claim_token ?? '')
@@ -505,23 +509,18 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               }
             }
             if (failureError) throw failureError
-            shouldContinue = true
-            const candidateWakeDelayMs = failureAck?.isolated === true
-              ? 0
-              : (Number(failureAck?.retry_after_ms) || resolvedOutboxBackoffMs)
-            nextWakeDelayMs = nextWakeDelayMs == null
-              ? candidateWakeDelayMs
-              : Math.min(nextWakeDelayMs, candidateWakeDelayMs)
+            // The durable row owns its retry schedule. Continue immediately so another
+            // session is never held behind this row's backoff.
           }
-        }
-          if (rows.length < 10) break
-          if (batchNumber === 9) shouldContinue = true
+          shouldContinue = true
+          nextWakeDelayMs = 0
+          await new Promise((resolve) => setImmediate(resolve))
         }
       } catch (error) {
-        retryCaptureOutboxDrain()
+        deferWake(nextCaptureOutboxDrainRetryDelay())
         throw error
       }
-      if (shouldContinue) scheduleCaptureOutboxDrain(nextWakeDelayMs ?? 0)
+      if (shouldContinue) deferWake(nextWakeDelayMs ?? 0)
       if (typeof supabaseClient?.getCaptureOutboxHealth === 'function') {
         try {
           const captureOutbox = await supabaseClient.getCaptureOutboxHealth()
@@ -530,15 +529,18 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           const nextWakeAt = Date.parse(captureOutbox?.next_wakeup_at ?? '')
           const unfinished = Number(captureOutbox?.pending) + Number(captureOutbox?.error) + Number(captureOutbox?.processing)
           if (!outboxStopping && unfinished > 0 && Number.isFinite(nextWakeAt)) {
-            scheduleCaptureOutboxDrain(Math.max(0, nextWakeAt - Date.now() + 5))
+            deferWake(Math.max(0, nextWakeAt - Date.now() + 5))
           }
         } catch (error) {
           state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
-          retryCaptureOutboxHealth()
+          deferWake(nextCaptureOutboxHealthRetryDelay())
         }
       }
       return { processed, failed }
-    })().finally(() => { outboxDrainPromise = null })
+    })().finally(() => {
+      outboxDrainPromise = null
+      if (!outboxStopping && deferredWakeDelayMs != null) scheduleCaptureOutboxDrain(deferredWakeDelayMs)
+    })
     return outboxDrainPromise
   }
 

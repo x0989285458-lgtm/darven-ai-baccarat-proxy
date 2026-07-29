@@ -36,7 +36,7 @@ test('v105 lifecycle pending index is concurrent, exact, partial, and independen
   assert.match(rollback, /drop index concurrently if exists public\.daily_prediction_results_v105_pending_lifecycle_idx/i)
 })
 
-test('formal rank ledger preserves per-identity order while processing independent tables concurrently', async () => {
+test('formal rank ledger preserves per-identity order while serializing independent tables for service responsiveness', async () => {
   const activeByTable = new Map()
   const appliedByTable = new Map()
   let active = 0
@@ -65,10 +65,10 @@ test('formal rank ledger preserves per-identity order while processing independe
   assert.deepEqual(appliedByTable.get('BAG01'), [1, 2])
   assert.deepEqual(appliedByTable.get('BAG02'), [1, 2])
   assert.equal(maxPerTable, 1)
-  assert.equal(maxActive, 2)
+  assert.equal(maxActive, 1)
 })
 
-test('formal identity fan-out is bounded to four concurrent durable operations', async () => {
+test('formal identity fan-out is serialized to one durable operation', async () => {
   let active = 0
   let maxActive = 0
   const writer = {
@@ -87,8 +87,7 @@ test('formal identity fan-out is bounded to four concurrent durable operations',
 
   await runtime.processSnapshot({ tables: [], rounds })
 
-  assert.ok(maxActive >= 2)
-  assert.ok(maxActive <= 4, `expected at most 4 concurrent identities, got ${maxActive}`)
+  assert.equal(maxActive, 1)
 })
 
 test('formal settlement preserves per-table order while processing independent tables concurrently', async () => {
@@ -216,7 +215,7 @@ test('failed formal fan-out drains every identity before the next snapshot start
 })
 
 
-test('overlapping snapshot calls share the same four-identity concurrency budget', async () => {
+test('overlapping snapshot calls share the same single-identity concurrency budget', async () => {
   let active = 0
   let maxActive = 0
   const writer = {
@@ -235,11 +234,10 @@ test('overlapping snapshot calls share the same four-identity concurrency budget
     tables: [],
     rounds: [finalRound(`BAG${String(index + 1).padStart(2, '0')}`, 1)],
   })))
-  assert.ok(maxActive >= 2)
-  assert.ok(maxActive <= 4, `expected one shared limit of 4, got ${maxActive}`)
+  assert.equal(maxActive, 1)
 })
 
-test('overlapping snapshots keep independent identities concurrent', async () => {
+test('overlapping snapshots serialize independent identities for service responsiveness', async () => {
   let active = 0
   let maxActive = 0
   const writer = {
@@ -258,7 +256,7 @@ test('overlapping snapshots keep independent identities concurrent', async () =>
     runtime.processSnapshot({ tables: [], rounds: [finalRound('BAG01', 1)] }),
     runtime.processSnapshot({ tables: [], rounds: [finalRound('BAG02', 1)] }),
   ])
-  assert.equal(maxActive, 2)
+  assert.equal(maxActive, 1)
 })
 
 test('formal Final settlement keeps a reserved checkout when concurrent ingest envelopes persist ancillary data', async () => {

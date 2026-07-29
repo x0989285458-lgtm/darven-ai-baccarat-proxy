@@ -8,7 +8,8 @@ function identityKey(source, tableId, shoe) {
   return JSON.stringify([String(source ?? ''), String(tableId ?? ''), String(shoe ?? '')])
 }
 
-const MAX_FORMAL_IDENTITY_CONCURRENCY = 4
+const MAX_FORMAL_IDENTITY_CONCURRENCY = 1
+const yieldToServiceRequests = () => new Promise((resolve) => setImmediate(resolve))
 
 async function settleWithConcurrency(items, task, concurrency = MAX_FORMAL_IDENTITY_CONCURRENCY) {
   const results = new Array(items.length)
@@ -22,6 +23,7 @@ async function settleWithConcurrency(items, task, concurrency = MAX_FORMAL_IDENT
       } catch (reason) {
         results[index] = { status: 'rejected', reason }
       }
+      await yieldToServiceRequests()
     }
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()))

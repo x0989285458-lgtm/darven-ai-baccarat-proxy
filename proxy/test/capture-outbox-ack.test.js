@@ -202,23 +202,38 @@ test('rawOutboxMs measures the real durable DB acknowledgement latency', async (
   assert.ok(app.state.snapshot().status.durableTimings.rawOutboxMs >= 10)
 })
 
-test('bounded outbox passes automatically continue beyond 100 rows', async () => {
+test('bounded outbox passes automatically continue beyond 100 rows without monopolizing one event-loop turn', async () => {
   const rows = Array.from({ length: 101 }, (_, index) => claimedRow(index + 1))
+  const claimLimits = []
   let completed = 0
+  let eventLoopYielded = false
   const app = createApp({
     autoConnect: false,
     outboxBackoffMs: 1,
     supabaseClient: {
       configured: true,
-      async claimCaptureOutbox({ limit }) { return rows.splice(0, limit) },
-      async completeCaptureOutbox() { completed += 1; return { completed: true } },
+      async claimCaptureOutbox({ limit }) {
+        claimLimits.push(limit)
+        if (completed === 1) assert.equal(eventLoopYielded, true, 'next durable row must start in a later event-loop turn')
+        return rows.splice(0, limit)
+      },
+      async completeCaptureOutbox() {
+        completed += 1
+        if (completed === 1) setImmediate(() => { eventLoopYielded = true })
+        return { completed: true }
+      },
       async failCaptureOutbox() { assert.fail('valid rows must not fail') },
+      async getCaptureOutboxHealth() {
+        await delay(10)
+        return { pending: rows.length, error: 0, processing: 0, dead_letter: 0, alert: false, next_wakeup_at: null }
+      },
     },
     v100FormalRuntime: { enabled: false },
   })
   await app.drainCaptureOutbox()
   await app.waitForCaptureOutboxIdle()
   assert.equal(completed, 101)
+  assert.ok(claimLimits.every((limit) => limit === 1), 'each pass must claim exactly one durable row')
 })
 
 test('drain publishes dead-letter health for alerts and operations gates', async () => {
@@ -329,7 +344,7 @@ test('successful outbox health read resets only the health retry backoff', async
     },
   })
   await app.drainCaptureOutbox()
-  await delay(260)
+  await delay(450)
   await app.stop()
   assert.ok(healthReads >= 4, `health backoff did not reset after recovery: ${healthReads} reads`)
 })
