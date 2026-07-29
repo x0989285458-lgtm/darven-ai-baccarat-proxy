@@ -2,6 +2,7 @@ import { Pool } from 'pg'
 import { writeLocalBacktestResult } from './local-backtest-store.js'
 import { buildStrategyAnalysis } from './strategy-analysis.js'
 import { createFormalDailySummaryLoader } from './formal-daily-memory-loader.js'
+import { resolveBackendReadConnectionString } from './supabase-writer.js'
 
 const DEFAULT_PROJECT_SLUG = 'ai-baccarat'
 
@@ -10,11 +11,20 @@ export function createOnlineCoreClient({
   serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_ANON_KEY,
   dbConnectionString = process.env.SUPABASE_DB_CONNECTION_STRING,
   fetchImpl = globalThis.fetch,
+  poolFactory = (config) => new Pool(config),
 } = {}) {
   const restConfigured = Boolean(url && serviceKey && fetchImpl)
   const dbConfigured = Boolean(dbConnectionString)
   const configured = restConfigured || dbConfigured
-  const pool = dbConfigured ? new Pool({ connectionString: dbConnectionString, ssl: { rejectUnauthorized: false }, max: 2 }) : null
+  const pool = dbConfigured ? poolFactory({
+    connectionString: resolveBackendReadConnectionString(dbConnectionString),
+    ssl: { rejectUnauthorized: false },
+    max: 2,
+    connectionTimeoutMillis: 9000,
+    query_timeout: 9000,
+    statement_timeout: 8500,
+    idleTimeoutMillis: 30000,
+  }) : null
   const loadDailySummaryFromDb = pool ? createFormalDailySummaryLoader({ db: pool }) : null
 
   async function request(path, { method = 'GET', body, query = {} } = {}) {

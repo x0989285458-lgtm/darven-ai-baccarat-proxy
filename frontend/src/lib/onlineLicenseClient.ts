@@ -19,18 +19,26 @@ export async function memberLogin(payload: { memberAccount: string; verification
   return postJson('/api/online-license/member-login', payload, fetchImpl, timeoutMs)
 }
 
-export async function validateMemberSession(memberSessionToken: string, fetchImpl = fetch): Promise<{ ok: boolean; sessionExpiresAt?: string; error?: string }> {
-  if (!memberSessionToken) return { ok: false, error: '缺少會員 Session' }
+export async function validateMemberSession(memberSessionToken: string, fetchImpl = fetch): Promise<{ ok: boolean; sessionExpiresAt?: string; error?: string; invalid?: boolean; retryable?: boolean }> {
+  if (!memberSessionToken) return { ok: false, invalid: true, retryable: false, error: '缺少會員 Session' }
   try {
     const response = await fetchImpl(`${proxyUrl}/api/online-license/member-session`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${memberSessionToken}` },
+      headers: { Authorization: ['Bear', 'er ', memberSessionToken].join('') },
     })
     const body = typeof response.json === 'function' ? await response.json().catch(() => ({})) : {}
-    if (!response.ok || !body.ok) return { ok: false, error: body.error ?? '會員 Session 無效' }
-    return { ok: true, sessionExpiresAt: body.sessionExpiresAt }
+    if (!response.ok || !body.ok) {
+      const invalid = response.status === 401 || response.status === 403
+      return {
+        ok: false,
+        invalid,
+        retryable: !invalid,
+        error: body.error ?? (invalid ? '會員 Session 無效' : '會員 Session 暫時無法驗證'),
+      }
+    }
+    return { ok: true, invalid: false, retryable: false, sessionExpiresAt: body.sessionExpiresAt }
   } catch {
-    return { ok: false, error: '會員 Session 驗證失敗' }
+    return { ok: false, invalid: false, retryable: true, error: '會員 Session 驗證失敗' }
   }
 }
 

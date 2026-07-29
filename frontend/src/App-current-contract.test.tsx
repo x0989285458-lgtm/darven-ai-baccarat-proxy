@@ -99,6 +99,30 @@ describe('App prediction and session contract', () => {
     expect(screen.getByText(/建置版本不符.*預測暫不可用/)).toBeInTheDocument()
   })
 
+  it('keeps the opaque session across a transient 502 and enters the dashboard after retry', async () => {
+    let validationCalls = 0
+    const row = table()
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/online-license/member-session')) {
+        validationCalls += 1
+        if (validationCalls === 1) return Promise.resolve({ ok: false, status: 502, json: () => Promise.resolve({}) })
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, sessionExpiresAt: new Date(Date.now() + 600000).toISOString() }) })
+      }
+      if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([row]) })
+      if (url.includes('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v105' }) })
+      if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ configured: true }) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, maintenanceMode: false, items: [], reports: [], strategies: [] }) })
+    }))
+    window.history.pushState({}, '', '/')
+    window.sessionStorage.setItem('darven-member-session-token', 'opaque-member-token')
+    window.sessionStorage.setItem('darven-member-session-expires-at', new Date(Date.now() + 600000).toISOString())
+    render(<App />)
+
+    expect(await screen.findByLabelText('副項目預測機率', {}, { timeout: 4000 })).toBeInTheDocument()
+    expect(validationCalls).toBe(2)
+    expect(window.sessionStorage.getItem('darven-member-session-token')).toBe('opaque-member-token')
+  })
+
   it('clears the opaque session immediately when a protected tables request returns 401', async () => {
     stubBackend(table(), 401)
     await renderMemberApp()

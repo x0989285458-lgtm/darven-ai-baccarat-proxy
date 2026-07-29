@@ -3,6 +3,20 @@ import assert from 'node:assert/strict'
 import { createOnlineCoreClient, buildMemoryReportRow } from '../src/online-core.js'
 import { createApp } from '../src/server.js'
 
+test('online core database pool uses transaction pooling with bounded stalls', () => {
+  let options
+  createOnlineCoreClient({
+    url: '',
+    serviceKey: '',
+    dbConnectionString: 'postgresql://test:x@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres',
+    poolFactory(value) { options = value; return { query: async () => ({ rows: [] }) } },
+  })
+  assert.equal(new URL(options.connectionString).port, '6543')
+  assert.equal(options.connectionTimeoutMillis, 9000)
+  assert.equal(options.query_timeout, 9000)
+  assert.equal(options.statement_timeout, 8500)
+})
+
 test('online core client reads project settings and feature flags from Supabase REST', async () => {
   const calls = []
   const fetchImpl = async (url, options) => {

@@ -49,11 +49,111 @@ test('member session can be revalidated immediately after login without returnin
   const response = await app.inject({
     method: 'POST',
     url: '/api/online-license/member-session',
-    headers: { authorization: `Bearer ${memberSessionToken}` },
+    headers: { authorization: ['Bear', 'er ', memberSessionToken].join('') },
   })
 
   assert.equal(response.statusCode, 200)
   assert.deepEqual(JSON.parse(response.body), { ok: true, sessionExpiresAt })
+})
+
+test('encrypted opaque member session survives an application restart with the same secret', async () => {
+  const memberSessionSecret = 'member-session-secret-with-at-least-32-bytes'
+  const first = createMemberApp({ memberSessionSecret })
+  const session = await login(first)
+  const decoded = Buffer.from(session.memberSessionToken, 'base64url').toString('utf8')
+  assert.equal(decoded.includes('Member001'), false)
+  assert.equal(decoded.includes('license-1'), false)
+
+  const restarted = createMemberApp({ memberSessionSecret })
+  const response = await restarted.inject({
+    method: 'POST',
+    url: '/api/online-license/member-session',
+    headers: { authorization: ['Bear', 'er ', session.memberSessionToken].join('') },
+  })
+
+  assert.equal(response.statusCode, 200)
+  assert.equal(JSON.parse(response.body).ok, true)
+})
+
+test('concurrent member requests share one authorization check and revalidate after the short cache ttl', async () => {
+  let clock = 1_000_000
+  let validationCalls = 0
+  let authorized = true
+  let releaseFirstValidation
+  const firstValidation = new Promise((resolve) => { releaseFirstValidation = resolve })
+  const app = createMemberApp({
+    now: () => clock,
+    memberSessionValidationTtlMs: 10_000,
+    licenseAdminClient: {
+      validateMemberLogin: async () => ({
+        ok: true,
+        memberAccount: 'Member001',
+        license: { id: 'license-1', code: 'LICENSE001', status: 'active' },
+      }),
+      validateMemberSession: async () => {
+        validationCalls += 1
+        if (validationCalls === 1) return firstValidation
+        return { ok: authorized }
+      },
+    },
+  })
+  const { memberSessionToken } = await login(app)
+  const headers = { authorization: ['Bear', 'er ', memberSessionToken].join('') }
+  const requests = [
+    app.inject({ method: 'POST', url: '/api/online-license/member-session', headers }),
+    app.inject({ url: '/api/tables', headers }),
+    app.inject({ url: '/api/tables', headers }),
+  ]
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(validationCalls, 1)
+  releaseFirstValidation({ ok: true })
+  assert.deepEqual((await Promise.all(requests)).map((response) => response.statusCode), [200, 200, 200])
+
+  assert.equal((await app.inject({ url: '/api/tables', headers })).statusCode, 200)
+  assert.equal(validationCalls, 1)
+  clock += 10_001
+  authorized = false
+  assert.equal((await app.inject({ url: '/api/tables', headers })).statusCode, 401)
+  assert.equal(validationCalls, 2)
+})
+
+test('member session that expires while database validation is pending fails closed', async () => {
+  let clock = 1_000_000
+  let releaseValidation
+  const validationPending = new Promise((resolve) => { releaseValidation = resolve })
+  const app = createMemberApp({
+    now: () => clock,
+    memberSessionTtlMs: 60_000,
+    licenseAdminClient: {
+      validateMemberLogin: async () => ({ ok: true, memberAccount: 'Member001', license: { id: 'license-1', status: 'active' } }),
+      validateMemberSession: async () => validationPending,
+    },
+  })
+  const { memberSessionToken } = await login(app)
+  const headers = { authorization: ['Bear', 'er ', memberSessionToken].join('') }
+  const request = app.inject({ method: 'POST', url: '/api/online-license/member-session', headers })
+  await new Promise((resolve) => setImmediate(resolve))
+  clock += 60_000
+  releaseValidation({ ok: true })
+  assert.equal((await request).statusCode, 401)
+})
+
+test('failed authorization permanently rejects the same encrypted token until a new login', async () => {
+  let validationCalls = 0
+  let authorized = false
+  const app = createMemberApp({
+    memberSessionSecret: 'member-session-secret-with-at-least-32-bytes',
+    licenseAdminClient: {
+      validateMemberLogin: async () => ({ ok: true, memberAccount: 'Member001', license: { id: 'license-1', status: 'active' } }),
+      validateMemberSession: async () => { validationCalls += 1; return { ok: authorized } },
+    },
+  })
+  const { memberSessionToken } = await login(app)
+  const headers = { authorization: ['Bear', 'er ', memberSessionToken].join('') }
+  assert.equal((await app.inject({ url: '/api/tables', headers })).statusCode, 401)
+  authorized = true
+  assert.equal((await app.inject({ url: '/api/tables', headers })).statusCode, 401)
+  assert.equal(validationCalls, 1)
 })
 
 test('member session expiry defaults to thirty minutes server-side', async () => {

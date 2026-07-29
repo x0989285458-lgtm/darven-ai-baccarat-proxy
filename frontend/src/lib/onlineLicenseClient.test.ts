@@ -23,7 +23,7 @@ describe('onlineLicenseClient ', () => {
   })
 
   it('validates the short-lived member session through the backend bearer token flow', async () => {
-    const fetchImpl = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, sessionExpiresAt: '2026-07-13T20:30:00.000Z' }) })) as unknown as typeof fetch
+    const fetchImpl = vi.fn(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, sessionExpiresAt: '2026-07-13T20:30:00.000Z' }) })) as unknown as typeof fetch
     const result = await validateMemberSession('member-session-1', fetchImpl)
 
     expect(result.ok).toBe(true)
@@ -32,6 +32,12 @@ describe('onlineLicenseClient ', () => {
       method: 'POST',
       headers: expect.objectContaining({ Authorization: 'Bearer member-session-1' }),
     }))
+  })
+
+  it('classifies a transient member session 502 as retryable instead of invalid', async () => {
+    const fetchImpl = vi.fn(() => Promise.resolve({ ok: false, status: 502, json: () => Promise.resolve({}) })) as unknown as typeof fetch
+    const result = await validateMemberSession('member-session-1', fetchImpl)
+    expect(result).toEqual(expect.objectContaining({ ok: false, retryable: true, invalid: false }))
   })
 
   it('posts agent login using agentAccount only', async () => {

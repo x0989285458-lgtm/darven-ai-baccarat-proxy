@@ -33,6 +33,40 @@ const WORKER_PROTOCOL_BUILD_VERSION = '105'
 const WORKER_PROTOCOL_VERSION = 'v105'
 const LIFECYCLE_IDENTITIES_PER_TABLE = 256
 const LIFECYCLE_SHOES_PER_TABLE = 64
+const MEMBER_SESSION_TOKEN_VERSION = 1
+
+function deriveMemberSessionKey(secret) {
+  const value = String(secret ?? '')
+  return value ? crypto.createHash('sha256').update(value).digest() : null
+}
+
+function sealMemberSession(session, key) {
+  const iv = crypto.randomBytes(12)
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv)
+  const encrypted = Buffer.concat([cipher.update(JSON.stringify(session), 'utf8'), cipher.final()])
+  const tag = cipher.getAuthTag()
+  return Buffer.concat([Buffer.from([MEMBER_SESSION_TOKEN_VERSION]), iv, tag, encrypted]).toString('base64url')
+}
+
+function openMemberSession(token, key) {
+  try {
+    const value = Buffer.from(String(token ?? ''), 'base64url')
+    if (value.length <= 29 || value[0] !== MEMBER_SESSION_TOKEN_VERSION) return null
+    const iv = value.subarray(1, 13)
+    const tag = value.subarray(13, 29)
+    const encrypted = value.subarray(29)
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv)
+    decipher.setAuthTag(tag)
+    const session = JSON.parse(Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8'))
+    if (!session || typeof session !== 'object' || Array.isArray(session)
+      || typeof session.memberAccount !== 'string' || !session.memberAccount
+      || typeof session.licenseId !== 'string' || !session.licenseId
+      || !Number.isFinite(session.expiresAtMs)) return null
+    return session
+  } catch {
+    return null
+  }
+}
 
 function acceptLifecycleScreenIdentity(guardsByTable, { tableId, shoe, visibleRound }) {
   const identity = `${tableId}:${shoe}:${visibleRound}`
@@ -99,7 +133,7 @@ export function resolveFrontendCorsOrigin(configuredOrigin, requestOrigin) {
   }
 }
 
-export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 30000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), v104FormalRequestTimeoutMs = Number(process.env.V104_FORMAL_REQUEST_TIMEOUT_MS ?? 10000), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null, v104ShadowRuntime = null, v104IterationShadowRuntime = null, v105ShadowRuntime = null, v105ShadowV7Runtime = null, v105ShadowV8Runtime = null, v105ShadowV9Runtime = null, v104FormalRuntime = null, dailyMemoryRollover = null } = {}) {
+export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 30000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionSecret = process.env.MEMBER_SESSION_SECRET, memberSessionValidationTtlMs = Number(process.env.MEMBER_SESSION_VALIDATION_TTL_MS ?? 0), v104FormalRequestTimeoutMs = Number(process.env.V104_FORMAL_REQUEST_TIMEOUT_MS ?? 10000), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null, v104ShadowRuntime = null, v104IterationShadowRuntime = null, v105ShadowRuntime = null, v105ShadowV7Runtime = null, v105ShadowV8Runtime = null, v105ShadowV9Runtime = null, v104FormalRuntime = null, dailyMemoryRollover = null } = {}) {
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
     CAPTURE_SOURCE: requestedCaptureSource,
@@ -135,6 +169,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const settlingPredictionPromises = new Map()
   const lifecycleGuardsByTable = new Map()
   const memberSessions = new Map()
+  const memberSessionKey = deriveMemberSessionKey(memberSessionSecret)
+  const memberSessionValidationCache = new Map()
+  const memberSessionValidationInFlight = new Map()
+  const memberSessionRejectedUntil = new Map()
+  const resolvedMemberSessionValidationTtlMs = Math.max(0, Number(memberSessionValidationTtlMs) || 0)
   const recentTablePerformance = createRecentTablePerformanceStore({ windowSize: 60 })
   const resolvedDailyMemoryRollover = dailyMemoryRollover ?? (
     onlineCoreClient?.configured === true
@@ -961,46 +1000,87 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
 
   function issueMemberSession(loginResult = {}) {
     const expiresAtMs = now() + resolvedMemberSessionTtlMs
-    const memberSessionToken = crypto.randomBytes(32).toString('base64url')
     for (const [token, session] of memberSessions) {
       if (session.expiresAtMs <= now()) memberSessions.delete(token)
     }
-    memberSessions.set(memberSessionToken, {
+    const session = {
       memberAccount: loginResult.memberAccount,
       licenseId: loginResult.license?.id ?? null,
       authorizationVersion: loginResult.license?.updated_at ?? loginResult.license?.updatedAt ?? null,
       expiresAtMs,
-    })
+    }
+    const memberSessionToken = memberSessionKey
+      ? sealMemberSession(session, memberSessionKey)
+      : crypto.randomBytes(32).toString('base64url')
+    memberSessions.set(memberSessionToken, session)
     return { memberSessionToken, sessionExpiresAt: new Date(expiresAtMs).toISOString() }
+  }
+
+  function resolveMemberSession(token) {
+    const normalizedToken = String(token ?? '')
+    const rejectedUntilMs = memberSessionRejectedUntil.get(normalizedToken)
+    if (rejectedUntilMs != null) {
+      if (rejectedUntilMs > now()) return null
+      memberSessionRejectedUntil.delete(normalizedToken)
+    }
+    let session = memberSessions.get(normalizedToken) ?? null
+    if (!session && memberSessionKey) {
+      session = openMemberSession(normalizedToken, memberSessionKey)
+      if (session) memberSessions.set(normalizedToken, session)
+    }
+    return session
   }
 
   async function isMemberSessionAuthorized(headers = {}) {
     if (!memberAuthRequired) return true
     const token = extractBearerToken(headers.authorization)
-    const session = token ? memberSessions.get(String(token)) : null
+    const session = token ? resolveMemberSession(token) : null
     if (!session || session.expiresAtMs <= now()) {
-      if (token) memberSessions.delete(String(token))
+      if (token) {
+        memberSessions.delete(String(token))
+        memberSessionValidationCache.delete(String(token))
+      }
       return false
     }
-    try {
-      if (typeof licenseAdminClient.validateMemberSession !== 'function') {
-        memberSessions.delete(String(token))
-        return false
-      }
-      const validation = await licenseAdminClient.validateMemberSession({
-        memberAccount: session.memberAccount,
-        licenseId: session.licenseId,
-        authorizationVersion: session.authorizationVersion,
+    const normalizedToken = String(token)
+    const cached = memberSessionValidationCache.get(normalizedToken)
+    if (cached && cached.validUntilMs > now()) return cached.ok === true
+    if (cached) memberSessionValidationCache.delete(normalizedToken)
+
+    let validationPromise = memberSessionValidationInFlight.get(normalizedToken)
+    if (!validationPromise) {
+      validationPromise = (async () => {
+        try {
+          if (typeof licenseAdminClient.validateMemberSession !== 'function') return false
+          const validation = await licenseAdminClient.validateMemberSession({
+            memberAccount: session.memberAccount,
+            licenseId: session.licenseId,
+            authorizationVersion: session.authorizationVersion,
+          })
+          return validation?.ok === true
+        } catch {
+          return false
+        }
+      })().then((ok) => {
+        const authorized = ok && session.expiresAtMs > now()
+        if (authorized && resolvedMemberSessionValidationTtlMs > 0) {
+          memberSessionValidationCache.set(normalizedToken, {
+            ok: true,
+            validUntilMs: Math.min(session.expiresAtMs, now() + resolvedMemberSessionValidationTtlMs),
+          })
+        }
+        if (!authorized) {
+          memberSessions.delete(normalizedToken)
+          memberSessionValidationCache.delete(normalizedToken)
+          if (session.expiresAtMs > now()) memberSessionRejectedUntil.set(normalizedToken, session.expiresAtMs)
+        }
+        return authorized
+      }).finally(() => {
+        memberSessionValidationInFlight.delete(normalizedToken)
       })
-      if (!validation?.ok) {
-        memberSessions.delete(String(token))
-        return false
-      }
-      return true
-    } catch {
-      memberSessions.delete(String(token))
-      return false
+      memberSessionValidationInFlight.set(normalizedToken, validationPromise)
     }
+    return validationPromise
   }
 
   function requireAdminSession(payload = {}, requestUrl, headers = {}) {

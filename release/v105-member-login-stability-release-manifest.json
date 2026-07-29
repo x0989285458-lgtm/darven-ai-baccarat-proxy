@@ -1,0 +1,32 @@
+{
+  "releaseName": "v105會員登入穩定修正版1",
+  "applicationVersion": "1.0.15",
+  "releaseVersion": "v105-member-login-stability.1",
+  "strategyVersion": "v105",
+  "gitTag": "v105-member-login-stability.1",
+  "scope": [
+    "會員登入成功不等待非必要稽核寫入",
+    "會員Session使用AES-256-GCM不透明Token並可跨Render重啟恢復",
+    "會員授權驗證使用Token級single-flight與10秒短期快取",
+    "前端502或網路瞬斷保留Session並於1秒後重試",
+    "401、403或Session到期才清除Session",
+    "OnlineCore改用Supabase Transaction Pooler並設定查詢期限"
+  ],
+  "runtimeEnvironment": {
+    "MEMBER_SESSION_SECRET": "backend-only, minimum 32 random bytes",
+    "MEMBER_SESSION_VALIDATION_TTL_MS": "10000"
+  },
+  "deploymentOrder": [
+    "設定Render後端環境變數",
+    "部署Proxy exact commit",
+    "部署Cloudflare Pages exact commit",
+    "執行正式會員登入Session與10桌E2E"
+  ],
+  "qualityGates": {
+    "proxyTests": "827/827",
+    "frontendTests": "156/156",
+    "frontendProductionBuild": "pass",
+    "databaseMigrationRequired": false,
+    "formalStrategyChanged": false
+  }
+}

@@ -276,10 +276,13 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null, pool
     const license = result.rows[0] ?? null
     const ok = Boolean(license && license.status === 'active' && dateOnly(license.expires_on) >= todayIso())
     try {
-      await db.query(
+      const auditWrite = db.query(
         'insert into public.license_validation_logs(license_id, member_account, submitted_code, result) values ($1, $2, $3, $4)',
-        [license?.id ?? null, memberAccount, verificationPassword, ok ? 'valid' : 'failed'],
+        [license?.id ?? null, memberAccount, '[REDACTED]', ok ? 'valid' : 'failed'],
       )
+      void Promise.resolve(auditWrite).catch((error) => {
+        console.warn('[license-validation-log-skipped]', error?.message || error)
+      })
     } catch (error) {
       console.warn('[license-validation-log-skipped]', error?.message || error)
     }

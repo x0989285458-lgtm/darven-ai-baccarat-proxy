@@ -165,6 +165,7 @@ export default function App() {
     if (!memberSessionToken) { setMemberSessionState('invalid'); return }
     let active = true
     let expiryTimer: number | undefined
+    let retryTimer: number | undefined
     const expireMemberSession = () => {
       if (!active) return
       clearMemberSession()
@@ -188,8 +189,19 @@ export default function App() {
       const result = await validateMemberSession(memberSessionToken)
       if (!active) return
       if (!result.ok) {
-        expireMemberSession()
+        if (result.invalid) {
+          expireMemberSession()
+        } else if (retryTimer === undefined) {
+          retryTimer = window.setTimeout(() => {
+            retryTimer = undefined
+            void verify()
+          }, 1000)
+        }
         return
+      }
+      if (retryTimer !== undefined) {
+        window.clearTimeout(retryTimer)
+        retryTimer = undefined
       }
       if (result.sessionExpiresAt) {
         window.sessionStorage.setItem(MEMBER_SESSION_EXPIRES_KEY, result.sessionExpiresAt)
@@ -203,6 +215,7 @@ export default function App() {
       active = false
       window.clearInterval(timer)
       if (expiryTimer !== undefined) window.clearTimeout(expiryTimer)
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer)
     }
   }, [path, memberSessionToken])
   useEffect(() => {

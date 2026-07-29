@@ -15,13 +15,41 @@ test('hashes manager passwords with random salt and verifies stable output shape
 test('license database pool bounds connection and query stalls', () => {
   let options
   createLicenseAdminClient({
-    dbConnectionString: 'postgresql://test:secret@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres',
+    dbConnectionString: 'postgresql://test:***@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres',
     poolFactory(value) { options = value; return { query: async () => ({ rows: [] }) } },
   })
   assert.equal(new URL(options.connectionString).port, '6543')
   assert.equal(options.connectionTimeoutMillis, 9000)
   assert.equal(options.query_timeout, 9000)
   assert.equal(options.statement_timeout, 8500)
+})
+
+test('successful member login does not wait for best-effort validation audit logging', async () => {
+  let releaseAudit
+  let auditParams
+  const auditPending = new Promise((resolve) => { releaseAudit = resolve })
+  const pool = {
+    query(sql, params) {
+      if (sql.includes('insert into public.license_validation_logs')) {
+        auditParams = params
+        return auditPending
+      }
+      return Promise.resolve({ rows: [{
+        id: 'license-1', code: 'VERIFY001', member_account: 'Member001',
+        status: 'active', expires_on: '2099-12-31', agent_code: 'Agent001', plan_name: '正式月卡',
+      }] })
+    },
+  }
+  const client = createLicenseAdminClient({ pool })
+  const outcome = await Promise.race([
+    client.validateMemberLogin({ memberAccount: 'Member001', verificationPassword: 'VERIFY001' }),
+    new Promise((resolve) => setTimeout(() => resolve('blocked-by-audit'), 30)),
+  ])
+  releaseAudit({ rows: [] })
+  assert.notEqual(outcome, 'blocked-by-audit')
+  assert.equal(outcome.ok, true)
+  assert.equal(auditParams[2], '[REDACTED]')
+  assert.notEqual(auditParams[2], 'VERIFY001')
 })
 
 test('license admin bootstraps total manager and default plan through backend-only SQL', async () => {
