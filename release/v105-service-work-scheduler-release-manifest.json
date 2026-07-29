@@ -1,0 +1,50 @@
+{
+  "releaseName": "v105服務工作單工穩定修正版1",
+  "releaseVersion": "v105-service-work-scheduler.1",
+  "gitTag": "v105-service-work-scheduler.1",
+  "applicationVersion": "1.0.18",
+  "baseRelease": "v105-outbox-service-continuity.1",
+  "strategyVersion": "v105",
+  "protocolVersion": "v105",
+  "databaseMigrationRequired": false,
+  "behavior": {
+    "formalSettlementConcurrency": 1,
+    "serviceWorkConcurrency": 1,
+    "shadowWorkConcurrency": 1,
+    "formalAckWaitsForShadow": false,
+    "retainFinalBehindTimedOutShadowWork": true,
+    "priorityBurstLimit": 4,
+    "shadowServiceWorkTimeoutMs": 2000,
+    "shadowShutdownDeadlineMs": 5000,
+    "outboxCompletionWaitsForShadowDrain": true,
+    "permanentHangRetainedByDurableOutbox": true,
+    "shadowIsolation": "child_process_fork",
+    "oneIpcBatchPerOutboxLease": true,
+    "killChildOnTimeoutOrAbort": true,
+    "secretsOverIpc": false,
+    "childEnvironmentAllowlist": true,
+    "exactLeaseAbsoluteDeadlineFence": true,
+    "childExitConfirmedBeforeLeaseFailure": true,
+    "formalEnrichedTablesSentToChild": true,
+    "schedulerRejectsAfterClosing": true,
+    "staleIssuanceReconcilesLatest": true,
+    "coalesceLatestTableObservation": true,
+    "waitForServiceWorkOnShutdown": true,
+    "rejectStaleScreenIssuance": true,
+    "predictionRulesChanged": false,
+    "predictionWeightsChanged": false,
+    "settlementSemanticsChanged": false
+  },
+  "deploymentOrder": [
+    "proxy-render-exact-commit",
+    "worker-five-second-one-envelope",
+    "watchdog-health-readback",
+    "live-five-minute-e2e"
+  ],
+  "rollback": {
+    "targetTag": "v105-outbox-service-continuity.1",
+    "preserveQueueCursorJournal": true,
+    "preserveOutboxHistory": true,
+    "requireUnfinishedOutboxZeroBeforeRollback": true
+  }
+}

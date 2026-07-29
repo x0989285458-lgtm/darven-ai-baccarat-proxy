@@ -248,12 +248,12 @@ test('pending prediction is deeply frozen before settlement and has exact six-si
     },
   })
   app.state.setTables([{ tableId: 'BAG01', shoe: 88, round: 20, bankerCount: 10, playerCount: 9 }])
-  app.state.upsertRoundEvent({
+  await app.waitForServiceWorkIdle()
+  await app.state.upsertRoundEvent({
     tableId: 'BAG01', shoe: 88, round: 21, winner: 'banker',
     rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9],
     sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
   })
-  await new Promise((resolve) => setImmediate(resolve))
 
   const sideKeys = ['bankerDragon', 'bankerPair', 'playerDragon', 'playerPair', 'superSix', 'tie'].sort()
   assert.ok(settledPending)

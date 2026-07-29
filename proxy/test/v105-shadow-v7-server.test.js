@@ -25,7 +25,7 @@ test('the same ten-table update fans out independently to V7 alongside V6', asyn
     v105ShadowV7Runtime: runtime('v105-shadow-v7-ask-road', v7Observed),
   })
   app.state.setTables(TABLE_IDS.map(table))
-  await new Promise((resolve) => setImmediate(resolve))
+  await app.waitForServiceWorkIdle()
   assert.deepEqual(v6Observed, TABLE_IDS)
   assert.deepEqual(v7Observed, TABLE_IDS)
 })
@@ -51,9 +51,9 @@ test('V7 issuance and Final errors never block formal Final or V6 fan-out', asyn
   }
   const app = createApp({ autoConnect: false, supabaseClient: writer, v105ShadowRuntime: v6, v105ShadowV7Runtime: v7 })
   app.state.setTables([table()])
-  await new Promise((resolve) => setImmediate(resolve))
-  app.state.upsertRoundEvent({ ...table(), round: 21, sourceAction: '/summary', winner: 'banker', rawResult: [1,9,2,10,0,0,-1,-1,3,9] })
-  await new Promise((resolve) => setImmediate(resolve))
+  await app.waitForServiceWorkIdle()
+  await app.state.upsertRoundEvent({ ...table(), round: 21, sourceAction: '/summary', winner: 'banker', rawResult: [1,9,2,10,0,0,-1,-1,3,9] })
+  await app.waitForServiceWorkIdle()
   assert.equal(formalSettlements, 1)
   assert.equal(v6Settlements, 1)
   assert.equal(v7Settlements, 1)

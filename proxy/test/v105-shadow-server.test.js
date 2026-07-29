@@ -19,7 +19,7 @@ test('the same formal ten-table snapshot fans out to v105-shadow-v6-road-pattern
     v105ShadowRuntime: shadow,
   })
   app.state.setTables(TABLE_IDS.map(table))
-  await new Promise((resolve) => setImmediate(resolve))
+  await app.waitForServiceWorkIdle()
   assert.deepEqual(observed.map((value) => value.tableId), TABLE_IDS)
 })
 
@@ -66,12 +66,11 @@ test('v105 shadow issuance and settlement failures cannot block formal Queue ACK
   }
   const app = createApp({ autoConnect: false, supabaseClient: writer, v105ShadowRuntime: shadow })
   app.state.setTables([table()])
-  await new Promise((resolve) => setImmediate(resolve))
-  app.state.upsertRoundEvent({
+  await app.waitForServiceWorkIdle()
+  await app.state.upsertRoundEvent({
     ...table(), round: 21, sourceAction: '/summary', winner: 'banker',
     rawResult: [1, 9, 2, 10, 0, 0, -1, -1, 3, 9],
   })
-  await new Promise((resolve) => setImmediate(resolve))
   assert.equal(formalIssues, 1)
   assert.equal(formalSettlements, 1)
   assert.equal(shadowIssues, 1)

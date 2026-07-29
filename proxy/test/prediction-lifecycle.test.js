@@ -99,11 +99,11 @@ test('runtime reconciles once per changed screen identity per table, including t
   const app = createApp({ autoConnect: false, supabaseClient: writer })
   app.state.setTables(ten)
   app.state.setTables(ten.map((item) => ({ ...item, sourceUpdatedAt: '2026-07-17T01:00:01.000Z' })))
-  await new Promise((resolve) => setImmediate(resolve))
+  await app.waitForServiceWorkIdle()
   assert.equal(calls.length, 10)
   assert.ok(calls.every((item) => item.source === 'ofalive99' && item.currentVisibleRound === 20))
   app.state.setTables(ten.map((item) => item.tableId === 'BAG05' ? { ...item, round: 21 } : item))
-  await new Promise((resolve) => setImmediate(resolve))
+  await app.waitForServiceWorkIdle()
   assert.equal(calls.length, 11)
   assert.equal(calls.at(-1).tableId, 'BAG05')
   assert.equal(calls.at(-1).currentVisibleRound, 21)
@@ -111,7 +111,7 @@ test('runtime reconciles once per changed screen identity per table, including t
   const restartedCalls = []
   const restarted = createApp({ autoConnect: false, supabaseClient: { ...writer, reconcilePredictionLifecycle: async (identity) => { restartedCalls.push(identity); return { ...identity, counts: { pending: 0, expiredNoFinal: 0, abandonedShoeChange: 0, updatedTotal: 0 } } } } })
   restarted.state.setTables(ten)
-  await new Promise((resolve) => setImmediate(resolve))
+  await restarted.waitForServiceWorkIdle()
   assert.equal(restartedCalls.length, 10)
 })
 

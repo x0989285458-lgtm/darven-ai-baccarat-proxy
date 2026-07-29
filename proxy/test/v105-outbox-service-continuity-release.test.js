@@ -5,19 +5,13 @@ import { ALL_MT_EQUAL_STRATEGY_VERSION } from '../src/supabase-writer.js'
 
 const readJson = (relative) => JSON.parse(readFileSync(new URL(relative, import.meta.url), 'utf8'))
 
-test('outbox service continuity hotfix is package coherent and changes no prediction contract', () => {
+test('outbox service continuity hotfix remains immutable historical evidence and changes no prediction contract', () => {
   const manifest = readJson('../../release/v105-outbox-service-continuity-hotfix-release-manifest.json')
-  const proxy = readJson('../package.json')
-  const frontend = readJson('../../frontend/package.json')
-  const worker = readJson('../../cloud-browser-worker/package.json')
 
   assert.equal(manifest.releaseName, 'v105抓牌Outbox服務不中斷修正版1')
   assert.equal(manifest.releaseVersion, 'v105-outbox-service-continuity.1')
   assert.equal(manifest.gitTag, 'v105-outbox-service-continuity.1')
   assert.equal(manifest.applicationVersion, '1.0.17')
-  assert.equal(proxy.version, manifest.applicationVersion)
-  assert.equal(frontend.version, manifest.applicationVersion)
-  assert.equal(worker.version, manifest.applicationVersion)
   assert.equal(manifest.strategyVersion, ALL_MT_EQUAL_STRATEGY_VERSION)
   assert.equal(manifest.behavior.outboxClaimLimit, 1)
   assert.equal(manifest.behavior.formalIdentityConcurrency, 1)

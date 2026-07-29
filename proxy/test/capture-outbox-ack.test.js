@@ -118,6 +118,45 @@ test('restart drains a pending durable outbox item before marking it complete', 
   assert.deepEqual(completed, [{ sessionId: 'outbox-worker', sequence: 7, claimToken: 'lease-7', attempt: 1 }])
 })
 
+test('shadow work must drain before durable outbox completion and a permanent hang is failed for retry', async () => {
+  let claimed = false
+  let completed = 0
+  const failures = []
+  const app = createApp({
+    autoConnect: false,
+    outboxWorkDeadlineMs: 25,
+    shadowServiceWorkTimeoutMs: 5,
+    shadowShutdownDeadlineMs: 10,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(7, { payload: { work: envelope().snapshot } })]
+      },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox(identity) { failures.push(identity); return { failed: true, retryAfterMs: 10 } },
+      async readIssuedPrediction() { return null },
+    },
+    v100FormalRuntime: { enabled: false },
+    v105ShadowRuntime: {
+      enabled: true,
+      async observeTable() {},
+      async settleRound() { await new Promise(() => {}) },
+    },
+  })
+
+  const result = await app.drainCaptureOutbox()
+  assert.deepEqual(result, { processed: 0, failed: 1 })
+  assert.equal(completed, 0)
+  assert.equal(failures.length, 1)
+  assert.deepEqual(
+    { sessionId: failures[0].sessionId, sequence: failures[0].sequence, claimToken: failures[0].claimToken, attempt: failures[0].attempt },
+    { sessionId: 'outbox-worker', sequence: 7, claimToken: 'lease-7', attempt: 1 },
+  )
+  await app.stop()
+})
+
 test('same and older sequences always reach durable DB verification and conflicting payload returns 409', async () => {
   const persisted = []
   const app = createApp({

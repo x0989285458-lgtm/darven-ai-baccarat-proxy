@@ -53,9 +53,9 @@ test('attempted v104 shadow failure is disabled and cannot block formal v104 or 
   }
   const app = createApp({ autoConnect: false, supabaseClient: activeWriter, v103ShadowRuntime: v103, v104ShadowRuntime: v104, controlToken: 'operator-only' })
   app.state.setTables([table])
+  await app.waitForServiceWorkIdle()
   await app.inject({ url: '/api/tables' })
-  app.state.upsertRoundEvent(final)
-  await new Promise((resolve) => setImmediate(resolve))
+  await app.state.upsertRoundEvent(final)
 
   assert.equal(activeSettlements, 1)
   assert.equal(v103Settlements, 1)

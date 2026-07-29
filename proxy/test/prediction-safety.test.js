@@ -77,9 +77,9 @@ test('display TTL does not prevent settlement of an already issued pending predi
     },
   })
   app.state.setTables([table])
+  await app.waitForServiceWorkIdle()
   clock += 30_001
-  app.state.upsertRoundEvent(revealedRound)
-  await new Promise((resolve) => setImmediate(resolve))
+  await app.state.upsertRoundEvent(revealedRound)
 
   assert.equal(persisted.length, 1)
   assert.equal(persisted[0][2].targetRound, revealedRound.round)
@@ -99,10 +99,9 @@ test('runtime retains a matching pending prediction when persistence fails so th
     },
   })
   app.state.setTables([table])
-  app.state.upsertRoundEvent(revealedRound)
-  await new Promise((resolve) => setImmediate(resolve))
-  app.state.upsertRoundEvent(revealedRound)
-  await new Promise((resolve) => setImmediate(resolve))
+  await app.waitForServiceWorkIdle()
+  await app.state.upsertRoundEvent(revealedRound)
+  await app.state.upsertRoundEvent(revealedRound)
 
   assert.equal(attempts, 2)
 })
@@ -119,8 +118,8 @@ test('table snapshots save one pending prediction before the next result arrives
   })
 
   app.state.setTables([table])
-  app.state.upsertRoundEvent(revealedRound)
-  await new Promise((resolve) => setImmediate(resolve))
+  await app.waitForServiceWorkIdle()
+  await app.state.upsertRoundEvent(revealedRound)
 
   assert.equal(persisted.length, 1)
   assert.equal(persisted[0].pending.targetTableId, 'BAG01')

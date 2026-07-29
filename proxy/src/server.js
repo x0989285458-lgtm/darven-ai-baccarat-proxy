@@ -18,6 +18,7 @@ import { createV105ShadowRuntime, resolveV105ShadowEnabled } from './v105-shadow
 import { createV105ShadowV7Runtime, resolveV105ShadowV7Enabled } from './v105-shadow-v7-runtime.js'
 import { createV105ShadowV8Runtime, resolveV105ShadowV8Enabled } from './v105-shadow-v8-runtime.js'
 import { createV105ShadowV9Runtime, resolveV105ShadowV9Enabled } from './v105-shadow-v9-runtime.js'
+import { createShadowProcessClient } from './shadow-process-client.js'
 import { buildShadowAdminStatus } from './v104-iteration-shadow-report.js'
 import { createOnlineCoreClient } from './online-core.js'
 import { createLicenseAdminClient } from './license-admin.js'
@@ -34,6 +35,145 @@ const WORKER_PROTOCOL_VERSION = 'v105'
 const LIFECYCLE_IDENTITIES_PER_TABLE = 256
 const LIFECYCLE_SHOES_PER_TABLE = 64
 const MEMBER_SESSION_TOKEN_VERSION = 1
+
+export function createServiceWorkScheduler({ yieldControl = () => new Promise((resolve) => setImmediate(resolve)) } = {}) {
+  const priorityQueue = []
+  const latestByKey = new Map()
+  const idleWaiters = []
+  let running = false
+  let scheduled = false
+  let priorityStreak = 0
+  let closing = false
+
+  const resolveIdle = () => {
+    if (running || priorityQueue.length > 0 || latestByKey.size > 0) return
+    for (const resolve of idleWaiters.splice(0)) resolve()
+  }
+  const schedule = () => {
+    if (scheduled || running) return
+    scheduled = true
+    queueMicrotask(() => {
+      scheduled = false
+      void drain()
+    })
+  }
+  const createWaiter = () => {
+    let resolve
+    let reject
+    const promise = new Promise((onResolve, onReject) => { resolve = onResolve; reject = onReject })
+    return { promise, resolve, reject }
+  }
+  const settleItem = (item, method, value) => {
+    for (const waiter of item.waiters) waiter[method](value)
+  }
+  const drain = async () => {
+    if (running) return
+    running = true
+    try {
+      while (priorityQueue.length > 0 || latestByKey.size > 0) {
+        const usePriority = priorityQueue.length > 0 && (latestByKey.size === 0 || priorityStreak < 4)
+        const item = usePriority ? priorityQueue.shift() : latestByKey.values().next().value
+        if (usePriority) priorityStreak += 1
+        else {
+          latestByKey.delete(item.key)
+          priorityStreak = 0
+        }
+        try {
+          settleItem(item, 'resolve', await item.task())
+        } catch (error) {
+          settleItem(item, 'reject', error)
+        }
+        await yieldControl()
+      }
+    } finally {
+      running = false
+      resolveIdle()
+      if (priorityQueue.length > 0 || latestByKey.size > 0) schedule()
+    }
+  }
+
+  const waitForIdle = () => {
+    if (!running && priorityQueue.length === 0 && latestByKey.size === 0) return Promise.resolve()
+    return new Promise((resolve) => idleWaiters.push(resolve))
+  }
+
+  return {
+    enqueuePriority(task) {
+      if (closing) return Promise.reject(new Error('service work scheduler is closing'))
+      const waiter = createWaiter()
+      priorityQueue.push({ key: null, task, waiters: [waiter] })
+      schedule()
+      return waiter.promise
+    },
+    enqueueLatest(key, task) {
+      if (closing) return Promise.reject(new Error('service work scheduler is closing'))
+      const normalizedKey = String(key)
+      const waiter = createWaiter()
+      const pending = latestByKey.get(normalizedKey)
+      if (pending) {
+        pending.task = task
+        pending.waiters.push(waiter)
+      } else {
+        latestByKey.set(normalizedKey, { key: normalizedKey, task, waiters: [waiter] })
+      }
+      schedule()
+      return waiter.promise
+    },
+    waitForIdle,
+    closeAndWait() {
+      closing = true
+      return waitForIdle()
+    },
+  }
+}
+
+function createTrackedServiceWorkController() {
+  const active = new Set()
+  const activeByKey = new Map()
+  const controllers = new Map()
+  let closing = false
+
+  function run(key, operation, timeoutMs, label) {
+    if (closing) return Promise.reject(new Error('tracked service work is closing'))
+    const activeWork = activeByKey.get(key)
+    if (activeWork) return activeWork.catch(() => {}).then(() => run(key, operation, timeoutMs, label))
+    const controller = new AbortController()
+    const underlying = Promise.resolve().then(() => operation({ signal: controller.signal }))
+    active.add(underlying)
+    activeByKey.set(key, underlying)
+    controllers.set(underlying, controller)
+    const cleanup = () => {
+      active.delete(underlying)
+      controllers.delete(underlying)
+      if (activeByKey.get(key) === underlying) activeByKey.delete(key)
+    }
+    void underlying.then(cleanup, cleanup)
+    let timer = null
+    return Promise.race([
+      underlying,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort(new Error(label))
+          reject(new Error(label))
+        }, Math.max(1, Number(timeoutMs) || 1))
+      }),
+    ]).finally(() => {
+      if (timer) clearTimeout(timer)
+    })
+  }
+
+  async function waitForIdle() {
+    while (active.size > 0) await Promise.allSettled([...active])
+  }
+
+  async function closeAndWait() {
+    closing = true
+    for (const controller of controllers.values()) controller.abort(new Error('tracked service work is closing'))
+    await waitForIdle()
+  }
+
+  return { run, waitForIdle, closeAndWait }
+}
 
 function deriveMemberSessionKey(secret) {
   const value = String(secret ?? '')
@@ -133,7 +273,7 @@ export function resolveFrontendCorsOrigin(configuredOrigin, requestOrigin) {
   }
 }
 
-export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 30000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionSecret = process.env.MEMBER_SESSION_SECRET, memberSessionValidationTtlMs = Number(process.env.MEMBER_SESSION_VALIDATION_TTL_MS ?? 0), v104FormalRequestTimeoutMs = Number(process.env.V104_FORMAL_REQUEST_TIMEOUT_MS ?? 10000), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null, v104ShadowRuntime = null, v104IterationShadowRuntime = null, v105ShadowRuntime = null, v105ShadowV7Runtime = null, v105ShadowV8Runtime = null, v105ShadowV9Runtime = null, v104FormalRuntime = null, dailyMemoryRollover = null } = {}) {
+export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 30000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionSecret = process.env.MEMBER_SESSION_SECRET, memberSessionValidationTtlMs = Number(process.env.MEMBER_SESSION_VALIDATION_TTL_MS ?? 0), v104FormalRequestTimeoutMs = Number(process.env.V104_FORMAL_REQUEST_TIMEOUT_MS ?? 10000), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), shadowServiceWorkTimeoutMs = Number(process.env.SHADOW_SERVICE_WORK_TIMEOUT_MS ?? 2000), shadowShutdownDeadlineMs = Number(process.env.SHADOW_SHUTDOWN_DEADLINE_MS ?? 5000), isolateShadowProcess = process.env.NODE_ENV === 'production' && process.env.SHADOW_PROCESS_ENABLED !== 'false', shadowProcessClient = null, fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null, v104ShadowRuntime = null, v104IterationShadowRuntime = null, v105ShadowRuntime = null, v105ShadowV7Runtime = null, v105ShadowV8Runtime = null, v105ShadowV9Runtime = null, v104FormalRuntime = null, dailyMemoryRollover = null } = {}) {
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
     CAPTURE_SOURCE: requestedCaptureSource,
@@ -168,6 +308,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const expiredPredictionKeys = new Set()
   const settlingPredictionPromises = new Map()
   const lifecycleGuardsByTable = new Map()
+  const latestObservedScreenByTable = new Map()
   const memberSessions = new Map()
   const memberSessionKey = deriveMemberSessionKey(memberSessionSecret)
   const memberSessionValidationCache = new Map()
@@ -190,10 +331,18 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   let recentPerformanceRetryAtMs = 0
   const resolvedRecentPerformanceRetryMs = Math.max(1000, Number(recentPerformanceRetryMs) || 30000)
   const resolvedPredictionIssuanceRetryMs = Math.max(1000, Number(predictionIssuanceRetryMs) || 10000)
+  const resolvedShadowServiceWorkTimeoutMs = Math.max(1, Number(shadowServiceWorkTimeoutMs) || 2000)
+  const resolvedShadowShutdownDeadlineMs = Math.max(1, Number(shadowShutdownDeadlineMs) || 5000)
   const resolvedIngestDeadlineMs = Math.min(110000, Math.max(1, Number(ingestDeadlineMs) || 110000))
   const resolvedOutboxWorkDeadlineMs = Math.max(1, Number(outboxWorkDeadlineMs) || 30000)
   const resolvedOutboxBackoffMs = Math.max(1, Number(outboxBackoffMs) || 1000)
   let tablesReceivedAtMs = 0
+  const serviceWorkScheduler = createServiceWorkScheduler()
+  const shadowWorkScheduler = createServiceWorkScheduler()
+  const shadowServiceWork = createTrackedServiceWorkController()
+  const isolatedShadowProcess = isolateShadowProcess === true
+    ? (shadowProcessClient ?? createShadowProcessClient())
+    : null
   let v103Shadow = null
   let v104Shadow = null
   let v104IterationShadow = null
@@ -217,32 +366,75 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     onTablesUpdated: (tables) => {
       tablesReceivedAtMs = now()
       for (const table of tables) {
-        void reconcileThenSavePendingPrediction(table)
-        if (v103Shadow?.enabled === true) void v103Shadow.observeTable(table).catch(() => {})
-        if (v104Shadow?.enabled === true) void v104Shadow.observeTable(table).catch(() => {})
-        if (v104IterationShadow?.enabled === true) void v104IterationShadow.observeTable(table).catch(() => {})
-        if (v105Shadow?.enabled === true) void Promise.resolve().then(() => v105Shadow.observeTable(table)).catch(() => {})
-        if (v105ShadowV7?.enabled === true) void Promise.resolve().then(() => v105ShadowV7.observeTable(table)).catch(() => {})
-        if (v105ShadowV8?.enabled === true) void Promise.resolve().then(() => v105ShadowV8.observeTable(table)).catch(() => {})
-        if (v105ShadowV9?.enabled === true) void Promise.resolve().then(() => v105ShadowV9.observeTable(table)).catch(() => {})
+        const observedTableId = canonicalProductionTableId(table?.tableId)
+        const observedShoe = table?.shoe == null ? '' : String(table.shoe)
+        const observedRound = Number(table?.round)
+        if (observedTableId && observedShoe && Number.isSafeInteger(observedRound)) {
+          latestObservedScreenByTable.set(observedTableId, { shoe: observedShoe, visibleRound: observedRound })
+        }
+        const tableKey = `table:${String(table?.tableId ?? '')}`
+        void serviceWorkScheduler.enqueueLatest(tableKey, async () => {
+          await reconcileThenSavePendingPrediction(table)
+        }).catch((error) => {
+          state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+        })
+        const observers = isolatedShadowProcess
+          ? []
+          : [v103Shadow, v104Shadow, v104IterationShadow, v105Shadow, v105ShadowV7, v105ShadowV8, v105ShadowV9]
+        observers.forEach((runtime, index) => {
+          if (runtime?.enabled !== true || typeof runtime.observeTable !== 'function') return
+          const shadowKey = `observe:${index}:${String(table?.tableId ?? '')}`
+          void shadowWorkScheduler.enqueueLatest(shadowKey, async () => {
+            try {
+              await shadowServiceWork.run(
+                runtime,
+                ({ signal }) => runtime.observeTable(table, { signal }),
+                resolvedShadowServiceWorkTimeoutMs,
+                'shadow_observation_timeout',
+              )
+            } catch {
+              state.setStatus({ serviceWorkError: 'shadow_observation_failed_or_timed_out', serviceWorkErrorAt: new Date(now()).toISOString() })
+            } finally {
+              if (isolatedShadowProcess) state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
+            }
+          }).catch(() => {})
+        })
       }
     },
     onRoundEvent: async (round, table) => {
       if (!supabaseClient?.configured && !supabaseClient?.persistRound) return
       if (!isVerifiedFinalRoundAction(round?.sourceAction)) return
       if (strictRealCardRounds && !hasRealCardCodes(round)) return
-      if (v103Shadow?.enabled === true) void v103Shadow.settleRound(round).catch(() => {})
-      if (v104Shadow?.enabled === true) void v104Shadow.settleRound(round).catch(() => {})
-      if (v104IterationShadow?.enabled === true) {
-        v104IterationShadowAdminCache = { expiresAtMs: 0, state: null }
-        void v104IterationShadow.settleRound(round)
-          .then(() => { v104IterationShadowAdminCache = { expiresAtMs: 0, state: null } })
-          .catch(() => {})
+      const shadowSettlements = isolatedShadowProcess
+        ? []
+        : [
+          v103Shadow,
+          v104Shadow,
+          v104IterationShadow,
+          v105Shadow,
+          v105ShadowV7,
+          v105ShadowV8,
+          v105ShadowV9,
+        ]
+      for (const runtime of shadowSettlements) {
+        if (runtime?.enabled !== true || typeof runtime.settleRound !== 'function') continue
+        void shadowWorkScheduler.enqueuePriority(async () => {
+          if (runtime === v104IterationShadow) v104IterationShadowAdminCache = { expiresAtMs: 0, state: null }
+          try {
+            await shadowServiceWork.run(
+              runtime,
+              ({ signal }) => runtime.settleRound(round, { signal }),
+              resolvedShadowServiceWorkTimeoutMs,
+              'shadow_settlement_timeout',
+            )
+          } catch {
+            state.setStatus({ serviceWorkError: 'shadow_settlement_failed_or_timed_out', serviceWorkErrorAt: new Date(now()).toISOString() })
+          } finally {
+            if (isolatedShadowProcess) state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
+          }
+          if (runtime === v104IterationShadow) v104IterationShadowAdminCache = { expiresAtMs: 0, state: null }
+        }).catch(() => {})
       }
-      if (v105Shadow?.enabled === true) void Promise.resolve().then(() => v105Shadow.settleRound(round)).catch(() => {})
-      if (v105ShadowV7?.enabled === true) void Promise.resolve().then(() => v105ShadowV7.settleRound(round)).catch(() => {})
-      if (v105ShadowV8?.enabled === true) void Promise.resolve().then(() => v105ShadowV8.settleRound(round)).catch(() => {})
-      if (v105ShadowV9?.enabled === true) void Promise.resolve().then(() => v105ShadowV9.settleRound(round)).catch(() => {})
       const pendingKey = predictionTargetKey(round.tableId ?? table.tableId, round.shoe, round.round)
       let issuedCandidate
       try {
@@ -312,53 +504,60 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     enabled: resolveV100FormalEnabled(),
     writer: supabaseClient,
   })
-  v103Shadow = v103ShadowRuntime ?? createV103ShadowRuntime({
-    enabled: resolveV103ShadowEnabled(),
-    writer: supabaseClient,
-  })
-  v104Shadow = ALL_MT_EQUAL_STRATEGY_VERSION === 'v104'
-    ? createV104ShadowRuntime({ enabled: false, writer: supabaseClient })
-    : (v104ShadowRuntime ?? createV104ShadowRuntime({
-      enabled: resolveV104ShadowEnabled(),
+  v103Shadow = v103ShadowRuntime
+    ?? isolatedShadowProcess?.runtime('v103', { enabled: resolveV103ShadowEnabled() })
+    ?? createV103ShadowRuntime({ enabled: resolveV103ShadowEnabled(), writer: supabaseClient })
+  v104Shadow = v104ShadowRuntime
+    ?? isolatedShadowProcess?.runtime('v104', { enabled: ALL_MT_EQUAL_STRATEGY_VERSION !== 'v104' && resolveV104ShadowEnabled() })
+    ?? createV104ShadowRuntime({ enabled: ALL_MT_EQUAL_STRATEGY_VERSION !== 'v104' && resolveV104ShadowEnabled(), writer: supabaseClient })
+  v104IterationShadow = v104IterationShadowRuntime
+    ?? isolatedShadowProcess?.runtime('v104-iteration', { enabled: resolveV104IterationShadowEnabled() })
+    ?? createV104IterationShadowRuntime({ enabled: resolveV104IterationShadowEnabled(), writer: supabaseClient })
+  v105Shadow = v105ShadowRuntime
+    ?? isolatedShadowProcess?.runtime('v105', { enabled: resolveV105ShadowEnabled() })
+    ?? createV105ShadowRuntime({
+      enabled: resolveV105ShadowEnabled()
+        && typeof supabaseClient?.getV105ShadowHistory === 'function'
+        && typeof supabaseClient?.issueV105ShadowPrediction === 'function'
+        && typeof supabaseClient?.readV105ShadowIssuance === 'function'
+        && typeof supabaseClient?.settleV105ShadowPrediction === 'function',
       writer: supabaseClient,
-    }))
-  v104IterationShadow = v104IterationShadowRuntime ?? createV104IterationShadowRuntime({
-    enabled: resolveV104IterationShadowEnabled(),
-    writer: supabaseClient,
-  })
-  v105Shadow = v105ShadowRuntime ?? createV105ShadowRuntime({
-    enabled: resolveV105ShadowEnabled()
-      && typeof supabaseClient?.getV105ShadowHistory === 'function'
-      && typeof supabaseClient?.issueV105ShadowPrediction === 'function'
-      && typeof supabaseClient?.readV105ShadowIssuance === 'function'
-      && typeof supabaseClient?.settleV105ShadowPrediction === 'function',
-    writer: supabaseClient,
-  })
-  v105ShadowV7 = v105ShadowV7Runtime ?? createV105ShadowV7Runtime({
-    enabled: resolveV105ShadowV7Enabled()
-      && typeof supabaseClient?.getV105ShadowV7History === 'function'
-      && typeof supabaseClient?.issueV105ShadowV7Prediction === 'function'
-      && typeof supabaseClient?.readV105ShadowV7Issuance === 'function'
-      && typeof supabaseClient?.settleV105ShadowV7Prediction === 'function',
-    writer: supabaseClient,
-  })
-  v105ShadowV8 = v105ShadowV8Runtime ?? createV105ShadowV8Runtime({
-    enabled: resolveV105ShadowV8Enabled()
-      && typeof supabaseClient?.getV105ShadowV8History === 'function'
-      && typeof supabaseClient?.issueV105ShadowV8Prediction === 'function'
-      && typeof supabaseClient?.readV105ShadowV8Issuance === 'function'
-      && typeof supabaseClient?.settleV105ShadowV8Prediction === 'function',
-    writer: supabaseClient,
-  })
-  v105ShadowV9 = v105ShadowV9Runtime ?? createV105ShadowV9Runtime({
-    enabled: resolveV105ShadowV9Enabled()
-      && typeof supabaseClient?.getV105ShadowV9History === 'function'
-      && typeof supabaseClient?.issueV105ShadowV9Prediction === 'function'
-      && typeof supabaseClient?.readV105ShadowV9Issuance === 'function'
-      && typeof supabaseClient?.settleV105ShadowV9Prediction === 'function',
-    writer: supabaseClient,
-  })
+    })
+  v105ShadowV7 = v105ShadowV7Runtime
+    ?? isolatedShadowProcess?.runtime('v105-v7', { enabled: resolveV105ShadowV7Enabled() })
+    ?? createV105ShadowV7Runtime({
+      enabled: resolveV105ShadowV7Enabled()
+        && typeof supabaseClient?.getV105ShadowV7History === 'function'
+        && typeof supabaseClient?.issueV105ShadowV7Prediction === 'function'
+        && typeof supabaseClient?.readV105ShadowV7Issuance === 'function'
+        && typeof supabaseClient?.settleV105ShadowV7Prediction === 'function',
+      writer: supabaseClient,
+    })
+  v105ShadowV8 = v105ShadowV8Runtime
+    ?? isolatedShadowProcess?.runtime('v105-v8', { enabled: resolveV105ShadowV8Enabled() })
+    ?? createV105ShadowV8Runtime({
+      enabled: resolveV105ShadowV8Enabled()
+        && typeof supabaseClient?.getV105ShadowV8History === 'function'
+        && typeof supabaseClient?.issueV105ShadowV8Prediction === 'function'
+        && typeof supabaseClient?.readV105ShadowV8Issuance === 'function'
+        && typeof supabaseClient?.settleV105ShadowV8Prediction === 'function',
+      writer: supabaseClient,
+    })
+  v105ShadowV9 = v105ShadowV9Runtime
+    ?? isolatedShadowProcess?.runtime('v105-v9', { enabled: resolveV105ShadowV9Enabled() })
+    ?? createV105ShadowV9Runtime({
+      enabled: resolveV105ShadowV9Enabled()
+        && typeof supabaseClient?.getV105ShadowV9History === 'function'
+        && typeof supabaseClient?.issueV105ShadowV9Prediction === 'function'
+        && typeof supabaseClient?.readV105ShadowV9Issuance === 'function'
+        && typeof supabaseClient?.settleV105ShadowV9Prediction === 'function',
+      writer: supabaseClient,
+    })
   const cloudCaptureClient = createCloudCaptureClient({ url: cloudBrowserUrl, state, writer: supabaseClient, v100Formal, fetchImpl, pollMs: deployConfig.cloudCapturePollMs, adminKey: process.env.WORKER_ADMIN_KEY })
+  state.setStatus({
+    shadowProcessMode: isolatedShadowProcess ? 'isolated_child_process' : 'in_process',
+    shadowProcessStatus: isolatedShadowProcess?.status?.() ?? null,
+  })
 
   async function readV104IterationShadowAdminState() {
     const currentTime = Number(now())
@@ -475,22 +674,43 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           const sequence = Number(row?.sequence)
           const claimToken = String(row?.claim_token ?? '')
           const attempt = Number(row?.attempts)
+          const leaseDeadline = createLeaseDeadline(
+            resolvedOutboxWorkDeadlineMs,
+            `capture outbox work deadline exceeded for ${sessionId}:${sequence}`,
+          )
           try {
             const work = row?.payload?.work
             if (!work || typeof work !== 'object') throw new Error('capture outbox work payload is missing')
             const parsed = work.status && Array.isArray(work.tables) && Array.isArray(work.rounds)
               ? { sessionId: work.sessionId ?? sessionId, status: work.status, tables: work.tables, rounds: work.rounds }
               : parseCloudCapturePayload({ ...work, buildVersion: work.buildVersion ?? WORKER_PROTOCOL_BUILD_VERSION })
-            await withDeadline((async () => {
-              await applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Formal, persistAncillary: false })
-              await supabaseClient.completeCaptureOutbox?.({ sessionId, sequence, claimToken, attempt })
-            })(),
-              resolvedOutboxWorkDeadlineMs,
-              `capture outbox work deadline exceeded for ${sessionId}:${sequence}`,
+            const applied = await leaseDeadline.race(
+              applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Formal, persistAncillary: false }),
+            )
+            leaseDeadline.assertActive()
+            if (isolatedShadowProcess) {
+              const shadowPayload = {
+                ...parsed,
+                tables: Array.isArray(applied?.tables) ? applied.tables : parsed.tables,
+              }
+              await isolatedShadowProcess.processCapture(shadowPayload, {
+                signal: leaseDeadline.signal,
+                timeoutMs: leaseDeadline.remainingMs(),
+              })
+              leaseDeadline.assertActive()
+              state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
+            } else {
+              await leaseDeadline.race(shadowWorkScheduler.waitForIdle())
+              await leaseDeadline.race(shadowServiceWork.waitForIdle())
+            }
+            leaseDeadline.assertActive()
+            await leaseDeadline.race(
+              supabaseClient.completeCaptureOutbox?.({ sessionId, sequence, claimToken, attempt }),
             )
             processed += 1
           } catch (error) {
             failed += 1
+            if (isolatedShadowProcess) state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
             state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
             let failureAck
             let failureError
@@ -511,6 +731,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             if (failureError) throw failureError
             // The durable row owns its retry schedule. Continue immediately so another
             // session is never held behind this row's backoff.
+          } finally {
+            leaseDeadline.close()
           }
           shouldContinue = true
           nextWakeDelayMs = 0
@@ -1218,6 +1440,27 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     return recentPerformanceHydrationPromise
   }
 
+  function isLatestObservedPredictionTarget(prediction) {
+    const tableId = canonicalProductionTableId(prediction?.targetTableId)
+    const latest = latestObservedScreenByTable.get(tableId)
+    if (!latest) return true
+    const expectedVisibleRound = Number(prediction?.targetRound) - 1
+    return latest.shoe === String(prediction?.targetShoe ?? '')
+      && latest.visibleRound === expectedVisibleRound
+  }
+
+  async function reconcileLatestObservedPredictionScreen(prediction) {
+    const tableId = canonicalProductionTableId(prediction?.targetTableId)
+    const latest = latestObservedScreenByTable.get(tableId)
+    if (!latest || typeof supabaseClient?.reconcilePredictionLifecycle !== 'function') return
+    await supabaseClient.reconcilePredictionLifecycle({
+      source: 'ofalive99',
+      tableId,
+      currentShoe: latest.shoe,
+      currentVisibleRound: latest.visibleRound,
+    })
+  }
+
   async function reconcileThenSavePendingPrediction(table) {
     let reconciliationError = null
     const tableId = canonicalProductionTableId(table?.tableId)
@@ -1248,8 +1491,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       }
     }
     if (canReconcile) {
-      const latestGuard = lifecycleGuardsByTable.get(tableId)
-      if (latestGuard?.latestShoe !== shoe || latestGuard?.latestRound !== visibleRound) return
+      const latestObserved = latestObservedScreenByTable.get(tableId)
+      if (latestObserved?.shoe !== shoe || latestObserved?.visibleRound !== visibleRound) return
     }
     await savePendingPrediction(table)
     if (reconciliationError) {
@@ -1282,6 +1525,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       : buildLivePrediction(predictionInput)
     const generated = { ...formalPrediction, createdAtMs: now() }
     if (!isValidPendingPrediction(generated)) return null
+    if (!isLatestObservedPredictionTarget(generated)) return null
     const key = predictionTargetKey(generated.targetTableId, generated.targetShoe, generated.targetRound)
     if (expiredPredictionKeys.has(key)) return null
     const existing = pendingPredictions.get(key)
@@ -1304,11 +1548,15 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
     const issuance = Promise.resolve()
       .then(() => supabaseClient.issuePrediction(generated))
-      .then((issued) => {
+      .then(async (issued) => {
         if (!isValidPendingPrediction(issued) || !issued.predictionId || !issued.issuedAt
           || predictionTargetKey(issued.targetTableId, issued.targetShoe, issued.targetRound) !== key
           || issued.strategyVersion !== generated.strategyVersion) {
           throw new Error('durable prediction issuance acknowledgement failed')
+        }
+        if (!isLatestObservedPredictionTarget(issued)) {
+          await reconcileLatestObservedPredictionScreen(issued)
+          return null
         }
         issuanceRetryAt.delete(key)
         const immutable = deepFreeze(structuredClone({
@@ -1741,6 +1989,21 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       chromeClient.stop()
       cloudCaptureClient.stop()
       await outboxDrainPromise?.catch(() => {})
+      await serviceWorkScheduler.closeAndWait()
+      try {
+        await withDeadline(
+          Promise.all([
+            isolatedShadowProcess?.stop?.() ?? Promise.resolve(),
+            shadowServiceWork.closeAndWait(),
+            shadowWorkScheduler.closeAndWait(),
+          ]),
+          resolvedShadowShutdownDeadlineMs,
+          'shadow shutdown deadline exceeded',
+        )
+        state.setStatus({ shadowShutdownStatus: 'drained', shadowShutdownAt: new Date(now()).toISOString() })
+      } catch {
+        state.setStatus({ shadowShutdownStatus: 'timed_out', shadowShutdownAt: new Date(now()).toISOString() })
+      }
       if (!server.listening) return
       await new Promise((resolve) => server.close(() => resolve()))
     },
@@ -1749,6 +2012,10 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     },
     drainCaptureOutbox,
     waitForCaptureOutboxIdle,
+    waitForServiceWorkIdle: async () => {
+      await Promise.all([serviceWorkScheduler.waitForIdle(), shadowWorkScheduler.waitForIdle()])
+      await shadowServiceWork.waitForIdle()
+    },
     cloudCaptureClient,
   }
 }
@@ -1837,7 +2104,39 @@ async function withDeadline(operation, timeoutMs, message) {
       }),
     ])
   } finally {
-    clearTimeout(timer)
+    if (timer) clearTimeout(timer)
+  }
+}
+
+function createLeaseDeadline(timeoutMs, message = 'outbox work deadline exceeded') {
+  const controller = new AbortController()
+  const expiresAtMs = Date.now() + Math.max(1, Number(timeoutMs) || 1)
+  const deadlineError = new Error(message)
+  const timer = setTimeout(() => controller.abort(deadlineError), Math.max(1, expiresAtMs - Date.now()))
+  timer.unref?.()
+
+  function assertActive() {
+    if (!controller.signal.aborted && Date.now() >= expiresAtMs) controller.abort(deadlineError)
+    if (controller.signal.aborted) throw controller.signal.reason ?? deadlineError
+  }
+
+  function race(operation) {
+    assertActive()
+    return new Promise((resolve, reject) => {
+      const onAbort = () => reject(controller.signal.reason ?? deadlineError)
+      controller.signal.addEventListener('abort', onAbort, { once: true })
+      Promise.resolve(operation).then(resolve, reject).finally(() => {
+        controller.signal.removeEventListener('abort', onAbort)
+      })
+    })
+  }
+
+  return {
+    signal: controller.signal,
+    remainingMs: () => Math.max(1, expiresAtMs - Date.now()),
+    assertActive,
+    race,
+    close: () => clearTimeout(timer),
   }
 }
 

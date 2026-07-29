@@ -41,10 +41,9 @@ test('persistence failure retries the identical pending snapshot without recompu
     },
   })
   app.state.setTables([table])
-  app.state.upsertRoundEvent(completed)
-  await new Promise((resolve) => setImmediate(resolve))
-  app.state.upsertRoundEvent(completed)
-  await new Promise((resolve) => setImmediate(resolve))
+  await app.waitForServiceWorkIdle()
+  await app.state.upsertRoundEvent(completed)
+  await app.state.upsertRoundEvent(completed)
 
   assert.equal(attempts.length, 2)
   assert.deepEqual(attempts[1], attempts[0])

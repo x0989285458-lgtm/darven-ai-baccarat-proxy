@@ -9,18 +9,13 @@ export const PRODUCTION_TABLE_IDS = Object.freeze(['BAG01', 'BAG02', 'BAG03', 'B
 const PRODUCTION_TABLE_ORDER = new Map(PRODUCTION_TABLE_IDS.map((tableId, index) => [tableId, index]))
 const settlementTailsByState = new WeakMap()
 
-function withTableSettlementTail(state, tableId, task) {
+function withFormalSettlementTail(state, task) {
   if (!state || (typeof state !== 'object' && typeof state !== 'function')) return Promise.resolve().then(task)
-  let tails = settlementTailsByState.get(state)
-  if (!tails) {
-    tails = new Map()
-    settlementTailsByState.set(state, tails)
-  }
-  const previous = tails.get(tableId) ?? Promise.resolve()
+  const previous = settlementTailsByState.get(state) ?? Promise.resolve()
   const current = previous.catch(() => {}).then(task)
-  tails.set(tableId, current)
+  settlementTailsByState.set(state, current)
   return current.finally(() => {
-    if (tails.get(tableId) === current) tails.delete(tableId)
+    if (settlementTailsByState.get(state) === current) settlementTailsByState.delete(state)
   })
 }
 
@@ -178,23 +173,26 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
     roundsByTable.get(tableId).push(round)
   }
   const settlementStartedAt = Date.now()
-  await runDurableStage('durable_formal_settlement', () => Promise.all([...roundsByTable.entries()].map(([tableId, tableRounds]) => withTableSettlementTail(state, tableId, async () => {
-    const shoeOrder = new Map()
-    for (const round of tableRounds) {
-      const shoe = String(round?.shoe ?? '')
-      if (!shoeOrder.has(shoe)) shoeOrder.set(shoe, shoeOrder.size)
+  await runDurableStage('durable_formal_settlement', () => withFormalSettlementTail(state, async () => {
+    for (const [, tableRounds] of roundsByTable.entries()) {
+      const shoeOrder = new Map()
+      for (const round of tableRounds) {
+        const shoe = String(round?.shoe ?? '')
+        if (!shoeOrder.has(shoe)) shoeOrder.set(shoe, shoeOrder.size)
+      }
+      tableRounds.sort((left, right) => {
+        const shoeDelta = shoeOrder.get(String(left?.shoe ?? '')) - shoeOrder.get(String(right?.shoe ?? ''))
+        return shoeDelta || Number(left?.round) - Number(right?.round)
+      })
+      for (const round of tableRounds) {
+        const settlement = await state?.upsertRoundEvent?.(round)
+        if (settlement?.ok === false) throw settlement.error ?? new Error('formal settlement failed before ingest acknowledgement')
+      }
+      await new Promise((resolve) => setImmediate(resolve))
     }
-    tableRounds.sort((left, right) => {
-      const shoeDelta = shoeOrder.get(String(left?.shoe ?? '')) - shoeOrder.get(String(right?.shoe ?? ''))
-      return shoeDelta || Number(left?.round) - Number(right?.round)
-    })
-    for (const round of tableRounds) {
-      const settlement = await state?.upsertRoundEvent?.(round)
-      if (settlement?.ok === false) throw settlement.error ?? new Error('formal settlement failed before ingest acknowledgement')
-    }
-  }))))
+  }))
   durableTimings.formalSettlementMs = Date.now() - settlementStartedAt
-  if (!writer?.configured || !persistAncillary) return { v100Formal: v100Result, durableTimings }
+  if (!writer?.configured || !persistAncillary) return { v100Formal: v100Result, tables: structuredClone(formalTables), durableTimings }
   const sessionId = parsed.sessionId ?? 'cloud-browser'
   const ancillaryStartedAt = Date.now()
   const ancillaryWrites = [
@@ -215,7 +213,7 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
   await Promise.all(ancillaryWrites)
   durableTimings.ancillaryMs = Date.now() - ancillaryStartedAt
   durableTimings.totalMs = Number(durableTimings.rankLedgerMs ?? 0) + Number(durableTimings.formalSettlementMs ?? 0) + Number(durableTimings.ancillaryMs ?? 0)
-  return { v100Formal: v100Result, durableTimings }
+  return { v100Formal: v100Result, tables: structuredClone(formalTables), durableTimings }
 }
 
 export function canonicalProductionTableId(value) {

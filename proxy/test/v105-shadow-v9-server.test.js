@@ -6,7 +6,7 @@ import { buildV105FormalPrediction } from '../src/v105-formal-strategy.js'
 const TABLE_IDS = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
 const table = (tableId = 'BAG01') => ({ tableId, shoe: 105, round: 20, sourceUpdatedAt: '2026-07-29T01:00:00.000Z', bankerCount: 12, playerCount: 8, tieCount: 1, beadPlateRaw: '020102010201', bigRoadRaw: 'B#P' })
 
-test('the same ten-table snapshot and verified Final fan out to V9 without blocking formal, V7, or V8', async () => {
+test('the same ten-table snapshot and verified Final use bounded V9 fan-out with formal, V7, and V8', async () => {
   const seen = { v7: [], v8: [], v9: [] }
   const finals = { v7: 0, v8: 0, v9: 0 }
   const issued = []
@@ -34,11 +34,9 @@ test('the same ten-table snapshot and verified Final fan out to V9 without block
     v105ShadowV7Runtime: runtime('v7'), v105ShadowV8Runtime: runtime('v8'), v105ShadowV9Runtime: runtime('v9', true),
   })
   app.state.setTables(TABLE_IDS.map(table))
-  await new Promise((resolve) => setImmediate(resolve))
-  await new Promise((resolve) => setImmediate(resolve))
-  app.state.upsertRoundEvent({ ...table(), round: 21, sourceAction: '/summary', winner: 'banker', rawResult: [1, 9, 2, 10, 0, 0, -1, -1, 3, 9] })
-  await new Promise((resolve) => setImmediate(resolve))
-  await new Promise((resolve) => setImmediate(resolve))
+  await app.waitForServiceWorkIdle()
+  await app.state.upsertRoundEvent({ ...table(), round: 21, sourceAction: '/summary', winner: 'banker', rawResult: [1, 9, 2, 10, 0, 0, -1, -1, 3, 9] })
+  await app.waitForServiceWorkIdle()
   assert.deepEqual(seen.v7, TABLE_IDS)
   assert.deepEqual(seen.v8, TABLE_IDS)
   assert.equal(finals.v7, 1)

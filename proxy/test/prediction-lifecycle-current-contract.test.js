@@ -24,10 +24,9 @@ test('settlement persist failure retains the same pending snapshot for retry', a
     persistRound: async (_round, _table, pending) => { seen.push(structuredClone(pending)); if (seen.length === 1) throw new Error('temporary') },
   } })
   app.state.setTables([table])
-  app.state.upsertRoundEvent(result)
-  await new Promise((resolve) => setImmediate(resolve))
-  app.state.upsertRoundEvent(result)
-  await new Promise((resolve) => setImmediate(resolve))
+  await app.waitForServiceWorkIdle()
+  await app.state.upsertRoundEvent(result)
+  await app.state.upsertRoundEvent(result)
   assert.equal(seen.length, 2)
   assert.deepEqual(seen[1], seen[0])
 })
