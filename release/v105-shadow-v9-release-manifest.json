@@ -1,0 +1,43 @@
+{
+  "release": "v105-shadow-v9.1",
+  "packageVersion": "1.0.15",
+  "strategyVersion": "v105-shadow-v9-weighted-v7-v8",
+  "formalStrategyVersion": "v105",
+  "baseCommit": "e2bdf8096e62ed32fe14040dfd390b2e9defd54e",
+  "shadowContract": {
+    "shadowOnly": true,
+    "activationEligible": false,
+    "memberVisible": false,
+    "writesSideActions": false,
+    "fixedTables": 10,
+    "independentDatabase": true,
+    "counterStartsAtZero": true,
+    "continuesUntilManualStop": true,
+    "automaticStop": false
+  },
+  "deployment": {
+    "dbFirst": true,
+    "order": [
+      "database-additive",
+      "catalog-acl-readback",
+      "postgrest-schema-cache-readiness",
+      "render-proxy",
+      "production-e2e"
+    ],
+    "migration": "supabase/migrations/20260729050000_v105_shadow_v9.sql",
+    "runtimeFlag": "V105_SHADOW_V9_ENABLED",
+    "runtimeFlagDefault": true,
+    "formalQueueAckWaitsForV9": false,
+    "v7WaitsForV9": false,
+    "v8WaitsForV9": false,
+    "frontend": "unchanged",
+    "worker": "unchanged"
+  },
+  "rollback": {
+    "drainSafe": true,
+    "stopIssuance": "supabase/operations/stop_v105_shadow_v9_issuance.sql",
+    "finalizeAfterPendingZero": "supabase/operations/finalize_v105_shadow_v9_stop.sql",
+    "preserveHistory": true,
+    "restoreFormalVersion": "v105"
+  }
+}
