@@ -158,6 +158,31 @@ test('same and older sequences always reach durable DB verification and conflict
   assert.equal(app.state.snapshot().tables[0].round, 21, 'older DB-verified duplicate must not regress snapshot')
 })
 
+test('same envelope retry passes bit-stable durable input after an acknowledgement is lost', async () => {
+  const persisted = []
+  const app = createApp({
+    autoConnect: false, ingestKey: 'worker-key', now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async writeCloudTableSnapshot() {},
+      async writeCloudRoundEvent() {},
+      async persistCaptureEnvelope(value) {
+        persisted.push(structuredClone(value))
+        return { acceptedRoundKeys: value.roundKeys, duplicate: persisted.length > 1 }
+      },
+      async claimCaptureOutbox() { return [] },
+    },
+  })
+  const body = JSON.stringify(envelope())
+  const first = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': 'worker-key' }, body })
+  await delay(5)
+  const retry = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': 'worker-key' }, body })
+  assert.equal(first.statusCode, 200)
+  assert.equal(retry.statusCode, 200)
+  assert.equal(JSON.parse(retry.body).duplicate, true)
+  assert.deepEqual(persisted[1], persisted[0], 'same Worker identity must produce the exact same DB payload')
+})
+
 test('rawOutboxMs measures the real durable DB acknowledgement latency', async () => {
   const app = createApp({
     autoConnect: false, ingestKey: 'worker-key', now: () => 1_000_000,

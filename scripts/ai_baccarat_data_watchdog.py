@@ -111,6 +111,67 @@ def restart_gcp_worker():
         raise RuntimeError(f'GCP worker restart failed: {detail}')
 
 
+def fetch_gcp_worker_health():
+    if not GCLOUD.exists():
+        raise RuntimeError('gcloud CLI is unavailable')
+    environment = os.environ.copy()
+    environment['CLOUDSDK_PYTHON'] = GCLOUD_PYTHON
+    command = [
+        str(GCLOUD), 'compute', 'ssh', GCP_WORKER,
+        f'--project={GCP_PROJECT}', f'--zone={GCP_ZONE}', '--tunnel-through-iap',
+        '--command=curl -sS --max-time 10 http://127.0.0.1:8787/health',
+    ]
+    completed = subprocess.run(
+        command, capture_output=True, text=True, timeout=90,
+        env=environment, shell=os.name == 'nt',
+    )
+    if completed.returncode != 0:
+        detail = sanitize_error(completed.stderr or completed.stdout or f'exit {completed.returncode}')
+        raise RuntimeError(f'GCP worker health failed: {detail}')
+    try:
+        value = json.loads(completed.stdout.strip())
+    except (TypeError, ValueError) as error:
+        raise RuntimeError('GCP worker health returned invalid JSON') from error
+    if not isinstance(value, dict):
+        raise RuntimeError('GCP worker health returned invalid payload')
+    return value
+
+
+def classify_stale_worker_health(health, now=None):
+    push = health.get('push') if isinstance(health.get('push'), dict) else {}
+    source = health.get('source') if isinstance(health.get('source'), dict) else {}
+    reason = str(health.get('reason') or '')
+    if reason == 'legacy_mutable_queue_requires_cutover' or push.get('legacyMutableQueueDetected') is True:
+        return 'legacy_mutable_queue_requires_cutover'
+    if push.get('stateInvalid') is True or reason == 'push_durable_state_invalid':
+        return 'push_durable_state_invalid'
+    queue_count = push.get('queueEntryCount')
+    failures = push.get('consecutiveFailures')
+    if reason == 'push_delivery_failed' or (
+        isinstance(queue_count, int) and queue_count > 0 and isinstance(failures, int) and failures >= 3
+    ):
+        return 'push_delivery_failed'
+    if (
+        source.get('connected') is True
+        and source.get('authenticated') is True
+        and source.get('tableCount') == EXPECTED_TABLE_COUNT
+    ):
+        progress_at = parse_dt(source.get('sourceProgressAt'))
+        current = now or datetime.now(timezone.utc)
+        progress_age = (current - progress_at).total_seconds() if progress_at else 10**9
+        if (
+            reason == 'source_progress_stale'
+            or progress_at is None
+            or progress_age > THRESHOLD_SECONDS
+            or progress_age < -MAX_FUTURE_SKEW_SECONDS
+        ):
+            return 'worker_source_stale'
+        if health.get('ok') is False:
+            return 'worker_source_unhealthy'
+        return 'proxy_progress_inconsistent'
+    return 'worker_source_unhealthy'
+
+
 def recovery_due(state, failure_kind=None, now=None):
     if state.get('alerting') and failure_kind and state.get('failure_kind') == failure_kind and state.get('last_recovery_attempt_at'):
         return False
@@ -205,6 +266,19 @@ def main():
         first_error = None
 
     failure_kind = None if healthy else (inspection_failure_kind or classify_failure(status, table_count, age))
+    worker_health = None
+    worker_diagnostic_failures = {
+        'round_progress_stale', 'transport_unresolved', 'worker_transport_confirmed', 'timestamp_invalid',
+        'table_set_invalid', 'authentication_unknown', 'authorization_lost', 'authorization_refresh_failed',
+    }
+    original_failure_kind = failure_kind
+    if failure_kind in worker_diagnostic_failures:
+        try:
+            worker_health = fetch_gcp_worker_health()
+            failure_kind = classify_stale_worker_health(worker_health)
+        except Exception as error:
+            failure_kind = 'worker_transport_confirmed' if original_failure_kind == 'worker_transport_confirmed' else 'worker_health_unavailable'
+            first_error = first_error or f'{type(error).__name__}: {error}'
     attempted = []
     recovery_attempt_at = None
     last_worker_restart_at = state.get('last_worker_restart_at')
@@ -219,7 +293,7 @@ def main():
             failure_kind = None if healthy else classify_failure(status, table_count, age)
         except Exception as error:
             attempted.append('gcp-worker-restart:failed')
-            first_error = first_error or f'{type(error).__name__}: {error}'
+            first_error = f'{type(error).__name__}: {error}'
             healthy = False
             failure_kind = failure_kind or 'worker_transport_confirmed'
     elif not healthy and failure_kind in {'authorization_lost', 'authorization_refresh_failed'}:
@@ -229,11 +303,17 @@ def main():
 
     now = datetime.now(timezone.utc).isoformat()
     if healthy:
-        if state.get('alerting'):
+        prior_attempted = state.get('attempted') if isinstance(state.get('attempted'), list) else []
+        recovery_actions = []
+        for action in [*prior_attempted, *attempted]:
+            if action == 'gcp-worker-restart' and action not in recovery_actions:
+                recovery_actions.append(action)
+        if recovery_actions:
             print('✅ AI百家抓牌已自動恢復\n'
                   f'桌數：{table_count}\n'
                   f'最後資料：{last_status_text(status)}\n'
-                  f'自動處理：{", ".join(attempted) or "不需要"}')
+                  f'自動處理：{", ".join(recovery_actions)}')
+
         healthy_state = {'alerting': False, 'last_ok_at': now}
         last_failure = state.get('last_failure')
         if state.get('alerting'):
@@ -259,6 +339,21 @@ def main():
         error_text = 'Proxy／Supabase持久化阻塞，Worker仍保留運行，禁止以重啟掩蓋積壓'
     elif failure_kind == 'round_progress_stale':
         error_text = '10桌仍連線但權威Final超過3分鐘未前進；來源與持久化尚未能可靠分流，禁止直接重啟Worker'
+    elif failure_kind == 'legacy_mutable_queue_requires_cutover':
+        error_text = '偵測到舊v2正式Final Queue；已原檔保留並停止Push，需先核對DB／ACK後才能切換，禁止自動重送、改寫或刪除'
+    elif failure_kind == 'push_durable_state_invalid':
+        error_text = 'Worker Durable Queue／Cursor狀態損壞；已停止Push並保留證據，禁止自動刪除或重啟掩蓋'
+    elif failure_kind == 'push_delivery_failed':
+        push = worker_health.get('push', {}) if isinstance(worker_health, dict) else {}
+        error_text = f'Worker抓牌仍運行但Push連續失敗；Queue={push.get("queueEntryCount", 0)}、Final={push.get("queuedRoundKeyCount", 0)}，保留Queue並禁止盲重啟'
+    elif failure_kind == 'proxy_progress_inconsistent':
+        error_text = 'VM來源10桌且Push健康，但Proxy權威Final時間未前進；判定為Proxy／DB狀態不一致，禁止重啟抓牌來源'
+    elif failure_kind == 'worker_source_stale':
+        error_text = 'VM仍顯示10桌，但來源shoe／round／路單／Final已超過3分鐘未變；判定來源畫面凍結，保留Queue並禁止盲重啟'
+    elif failure_kind == 'worker_source_unhealthy':
+        error_text = 'VM來源未達10桌／未授權；Worker內建Session復原持續運行，保留Queue並等待下一次檢查'
+    elif failure_kind == 'worker_health_unavailable':
+        error_text = sanitize_error(first_error or '無法透過IAP讀取Worker Health，禁止在診斷不明時重啟')
     elif failure_kind == 'proxy_unreachable':
         error_text = sanitize_error(first_error or 'Proxy無法連線，禁止誤判為Worker故障')
     else:

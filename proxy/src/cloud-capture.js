@@ -34,7 +34,7 @@ export function parseCloudCapturePayload(payload = {}, receivedAt = new Date().t
     sessionId,
     tables,
     rounds,
-    snapshotAt: payload.snapshotAt ?? payload.snapshot_at ?? new Date().toISOString(),
+    snapshotAt: receivedAt,
     status: {
       captureSource: 'cloud_browser',
       captureMode: 'cloud_browser',
@@ -42,7 +42,8 @@ export function parseCloudCapturePayload(payload = {}, receivedAt = new Date().t
       connected: Boolean(payload.connected ?? payload.status?.connected ?? tables.length > 0),
       authenticated: Boolean(payload.authenticated ?? payload.status?.authenticated ?? tables.length > 0),
       tableCount: tables.length,
-      lastMessageAt: payload.lastMessageAt ?? payload.last_message_at ?? new Date().toISOString(),
+      lastMessageAt: receivedAt,
+      ...(rounds.length > 0 ? { lastRoundAt: receivedAt } : {}),
       errorMessage: payload.errorMessage ?? payload.error_message ?? null,
       cloudReady: true,
     },

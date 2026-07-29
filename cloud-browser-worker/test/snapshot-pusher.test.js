@@ -22,7 +22,7 @@ test('one tick re-collects after a slow ACK before continuing the bounded FIFO d
     protocolVersion: 'v101', sessionId: 'vm', timestamp: sequence, captureTimestamp: sequence,
     sequence, roundKeys: [], snapshot: { sessionId: 'vm', buildVersion: '101', tables: [], rounds: [] },
   }))
-  await writeFile(queuePath, JSON.stringify({ version: 2, entries }))
+  await writeFile(queuePath, JSON.stringify({ version: 3, entries }))
   await writeFile(`${queuePath}.cursor.json`, JSON.stringify({
     version: 3, initialized: true, lastSequence: 1002,
     observedRoundKeys: [], acknowledgedRoundKeys: [],
@@ -60,7 +60,7 @@ test('a later drain failure preserves its FIFO head and backs off from failure t
     protocolVersion: 'v101', sessionId: 'vm', timestamp: sequence, captureTimestamp: sequence,
     sequence, roundKeys: [], snapshot: { sessionId: 'vm', buildVersion: '101', tables: [], rounds: [] },
   }))
-  await writeFile(queuePath, JSON.stringify({ version: 2, entries }))
+  await writeFile(queuePath, JSON.stringify({ version: 3, entries }))
   await writeFile(`${queuePath}.cursor.json`, JSON.stringify({
     version: 3, initialized: true, lastSequence: 1002,
     observedRoundKeys: [], acknowledgedRoundKeys: [],
@@ -742,7 +742,7 @@ test('durable FIFO keeps collecting new rounds while its unacknowledged head ret
         lostAcceptedSequence = sent.at(-1).sequence
         throw new Error('server committed but acknowledgement was lost')
       }
-      if (attempt === 3) assert.ok(sent.at(-1).sequence > lostAcceptedSequence)
+      if (attempt === 3) assert.equal(sent.at(-1).sequence, lostAcceptedSequence)
       return acceptedResponse(options)
     },
     baseBackoffMs: 0,
@@ -750,13 +750,68 @@ test('durable FIFO keeps collecting new rounds while its unacknowledged head ret
 
   assert.equal(await pusher.tick(), true, 'first observation is baseline only')
   assert.equal(await pusher.tick(), false, 'round 2 remains at the FIFO head')
-  assert.equal(await pusher.tick(), true, 'round 3 is appended and coalesced behind round 2')
-  assert.deepEqual(sent[2].roundKeys, ['BAG01:8:2', 'BAG01:8:3'])
+  assert.equal(await pusher.tick(), true, 'round 3 is queued while the exact round 2 head retries')
+  assert.equal(sent[2].sequence, lostAcceptedSequence)
+  assert.deepEqual(sent[2].roundKeys, ['BAG01:8:2'])
+  assert.equal(await pusher.tick(), true, 'round 3 drains under its own sequence')
+  assert.ok(sent[3].sequence > lostAcceptedSequence)
+  assert.deepEqual(sent[3].roundKeys, ['BAG01:8:3'])
   await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
 
   function snapshot(numbers) {
     return { sessionId: 'vm', tables: [], rounds: numbers.map((number) => ({ tableId: 'BAG01', shoe: 8, round: number, winner: 'banker' })) }
   }
+})
+
+test('a new round after a lost ACK stays behind the bit-stable sent sequence', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-immutable-retry-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  const rounds = [1, 2, 3].map((round) => ({
+    tableId: 'BAG01', shoe: 8, round, winner: 'banker',
+    rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
+    sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
+  }))
+  const initialEntries = rounds.slice(0, 2).map((round, index) => ({
+    protocolVersion: 'v105', sessionId: 'vm', timestamp: 1000 + index, captureTimestamp: 1000 + index,
+    sequence: 1000 + index, roundKeys: [`BAG01:8:${round.round}`],
+    snapshot: { sessionId: 'vm', buildVersion: '105', tables: [], rounds: [round] },
+  }))
+  await writeFile(queuePath, JSON.stringify({ version: 3, entries: initialEntries }))
+  await writeFile(`${queuePath}.cursor.json`, JSON.stringify({
+    version: 3, initialized: true, lastSequence: 1001,
+    observedRoundKeys: initialEntries.flatMap((entry) => entry.roundKeys), acknowledgedRoundKeys: [],
+  }))
+  const snapshots = [
+    { sessionId: 'vm', buildVersion: '105', tables: [], rounds: rounds.slice(0, 2) },
+    { sessionId: 'vm', buildVersion: '105', tables: [], rounds },
+  ]
+  const sent = []
+  let clock = 3000
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    now: () => clock++, getSnapshot: async () => snapshots.shift(), isRoundDeliverable: () => true,
+    baseBackoffMs: 0,
+    fetchImpl: async (_url, options) => {
+      sent.push(JSON.parse(options.body))
+      throw new Error('server committed but acknowledgement was lost')
+    },
+  })
+
+  assert.equal(await pusher.tick(), false)
+  assert.equal(await pusher.tick(), false)
+  assert.equal(sent[0].sequence, 1000)
+  assert.equal(sent[1].sequence, sent[0].sequence)
+  assert.deepEqual(sent[0].roundKeys, ['BAG01:8:1'])
+  const { timestamp: firstRequestAt, ...firstIdentity } = sent[0]
+  const { timestamp: retryRequestAt, ...retryIdentity } = sent[1]
+  assert.ok(retryRequestAt >= firstRequestAt)
+  assert.deepEqual(retryIdentity, firstIdentity)
+  const retained = JSON.parse(await readFile(queuePath, 'utf8')).entries
+  assert.deepEqual(retained.map((entry) => entry.roundKeys), [
+    ['BAG01:8:1'], ['BAG01:8:2'], ['BAG01:8:3'],
+  ])
+  assert.ok(retained[2].sequence > retained[1].sequence)
 })
 
 test('restored FIFO head is not appended again when queue persisted before its observed cursor', async (t) => {
@@ -801,7 +856,7 @@ test('restored oversized FIFO head is split without losing keys or changing its 
   }))
   const roundKeys = rounds.map((round) => `${round.tableId}:${round.shoe}:${round.round}`)
   await writeFile(queuePath, JSON.stringify({
-    version: 2,
+    version: 3,
     entries: [{
       protocolVersion: 'v105', sessionId: 'vm', timestamp: 1000, captureTimestamp: 1000,
       sequence: 1000, roundKeys, snapshot: { sessionId: 'vm', tables: [], rounds },
@@ -917,6 +972,29 @@ for (const stateName of ['queue', 'cursor']) {
   })
 }
 
+test('retained v2 v105 data queue is preserved and blocked for explicit cutover review', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-legacy-mutable-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  const entry = {
+    protocolVersion: 'v105', sessionId: 'vm', timestamp: 1000, captureTimestamp: 1000, sequence: 1000,
+    roundKeys: ['BAG01:8:1'], snapshot: { sessionId: 'vm', buildVersion: '105', tables: [], rounds: [{ tableId: 'BAG01', shoe: 8, round: 1 }] },
+  }
+  const original = JSON.stringify({ version: 2, entries: [entry] })
+  await writeFile(queuePath, original)
+  let fetchCalls = 0
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    getSnapshot: async () => ({ sessionId: 'vm', tables: [], rounds: [] }),
+    fetchImpl: async () => { fetchCalls += 1; throw new Error('must not send') },
+  })
+  assert.equal(await pusher.tick(), false)
+  assert.equal(fetchCalls, 0)
+  assert.equal(pusher.snapshot().legacyMutableQueueDetected, true)
+  assert.equal(pusher.snapshot().stateInvalid, true)
+  assert.equal(await readFile(queuePath, 'utf8'), original)
+})
+
 test('structurally invalid durable state is quarantined before the pusher stops', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
@@ -932,7 +1010,53 @@ test('structurally invalid durable state is quarantined before the pusher stops'
   assert.ok((await readdir(dir)).some((name) => name.startsWith('latest.json.corrupt-')))
 })
 
-test('delivery coalesces consecutive FIFO heads into one bounded exact-ACK envelope', async (t) => {
+test('pusher health exposes durable backlog and failed delivery then clears after exact ACK', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-health-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  const final = {
+    tableId: 'BAG01', shoe: 8, round: 1, winner: 'banker',
+    rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
+    sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
+  }
+  let fail = true
+  let clock = 1000
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    now: () => clock++, getSnapshot: async () => ({ sessionId: 'vm', tables: [], rounds: [final] }),
+    isRoundDeliverable: () => true, baseBackoffMs: 0,
+    fetchImpl: async (_url, options) => {
+      if (fail) throw new Error('push offline token=must-not-leak Authorization: Bearer bearer-must-not-leak')
+      return acceptedResponse(options)
+    },
+  })
+
+  assert.equal(typeof pusher.snapshot, 'function')
+  assert.equal(await pusher.tick(), false)
+  const failed = pusher.snapshot()
+  assert.equal(failed.queueEntryCount, 1)
+  assert.equal(failed.queuedRoundKeyCount, 1)
+  assert.equal(failed.consecutiveFailures, 1)
+  assert.equal(Number.isFinite(failed.lastAttemptAtMs), true)
+  assert.ok(failed.lastAttemptAtMs >= 1000)
+  assert.equal(failed.lastSuccessAtMs, null)
+  assert.match(failed.lastError, /push offline/)
+  assert.doesNotMatch(failed.lastError, /must-not-leak/)
+  assert.doesNotMatch(failed.lastError, /bearer-must-not-leak/i)
+  assert.equal(failed.headSessionId, 'vm')
+  assert.equal(Number.isSafeInteger(failed.headSequence), true)
+
+  fail = false
+  assert.equal(await pusher.tick(), true)
+  const recovered = pusher.snapshot()
+  assert.equal(recovered.queueEntryCount, 0)
+  assert.equal(recovered.queuedRoundKeyCount, 0)
+  assert.equal(recovered.consecutiveFailures, 0)
+  assert.equal(recovered.lastError, null)
+  assert.equal(Number.isFinite(recovered.lastSuccessAtMs), true)
+})
+
+test('delivery preserves each FIFO sequence while draining multiple entries in one tick', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-coalesce-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
@@ -946,7 +1070,7 @@ test('delivery coalesces consecutive FIFO heads into one bounded exact-ACK envel
     sequence: 1000 + index, roundKeys: [`${round.tableId}:8:${round.round}`],
     snapshot: { sessionId: 'vm', buildVersion: '105', tables: [], rounds: [round] },
   }))
-  await writeFile(queuePath, JSON.stringify({ version: 2, entries }))
+  await writeFile(queuePath, JSON.stringify({ version: 3, entries }))
   await writeFile(`${queuePath}.cursor.json`, JSON.stringify({
     version: 3, initialized: true, lastSequence: 1002,
     observedRoundKeys: entries.flatMap((entry) => entry.roundKeys), acknowledgedRoundKeys: [],
@@ -955,15 +1079,16 @@ test('delivery coalesces consecutive FIFO heads into one bounded exact-ACK envel
   const pusher = createSnapshotPusher({
     targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
     now: () => 3000, getSnapshot: async () => ({ sessionId: 'vm', buildVersion: '105', tables: [], rounds }),
-    isRoundDeliverable: () => true,
+    isRoundDeliverable: () => true, maxDrainPerTick: 3,
     fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
   })
 
   assert.equal(await pusher.tick(), true)
-  assert.equal(sent.length, 1)
-  assert.equal(sent[0].sequence, 1002)
-  assert.deepEqual(sent[0].roundKeys, ['BAG01:8:1', 'BAG02:8:2', 'BAG03:8:3'])
-  assert.equal(sent[0].snapshot.rounds.length, 3)
+  assert.deepEqual(sent.map((item) => item.sequence), [1000, 1001, 1002])
+  assert.deepEqual(sent.map((item) => item.roundKeys), [
+    ['BAG01:8:1'], ['BAG02:8:2'], ['BAG03:8:3'],
+  ])
+  assert.deepEqual(sent.map((item) => item.snapshot.rounds.length), [1, 1, 1])
   await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
 })
 
@@ -981,7 +1106,7 @@ test('delivery limit can drain multiple bounded FIFO entries without widening du
     sequence: 1000 + index, roundKeys: [`BAG01:8:${round.round}`],
     snapshot: { sessionId: 'vm', buildVersion: '105', tables: [], rounds: [round] },
   }))
-  await writeFile(queuePath, JSON.stringify({ version: 2, entries }))
+  await writeFile(queuePath, JSON.stringify({ version: 3, entries }))
   await writeFile(`${queuePath}.cursor.json`, JSON.stringify({
     version: 3, initialized: true, lastSequence: 1002,
     observedRoundKeys: entries.flatMap((entry) => entry.roundKeys), acknowledgedRoundKeys: [],
@@ -989,18 +1114,19 @@ test('delivery limit can drain multiple bounded FIFO entries without widening du
   const sent = []
   const pusher = createSnapshotPusher({
     targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
-    maxRoundsPerEnvelope: 1, maxRoundsPerDelivery: 2, now: () => 3000,
+    maxRoundsPerEnvelope: 1, maxRoundsPerDelivery: 2, maxDrainPerTick: 2, now: () => 3000,
     getSnapshot: async () => ({ sessionId: 'vm', buildVersion: '105', tables: [], rounds }),
     isRoundDeliverable: () => true,
     fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
   })
 
   assert.equal(await pusher.tick(), true)
-  assert.deepEqual(sent[0].roundKeys, ['BAG01:8:1', 'BAG01:8:2'])
+  assert.deepEqual(sent.slice(0, 2).map((item) => item.roundKeys), [['BAG01:8:1'], ['BAG01:8:2']])
   const queued = JSON.parse(await readFile(queuePath, 'utf8')).entries
   assert.equal(queued.length, 1)
   assert.deepEqual(queued[0].roundKeys, ['BAG01:8:3'])
   assert.equal(await pusher.tick(), true)
+  assert.deepEqual(sent.map((item) => item.roundKeys), [['BAG01:8:1'], ['BAG01:8:2'], ['BAG01:8:3']])
   await assert.rejects(readFile(queuePath), { code: 'ENOENT' })
 })
 

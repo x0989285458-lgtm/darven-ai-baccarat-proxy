@@ -47,6 +47,8 @@ test('cloud proxy reads latest Supabase cloud snapshot when in-memory tables are
 })
 
 test('cloud-data status prefers fresh 15-table local snapshot over stale one-table test status', async () => {
+  const freshTime = new Date().toISOString()
+  const staleStatusTime = new Date(Date.now() - 10 * 60 * 1000).toISOString()
   const supabaseClient = {
     configured: true,
     countTodayPredictionRounds: async () => 93,
@@ -55,7 +57,7 @@ test('cloud-data status prefers fresh 15-table local snapshot over stale one-tab
       capture_source: 'local_chrome',
       table_count: 15,
       tables: Array.from({ length: 15 }, (_, index) => ({ tableId: `BAG${String(index + 1).padStart(2, '0')}` })),
-      snapshot_at: '2026-07-01T07:13:30.102Z',
+      snapshot_at: freshTime,
     }),
     getLatestCloudCaptureStatus: async () => ({
       session_id: 'local-offline',
@@ -64,7 +66,7 @@ test('cloud-data status prefers fresh 15-table local snapshot over stale one-tab
       authenticated: false,
       table_count: 1,
       status_text: '離線模式',
-      updated_at: '2026-07-01T07:11:04.911Z',
+      updated_at: staleStatusTime,
     }),
     writeCloudCaptureStatus: async () => {},
     writeCloudTableSnapshot: async () => {},

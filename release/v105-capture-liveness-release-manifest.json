@@ -1,0 +1,41 @@
+{
+  "releaseName": "v105抓牌終局同步與假活根治版1",
+  "applicationVersion": "1.0.16",
+  "releaseVersion": "v105-capture-liveness.1",
+  "strategyVersion": "v105",
+  "formalStrategyReleaseVersion": "v105.0.0-formal.14",
+  "gitTag": "v105-capture-liveness.1",
+  "scope": [
+    "同一Worker session與sequence重送固定使用原captureTimestamp，Durable payload位元穩定",
+    "非空但過期的記憶體桌況改讀較新的Durable Snapshot",
+    "零桌墓碑正式持久化並以時間序覆蓋，冷啟動不復活舊桌況",
+    "Proxy冷啟動Health合併Durable狀態，10桌但權威Final超過3分鐘時fail-closed",
+    "Worker Durable Queue entry建立後不可變且新Final使用新sequence",
+    "Worker Health公開來源實質進度、Queue、ACK與遮罩後Push錯誤摘要",
+    "Worker Queue格式升v3；舊v2且含v105 Final時原檔保留並Fail-closed，必須先完成DB／ACK切換核對",
+    "Watchdog透過IAP分流來源凍結、Push、Proxy與持久化故障且禁止盲刪Queue"
+  ],
+  "deploymentOrder": [
+    "worker-vm-exact-commit",
+    "proxy-render-exact-commit",
+    "frontend-pages-exact-commit",
+    "watchdog-health-readback",
+    "live-five-minute-e2e"
+  ],
+  "rollback": {
+    "databaseMigrationRequired": false,
+    "preserveQueueCursorJournal": true,
+    "neverDeleteDurableQueue": true,
+    "targetTag": "v105-member-login-stability.1"
+  },
+  "qualityGates": {
+    "proxyTests": "837/837",
+    "workerTests": "109/109",
+    "frontendTests": "156/156",
+    "watchdogTests": "22/22",
+    "frontendProductionBuild": "pass",
+    "formalStrategyChanged": false,
+    "predictionWeightsChanged": false,
+    "databaseMigrationRequired": false
+  }
+}

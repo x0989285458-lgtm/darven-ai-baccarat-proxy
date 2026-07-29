@@ -10,7 +10,7 @@ test('durable FIFO retains a failed head while collecting the next round', async
   const dir = await mkdtemp(path.join(tmpdir(), 'v098-fifo-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'queue.json')
-  const snapshots = [snapshot([1]), snapshot([1, 2]), snapshot([1, 2, 3])]
+  const snapshots = [snapshot([1]), snapshot([1, 2]), snapshot([1, 2, 3]), snapshot([1, 2, 3])]
   let attempt = 0
   const sent = []
   const pusher = createSnapshotPusher({ targetUrl: 'https://proxy.example/ingest', key: 'worker-key', queuePath, baseBackoffMs: 0,
@@ -27,7 +27,10 @@ test('durable FIFO retains a failed head while collecting the next round', async
   assert.equal(await pusher.tick(), false)
   assert.deepEqual(JSON.parse(await readFile(queuePath, 'utf8')).entries.flatMap((entry) => entry.roundKeys), ['BAG01:8:2'])
   assert.equal(await pusher.tick(), true)
-  assert.deepEqual(sent[2].roundKeys, ['BAG01:8:2', 'BAG01:8:3'])
+  assert.deepEqual(sent[2].roundKeys, ['BAG01:8:2'])
+  assert.deepEqual(JSON.parse(await readFile(queuePath, 'utf8')).entries.flatMap((entry) => entry.roundKeys), ['BAG01:8:3'])
+  assert.equal(await pusher.tick(), true)
+  assert.deepEqual(sent[3].roundKeys, ['BAG01:8:3'])
   await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
   function snapshot(rounds) { return { sessionId: 'vm', tables: [], rounds: rounds.map((round) => ({ tableId: 'BAG01', shoe: 8, round, winner: 'banker' })) } }
 })
@@ -164,7 +167,7 @@ test('excludes card-shaped payloads without a recognized MT round action', () =>
   assert.equal(isRoundPayload(payload), false)
 })
 
-test('coalesces unsent backlog into the tail while preserving the failed FIFO head', async (t) => {
+test('preserves every unsent FIFO entry immutable while collecting new backlog', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'v098-coalesce-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'queue.json')
@@ -187,10 +190,15 @@ test('coalesces unsent backlog into the tail while preserving the failed FIFO he
   assert.equal(await pusher.tick(), false)
 
   const queue = JSON.parse(await readFile(queuePath, 'utf8')).entries
-  assert.equal(queue.length, 2)
-  assert.deepEqual(queue[0].roundKeys, ['BAG01:8:1'])
-  assert.deepEqual(queue[1].roundKeys, ['BAG01:8:2', 'BAG01:8:3'])
-  assert.equal(queue[1].snapshot.tables[0].round, 3)
+  assert.equal(queue.length, 3)
+  assert.deepEqual(queue.map((entry) => entry.roundKeys), [
+    ['BAG01:8:1'],
+    ['BAG01:8:2'],
+    ['BAG01:8:3'],
+  ])
+  assert.deepEqual(queue.map((entry) => entry.snapshot.tables[0].round), [1, 2, 3])
+  assert.ok(queue[0].sequence < queue[1].sequence)
+  assert.ok(queue[1].sequence < queue[2].sequence)
 })
 
 test('new backlog is bounded to small FIFO envelopes', async (t) => {

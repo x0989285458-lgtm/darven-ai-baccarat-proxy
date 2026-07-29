@@ -29,7 +29,7 @@ export function createSnapshotPusher({
   now = Date.now,
 } = {}) {
   const roundLimit = Math.max(1, Number(maxRoundsPerEnvelope) || 5)
-  const deliveryRoundLimit = Math.max(roundLimit, Number(maxRoundsPerDelivery) || roundLimit)
+  void maxRoundsPerDelivery
   const journalThreshold = Math.max(1, Number(queueJournalThresholdEntries) || 100)
   const journalPath = `${queuePath}.journal`
   let timer = null
@@ -39,12 +39,18 @@ export function createSnapshotPusher({
   let active = false
   let restored = false
   let stateInvalid = false
+  let legacyMutableQueueDetected = false
   let queue = []
   let queueNeedsSave = false
   let queueNeedsResequence = false
   let cursorInitialized = false
   const observedRoundKeys = new Set()
   const acknowledgedRoundKeys = new Set()
+  let lastAttemptAtMs = null
+  let lastSuccessAtMs = null
+  let lastError = null
+  let lastAcknowledgedSessionId = null
+  let lastAcknowledgedSequence = null
 
   async function tick() {
     if (!targetUrl || !key || typeof getSnapshot !== 'function' || active || stateInvalid) return false
@@ -70,6 +76,7 @@ export function createSnapshotPusher({
         const delivery = buildDeliveryEnvelope(requestTimestamp)
         const envelope = delivery.envelope
         if (!envelope) break
+        lastAttemptAtMs = requestTimestamp
         const controller = new AbortController()
         const timeout = setTimeout(() => controller.abort(), requestTimeoutMs)
         try {
@@ -89,9 +96,14 @@ export function createSnapshotPusher({
           await saveCursor()
           failures = 0
           nextAttemptAt = 0
+          lastSuccessAtMs = requestTimestamp
+          lastError = null
+          lastAcknowledgedSessionId = String(envelope.sessionId ?? '') || null
+          lastAcknowledgedSequence = Number(envelope.sequence)
           acknowledgedAny = true
-        } catch {
+        } catch (error) {
           failures += 1
+          lastError = sanitizePusherError(error?.message ?? error)
           const failureTimestamp = Math.max(timestamp, Number(now()) || timestamp)
           nextAttemptAt = failureTimestamp + Math.min(maxBackoffMs, baseBackoffMs * (2 ** (failures - 1)))
           return acknowledgedAny
@@ -111,32 +123,7 @@ export function createSnapshotPusher({
   function buildDeliveryEnvelope(timestamp) {
     const head = queue[0]
     if (!head) return { envelope: null, entryCount: 0 }
-    if (!Array.isArray(head.roundKeys) || head.roundKeys.length === 0) {
-      return { envelope: { ...head, timestamp }, entryCount: 1 }
-    }
-    let entryCount = 0
-    let roundKeys = []
-    let rounds = []
-    let envelope = { ...head, timestamp }
-    for (const entry of queue.slice(0, deliveryRoundLimit)) {
-      if (entry.sessionId !== head.sessionId || entry.protocolVersion !== head.protocolVersion) break
-      const entryKeys = Array.isArray(entry.roundKeys) ? entry.roundKeys : []
-      const entryRounds = Array.isArray(entry.snapshot?.rounds) ? entry.snapshot.rounds : []
-      if (roundKeys.length + entryKeys.length > deliveryRoundLimit) break
-      const candidate = {
-        ...entry,
-        timestamp,
-        sequence: entry.sequence,
-        roundKeys: [...roundKeys, ...entryKeys],
-        snapshot: { ...entry.snapshot, rounds: [...rounds, ...entryRounds] },
-      }
-      if (Buffer.byteLength(JSON.stringify(candidate), 'utf8') > 768 * 1024) break
-      envelope = candidate
-      roundKeys = candidate.roundKeys
-      rounds = candidate.snapshot.rounds
-      entryCount += 1
-    }
-    return { envelope, entryCount: Math.max(1, entryCount) }
+    return { envelope: { ...head, timestamp }, entryCount: 1 }
   }
 
   async function collectSnapshot(timestamp) {
@@ -164,25 +151,6 @@ export function createSnapshotPusher({
       const useJournal = queue.length + Math.ceil(pendingKeys.length / roundLimit) >= journalThreshold
       const journalEntries = []
       for (let offset = 0; offset < pendingKeys.length;) {
-        const tail = queue.at(-1)
-        const tailSpace = !useJournal && queue.length >= 2 && tail?.sessionId === String(snapshot?.sessionId ?? '')
-          ? Math.max(0, roundLimit - tail.roundKeys.length)
-          : 0
-        if (tailSpace > 0) {
-          const count = Math.min(tailSpace, pendingKeys.length - offset)
-          const mergedTail = {
-            ...tail,
-            timestamp,
-            captureTimestamp: timestamp,
-            roundKeys: [...tail.roundKeys, ...pendingKeys.slice(offset, offset + count)],
-            snapshot: { ...snapshot, rounds: [...(tail.snapshot?.rounds ?? []), ...pendingRounds.slice(offset, offset + count)] },
-          }
-          if (Buffer.byteLength(JSON.stringify(mergedTail), 'utf8') <= 768 * 1024) {
-            queue[queue.length - 1] = mergedTail
-            offset += count
-            continue
-          }
-        }
         const count = Math.min(roundLimit, pendingKeys.length - offset)
         const entry = createEnvelope(
           snapshot,
@@ -256,6 +224,15 @@ export function createSnapshotPusher({
       if (queued) {
         try {
           const entries = Array.isArray(queued.entries) ? queued.entries : [queued]
+          const legacyV105DataQueue = Number(queued.version ?? 1) < 3
+            && entries.some((entry) => entry?.protocolVersion === 'v105'
+              && Array.isArray(entry?.roundKeys) && entry.roundKeys.length > 0)
+          if (legacyV105DataQueue) {
+            queue = entries
+            legacyMutableQueueDetected = true
+            stateInvalid = true
+            return
+          }
           const normalizedEntries = entries.map(normalizeQueuedEnvelope)
           const retainedEntries = normalizedEntries.filter((item) => !item.drop).map((item) => item.envelope)
           const bounded = splitOversizedQueueEntries(retainedEntries)
@@ -445,7 +422,7 @@ export function createSnapshotPusher({
       await rm(journalPath, { force: true })
       return
     }
-    const serialized = JSON.stringify({ version: 2, entries: queue })
+    const serialized = JSON.stringify({ version: 3, entries: queue })
     const threshold = Math.max(1, Number(queueCompressionThresholdBytes) || 1024 * 1024)
     const content = Buffer.byteLength(serialized, 'utf8') >= threshold
       ? await gzipAsync(Buffer.from(serialized), { level: 1 })
@@ -482,7 +459,39 @@ export function createSnapshotPusher({
     timer = null
   }
 
-  return { tick, start, stop, isRunning: () => Boolean(timer) }
+  return {
+    tick,
+    start,
+    stop,
+    isRunning: () => Boolean(timer),
+    snapshot() {
+      const head = queue[0] ?? null
+      return {
+        active,
+        stateInvalid,
+        legacyMutableQueueDetected,
+        queueEntryCount: queue.length,
+        queuedRoundKeyCount: queue.reduce((total, entry) => total + (entry.roundKeys?.length ?? 0), 0),
+        headSessionId: head?.sessionId == null ? null : String(head.sessionId),
+        headSequence: Number.isSafeInteger(Number(head?.sequence)) ? Number(head.sequence) : null,
+        consecutiveFailures: failures,
+        nextAttemptAtMs: nextAttemptAt || null,
+        lastAttemptAtMs,
+        lastSuccessAtMs,
+        lastError,
+        lastAcknowledgedSessionId,
+        lastAcknowledgedSequence,
+      }
+    },
+  }
+}
+
+function sanitizePusherError(value) {
+  return String(value ?? 'push_failed')
+    .replace(/([?&](?:token|key|secret|password|auth|authorization)=)[^&\s]+/gi, '$1[redacted]')
+    .replace(/\b(?:authorization\s*:\s*)?bearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Authorization: Bearer [redacted]')
+    .replace(/\b(token|key|secret|password|authorization)=\S+/gi, '$1=[redacted]')
+    .slice(0, 240)
 }
 
 function uniqueRoundCandidates(candidates = []) {

@@ -18,6 +18,23 @@ test('parses cloud worker payload into normalized tables and status', () => {
   assert.equal(payload.rounds[0].winner, 'banker')
 })
 
+test('uses trusted proxy receive time for progress when a Final envelope arrives', () => {
+  const receivedAt = '2026-07-29T10:32:43.180Z'
+  const payload = parseCloudCapturePayload({
+    connected: true,
+    authenticated: true,
+    lastMessageAt: '2026-07-29T09:52:59.561Z',
+    tables: [{ tableId: 'BAG01', tableType: 'BAC', shoe: 8, round: 12 }],
+    rounds: [{
+      tableId: 'BAG01', shoe: 8, round: 12, winner: 'banker',
+      receivedAt: '2026-07-29T09:52:59.561Z',
+    }],
+  }, receivedAt)
+
+  assert.equal(payload.status.lastMessageAt, receivedAt)
+  assert.equal(payload.status.lastRoundAt, receivedAt)
+})
+
 test('stamps a trusted proxy receive time when MT tables omit sourceUpdatedAt', () => {
   const receivedAt = '2026-07-14T10:30:00.000Z'
   const payload = parseCloudCapturePayload({

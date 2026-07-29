@@ -452,5 +452,5 @@ test('client reads latest cloud capture status and table snapshot from Supabase 
   assert.equal(snapshot.tables[0].tableId, 'BAG01')
   assert.equal(status.connected, true)
   assert.deepEqual(requests.map((request) => new URL(request.url).searchParams.get('order')), ['snapshot_at.desc', 'updated_at.desc'])
-  assert.deepEqual(requests.map((request) => new URL(request.url).searchParams.get('table_count')), ['gt.0', 'gt.0'])
+  assert.deepEqual(requests.map((request) => new URL(request.url).searchParams.get('table_count')), [null, null], 'zero-table tombstones must remain visible to cold-start readers')
 })

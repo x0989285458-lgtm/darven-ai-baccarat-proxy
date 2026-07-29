@@ -3,6 +3,7 @@ import { chromium } from 'playwright'
 import { isWorkerAdminAuthorized } from './admin-auth.js'
 import { annotateRoundPayload, extractSnapshotFromPayloads, isFinalRealCardRound, isRoundPayload, redactUrlSecrets } from './snapshot.js'
 import { createSnapshotPusher } from './snapshot-pusher.js'
+import { buildWorkerHealth, updateSourceProgressTracker } from './worker-health.js'
 import { BUILD_VERSION, captureSessionId, publicBuildInfo, validateProductionConfig } from './runtime-config.js'
 import { createFixedWindowRateLimiter } from './server-policy.js'
 import {
@@ -44,6 +45,7 @@ let activeMtUrl = MT_LOGIN_URL
 let pageGeneration = 0
 let capturedRoundSequence = 0
 let lastSnapshot = null
+let sourceProgressTracker = null
 let lastError = null
 const snapshotRateLimiter = createFixedWindowRateLimiter({ limit: 12, windowMs: 60000 })
 const portalRefreshController = createPortalRefreshController({
@@ -69,15 +71,17 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
   try {
     if (req.method === 'GET' && url.pathname === '/health') {
-      return sendJson(res, 200, {
-        ok: true,
+      const health = buildWorkerHealth({
         service: SERVICE,
         version: BUILD_VERSION,
-        ...publicBuildInfo(),
+        buildInfo: publicBuildInfo(),
         configured: Boolean(MT_LOGIN_URL),
         loginUrl: MT_LOGIN_URL ? redactUrlSecrets(MT_LOGIN_URL) : null,
-        lastError,
+        sourceError: lastError,
+        source: lastSnapshot,
+        push: snapshotPusher.snapshot(),
       })
+      return sendJson(res, health.ok ? 200 : 503, health)
     }
 
     if (req.method === 'GET' && url.pathname === SNAPSHOT_PATH) {
@@ -135,6 +139,8 @@ async function getSnapshot() {
     const refreshStatus = await portalRefreshController.observe(snapshot, pageGeneration)
     if (refreshStatus.errorCategory) snapshot.errorMessage = refreshStatus.errorCategory
 
+    sourceProgressTracker = updateSourceProgressTracker(sourceProgressTracker, snapshot)
+    snapshot.sourceProgressAt = sourceProgressTracker.sourceProgressAt
     lastSnapshot = snapshot
     lastError = refreshStatus.errorCategory ?? null
     return snapshot

@@ -208,6 +208,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       ? createV104FormalRuntime({ writer: supabaseClient, requestTimeoutMs: Math.max(1000, Number(v104FormalRequestTimeoutMs) || 10000), allowUnconfigured: !requireVerifiedStrategy })
       : null)
   const actionablePredictionTtlMs = Math.max(1000, Number(predictionTtlMs) || 120000)
+  const captureProgressMaxAgeMs = Math.max(30000, Number(process.env.CAPTURE_PROGRESS_MAX_AGE_MS ?? 180000) || 180000)
   const expiredPredictionKeyLimit = Math.max(1, Number(maxExpiredPredictionKeys) || 10000)
   const resolvedMemberSessionTtlMs = Math.min(30 * 60 * 1000, Math.max(60000, Number(memberSessionTtlMs) || 30 * 60 * 1000))
   const adminSessionTtlMs = Math.max(60000, Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000) || 30 * 60 * 1000)
@@ -570,14 +571,15 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
 
     if (pathname === '/health') {
-      const health = buildServiceHealth()
+      const cloudStatus = await readCloudSnapshotStatus()
+      const nextStatus = { ...state.snapshot().status, ...cloudStatus }
+      const health = buildServiceHealth(nextStatus)
       return jsonResponse(health.degraded ? 503 : 200, { ok: !health.degraded, service: SERVICE, version: VERSION, buildVersion: BUILD_VERSION, deployMode: deployConfig.deployMode, ...health }, frontendOrigin)
     }
     if (pathname === '/api/status') {
-      const status = state.snapshot().status
       const cloudStatus = await readCloudSnapshotStatus()
       const nextStatus = { ...state.snapshot().status, ...cloudStatus }
-      const health = buildServiceHealth()
+      const health = buildServiceHealth(nextStatus)
       return jsonResponse(200, { ...nextStatus, version: VERSION, buildVersion: BUILD_VERSION, deployMode: deployConfig.deployMode, ...health, statusText: cloudStatus?.statusText ?? describeCaptureStatus(nextStatus) }, frontendOrigin)
     }
     if (pathname === '/api/v103-shadow/status') {
@@ -738,7 +740,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               return jsonResponse(200, { ...previous.ack, duplicate: true, sequence: envelope.sequence }, frontendOrigin)
             }
           }
-          const parsed = parseCloudCapturePayload(envelope.snapshot)
+          const stableCapturedAt = new Date(Number(envelope.captureTimestamp ?? envelope.timestamp)).toISOString()
+          const parsed = parseCloudCapturePayload(envelope.snapshot, stableCapturedAt)
           let captureResult = null
           let duplicateCapture = false
           try {
@@ -755,7 +758,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                 tables: parsed.tables,
                 rounds: parsed.rounds,
                 status: parsed.status,
-                capturedAt: new Date(Number(envelope.captureTimestamp ?? envelope.timestamp)).toISOString(),
+                capturedAt: stableCapturedAt,
               })
               const accepted = Array.isArray(rawAcknowledgement?.acceptedRoundKeys)
                 ? rawAcknowledgement.acceptedRoundKeys.map(String)
@@ -766,7 +769,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               }
               duplicateCapture = rawAcknowledgement?.duplicate === true
               if (!duplicateCapture) {
-                state.setStatus(parsed.status)
+                state.setStatus({
+                  ...parsed.status,
+                  captureSequence: Number(envelope.sequence),
+                  captureTimestamp: stableCapturedAt,
+                })
                 state.setTables(parsed.tables)
               }
               captureResult = { durableTimings: { rawOutboxMs: Math.max(0, Date.now() - rawOutboxStartedAt) } }
@@ -1153,13 +1160,33 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   }
 
   async function readBestTables({ includePrediction = true } = {}) {
-    const localTables = state.snapshot().tables
-    if (localTables.length > 0) {
-      const actionable = tablesReceivedAtMs > 0 && now() - tablesReceivedAtMs <= actionablePredictionTtlMs
+    const localSnapshot = state.snapshot()
+    const localTables = localSnapshot.tables
+    const localTablesAreFresh = localTables.length > 0
+      && tablesReceivedAtMs > 0
+      && now() - tablesReceivedAtMs <= CLOUD_SNAPSHOT_MAX_AGE_MS
+    if (localTablesAreFresh) {
+      const actionable = now() - tablesReceivedAtMs <= actionablePredictionTtlMs
       return includePrediction ? Promise.all(localTables.map((table) => withLivePrediction(table, actionable))) : localTables
     }
-    if (tablesReceivedAtMs > 0) return []
     const cloudSnapshot = await readLatestCloudSnapshot({ requireFresh: true })
+    if (localTables.length === 0 && tablesReceivedAtMs > 0) {
+      const localSessionId = String(localSnapshot.status?.captureSessionId ?? '')
+      const durableSessionId = String(cloudSnapshot?.session_id ?? '')
+      const localSequence = Number(localSnapshot.status?.captureSequence)
+      const durableSequence = Number(cloudSnapshot?.metadata?.sequence)
+      const sameSequencedSession = localSessionId && durableSessionId === localSessionId
+        && Number.isSafeInteger(localSequence) && Number.isSafeInteger(durableSequence)
+      if (sameSequencedSession) {
+        if (durableSequence <= localSequence) return []
+      } else {
+        const localSourceAtMs = Date.parse(localSnapshot.status?.captureTimestamp
+          ?? localSnapshot.status?.lastMessageAt
+          ?? new Date(tablesReceivedAtMs).toISOString())
+        const durableSnapshotAtMs = Date.parse(cloudSnapshot?.snapshot_at ?? cloudSnapshot?.updated_at ?? cloudSnapshot?.created_at ?? '')
+        if (!Number.isFinite(durableSnapshotAtMs) || durableSnapshotAtMs <= localSourceAtMs) return []
+      }
+    }
     return includePrediction ? Promise.all((cloudSnapshot?.tables ?? []).map((table) => withLivePrediction(table))) : (cloudSnapshot?.tables ?? [])
   }
 
@@ -1419,7 +1446,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
   }
 
-  function buildServiceHealth() {
+  function buildServiceHealth(statusOverride = null) {
     const runtimeStatus = typeof supabaseClient?.getRuntimeStatus === 'function' ? supabaseClient.getRuntimeStatus() : null
     const runtimeUnavailable = requireVerifiedStrategy && (
       supabaseClient?.configured !== true
@@ -1428,13 +1455,29 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       || runtimeStatus.degraded === true
     )
     const missingIngestKey = !ingestKey && (production || deployConfig.deployMode === 'cloud')
-    const stateStatus = state.snapshot().status
+    const stateStatus = statusOverride ?? state.snapshot().status
     const stateDegraded = stateStatus.health === 'degraded'
-    const degraded = missingIngestKey || runtimeUnavailable || stateDegraded
+    const captureProgressAtMs = Date.parse(stateStatus.lastRoundAt ?? '')
+    const captureProgressExpected = deployConfig.deployMode === 'cloud'
+      && stateStatus.connected === true
+      && stateStatus.authenticated === true
+      && Number(stateStatus.tableCount) === PRODUCTION_TABLE_IDS.length
+    const captureUnavailable = deployConfig.deployMode === 'cloud' && !captureProgressExpected
+    const captureProgressStale = captureProgressExpected
+      && (!Number.isFinite(captureProgressAtMs) || now() - captureProgressAtMs > captureProgressMaxAgeMs)
+    const degraded = missingIngestKey || runtimeUnavailable || stateDegraded || captureUnavailable || captureProgressStale
     return {
       health: degraded ? 'degraded' : 'ok',
       degraded,
-      reason: missingIngestKey ? 'ingest_key_missing' : runtimeUnavailable ? (runtimeStatus.reason ?? 'active_strategy_not_ready') : stateDegraded ? stateStatus.reason : null,
+      reason: missingIngestKey
+        ? 'ingest_key_missing'
+        : runtimeUnavailable
+          ? (runtimeStatus.reason ?? 'active_strategy_not_ready')
+          : stateDegraded
+            ? stateStatus.reason
+            : captureUnavailable
+              ? 'capture_unavailable'
+              : captureProgressStale ? 'capture_progress_stale' : null,
       runtimeStatus,
     }
   }
@@ -1449,7 +1492,12 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
 
 
   async function readCloudSnapshotStatus() {
-    if (state.snapshot().tables.length > 0) return null
+    const localSnapshot = state.snapshot()
+    const localProgressAt = localSnapshot.status?.lastRoundAt
+      ?? localSnapshot.status?.lastMessageAt
+      ?? (tablesReceivedAtMs > 0 ? new Date(tablesReceivedAtMs).toISOString() : null)
+      ?? localSnapshot.tables.map((table) => table?.sourceUpdatedAt).filter(Boolean).sort().at(-1)
+    if (localSnapshot.tables.length > 0 && isFreshCloudTimestamp(localProgressAt)) return null
     if (!supabaseClient?.configured || typeof supabaseClient.getLatestCloudCaptureStatus !== 'function') return null
     try {
       const status = await supabaseClient.getLatestCloudCaptureStatus()
@@ -1471,23 +1519,48 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           ...toStatusEvent(event),
         }
       }
+      const snapshotIsFresh = Boolean(snapshot && isFreshCloudTimestamp(snapshot?.snapshot_at ?? snapshot?.updated_at ?? snapshot?.created_at))
       const snapshotTableCount = Array.isArray(snapshot?.tables) ? snapshot.tables.length : Number(snapshot?.table_count ?? 0)
       const preferSnapshot = snapshotTableCount > Number(statusIsFresh ? status?.table_count ?? 0 : 0)
       const source = preferSnapshot ? snapshot?.capture_source : (status?.capture_source ?? snapshot?.capture_source)
+      const durableHealthy = preferSnapshot
+        ? snapshotIsFresh && snapshotTableCount === PRODUCTION_TABLE_IDS.length
+        : statusIsFresh
+          && status?.connected === true
+          && status?.authenticated === true
+          && Number(status?.table_count) === PRODUCTION_TABLE_IDS.length
+          && isFreshCloudTimestamp(status?.last_round_at)
       return {
         captureSource: source ?? captureSource,
         captureMode: source ?? captureSource,
+        captureSessionId: status?.session_id ?? status?.captureSessionId ?? snapshot?.session_id ?? null,
+        health: durableHealthy ? 'ok' : 'degraded',
+        degraded: !durableHealthy,
+        reason: durableHealthy ? null : 'capture_progress_stale',
         connected: Boolean(preferSnapshot ? snapshotTableCount : (statusIsFresh ? status?.connected ?? snapshotTableCount : false)),
         authenticated: Boolean(preferSnapshot ? snapshotTableCount : (statusIsFresh ? status?.authenticated ?? snapshotTableCount : false)),
         tableCount: Number(preferSnapshot ? snapshotTableCount : (statusIsFresh ? status?.table_count ?? snapshot?.table_count ?? snapshotTableCount ?? 0 : 0)),
         lastMessageAt: preferSnapshot ? snapshot?.snapshot_at ?? status?.last_message_at ?? null : statusIsFresh ? status?.last_message_at ?? snapshot?.snapshot_at ?? null : null,
+        lastRoundAt: statusIsFresh ? status?.last_round_at ?? null : null,
         lastTablesAt: snapshot?.snapshot_at ?? null,
         statusText: snapshotTableCount ? `本機VPN抓牌已同步${snapshotTableCount}桌` : statusIsFresh ? status?.status_text ?? null : '雲端資料過期，等待Worker重新抓牌',
         errorMessage: preferSnapshot ? null : statusIsFresh ? status?.error_message ?? null : 'Cloud snapshot is stale',
       }
     } catch (error) {
-      state.setStatus({ cloudReadStatus: 'error', cloudReadError: error?.message ?? String(error) })
-      return null
+      const message = error?.message ?? String(error)
+      state.setStatus({ cloudReadStatus: 'error', cloudReadError: message })
+      return {
+        captureSource,
+        captureMode: captureSource,
+        health: 'degraded',
+        degraded: true,
+        reason: 'capture_status_unavailable',
+        connected: false,
+        authenticated: false,
+        tableCount: 0,
+        statusText: '無法讀取權威抓牌狀態',
+        errorMessage: message,
+      }
     }
   }
 

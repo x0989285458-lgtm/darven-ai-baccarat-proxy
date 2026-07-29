@@ -71,6 +71,35 @@ def formal_worker_snapshot_error(message='TypeError: fetch failed'):
 
 
 class WatchdogRecoveryTests(unittest.TestCase):
+    def test_stale_progress_worker_health_is_split_without_guessing(self):
+        self.assertEqual(watchdog.classify_stale_worker_health({
+            'ok': False, 'reason': 'legacy_mutable_queue_requires_cutover',
+            'source': {'connected': True, 'authenticated': True, 'tableCount': 10},
+            'push': {'stateInvalid': True, 'legacyMutableQueueDetected': True, 'queueEntryCount': 2},
+        }), 'legacy_mutable_queue_requires_cutover')
+        self.assertEqual(watchdog.classify_stale_worker_health({
+            'push': {'stateInvalid': True},
+        }), 'push_durable_state_invalid')
+        self.assertEqual(watchdog.classify_stale_worker_health({
+            'push': {'stateInvalid': False, 'queueEntryCount': 4, 'consecutiveFailures': 3},
+        }), 'push_delivery_failed')
+        self.assertEqual(watchdog.classify_stale_worker_health({
+            'ok': False, 'reason': 'source_progress_stale',
+            'source': {
+                'connected': True, 'authenticated': True, 'tableCount': 10,
+                'sourceProgressAt': (datetime.now(timezone.utc) - timedelta(minutes=4)).isoformat(),
+            },
+            'push': {'stateInvalid': False, 'queueEntryCount': 0, 'consecutiveFailures': 0},
+        }), 'worker_source_stale')
+        self.assertEqual(watchdog.classify_stale_worker_health({
+            'ok': True,
+            'source': {
+                'connected': True, 'authenticated': True, 'tableCount': 10,
+                'sourceProgressAt': datetime.now(timezone.utc).isoformat(),
+            },
+            'push': {'stateInvalid': False, 'queueEntryCount': 0, 'consecutiveFailures': 0},
+        }), 'proxy_progress_inconsistent')
+
     def test_authenticated_post_does_not_follow_redirect_or_forward_token(self):
         target_headers = []
 
@@ -125,12 +154,17 @@ class WatchdogRecoveryTests(unittest.TestCase):
         saved = []
         with patch.object(watchdog, 'load_state', return_value={'alerting': False}), \
              patch.object(watchdog, 'inspect', return_value=unauthorized), \
+             patch.object(watchdog, 'fetch_gcp_worker_health', return_value={
+                 'ok': False, 'reason': 'source_unavailable',
+                 'source': {'connected': True, 'authenticated': False, 'tableCount': 0},
+                 'push': {'stateInvalid': False, 'queueEntryCount': 0, 'consecutiveFailures': 0},
+             }), \
              patch.object(watchdog, 'restart_gcp_worker') as restart, \
              patch.object(watchdog, 'save_state', side_effect=lambda state: saved.append(state)), \
              contextlib.redirect_stdout(output):
             watchdog.main()
         restart.assert_not_called()
-        self.assertEqual(saved[-1]['failure_kind'], 'authorization_lost')
+        self.assertEqual(saved[-1]['failure_kind'], 'worker_source_unhealthy')
         self.assertIn('授權', output.getvalue())
 
     def test_stale_authenticated_capture_alerts_without_restarting_worker(self):
@@ -138,11 +172,68 @@ class WatchdogRecoveryTests(unittest.TestCase):
         saved = []
         with patch.object(watchdog, 'load_state', return_value={'alerting': False}), \
              patch.object(watchdog, 'inspect', return_value=stale), \
+             patch.object(watchdog, 'fetch_gcp_worker_health', return_value={
+                 'ok': True,
+                 'source': {
+                     'connected': True, 'authenticated': True, 'tableCount': 10,
+                     'sourceProgressAt': datetime.now(timezone.utc).isoformat(),
+                 },
+                 'push': {'stateInvalid': False, 'queueEntryCount': 0, 'consecutiveFailures': 0},
+             }), \
              patch.object(watchdog, 'restart_gcp_worker') as restart, \
              patch.object(watchdog, 'save_state', side_effect=lambda state: saved.append(state)):
             watchdog.main()
         restart.assert_not_called()
-        self.assertEqual(saved[-1]['failure_kind'], 'round_progress_stale')
+        self.assertEqual(saved[-1]['failure_kind'], 'proxy_progress_inconsistent')
+
+    def test_invalid_proxy_timestamp_checks_worker_health_before_any_recovery(self):
+        invalid = (healthy_status(lastRoundAt=(datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()), 10, -600, False)
+        saved = []
+        with patch.object(watchdog, 'load_state', return_value={'alerting': False}), \
+             patch.object(watchdog, 'inspect', return_value=invalid), \
+             patch.object(watchdog, 'fetch_gcp_worker_health', return_value={
+                 'ok': True,
+                 'source': {
+                     'connected': True, 'authenticated': True, 'tableCount': 10,
+                     'sourceProgressAt': datetime.now(timezone.utc).isoformat(),
+                 },
+                 'push': {'stateInvalid': False, 'queueEntryCount': 0, 'consecutiveFailures': 0},
+             }) as health_read, \
+             patch.object(watchdog, 'restart_gcp_worker') as restart, \
+             patch.object(watchdog, 'save_state', side_effect=lambda state: saved.append(state)):
+            watchdog.main()
+        health_read.assert_called_once_with()
+        restart.assert_not_called()
+        self.assertEqual(saved[-1]['failure_kind'], 'proxy_progress_inconsistent')
+
+    def test_invalid_proxy_timestamp_with_unreachable_worker_health_never_restarts(self):
+        invalid = (healthy_status(lastRoundAt=(datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()), 10, -600, False)
+        saved = []
+        with patch.object(watchdog, 'load_state', return_value={'alerting': False}), \
+             patch.object(watchdog, 'inspect', return_value=invalid), \
+             patch.object(watchdog, 'fetch_gcp_worker_health', side_effect=TimeoutError('worker health unavailable')) as health_read, \
+             patch.object(watchdog, 'restart_gcp_worker') as restart, \
+             patch.object(watchdog, 'save_state', side_effect=lambda state: saved.append(state)):
+            watchdog.main()
+        health_read.assert_called_once_with()
+        restart.assert_not_called()
+        self.assertEqual(saved[-1]['failure_kind'], 'worker_health_unavailable')
+
+    def test_disconnected_proxy_uses_worker_health_to_identify_push_backlog(self):
+        disconnected = ({'connected': False, 'authenticated': False, 'tableCount': 0}, 0, 999, False)
+        saved = []
+        with patch.object(watchdog, 'load_state', return_value={'alerting': False}), \
+             patch.object(watchdog, 'inspect', return_value=disconnected), \
+             patch.object(watchdog, 'fetch_gcp_worker_health', return_value={
+                 'ok': False, 'reason': 'push_delivery_failed',
+                 'source': {'connected': True, 'authenticated': True, 'tableCount': 10},
+                 'push': {'queueEntryCount': 4, 'queuedRoundKeyCount': 7, 'consecutiveFailures': 3},
+             }), \
+             patch.object(watchdog, 'restart_gcp_worker') as restart, \
+             patch.object(watchdog, 'save_state', side_effect=lambda state: saved.append(state)):
+            watchdog.main()
+        restart.assert_not_called()
+        self.assertEqual(saved[-1]['failure_kind'], 'push_delivery_failed')
 
     def test_proxy_timeout_never_restarts_worker(self):
         saved = []
@@ -176,10 +267,12 @@ class WatchdogRecoveryTests(unittest.TestCase):
         recovered = (healthy_status(), 10, 1, True)
         with patch.object(watchdog, 'load_state', return_value={'alerting': False}), \
              patch.object(watchdog, 'inspect', side_effect=[disconnected, recovered]), \
+             patch.object(watchdog, 'fetch_gcp_worker_health', side_effect=TimeoutError('worker health unavailable')) as health_read, \
              patch.object(watchdog, 'restart_gcp_worker') as restart, \
              patch.object(watchdog.time, 'sleep'), \
              patch.object(watchdog, 'save_state') as save:
             watchdog.main()
+        health_read.assert_called_once_with()
         restart.assert_called_once_with()
         self.assertFalse(save.call_args.args[0]['alerting'])
         self.assertIn('last_worker_restart_at', save.call_args.args[0])
@@ -191,11 +284,16 @@ class WatchdogRecoveryTests(unittest.TestCase):
             with self.subTest(message=message), \
                  patch.object(watchdog, 'load_state', return_value={'alerting': False}), \
                  patch.object(watchdog, 'inspect', return_value=snapshot_error), \
+                 patch.object(watchdog, 'fetch_gcp_worker_health', return_value={
+                     'ok': False, 'reason': 'source_unavailable',
+                     'source': {'connected': False, 'authenticated': False, 'tableCount': 0},
+                     'push': {'stateInvalid': False, 'queueEntryCount': 0, 'consecutiveFailures': 0},
+                 }), \
                  patch.object(watchdog, 'restart_gcp_worker') as restart, \
                  patch.object(watchdog, 'save_state', side_effect=lambda state: saved.append(state)):
                 watchdog.main()
             restart.assert_not_called()
-            self.assertEqual(saved[-1]['failure_kind'], 'transport_unresolved')
+            self.assertEqual(saved[-1]['failure_kind'], 'worker_source_unhealthy')
 
     def test_healthy_recovery_preserves_last_failure_evidence(self):
         state = {
@@ -206,12 +304,15 @@ class WatchdogRecoveryTests(unittest.TestCase):
             'last_error': 'TimeoutError: proxy timeout',
             'last_error_at': '2026-07-28T13:23:00+00:00',
         }
+        output = io.StringIO()
         with patch.object(watchdog, 'load_state', return_value=state), \
              patch.object(watchdog, 'inspect', return_value=(healthy_status(), 10, 1, True)), \
-             patch.object(watchdog, 'save_state') as save:
+             patch.object(watchdog, 'save_state') as save, \
+             contextlib.redirect_stdout(output):
             watchdog.main()
         saved = save.call_args.args[0]
         self.assertFalse(saved['alerting'])
+        self.assertEqual(output.getvalue(), '', 'natural recovery without an automatic action must stay silent')
         self.assertEqual(saved['last_failure'], {
             'kind': 'proxy_unreachable',
             'first_alerted_at': '2026-07-28T13:20:00+00:00',
@@ -220,12 +321,32 @@ class WatchdogRecoveryTests(unittest.TestCase):
             'error_at': '2026-07-28T13:23:00+00:00',
         })
 
+    def test_healthy_recovery_notifies_only_after_real_automatic_restart(self):
+        state = {
+            'alerting': True,
+            'failure_kind': 'worker_transport_confirmed',
+            'first_alerted_at': '2026-07-28T13:20:00+00:00',
+            'last_checked_at': '2026-07-28T13:23:00+00:00',
+            'attempted': ['gcp-worker-restart'],
+            'last_worker_restart_at': '2026-07-28T13:22:00+00:00',
+        }
+        output = io.StringIO()
+        with patch.object(watchdog, 'load_state', return_value=state), \
+             patch.object(watchdog, 'inspect', return_value=(healthy_status(), 10, 1, True)), \
+             patch.object(watchdog, 'save_state'), \
+             contextlib.redirect_stdout(output):
+            watchdog.main()
+        self.assertIn('已自動恢復', output.getvalue())
+        self.assertIn('gcp-worker-restart', output.getvalue())
+        self.assertNotIn('不需要', output.getvalue())
+
     def test_restart_budget_blocks_repeated_disconnect_after_a_brief_recovery(self):
         disconnected = (formal_worker_snapshot_error(), 0, 999, False)
         recent = datetime.now(timezone.utc).isoformat()
         state = {'alerting': False, 'last_worker_restart_at': recent}
         with patch.object(watchdog, 'load_state', return_value=state), \
              patch.object(watchdog, 'inspect', return_value=disconnected), \
+             patch.object(watchdog, 'fetch_gcp_worker_health', side_effect=TimeoutError('worker health unavailable')), \
              patch.object(watchdog, 'restart_gcp_worker') as restart, \
              patch.object(watchdog, 'save_state'):
             watchdog.main()
@@ -236,6 +357,7 @@ class WatchdogRecoveryTests(unittest.TestCase):
         output = io.StringIO()
         with patch.object(watchdog, 'load_state', return_value={'alerting': False}), \
              patch.object(watchdog, 'inspect', side_effect=[disconnected, RuntimeError('reinspect failed')]), \
+             patch.object(watchdog, 'fetch_gcp_worker_health', side_effect=TimeoutError('worker health unavailable')), \
              patch.object(watchdog, 'restart_gcp_worker'), \
              patch.object(watchdog.time, 'sleep'), \
              patch.object(watchdog, 'save_state'), \
@@ -249,6 +371,7 @@ class WatchdogRecoveryTests(unittest.TestCase):
         saved = []
         with patch.object(watchdog, 'load_state', return_value={'alerting': True, 'first_alerted_at': 'earlier', 'last_error': 'old error'}), \
              patch.object(watchdog, 'inspect', side_effect=[disconnected, RuntimeError('reinspect failed')]), \
+             patch.object(watchdog, 'fetch_gcp_worker_health', side_effect=TimeoutError('worker health unavailable')), \
              patch.object(watchdog, 'restart_gcp_worker'), \
              patch.object(watchdog.time, 'sleep'), \
              patch.object(watchdog, 'save_state', side_effect=lambda state: saved.append(state)), \
