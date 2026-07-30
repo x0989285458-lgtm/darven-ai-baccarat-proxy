@@ -23,7 +23,7 @@ test('V8 writer uses only independent v105_shadow_v8 RPCs, history, and zeroed c
   assert.equal((await client.issueV105ShadowV8Prediction(candidate)).strategyVersion, 'v105-shadow-v8-run-length-ask-road')
   assert.equal((await client.getV105ShadowV8Counters()).settlement_count, 0)
   await client.getV105ShadowV8History()
-  assert.deepEqual(requests.map((item)=>item.pathname), ['/rest/v1/rpc/issue_v105_shadow_v8_prediction','/rest/v1/v105_shadow_v8_sequence_counters','/rest/v1/v105_shadow_v8_history'])
+  assert.deepEqual(requests.map((item)=>item.pathname), ['/rest/v1/rpc/issue_v105_shadow_v8_prediction','/rest/v1/v105_shadow_v8_sequence_counters','/rest/v1/rpc/get_v105_shadow_v8_compact_history'])
 })
 
 test('V8 serializes one table without blocking another table', async () => {

@@ -25,7 +25,7 @@ test('V7 writer uses only independent v105_shadow_v7 RPCs, history, and zeroed c
   assert.deepEqual(requests.map((item) => item.pathname), [
     '/rest/v1/rpc/issue_v105_shadow_v7_prediction',
     '/rest/v1/v105_shadow_v7_sequence_counters',
-    '/rest/v1/v105_shadow_v7_history',
+    '/rest/v1/rpc/get_v105_shadow_v7_compact_history',
   ])
 })
 

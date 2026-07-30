@@ -1,0 +1,92 @@
+{
+  "release": "v105-shadow-compact-hydration",
+  "releaseVersion": "v105-shadow-compact-hydration.1",
+  "gitTag": "v105-shadow-compact-hydration.1",
+  "applicationVersion": "1.0.25",
+  "baseRelease": "v1.0.24",
+  "scope": [
+    "v105-shadow-v6-road-pattern",
+    "v105-shadow-v7-ask-road",
+    "v105-shadow-v8-run-length-ask-road",
+    "v105-shadow-v9-weighted-v7-v8"
+  ],
+  "forbiddenScope": [
+    "strategy",
+    "weights",
+    "thresholds",
+    "ui",
+    "mt-api",
+    "queue-clear",
+    "dead-letter-clear"
+  ],
+  "database": {
+    "migrations": [
+      "supabase/migrations/20260730010000_v105_shadow_compact_hydration.sql",
+      "supabase/migrations/20260730010100_v105_shadow_compact_hydration_rpcs.sql"
+    ],
+    "ledgerVersions": [
+      "20260730010000",
+      "20260730010100"
+    ],
+    "indexBuild": {
+      "concurrent": true,
+      "explicitTransaction": false,
+      "requireValidAndReadyReadback": true
+    },
+    "rpcMigration": {
+      "explicitTransaction": true,
+      "securityDefiner": true,
+      "serviceRoleOnly": true
+    },
+    "blockOnLedgerCatalogMismatch": true,
+    "additive": true,
+    "publicMigrationPerformedByCodexOwner": false
+  },
+  "deployment": {
+    "dbFirst": true,
+    "order": [
+      "freeze-exact-candidate",
+      "verify-seven-shadow-runtime-env-disabled",
+      "migration-ledger-and-catalog-preflight",
+      "supabase-cli-dry-run",
+      "database-index-phase",
+      "index-valid-ready-readback",
+      "database-rpc-phase",
+      "rpc-acl-and-610-row-readback",
+      "postgrest-schema-cache-readiness",
+      "render-deploy-with-all-shadow-runtime-env-disabled",
+      "verify-v6-v7-v8-v9-remain-disabled",
+      "verify-no-new-shadow-issuances-during-monitor",
+      "production-e2e"
+    ],
+    "keepAllShadowRuntimeEnvDisabledUntilDatabaseReadback": true,
+    "keepV6ThroughV9DisabledThroughRelease": true,
+    "runtimeActivation": "deferred-by-user",
+    "runtimeEnvTarget": {
+      "V105_SHADOW_V6_ENABLED": "false",
+      "V105_SHADOW_V7_ENABLED": "false",
+      "V105_SHADOW_V8_ENABLED": "false",
+      "V105_SHADOW_V9_ENABLED": "false"
+    },
+    "oldShadowRuntimesRemainDisabled": true,
+    "frontend": "unchanged",
+    "worker": "unchanged",
+    "mtApi": "excluded"
+  },
+  "rollback": {
+    "dropDatabaseObjects": false,
+    "clearQueueOrDeadLetter": false,
+    "disableV6ThroughV9First": true,
+    "restorePreviousRenderArtifactBeforeRuntimeEnable": true,
+    "preserveShadowHistory": true,
+    "requireRawFormalTenTablesHealthy": true,
+    "requireLedgerCatalogReadback": true
+  },
+  "candidateGate": {
+    "isolatedSchemaMigrationHash": "9c91ce657af9c9b672006c71942f9091b59f0187f5603901b2b84b74bbed92bb",
+    "freshRerunCatalogHash": "704f7c4ab08fe9f232c74e4cbae4fc22dd944fdbdf3f43be25231b5dd95938b1",
+    "rollbackResidue": 0,
+    "maxMeasuredRpcLatencyMs": 587.03,
+    "rpcLatencyThresholdMs": 5000
+  }
+}

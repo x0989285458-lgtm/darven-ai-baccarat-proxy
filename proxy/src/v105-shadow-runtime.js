@@ -29,10 +29,13 @@ export function createV105ShadowRuntime({ enabled = true, writer = null, request
         if (!writer?.configured || typeof writer.getV105ShadowHistory !== 'function') {
           throw new Error('v105 shadow history reader is unavailable')
         }
-        const rows = await writer.getV105ShadowHistory({ limit: 10000, requestTimeoutMs })
+        const rows = await writer.getV105ShadowHistory({ perTableLimit: 60, requestTimeoutMs })
         historyRows = (Array.isArray(rows) ? rows : [])
           .filter(isV105ShadowHistoryRow)
-          .map((row) => structuredClone(row))
+          .map(toCompactHistoryRow)
+          .filter(Boolean)
+          .sort(compareHistoryRows)
+        trimCompactHistory(historyRows)
         hydrateState(historyRows)
         status = 'ready'
         error = null
@@ -49,12 +52,14 @@ export function createV105ShadowRuntime({ enabled = true, writer = null, request
   function hydrateState(rows) {
     const ordered = [...rows].sort((left, right) => rowTime(left) - rowTime(right))
     for (const row of ordered) {
-      const issued = issuanceFromRow(row)
-      if (!issued) continue
+      const issued = deepFreeze({
+        predictionId: row.prediction_id, issuedAt: row.prediction_issued_at,
+        source: row.source, strategyVersion: row.strategy_version, predictionTiming: row.prediction_timing,
+        targetTableId: row.table_id, targetShoe: row.shoe_no, targetRound: row.round_no,
+        predictedResult: row.predicted_result, sameSideStreak: row.same_side_streak,
+      })
+      if (!isValidIssued(issued)) continue
       recordStreak(issued)
-      if ((row?.settlement_final ?? row?.settlementFinal) !== true) {
-        issuances.set(identityKey(issued.targetTableId, issued.targetShoe, issued.targetRound), deepFreeze(issued))
-      }
     }
   }
 
@@ -78,7 +83,7 @@ export function createV105ShadowRuntime({ enabled = true, writer = null, request
       const immutable = deepFreeze(structuredClone(issued))
       issuances.set(key, immutable)
       recordStreak(immutable)
-      historyRows.push(historyRow(immutable))
+      upsertPendingHistoryRow(historyRows, immutable)
       status = 'ready'
       error = null
       return deepFreeze(structuredClone(immutable))
@@ -124,7 +129,7 @@ export function createV105ShadowRuntime({ enabled = true, writer = null, request
         throw new Error('v105 shadow settlement acknowledgement failed')
       }
       issuances.delete(key)
-      attachSettlement(settlement)
+      attachSettlement(issued, settlement)
       status = 'ready'
       error = null
       return { ...structuredClone(result), predictionId: issued.predictionId }
@@ -145,13 +150,21 @@ export function createV105ShadowRuntime({ enabled = true, writer = null, request
     })
   }
 
-  function attachSettlement(settlement) {
-    const row = historyRows.find((item) => String(item.prediction_id) === String(settlement.predictionId))
-    if (row) Object.assign(row, { ...structuredClone(settlement), settlement_final: true })
+  function attachSettlement(issued, settlement) {
+    const row = finalHistoryRow(issued, settlement)
+    const index = historyRows.findIndex((item) => String(item.prediction_id) === String(issued.predictionId))
+    if (index >= 0) historyRows[index] = row
+    else historyRows.push(row)
+    trimCompactHistory(historyRows)
+  }
+
+  function getIssuanceContext(tableId) {
+    const context = issuanceStreaks.get(String(tableId ?? ''))
+    return context ? structuredClone(context) : null
   }
 
   return {
-    enabled: Boolean(enabled), start, observeTable, settleRound,
+    enabled: Boolean(enabled), start, observeTable, settleRound, getIssuanceContext,
     snapshot: () => ({
       strategyVersion: V105_SHADOW_VERSION, status, error,
       historySource: 'v105_shadow_v6_only', historyRows: historyRows.length,
@@ -167,19 +180,13 @@ function isV105ShadowHistoryRow(row) {
     && Boolean(row?.prediction_issued_at ?? row?.predictionIssuedAt)
 }
 
-function issuanceFromRow(row) {
-  const payload = row?.prediction_payload ?? row?.predictionPayload
-  if (!payload || payload.strategyVersion !== V105_SHADOW_VERSION) return null
-  const issued = {
-    ...structuredClone(payload), predictionId: row?.prediction_id ?? row?.predictionId,
-    issuedAt: row?.prediction_issued_at ?? row?.predictionIssuedAt,
-  }
-  try { assertIssued(payload, issued); return deepFreeze(issued) } catch { return null }
+function isValidIssued(issued) {
+  return Boolean(issued?.predictionId && issued?.issuedAt && issued?.strategyVersion === V105_SHADOW_VERSION
+    && issued?.predictionTiming === 'pre_result_context')
 }
 
 function assertIssued(expected, issued) {
-  if (!issued?.predictionId || !issued?.issuedAt || issued.strategyVersion !== V105_SHADOW_VERSION
-    || issued.predictionTiming !== 'pre_result_context'
+  if (!isValidIssued(issued)
     || String(issued.source ?? '') !== String(expected.source ?? '')
     || String(issued.targetTableId ?? '') !== String(expected.targetTableId ?? '')
     || String(issued.targetShoe ?? '') !== String(expected.targetShoe ?? '')
@@ -188,15 +195,78 @@ function assertIssued(expected, issued) {
   }
 }
 
-function historyRow(issued) {
+function finalHistoryRow(issued, settlement) {
   return {
     prediction_id: issued.predictionId, source: issued.source, table_id: issued.targetTableId,
     shoe_no: String(issued.targetShoe), round_no: issued.targetRound,
     strategy_version: V105_SHADOW_VERSION, prediction_timing: 'pre_result_context',
     prediction_issued_at: issued.issuedAt, predicted_result: issued.predictedResult,
-    same_side_streak: issued.sameSideStreak, settlement_final: false,
-    prediction_payload: structuredClone(issued),
+    same_side_streak: issued.sameSideStreak, actual_result: settlement.actualResult, settlement_final: true,
   }
+}
+
+function pendingHistoryRow(issued) {
+  return {
+    prediction_id: issued.predictionId, source: issued.source, table_id: issued.targetTableId,
+    shoe_no: String(issued.targetShoe), round_no: issued.targetRound,
+    strategy_version: V105_SHADOW_VERSION, prediction_timing: 'pre_result_context',
+    prediction_issued_at: issued.issuedAt, predicted_result: issued.predictedResult,
+    same_side_streak: issued.sameSideStreak, actual_result: null, settlement_final: false,
+  }
+}
+
+function upsertPendingHistoryRow(rows, issued) {
+  const tableId = String(issued.targetTableId)
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    if (String(rows[index].table_id) === tableId && rows[index].settlement_final === false) rows.splice(index, 1)
+  }
+  rows.push(pendingHistoryRow(issued))
+  trimCompactHistory(rows)
+}
+
+function toCompactHistoryRow(row) {
+  const settlementFinal = row?.settlement_final ?? row?.settlementFinal
+  if (settlementFinal !== true && settlementFinal !== false) return null
+  if (settlementFinal === false && (row?.actual_result ?? row?.actualResult) != null) return null
+  return {
+    prediction_id: row.prediction_id, source: row.source, table_id: row.table_id, shoe_no: row.shoe_no,
+    round_no: row.round_no, strategy_version: row.strategy_version, prediction_timing: row.prediction_timing,
+    prediction_issued_at: row.prediction_issued_at, predicted_result: row.predicted_result,
+    same_side_streak: row.same_side_streak, actual_result: settlementFinal ? row.actual_result : null,
+    settlement_final: settlementFinal,
+  }
+}
+
+function trimCompactHistory(rows) {
+  rows.sort(compareHistoryRows)
+  const finalCounts = new Map()
+  const pendingTables = new Set()
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const tableId = String(rows[index].table_id)
+    if (rows[index].settlement_final === false) {
+      if (pendingTables.has(tableId)) rows.splice(index, 1)
+      else pendingTables.add(tableId)
+      continue
+    }
+    const count = (finalCounts.get(tableId) ?? 0) + 1
+    finalCounts.set(tableId, count)
+    if (count > 60) rows.splice(index, 1)
+  }
+  let finalCount = rows.reduce((count, row) => count + (row.settlement_final === true ? 1 : 0), 0)
+  for (let index = 0; finalCount > 600 && index < rows.length;) {
+    if (rows[index].settlement_final === true) { rows.splice(index, 1); finalCount -= 1 }
+    else index += 1
+  }
+}
+
+function compareHistoryRows(a, b) {
+  return rowTime(a) - rowTime(b) || compareStableText(a?.prediction_id, b?.prediction_id)
+}
+
+function compareStableText(left, right) {
+  const a = String(left ?? '')
+  const b = String(right ?? '')
+  return a === b ? 0 : a < b ? -1 : 1
 }
 
 function identityKey(tableId, shoe, round) {

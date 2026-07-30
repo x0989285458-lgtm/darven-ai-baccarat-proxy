@@ -6,6 +6,11 @@ import { V104_DIRECTION_WEIGHTS, V104_SHOE_BIAS } from './v104-main-contract.js'
 import { PRODUCTION_TABLE_IDS } from './cloud-capture.js'
 
 const SOURCE = 'ofalive99'
+const V105_SHADOW_COMPACT_HISTORY_KEYS = Object.freeze([
+  'actual_result', 'prediction_id', 'prediction_issued_at', 'prediction_timing', 'predicted_result',
+  'round_no', 'same_side_streak', 'settlement_final', 'shoe_no', 'source', 'strategy_version', 'table_id',
+])
+const V105_SHADOW_TABLE_ID_SET = new Set(PRODUCTION_TABLE_IDS)
 export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v105'
 export const V100_MAIN_SIGNAL_DEDUP_VERSION = 'v105_五路通用週期正式版'
 export const V100_SIDE_DEDUP_VERSION = 'v105_副預測沿用v104正式規則'
@@ -2257,6 +2262,24 @@ export function createSupabaseIngestionClient({
     }, { requestTimeoutMs })
   }
 
+  async function readV105ShadowCompactHistory(version, rpcName, perTableLimit, { requestTimeoutMs = shadowTimeoutMs } = {}) {
+    if (!Number.isInteger(perTableLimit) || perTableLimit < 1 || perTableLimit > 60) {
+      throw new Error('v105 shadow compact history per-table limit must be an integer between 1 and 60')
+    }
+    let rows
+    if (strategyDb && typeof strategyDb.query === 'function') {
+      const result = await strategyDb.query({
+        text: `select * from public.${rpcName}($1)`,
+        values: [perTableLimit],
+        query_timeout: Math.max(1, Number(requestTimeoutMs) || shadowTimeoutMs),
+      })
+      rows = result?.rows
+    } else {
+      rows = await postRpcRows(rpcName, { p_per_table_limit: perTableLimit }, { requestTimeoutMs })
+    }
+    return validateV105ShadowCompactHistory(rows, { version, perTableLimit })
+  }
+
   async function patchRest(path, body, query = {}, { requestTimeoutMs = formalTimeoutMs } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase backend key is not configured' }
     const endpoint = new URL(`/rest/v1/${path}`, url)
@@ -2762,15 +2785,10 @@ export function createSupabaseIngestionClient({
       }, { requestTimeoutMs: shadowTimeoutMs })
       return Array.isArray(rows) && rows.length === 1 ? rows[0] : null
     },
-    async getV105ShadowHistory({ limit = 10000, requestTimeoutMs = shadowTimeoutMs } = {}) {
-      const rows = await getRest('v105_shadow_v6_history', {
-        select: 'prediction_id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,predicted_result,confidence,prediction_payload,same_side_streak,independent_support_count,shoe_bias_suppressed,lock_risk,actual_result,actual_facts,is_hit,settlement_status,settlement_final,settlement_source_action,head_results,resolved_at,settlement_sequence',
-        strategy_version: 'eq.v105-shadow-v6-road-pattern', prediction_timing: 'eq.pre_result_context',
-        prediction_issued_at: 'not.is.null', order: 'prediction_issued_at.desc,prediction_id.desc',
-        limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
-      }, { requestTimeoutMs })
-      return (Array.isArray(rows) ? rows : []).filter((row) => row?.strategy_version === 'v105-shadow-v6-road-pattern'
-        && row?.prediction_timing === 'pre_result_context' && Boolean(row?.prediction_issued_at))
+    async getV105ShadowHistory({ perTableLimit = 60, requestTimeoutMs = shadowTimeoutMs } = {}) {
+      return readV105ShadowCompactHistory(
+        'v105-shadow-v6-road-pattern', 'get_v105_shadow_v6_compact_history', perTableLimit, { requestTimeoutMs },
+      )
     },
     async issueV105ShadowV7Prediction(candidate = {}) {
       const row = buildV104IterationShadowIssuanceRpcRow(candidate)
@@ -2823,15 +2841,10 @@ export function createSupabaseIngestionClient({
       }, { requestTimeoutMs: shadowTimeoutMs })
       return Array.isArray(rows) && rows.length === 1 ? rows[0] : null
     },
-    async getV105ShadowV7History({ limit = 10000, requestTimeoutMs = shadowTimeoutMs } = {}) {
-      const rows = await getRest('v105_shadow_v7_history', {
-        select: 'prediction_id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,predicted_result,confidence,prediction_payload,same_side_streak,independent_support_count,shoe_bias_suppressed,lock_risk,actual_result,actual_facts,is_hit,settlement_status,settlement_final,settlement_source_action,head_results,resolved_at,settlement_sequence',
-        strategy_version: 'eq.v105-shadow-v7-ask-road', prediction_timing: 'eq.pre_result_context',
-        prediction_issued_at: 'not.is.null', order: 'prediction_issued_at.desc,prediction_id.desc',
-        limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
-      }, { requestTimeoutMs })
-      return (Array.isArray(rows) ? rows : []).filter((row) => row?.strategy_version === 'v105-shadow-v7-ask-road'
-        && row?.prediction_timing === 'pre_result_context' && Boolean(row?.prediction_issued_at))
+    async getV105ShadowV7History({ perTableLimit = 60, requestTimeoutMs = shadowTimeoutMs } = {}) {
+      return readV105ShadowCompactHistory(
+        'v105-shadow-v7-ask-road', 'get_v105_shadow_v7_compact_history', perTableLimit, { requestTimeoutMs },
+      )
     },
     async issueV105ShadowV8Prediction(candidate = {}) {
       const row = buildV104IterationShadowIssuanceRpcRow(candidate)
@@ -2887,15 +2900,10 @@ export function createSupabaseIngestionClient({
       }, { requestTimeoutMs: shadowTimeoutMs })
       return Array.isArray(rows) && rows.length === 1 ? rows[0] : null
     },
-    async getV105ShadowV8History({ limit = 10000, requestTimeoutMs = shadowTimeoutMs } = {}) {
-      const rows = await getRest('v105_shadow_v8_history', {
-        select: 'prediction_id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,predicted_result,confidence,prediction_payload,same_side_streak,independent_support_count,shoe_bias_suppressed,lock_risk,actual_result,actual_facts,is_hit,settlement_status,settlement_final,settlement_source_action,head_results,resolved_at,settlement_sequence',
-        strategy_version: 'eq.v105-shadow-v8-run-length-ask-road', prediction_timing: 'eq.pre_result_context',
-        prediction_issued_at: 'not.is.null', order: 'prediction_issued_at.desc,prediction_id.desc',
-        limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
-      }, { requestTimeoutMs })
-      return (Array.isArray(rows) ? rows : []).filter((row) => row?.strategy_version === 'v105-shadow-v8-run-length-ask-road'
-        && row?.prediction_timing === 'pre_result_context' && Boolean(row?.prediction_issued_at))
+    async getV105ShadowV8History({ perTableLimit = 60, requestTimeoutMs = shadowTimeoutMs } = {}) {
+      return readV105ShadowCompactHistory(
+        'v105-shadow-v8-run-length-ask-road', 'get_v105_shadow_v8_compact_history', perTableLimit, { requestTimeoutMs },
+      )
     },
     async issueV105ShadowV9Prediction(candidate = {}) {
       const row = buildV104IterationShadowIssuanceRpcRow(candidate)
@@ -2950,15 +2958,10 @@ export function createSupabaseIngestionClient({
       }, { requestTimeoutMs: shadowTimeoutMs })
       return Array.isArray(rows) && rows.length === 1 ? rows[0] : null
     },
-    async getV105ShadowV9History({ limit = 10000, requestTimeoutMs = shadowTimeoutMs } = {}) {
-      const rows = await getRest('v105_shadow_v9_history', {
-        select: 'prediction_id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,predicted_result,confidence,prediction_payload,same_side_streak,independent_support_count,shoe_bias_suppressed,lock_risk,actual_result,actual_facts,is_hit,settlement_status,settlement_final,settlement_source_action,head_results,resolved_at,settlement_sequence',
-        strategy_version: 'eq.v105-shadow-v9-weighted-v7-v8', prediction_timing: 'eq.pre_result_context',
-        prediction_issued_at: 'not.is.null', order: 'prediction_issued_at.desc,prediction_id.desc',
-        limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
-      }, { requestTimeoutMs })
-      return (Array.isArray(rows) ? rows : []).filter((row) => row?.strategy_version === 'v105-shadow-v9-weighted-v7-v8'
-        && row?.prediction_timing === 'pre_result_context' && Boolean(row?.prediction_issued_at))
+    async getV105ShadowV9History({ perTableLimit = 60, requestTimeoutMs = shadowTimeoutMs } = {}) {
+      return readV105ShadowCompactHistory(
+        'v105-shadow-v9-weighted-v7-v8', 'get_v105_shadow_v9_compact_history', perTableLimit, { requestTimeoutMs },
+      )
     },
     async issueV104IterationShadowPrediction(candidate = {}) {
       const row = buildV104IterationShadowIssuanceRpcRow(candidate)
@@ -3930,6 +3933,60 @@ function calculateInitialProbabilities(table = {}) {
 function pickPrediction(probabilities) {
   if (probabilities.banker === probabilities.player) return 'banker'
   return probabilities.banker > probabilities.player ? 'banker' : 'player'
+}
+
+function validateV105ShadowCompactHistory(rows, { version, perTableLimit }) {
+  if (!Array.isArray(rows) || rows.length > (perTableLimit + 1) * PRODUCTION_TABLE_IDS.length || rows.length > 610) {
+    throw new Error('v105 shadow compact history returned an invalid row count')
+  }
+  const tableCounts = new Map()
+  const pendingTableCounts = new Map()
+  const predictionIds = new Set()
+  let previous = null
+  return rows.map((row) => {
+    const keys = row && typeof row === 'object' && !Array.isArray(row) ? Object.keys(row).sort() : []
+    if (keys.length !== V105_SHADOW_COMPACT_HISTORY_KEYS.length
+      || !keys.every((key) => V105_SHADOW_COMPACT_HISTORY_KEYS.includes(key))
+      || !row.prediction_id
+      || row.source !== SOURCE
+      || !V105_SHADOW_TABLE_ID_SET.has(row.table_id)
+      || row.shoe_no == null || String(row.shoe_no) === ''
+      || !Number.isSafeInteger(Number(row.round_no)) || Number(row.round_no) < 1
+      || row.strategy_version !== version
+      || row.prediction_timing !== 'pre_result_context'
+      || !Number.isFinite(Date.parse(row.prediction_issued_at))
+      || !['banker', 'player'].includes(row.predicted_result)
+      || !Number.isSafeInteger(Number(row.same_side_streak)) || Number(row.same_side_streak) < 1
+      || (row.settlement_final !== true && row.settlement_final !== false)
+      || (row.settlement_final === true && !['banker', 'player', 'tie'].includes(row.actual_result))
+      || (row.settlement_final === false && row.actual_result !== null)) {
+      throw new Error('v105 shadow compact history returned a malformed row')
+    }
+    const predictionId = String(row.prediction_id)
+    if (predictionIds.has(predictionId)) throw new Error('v105 shadow compact history returned a duplicate prediction')
+    predictionIds.add(predictionId)
+    if (row.settlement_final) {
+      const count = (tableCounts.get(row.table_id) ?? 0) + 1
+      if (count > perTableLimit) throw new Error('v105 shadow compact history exceeded the per-table Final row limit')
+      tableCounts.set(row.table_id, count)
+    } else {
+      const count = (pendingTableCounts.get(row.table_id) ?? 0) + 1
+      if (count > 1) throw new Error('v105 shadow compact history exceeded the per-table pending row limit')
+      pendingTableCounts.set(row.table_id, count)
+    }
+    const ordering = [Date.parse(row.prediction_issued_at), String(row.prediction_id)]
+    if (previous && (ordering[0] < previous[0] || (ordering[0] === previous[0] && compareStableText(ordering[1], previous[1]) < 0))) {
+      throw new Error('v105 shadow compact history returned unstable row ordering')
+    }
+    previous = ordering
+    return Object.fromEntries(V105_SHADOW_COMPACT_HISTORY_KEYS.map((key) => [key, row[key]]))
+  })
+}
+
+function compareStableText(left, right) {
+  const a = String(left)
+  const b = String(right)
+  return a === b ? 0 : a < b ? -1 : 1
 }
 
 

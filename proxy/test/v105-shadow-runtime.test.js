@@ -62,7 +62,7 @@ test('v105 shadow V6 keeps the issued road-pattern evidence deeply immutable aft
   assert.throws(() => { issued.roadPatternSignal.direction = 'player' }, TypeError)
 })
 
-test('v105 shadow V6 restart hydrates only its own pending issuance and rejects every old shadow history', async () => {
+test('v105 shadow V6 restart restores only its compact streak and never rebuilds pending issuance', async () => {
   const module = await import('../src/v105-shadow-runtime.js').catch(() => null)
   assert.ok(module, 'v105 shadow runtime must exist')
   const payload = {
@@ -90,15 +90,22 @@ test('v105 shadow V6 restart hydrates only its own pending issuance and rejects 
     {
       prediction_id: 'persisted-v105-shadow', strategy_version: 'v105-shadow-v6-road-pattern',
       prediction_timing: 'pre_result_context', prediction_issued_at: '2026-07-27T10:00:00.000Z',
-      source: 'ofalive99', table_id: 'BAG01', shoe_no: '105', round_no: 21,
-      predicted_result: 'banker', settlement_final: false, prediction_payload: payload,
+      source: 'ofalive99', table_id: 'BAG01', shoe_no: '105', round_no: 20,
+      predicted_result: 'banker', same_side_streak: 7, actual_result: null,
+      settlement_final: false, prediction_payload: payload,
     },
   ]
   const store = writer(history)
   const runtime = module.createV105ShadowRuntime({ enabled: true, writer: store })
-  const issued = await runtime.observeTable(table())
-  assert.equal(issued.predictionId, 'persisted-v105-shadow')
-  assert.equal(store.candidates.length, 0)
+  await runtime.start()
+  assert.deepEqual(runtime.getIssuanceContext('BAG01'), {
+    shoe: '105', direction: 'banker', sameSideStreak: 7, round: 20,
+  })
+  assert.equal(runtime.snapshot().pendingIssuances, 0)
+  const issued = await runtime.observeTable(table({ beadPlateRaw: '', bigRoadRaw: 'B#P' }))
+  assert.equal(issued.predictionId, 'v105-shadow-BAG01-21')
+  assert.equal(store.candidates.length, 1)
+  assert.equal(store.candidates[0].sameSideStreak, 8)
   assert.equal(runtime.snapshot().historyRows, 1)
   assert.equal(runtime.snapshot().historySource, 'v105_shadow_v6_only')
 })

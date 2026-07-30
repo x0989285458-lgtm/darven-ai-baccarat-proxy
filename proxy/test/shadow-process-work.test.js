@@ -209,7 +209,7 @@ test('v105 hydration whose loader ignores timeout and abort remains one pending 
   assert.equal(starts, 1)
   assert.equal(activeUnderlying, 1)
   assert.equal(maxActiveUnderlying, 1)
-  assert.deepEqual(receivedOptions, { limit: 10000, requestTimeoutMs: 5 })
+  assert.deepEqual(receivedOptions, { perTableLimit: 60, requestTimeoutMs: 5 })
 })
 
 test('capture preserves table-before-round phases while running each table across runtimes concurrently', async () => {

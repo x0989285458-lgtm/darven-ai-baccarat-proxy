@@ -50,9 +50,8 @@ test('v105 shadow history reader requests and returns only v105-shadow-v6-road-p
     fetchImpl: async (url) => { requests.push(new URL(url)); return response([own, old]) },
   })
   assert.equal(typeof client.getV105ShadowHistory, 'function')
-  assert.deepEqual(await client.getV105ShadowHistory(), [own])
-  assert.equal(requests[0].pathname, '/rest/v1/v105_shadow_v6_history')
-  assert.equal(requests[0].searchParams.get('strategy_version'), 'eq.v105-shadow-v6-road-pattern')
+  await assert.rejects(client.getV105ShadowHistory(), /compact history/i)
+  assert.equal(requests[0].pathname, '/rest/v1/rpc/get_v105_shadow_v6_compact_history')
 })
 
 test('a stalled v105 shadow write queue cannot delay formal v105 issuance', async () => {

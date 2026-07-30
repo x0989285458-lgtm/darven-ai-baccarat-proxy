@@ -24,7 +24,7 @@ test('V9 writer uses only independent V9 RPCs, history, and a zeroed counter', a
   assert.deepEqual(requests.map((request) => request.pathname), [
     '/rest/v1/rpc/issue_v105_shadow_v9_prediction',
     '/rest/v1/v105_shadow_v9_sequence_counters',
-    '/rest/v1/v105_shadow_v9_history',
+    '/rest/v1/rpc/get_v105_shadow_v9_compact_history',
   ])
 })
 

@@ -27,8 +27,10 @@ export function createV105ShadowV7Runtime({ enabled = true, writer = null, reque
     if (!hydrationPromise) {
       hydrationPromise = Promise.resolve().then(async () => {
         if (!writer?.configured || typeof writer.getV105ShadowV7History !== 'function') throw new Error('v105 shadow v7 history reader is unavailable')
-        const rows = await writer.getV105ShadowV7History({ limit: 10000, requestTimeoutMs })
-        historyRows = (Array.isArray(rows) ? rows : []).filter(isOwnHistoryRow).map((row) => structuredClone(row))
+        const rows = await writer.getV105ShadowV7History({ perTableLimit: 60, requestTimeoutMs })
+        historyRows = (Array.isArray(rows) ? rows : []).filter(isOwnHistoryRow).map(toCompactHistoryRow).filter(Boolean)
+          .sort(compareHistoryRows)
+        trimCompactHistory(historyRows)
         for (const row of [...historyRows].sort((a, b) => rowTime(a) - rowTime(b))) hydrateRow(row)
         status = 'ready'; error = null
       }).catch((cause) => {
@@ -40,15 +42,14 @@ export function createV105ShadowV7Runtime({ enabled = true, writer = null, reque
   }
 
   function hydrateRow(row) {
-    const payload = row?.prediction_payload ?? row?.predictionPayload
-    if (!payload || payload.strategyVersion !== V105_SHADOW_V7_VERSION) return
     const issued = deepFreeze({
-      ...structuredClone(payload), predictionId: row?.prediction_id ?? row?.predictionId,
-      issuedAt: row?.prediction_issued_at ?? row?.predictionIssuedAt,
+      predictionId: row.prediction_id, issuedAt: row.prediction_issued_at,
+      source: row.source, strategyVersion: row.strategy_version, predictionTiming: row.prediction_timing,
+      targetTableId: row.table_id, targetShoe: row.shoe_no, targetRound: row.round_no,
+      predictedResult: row.predicted_result, sameSideStreak: row.same_side_streak,
     })
     if (!isValidIssued(issued)) return
     recordStreak(issued)
-    if ((row?.settlement_final ?? row?.settlementFinal) !== true) issuances.set(identityKey(issued.targetTableId, issued.targetShoe, issued.targetRound), issued)
   }
 
   async function observeTableNow(table = {}) {
@@ -67,7 +68,7 @@ export function createV105ShadowV7Runtime({ enabled = true, writer = null, reque
       const issued = await withTimeout(writer.issueV105ShadowV7Prediction(candidate), requestTimeoutMs, 'v105 shadow v7 issuance')
       assertIssued(candidate, issued)
       const immutable = deepFreeze(structuredClone(issued))
-      issuances.set(key, immutable); recordStreak(immutable); historyRows.push(historyRow(immutable))
+      issuances.set(key, immutable); recordStreak(immutable); upsertPendingHistoryRow(historyRows, immutable)
       status = 'ready'; error = null
       return deepFreeze(structuredClone(immutable))
     }).catch((cause) => {
@@ -105,7 +106,7 @@ export function createV105ShadowV7Runtime({ enabled = true, writer = null, reque
       const settlement = buildV105ShadowV7Settlement(round, issued)
       const result = await withTimeout(writer.settleV105ShadowV7Prediction(settlement), requestTimeoutMs, 'v105 shadow v7 settlement')
       if (String(result?.predictionId ?? result?.prediction_id ?? '') !== String(issued.predictionId)) throw new Error('v105 shadow v7 settlement acknowledgement failed')
-      issuances.delete(key); attachSettlement(settlement); status = 'ready'; error = null
+      issuances.delete(key); attachSettlement(issued, settlement); status = 'ready'; error = null
       return { ...structuredClone(result), predictionId: issued.predictionId }
     }).catch((cause) => {
       status = 'error'; error = cause?.message ?? String(cause); throw cause
@@ -121,13 +122,21 @@ export function createV105ShadowV7Runtime({ enabled = true, writer = null, reque
     })
   }
 
-  function attachSettlement(settlement) {
-    const row = historyRows.find((item) => String(item.prediction_id) === String(settlement.predictionId))
-    if (row) Object.assign(row, { ...structuredClone(settlement), settlement_final: true })
+  function attachSettlement(issued, settlement) {
+    const row = finalHistoryRow(issued, settlement)
+    const index = historyRows.findIndex((item) => String(item.prediction_id) === String(issued.predictionId))
+    if (index >= 0) historyRows[index] = row
+    else historyRows.push(row)
+    trimCompactHistory(historyRows)
+  }
+
+  function getIssuanceContext(tableId) {
+    const context = issuanceStreaks.get(String(tableId ?? ''))
+    return context ? structuredClone(context) : null
   }
 
   return {
-    enabled: Boolean(enabled), start, observeTable, settleRound,
+    enabled: Boolean(enabled), start, observeTable, settleRound, getIssuanceContext,
     snapshot: () => ({
       strategyVersion: V105_SHADOW_V7_VERSION, status, error,
       historySource: 'v105_shadow_v7_only', historyRows: historyRows.length,
@@ -154,18 +163,76 @@ function assertIssued(expected, issued) {
     || Number(issued.targetRound) !== Number(expected.targetRound)) throw new Error('v105 shadow v7 issuance acknowledgement failed')
 }
 
-function historyRow(issued) {
+function finalHistoryRow(issued, settlement) {
   return {
     prediction_id: issued.predictionId, source: issued.source, table_id: issued.targetTableId,
     shoe_no: String(issued.targetShoe), round_no: issued.targetRound, strategy_version: V105_SHADOW_V7_VERSION,
     prediction_timing: 'pre_result_context', prediction_issued_at: issued.issuedAt,
     predicted_result: issued.predictedResult, same_side_streak: issued.sameSideStreak,
-    settlement_final: false, prediction_payload: structuredClone(issued),
+    actual_result: settlement.actualResult, settlement_final: true,
   }
+}
+function pendingHistoryRow(issued) {
+  return {
+    prediction_id: issued.predictionId, source: issued.source, table_id: issued.targetTableId,
+    shoe_no: String(issued.targetShoe), round_no: issued.targetRound, strategy_version: V105_SHADOW_V7_VERSION,
+    prediction_timing: 'pre_result_context', prediction_issued_at: issued.issuedAt,
+    predicted_result: issued.predictedResult, same_side_streak: issued.sameSideStreak,
+    actual_result: null, settlement_final: false,
+  }
+}
+function upsertPendingHistoryRow(rows, issued) {
+  const tableId = String(issued.targetTableId)
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    if (String(rows[index].table_id) === tableId && rows[index].settlement_final === false) rows.splice(index, 1)
+  }
+  rows.push(pendingHistoryRow(issued))
+  trimCompactHistory(rows)
 }
 
 function identityKey(tableId, shoe, round) {
   return JSON.stringify(['ofalive99', String(tableId ?? ''), String(shoe ?? ''), Number(round), V105_SHADOW_V7_VERSION])
+}
+function toCompactHistoryRow(row) {
+  const settlementFinal = row?.settlement_final ?? row?.settlementFinal
+  if (settlementFinal !== true && settlementFinal !== false) return null
+  if (settlementFinal === false && (row?.actual_result ?? row?.actualResult) != null) return null
+  return {
+    prediction_id: row.prediction_id, source: row.source, table_id: row.table_id, shoe_no: row.shoe_no,
+    round_no: row.round_no, strategy_version: row.strategy_version, prediction_timing: row.prediction_timing,
+    prediction_issued_at: row.prediction_issued_at, predicted_result: row.predicted_result,
+    same_side_streak: row.same_side_streak, actual_result: settlementFinal ? row.actual_result : null,
+    settlement_final: settlementFinal,
+  }
+}
+function trimCompactHistory(rows) {
+  rows.sort(compareHistoryRows)
+  const finalCounts = new Map()
+  const pendingTables = new Set()
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const tableId = String(rows[index].table_id)
+    if (rows[index].settlement_final === false) {
+      if (pendingTables.has(tableId)) rows.splice(index, 1)
+      else pendingTables.add(tableId)
+      continue
+    }
+    const count = (finalCounts.get(tableId) ?? 0) + 1
+    finalCounts.set(tableId, count)
+    if (count > 60) rows.splice(index, 1)
+  }
+  let finalCount = rows.reduce((count, row) => count + (row.settlement_final === true ? 1 : 0), 0)
+  for (let index = 0; finalCount > 600 && index < rows.length;) {
+    if (rows[index].settlement_final === true) { rows.splice(index, 1); finalCount -= 1 }
+    else index += 1
+  }
+}
+function compareHistoryRows(a, b) {
+  return rowTime(a) - rowTime(b) || compareStableText(a?.prediction_id, b?.prediction_id)
+}
+function compareStableText(left, right) {
+  const a = String(left ?? '')
+  const b = String(right ?? '')
+  return a === b ? 0 : a < b ? -1 : 1
 }
 function rowTime(row) { return Date.parse(row?.prediction_issued_at ?? row?.predictionIssuedAt ?? '') || 0 }
 function withTimeout(operation, timeoutMs, label) {

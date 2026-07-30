@@ -40,19 +40,19 @@ test('V9 independently issues only the fixed ten tables', async () => {
   assert.equal(runtime.snapshot().historySource, 'v105_shadow_v9_only')
 })
 
-test('V9 restart hydrates only its own history and rejects old identities', async () => {
+test('V9 restart hydrates only its own Final compact streak and never rebuilds pending issuance', async () => {
   const { createV105ShadowV9Runtime } = await import('../src/v105-shadow-v9-runtime.js')
-  const payload = { source: 'ofalive99', strategyVersion: VERSION, releaseCandidate: VERSION, formalStrategyVersion: 'v105', predictionTiming: 'pre_result_context', shadowOnly: true, activationEligible: false, memberVisible: false, writesSideActions: false, targetTableId: 'BAG01', targetShoe: '105', targetRound: 21, predictedResult: 'banker', sameSideStreak: 1 }
-  const row = (strategyVersion, predictionId) => ({ prediction_id: predictionId, strategy_version: strategyVersion, prediction_timing: 'pre_result_context', prediction_issued_at: '2026-07-29T01:00:00.000Z', settlement_final: false, prediction_payload: { ...payload, strategyVersion } })
+  const row = (strategyVersion, predictionId) => ({ prediction_id: predictionId, source: 'ofalive99', table_id: 'BAG01', shoe_no: '105', round_no: 20, strategy_version: strategyVersion, prediction_timing: 'pre_result_context', prediction_issued_at: '2026-07-29T01:00:00.000Z', predicted_result: 'banker', same_side_streak: 7, actual_result: 'player', settlement_final: true })
   const store = writer([
     row('v105-shadow-v7-ask-road', 'old-v7'),
     row('v105-shadow-v8-run-length-ask-road', 'old-v8'),
     row(VERSION, 'own-v9'),
   ])
   const runtime = createV105ShadowV9Runtime({ writer: store })
-  assert.equal((await runtime.observeTable(table())).predictionId, 'own-v9')
-  assert.equal(store.candidates.length, 0)
-  assert.equal(runtime.snapshot().historyRows, 1)
+  assert.equal(runtime.snapshot().pendingIssuances, 0)
+  assert.equal((await runtime.observeTable(table())).predictionId, 'v9-BAG01-21')
+  assert.equal(store.candidates[0].sameSideStreak, 8)
+  assert.equal(runtime.snapshot().historyRows, 2)
 })
 
 test('V9 settles verified Final through only the V9 writer', async () => {

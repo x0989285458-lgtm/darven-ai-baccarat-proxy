@@ -39,24 +39,20 @@ test('V7 independently issues the fixed ten tables and no others', async () => {
   assert.equal(runtime.snapshot().historySource, 'v105_shadow_v7_only')
 })
 
-test('V7 restart hydrates only its own pending issuance and rejects old identities', async () => {
+test('V7 restart hydrates only its own Final compact streak and never rebuilds pending issuance', async () => {
   const { createV105ShadowV7Runtime } = await import('../src/v105-shadow-v7-runtime.js')
-  const payload = {
-    source: 'ofalive99', strategyVersion: 'v105-shadow-v7-ask-road', releaseCandidate: 'v105-shadow-v7-ask-road',
-    formalStrategyVersion: 'v105', predictionTiming: 'pre_result_context', shadowOnly: true,
-    activationEligible: false, memberVisible: false, writesSideActions: false,
-    targetTableId: 'BAG01', targetShoe: '105', targetRound: 21, predictedResult: 'banker', sameSideStreak: 1,
-  }
   const row = (strategyVersion, id) => ({
-    prediction_id: id, strategy_version: strategyVersion, prediction_timing: 'pre_result_context',
-    prediction_issued_at: '2026-07-27T10:00:00.000Z', settlement_final: false,
-    prediction_payload: { ...payload, strategyVersion },
+    prediction_id: id, source: 'ofalive99', table_id: 'BAG01', shoe_no: '105', round_no: 20,
+    strategy_version: strategyVersion, prediction_timing: 'pre_result_context',
+    prediction_issued_at: '2026-07-27T10:00:00.000Z', predicted_result: 'banker', same_side_streak: 7,
+    actual_result: 'player', settlement_final: true,
   })
   const store = writer([row('v105-shadow-v6-road-pattern', 'old-v6'), row('v105-shadow-v7-ask-road', 'own-v7')])
   const runtime = createV105ShadowV7Runtime({ writer: store })
-  assert.equal((await runtime.observeTable(table())).predictionId, 'own-v7')
-  assert.equal(store.candidates.length, 0)
-  assert.equal(runtime.snapshot().historyRows, 1)
+  assert.equal(runtime.snapshot().pendingIssuances, 0)
+  assert.equal((await runtime.observeTable(table())).predictionId, 'v7-BAG01-21')
+  assert.equal(store.candidates[0].sameSideStreak, 8)
+  assert.equal(runtime.snapshot().historyRows, 2)
 })
 
 test('V7 settles verified summary/show_win Final without sharing formal or V6 state', async () => {
