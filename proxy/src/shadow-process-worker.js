@@ -6,6 +6,7 @@ import { createV105ShadowRuntime, resolveV105ShadowEnabled } from './v105-shadow
 import { createV105ShadowV7Runtime, resolveV105ShadowV7Enabled } from './v105-shadow-v7-runtime.js'
 import { createV105ShadowV8Runtime, resolveV105ShadowV8Enabled } from './v105-shadow-v8-runtime.js'
 import { createV105ShadowV9Runtime, resolveV105ShadowV9Enabled } from './v105-shadow-v9-runtime.js'
+import { prepareShadowRuntimes, processShadowCapture } from './shadow-process-work.js'
 
 const writer = createSupabaseIngestionClient({
   dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING,
@@ -50,34 +51,15 @@ function snapshots() {
   }))
 }
 
-async function processCapture(payload = {}) {
-  const tables = Array.isArray(payload.tables) ? payload.tables : []
-  const rounds = Array.isArray(payload.rounds) ? payload.rounds : []
-  for (const table of tables) {
-    for (const runtime of runtimes.values()) {
-      if (runtime?.enabled !== true || typeof runtime.observeTable !== 'function') continue
-      await runtime.observeTable(structuredClone(table))
-    }
-  }
-  for (const round of rounds) {
-    for (const runtime of runtimes.values()) {
-      if (runtime?.enabled !== true || typeof runtime.settleRound !== 'function') continue
-      try {
-        await runtime.settleRound(structuredClone(round))
-      } catch (error) {
-        if (/no immutable issuance/i.test(String(error?.message ?? error))) continue
-        throw error
-      }
-    }
-  }
-}
-
 process.on('message', async (message) => {
   if (!message || message.type !== 'request') return
   const id = message.id
   try {
-    if (message.kind === 'capture') {
-      await processCapture(structuredClone(message.payload))
+    let result = null
+    if (message.kind === 'prepare') {
+      result = await prepareShadowRuntimes(runtimes)
+    } else if (message.kind === 'capture') {
+      result = await processShadowCapture(runtimes, structuredClone(message.payload))
     } else {
       const runtime = runtimes.get(message.runtime)
       if (!runtime || runtime.enabled !== true) throw new Error('shadow runtime is disabled')
@@ -86,9 +68,13 @@ process.on('message', async (message) => {
       }
       await runtime[message.method](structuredClone(message.payload))
     }
-    process.send?.({ type: 'response', id, ok: true, result: null, snapshots: snapshots() })
+    process.send?.({ type: 'response', id, ok: true, result, snapshots: snapshots() })
   } catch (error) {
-    process.send?.({ type: 'response', id, ok: false, error: safeError(error), snapshots: snapshots() })
+    process.send?.({
+      type: 'response', id, ok: false,
+      error: { message: safeError(error), code: String(error?.code ?? 'SHADOW_RUNTIME_FAILED'), diagnostics: error?.diagnostics ?? [] },
+      snapshots: snapshots(),
+    })
   }
 })
 

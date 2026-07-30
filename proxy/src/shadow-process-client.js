@@ -31,6 +31,7 @@ export function createShadowProcessClient({
   workerPath = null,
   env = process.env,
   requestTimeoutMs = Number(process.env.SHADOW_PROCESS_REQUEST_TIMEOUT_MS ?? 15000),
+  startupTimeoutMs = Number(process.env.SHADOW_PROCESS_STARTUP_TIMEOUT_MS ?? 60000),
   killGraceMs = Number(process.env.SHADOW_PROCESS_KILL_GRACE_MS ?? 1000),
   killConfirmMs = Number(process.env.SHADOW_PROCESS_KILL_CONFIRM_MS ?? 3000),
 } = {}) {
@@ -40,6 +41,8 @@ export function createShadowProcessClient({
   let stopping = false
   let terminating = null
   let terminationFailure = null
+  let lastFailure = null
+  let lastSuccess = null
   const pending = new Map()
   const snapshots = new Map()
 
@@ -122,8 +125,14 @@ export function createShadowProcessClient({
       if (message.snapshots && typeof message.snapshots === 'object') {
         for (const [key, value] of Object.entries(message.snapshots)) snapshots.set(key, value)
       }
-      if (message.ok === true) request.resolve(message.result ?? null)
-      else request.reject(new Error(safeErrorMessage(message.error)))
+      if (message.ok === true) {
+        lastSuccess = { at: new Date().toISOString(), kind: request.kind, result: safeResult(message.result) }
+        request.resolve(message.result ?? null)
+      } else {
+        const remoteError = createRemoteError(message.error)
+        lastFailure = { at: new Date().toISOString(), kind: request.kind, code: remoteError.code, diagnostics: remoteError.diagnostics }
+        request.reject(remoteError)
+      }
     })
     spawned.once('error', (error) => { void terminate(spawned, new Error(safeErrorMessage(error?.message))) })
     spawned.once('exit', (code, signal) => {
@@ -140,10 +149,16 @@ export function createShadowProcessClient({
     const id = nextId++
     const targetGeneration = target.__shadowGeneration
     return new Promise((resolve, reject) => {
-      const onAbort = () => { void terminate(target, new Error('shadow process request aborted')) }
-      const timer = setTimeout(() => { void terminate(target, new Error('shadow process request timeout')) }, Math.max(1, Number(timeoutMs) || 15000))
+      const onAbort = () => {
+        lastFailure = { at: new Date().toISOString(), kind: message.kind, code: 'SHADOW_PROCESS_REQUEST_ABORTED', diagnostics: [] }
+        void terminate(target, new Error('shadow process request aborted'))
+      }
+      const timer = setTimeout(() => {
+        lastFailure = { at: new Date().toISOString(), kind: message.kind, code: 'SHADOW_PROCESS_REQUEST_TIMEOUT', diagnostics: [] }
+        void terminate(target, new Error('shadow process request timeout'))
+      }, Math.max(1, Number(timeoutMs) || 15000))
       timer.unref?.()
-      pending.set(id, { resolve, reject, timer, signal, onAbort, generation: targetGeneration })
+      pending.set(id, { resolve, reject, timer, signal, onAbort, generation: targetGeneration, kind: message.kind })
       if (signal?.aborted) return onAbort()
       signal?.addEventListener?.('abort', onAbort, { once: true })
       try {
@@ -164,6 +179,10 @@ export function createShadowProcessClient({
 
   function processCapture(payload, options = {}) {
     return sendRequest({ kind: 'capture', payload }, options)
+  }
+
+  function prepare(options = {}) {
+    return sendRequest({ kind: 'prepare' }, { timeoutMs: startupTimeoutMs, ...options })
   }
 
   function runtime(key, { enabled = true } = {}) {
@@ -193,6 +212,7 @@ export function createShadowProcessClient({
 
   return {
     request,
+    prepare,
     processCapture,
     runtime,
     stop,
@@ -203,6 +223,31 @@ export function createShadowProcessClient({
       stopping,
       terminating: Boolean(terminating),
       terminationFailed: Boolean(terminationFailure),
+      lastFailure: structuredClone(lastFailure),
+      lastSuccess: structuredClone(lastSuccess),
     }),
   }
+}
+
+function createRemoteError(value) {
+  const source = value && typeof value === 'object' ? value : { message: value }
+  const error = new Error(safeErrorMessage(source.message))
+  error.code = /^SHADOW_[A-Z0-9_]+$/.test(String(source.code ?? '')) ? String(source.code) : 'SHADOW_RUNTIME_FAILED'
+  error.diagnostics = Array.isArray(source.diagnostics)
+    ? source.diagnostics.slice(0, 7).map((item) => ({
+        runtime: RUNTIME_KEYS.has(item?.runtime) ? item.runtime : 'unknown',
+        stage: ['hydrate', 'observeTable', 'settleRound'].includes(item?.stage) ? item.stage : 'unknown',
+        code: /^[a-z0-9_]+$/.test(String(item?.code ?? '')) ? String(item.code) : 'runtime_error',
+      }))
+    : []
+  return error
+}
+
+function safeResult(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const allowed = {}
+  for (const key of ['prepared', 'disabled', 'observed', 'settled', 'noops']) {
+    if (Number.isSafeInteger(value[key]) && value[key] >= 0) allowed[key] = value[key]
+  }
+  return allowed
 }

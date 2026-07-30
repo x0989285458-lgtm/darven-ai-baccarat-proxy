@@ -6,7 +6,7 @@ import { createApp } from '../src/server.js'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-function fakeChild({ respond = true, exitDelayMs = 0, ignoreKill = false } = {}) {
+function fakeChild({ respond = true, respondTo = null, exitDelayMs = 0, ignoreKill = false } = {}) {
   const child = new EventEmitter()
   child.connected = true
   child.exitCode = null
@@ -15,7 +15,7 @@ function fakeChild({ respond = true, exitDelayMs = 0, ignoreKill = false } = {})
   child.send = (message, callback) => {
     child.sent.push(structuredClone(message))
     callback?.(null)
-    if (respond) setImmediate(() => child.emit('message', { type: 'response', id: message.id, ok: true, result: null, snapshots: { [message.runtime]: { status: 'ready' } } }))
+    if (respond && (!respondTo || respondTo(message))) setImmediate(() => child.emit('message', { type: 'response', id: message.id, ok: true, result: null, snapshots: { [message.runtime]: { status: 'ready' } } }))
   }
   child.kill = (signal) => {
     if (ignoreKill) return false
@@ -28,10 +28,24 @@ function fakeChild({ respond = true, exitDelayMs = 0, ignoreKill = false } = {})
   return child
 }
 
-test('shadow process IPC sends only runtime work and inherits secrets through child env', async () => {
+test('shadow process IPC sends only runtime work and inherits the exact database env allowlist', async () => {
   const children = []
   const client = createShadowProcessClient({
-    env: { SUPABASE_SERVICE_ROLE_KEY: 'fake', UNRELATED_PRIVATE_SECRET: 'omit' },
+    env: {
+      SUPABASE_URL: 'https://example.invalid',
+      SUPABASE_SERVICE_ROLE_KEY: 'fake',
+      SUPABASE_DB_CONNECTION_STRING: 'postgresql://example.invalid/db',
+      SUPABASE_REQUEST_TIMEOUT_MS: '1234',
+      DURABLE_INGEST_REQUEST_TIMEOUT_MS: '5678',
+      V103_SHADOW_ENABLED: 'false',
+      V104_SHADOW_ENABLED: 'false',
+      V104_ITERATION_SHADOW_ENABLED: 'false',
+      V105_SHADOW_V6_ENABLED: 'true',
+      V105_SHADOW_V7_ENABLED: 'true',
+      V105_SHADOW_V8_ENABLED: 'true',
+      V105_SHADOW_V9_ENABLED: 'true',
+      UNRELATED_PRIVATE_SECRET: 'omit',
+    },
     forkImpl(_path, _args, options) {
       const child = fakeChild()
       child.options = options
@@ -44,6 +58,11 @@ test('shadow process IPC sends only runtime work and inherits secrets through ch
 
   assert.equal(children.length, 1)
   assert.equal(children[0].options.env.SUPABASE_SERVICE_ROLE_KEY, 'fake')
+  assert.equal(children[0].options.env.SUPABASE_DB_CONNECTION_STRING, 'postgresql://example.invalid/db')
+  assert.equal(children[0].options.env.SUPABASE_REQUEST_TIMEOUT_MS, '1234')
+  assert.equal(children[0].options.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS, '5678')
+  assert.equal(children[0].options.env.V103_SHADOW_ENABLED, 'false')
+  assert.equal(children[0].options.env.V105_SHADOW_V9_ENABLED, 'true')
   assert.equal('UNRELATED_PRIVATE_SECRET' in children[0].options.env, false)
   assert.doesNotMatch(JSON.stringify(children[0].sent), /SUPABASE_SERVICE_ROLE_KEY|UNRELATED_PRIVATE_SECRET/)
   assert.deepEqual(children[0].sent[0].payload, { tableId: 'BAG01', shoe: 1, round: 2 })
@@ -234,7 +253,7 @@ test('an active child must exit before the exact lease failure is acknowledged',
     killGraceMs: 5,
     killConfirmMs: 100,
     forkImpl() {
-      const child = fakeChild({ respond: false, exitDelayMs: 30 })
+      const child = fakeChild({ respond: true, respondTo: (message) => message.kind === 'prepare', exitDelayMs: 30 })
       child.once('exit', () => { exitAt = Date.now() })
       return child
     },
@@ -273,6 +292,120 @@ test('an active child must exit before the exact lease failure is acknowledged',
   assert.notEqual(exitAt, 0)
   assert.equal(failAt >= exitAt, true)
   await app.stop()
+})
+
+test('child hydration finishes before claim and does not consume the exact outbox lease deadline', async () => {
+  let claimed = false
+  let preparedAt = 0
+  let claimedAt = 0
+  const processClient = {
+    runtime(_key, { enabled }) {
+      return { enabled, observeTable() {}, settleRound() {}, snapshot() { return { status: 'ready' } } }
+    },
+    async prepare() { await delay(30); preparedAt = Date.now() },
+    async processCapture() {},
+    status() { return { running: true, generation: 1, pending: 0, stopping: false } },
+    async stop() {},
+  }
+  const app = createApp({
+    autoConnect: false,
+    production: false,
+    memberAuthRequired: false,
+    requireVerifiedStrategy: false,
+    isolateShadowProcess: true,
+    shadowProcessClient: processClient,
+    outboxWorkDeadlineMs: 10,
+    outboxBackoffMs: 1,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        claimedAt = Date.now()
+        if (claimed) return []
+        claimed = true
+        return [{ session_id: 'prepared-first', sequence: 1, claim_token: 'lease-prepared', attempts: 1, payload: { work: {
+          sessionId: 'prepared-first', status: { connected: true, authenticated: true }, tables: [], rounds: [],
+        } } }]
+      },
+      async completeCaptureOutbox() {},
+      async failCaptureOutbox() { assert.fail('hydration time must not expire the lease') },
+      async readIssuedPrediction() { return null },
+    },
+    v100FormalRuntime: { enabled: false },
+  })
+
+  assert.deepEqual(await app.drainCaptureOutbox(), { processed: 1, failed: 0 })
+  assert.equal(preparedAt > 0, true)
+  assert.equal(claimedAt >= preparedAt, true)
+  await app.stop()
+})
+
+test('prepare failure is observable with a bounded code and never claims an outbox lease', async () => {
+  let prepareFailed = false
+  let claims = 0
+  const processClient = {
+    runtime(_key, { enabled }) {
+      return { enabled, observeTable() {}, settleRound() {}, snapshot() { return { status: 'initializing' } } }
+    },
+    async prepare() {
+      prepareFailed = true
+      throw new Error('shadow runtime batch failed')
+    },
+    async processCapture() { assert.fail('capture must not run after prepare failure') },
+    status() {
+      return prepareFailed
+        ? { running: true, generation: 1, pending: 0, stopping: false, lastFailure: { kind: 'prepare', code: 'SHADOW_RUNTIME_BATCH_FAILED', diagnostics: [{ runtime: 'v105-v9', stage: 'hydrate', code: 'db_request' }] } }
+        : { running: true, generation: 1, pending: 0, stopping: false, lastFailure: null }
+    },
+    async stop() {},
+  }
+  const app = createApp({
+    autoConnect: false,
+    production: false,
+    memberAuthRequired: false,
+    requireVerifiedStrategy: false,
+    isolateShadowProcess: true,
+    shadowProcessClient: processClient,
+    outboxBackoffMs: 1000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() { claims += 1; return [] },
+      async readIssuedPrediction() { return null },
+    },
+    v100FormalRuntime: { enabled: false },
+  })
+
+  await assert.rejects(app.drainCaptureOutbox(), /shadow runtime batch failed/)
+  assert.equal(claims, 0)
+  const status = JSON.parse((await app.inject({ url: '/api/status' })).body)
+  assert.equal(status.shadowProcessStatus.lastFailure.code, 'SHADOW_RUNTIME_BATCH_FAILED')
+  assert.deepEqual(status.shadowProcessStatus.lastFailure.diagnostics, [{ runtime: 'v105-v9', stage: 'hydrate', code: 'db_request' }])
+  await app.stop()
+})
+
+test('remote child failures expose only bounded structured diagnostics', async () => {
+  const client = createShadowProcessClient({
+    forkImpl() {
+      const child = fakeChild({ respond: false })
+      child.send = (message, callback) => {
+        callback?.(null)
+        setImmediate(() => child.emit('message', {
+          type: 'response', id: message.id, ok: false,
+          error: {
+            message: 'password=hunter2 Bearer top-secret',
+            code: 'SHADOW_RUNTIME_BATCH_FAILED',
+            diagnostics: [{ runtime: 'v105-v9', stage: 'settleRound', code: 'db_request', raw: 'must-not-leak' }],
+          },
+        }))
+      }
+      return child
+    },
+  })
+
+  await assert.rejects(client.processCapture({ tables: [], rounds: [] }), /REDACTED/)
+  const status = client.status()
+  assert.deepEqual(status.lastFailure.diagnostics, [{ runtime: 'v105-v9', stage: 'settleRound', code: 'db_request' }])
+  assert.doesNotMatch(JSON.stringify(status), /hunter2|top-secret|must-not-leak/i)
+  await client.stop()
 })
 
 test('server isolated mode sends one complete durable outbox payload to the child and stops it', async () => {

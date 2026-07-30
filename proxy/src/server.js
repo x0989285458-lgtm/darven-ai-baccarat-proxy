@@ -666,6 +666,15 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       let shouldContinue = false
       let nextWakeDelayMs = null
       try {
+        if (isolatedShadowProcess?.prepare) {
+          try {
+            await isolatedShadowProcess.prepare()
+          } catch (error) {
+            state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
+            throw error
+          }
+          state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
+        }
         const rows = await supabaseClient.claimCaptureOutbox({ limit: 1 })
         outboxRetryCount = 0
         if (Array.isArray(rows) && rows.length > 0) {
