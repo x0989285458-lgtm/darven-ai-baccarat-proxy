@@ -1,9 +1,9 @@
 {
-  "releaseName": "v105影子多桌服務率修正版1",
-  "releaseVersion": "v105-shadow-table-concurrency.1",
-  "gitTag": "v105-shadow-table-concurrency.1",
-  "applicationVersion": "1.0.21",
-  "baseRelease": "v1.0.20",
+  "releaseName": "v105影子冷啟租約修正版1",
+  "releaseVersion": "v105-shadow-cold-lease.1",
+  "gitTag": "v105-shadow-cold-lease.1",
+  "applicationVersion": "1.0.22",
+  "baseRelease": "v1.0.21",
   "strategyVersion": "v105",
   "protocolVersion": "v105",
   "databaseMigrationRequired": false,
@@ -37,6 +37,7 @@
     "shadowCrossTableConcurrency": "bounded_by_table_identity",
     "shadowMaxConcurrentRuntimeOperations": 9,
     "shadowSameTablePayloadOrder": "sequential",
+    "outboxWorkDeadlineMs": 45000,
     "exactNoIssuanceOnly": true,
     "schedulerRejectsAfterClosing": true,
     "staleIssuanceReconcilesLatest": true,
@@ -54,7 +55,7 @@
     "live-five-minute-e2e"
   ],
   "rollback": {
-    "targetTag": "v1.0.20",
+    "targetTag": "v1.0.21",
     "preserveQueueCursorJournal": true,
     "preserveOutboxHistory": true,
     "requireUnfinishedOutboxZeroBeforeRollback": true
