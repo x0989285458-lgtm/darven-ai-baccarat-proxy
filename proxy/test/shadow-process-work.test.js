@@ -14,14 +14,21 @@ function runtime({ enabled = true, start, observeTable, settleRound } = {}) {
   }
 }
 
-test('cold hydration starts concurrently without making prepare wait for one stalled runtime', async () => {
+test('cold hydration is scheduled one runtime at a time in map order with queued readiness', async () => {
   const calls = []
-  let releaseV8
-  const v8Gate = new Promise((resolve) => { releaseV8 = resolve })
+  let activeHydrations = 0
+  let maxActiveHydrations = 0
+  const releases = new Map()
   const runtimes = new Map(['v105-v7', 'v105-v8', 'v105-v9'].map((key) => [key, runtime({
     async start() {
       calls.push(`start:${key}`)
-      if (key === 'v105-v8') await v8Gate
+      activeHydrations += 1
+      maxActiveHydrations = Math.max(maxActiveHydrations, activeHydrations)
+      try {
+        await new Promise((resolve) => { releases.set(key, resolve) })
+      } finally {
+        activeHydrations -= 1
+      }
     },
   })]))
 
@@ -30,13 +37,62 @@ test('cold hydration starts concurrently without making prepare wait for one sta
   const elapsedMs = Date.now() - startedAt
   await delay(0)
 
-  assert.deepEqual(result, { prepared: 0, pending: 3, failed: 0, disabled: 0 })
-  assert.deepEqual(calls.sort(), ['start:v105-v7', 'start:v105-v8', 'start:v105-v9'])
+  assert.deepEqual(result, { enabled: 3, prepared: 0, pending: 1, queued: 2, failed: 0, disabled: 0 })
+  assert.deepEqual(calls, ['start:v105-v7'])
+  assert.equal(maxActiveHydrations, 1)
   assert.equal(elapsedMs < 20, true, `prepare waited for runtime hydration (${elapsedMs}ms)`)
 
-  releaseV8()
+  releases.get('v105-v7')()
   await delay(0)
-  assert.deepEqual(await prepareShadowRuntimes(runtimes), { prepared: 3, pending: 0, failed: 0, disabled: 0 })
+  assert.deepEqual(calls, ['start:v105-v7', 'start:v105-v8'])
+  assert.deepEqual(await prepareShadowRuntimes(runtimes), { enabled: 3, prepared: 1, pending: 1, queued: 1, failed: 0, disabled: 0 })
+
+  releases.get('v105-v8')()
+  await delay(0)
+  assert.deepEqual(calls, ['start:v105-v7', 'start:v105-v8', 'start:v105-v9'])
+  assert.deepEqual(await prepareShadowRuntimes(runtimes), { enabled: 3, prepared: 2, pending: 1, queued: 0, failed: 0, disabled: 0 })
+
+  releases.get('v105-v9')()
+  await delay(0)
+  assert.deepEqual(await prepareShadowRuntimes(runtimes), { enabled: 3, prepared: 3, pending: 0, queued: 0, failed: 0, disabled: 0 })
+  assert.equal(maxActiveHydrations, 1)
+})
+
+test('failed hydration retry joins the queue tail and cannot starve first hydration of later runtimes', async () => {
+  const calls = []
+  let rejectR1
+  let releaseR2
+  let releaseR3
+  let releaseR1Retry
+  let r1Attempts = 0
+  const runtimes = new Map([
+    ['r1', runtime({ async start() {
+      r1Attempts += 1
+      calls.push(`r1:${r1Attempts}`)
+      if (r1Attempts === 1) await new Promise((_, reject) => { rejectR1 = reject })
+      else await new Promise((resolve) => { releaseR1Retry = resolve })
+    } })],
+    ['r2', runtime({ async start() { calls.push('r2:1'); await new Promise((resolve) => { releaseR2 = resolve }) } })],
+    ['r3', runtime({ async start() { calls.push('r3:1'); await new Promise((resolve) => { releaseR3 = resolve }) } })],
+  ])
+
+  prepareShadowRuntimes(runtimes)
+  await delay(0)
+  rejectR1(new Error('first hydration failed'))
+  await delay(0)
+  assert.deepEqual(calls, ['r1:1', 'r2:1'])
+  assert.throws(() => prepareShadowRuntimes(runtimes), (error) => error.code === 'SHADOW_RUNTIME_BATCH_FAILED')
+  prepareShadowRuntimes(runtimes)
+
+  releaseR2()
+  await delay(0)
+  assert.deepEqual(calls, ['r1:1', 'r2:1', 'r3:1'])
+  releaseR3()
+  await delay(0)
+  assert.deepEqual(calls, ['r1:1', 'r2:1', 'r3:1', 'r1:2'])
+  releaseR1Retry()
+  await delay(0)
+  assert.equal(r1Attempts, 2)
 })
 
 test('an unhydrated runtime blocks every shadow write until the whole exact capture is ready', async () => {
@@ -69,10 +125,11 @@ test('an unhydrated runtime blocks every shadow write until the whole exact capt
     (error) => error.code === 'SHADOW_RUNTIME_BATCH_FAILED'
       && error.diagnostics?.some((item) => item.runtime === 'v105-v8' && item.stage === 'hydrate'),
   )
-  assert.deepEqual(calls, ['hydrate:v7', 'hydrate:v8', 'hydrate:v9'])
+  assert.deepEqual(calls, ['hydrate:v7', 'hydrate:v8'])
 
   releaseV8()
   await delay(0)
+  assert.deepEqual(calls, ['hydrate:v7', 'hydrate:v8', 'hydrate:v9'])
   assert.deepEqual(
     await processShadowCapture(runtimes, { tables: [{ tableId: 'BAG01' }], rounds: [{ tableId: 'BAG01', round: 10 }] }),
     { observed: 3, settled: 3, noops: 0 },
@@ -99,7 +156,7 @@ test('failed runtime hydration is retried in the same child readiness state', as
     },
   })]])
 
-  assert.deepEqual(await prepareShadowRuntimes(runtimes), { prepared: 0, pending: 1, failed: 0, disabled: 0 })
+  assert.deepEqual(await prepareShadowRuntimes(runtimes), { enabled: 1, prepared: 0, pending: 1, queued: 0, failed: 0, disabled: 0 })
   await delay(0)
   rejectFirst(new Error('v105 shadow v8 history hydration failed'))
   await delay(0)
@@ -109,13 +166,13 @@ test('failed runtime hydration is retried in the same child readiness state', as
       && error.diagnostics?.[0]?.runtime === 'v105-v8'
       && error.diagnostics?.[0]?.stage === 'hydrate',
   )
-  assert.deepEqual(await prepareShadowRuntimes(runtimes), { prepared: 0, pending: 1, failed: 0, disabled: 0 })
+  assert.deepEqual(await prepareShadowRuntimes(runtimes), { enabled: 1, prepared: 0, pending: 1, queued: 0, failed: 0, disabled: 0 })
   await delay(0)
   assert.equal(attempts, 2)
   assert.equal(maxActive, 1)
   resolveSecond()
   await delay(0)
-  assert.deepEqual(await prepareShadowRuntimes(runtimes), { prepared: 1, pending: 0, failed: 0, disabled: 0 })
+  assert.deepEqual(await prepareShadowRuntimes(runtimes), { enabled: 1, prepared: 1, pending: 0, queued: 0, failed: 0, disabled: 0 })
   assert.equal(attempts, 2)
 })
 
@@ -140,7 +197,7 @@ test('v105 hydration whose loader ignores timeout and abort remains one pending 
   const runtimes = new Map([['v105-v8', runtime]])
 
   for (let index = 0; index < 3; index += 1) {
-    assert.deepEqual(await prepareShadowRuntimes(runtimes), { prepared: 0, pending: 1, failed: 0, disabled: 0 })
+    assert.deepEqual(await prepareShadowRuntimes(runtimes), { enabled: 1, prepared: 0, pending: 1, queued: 0, failed: 0, disabled: 0 })
     await delay(10)
     await assert.rejects(
       processShadowCapture(runtimes, { tables: [{ tableId: 'BAG01' }], rounds: [] }),
@@ -239,7 +296,7 @@ test('disabled legacy runtimes are skipped and v105 settlement without immutable
 
   await prepareShadowRuntimes(runtimes)
   await delay(0)
-  assert.deepEqual(await prepareShadowRuntimes(runtimes), { prepared: 4, pending: 0, failed: 0, disabled: 3 })
+  assert.deepEqual(await prepareShadowRuntimes(runtimes), { enabled: 4, prepared: 4, pending: 0, queued: 0, failed: 0, disabled: 3 })
   const result = await processShadowCapture(runtimes, { tables: [], rounds: [{ tableId: 'BAG01', round: 9 }] })
   assert.deepEqual(result, { observed: 0, settled: 0, noops: 4 })
 })

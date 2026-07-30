@@ -301,6 +301,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   let fatalHandlerCalled = false
   let outboxRetryCount = 0
   let outboxHealthRetryCount = 0
+  const attemptedFailureAcks = new Set()
   const pendingPredictions = new Map()
   const preparingPredictionPromises = new Map()
   const issuingPredictionPromises = new Map()
@@ -701,13 +702,32 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       try {
         if (isolatedShadowProcess?.prepare) {
           setCaptureOutboxPhase('prepare')
+          let readiness
           try {
-            await isolatedShadowProcess.prepare()
+            readiness = await isolatedShadowProcess.prepare()
           } catch (error) {
             state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
             throw error
           }
-          state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
+          state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status(), shadowProcessReadiness: readiness ?? null })
+          const readinessValid = readiness && typeof readiness === 'object' && !Array.isArray(readiness)
+            && ['enabled', 'prepared', 'pending', 'queued', 'failed'].every((key) => Number.isSafeInteger(readiness[key]) && readiness[key] >= 0)
+          if (!readinessValid) {
+            setCaptureOutboxPhase('prepare_error')
+            deferWake(resolvedOutboxBackoffMs)
+            return { processed, failed }
+          }
+          const prepared = readiness.prepared
+          const pending = readiness.pending
+          const queued = readiness.queued ?? 0
+          const failedPrepare = readiness.failed
+          const enabled = readiness.enabled ?? (prepared + pending + queued + failedPrepare)
+          const readinessTotal = prepared + pending + queued + failedPrepare
+          if (enabled !== readinessTotal || prepared < enabled || pending > 0 || queued > 0 || failedPrepare > 0) {
+            setCaptureOutboxPhase(failedPrepare > 0 ? 'prepare_error' : 'prepare_queued')
+            deferWake(resolvedOutboxBackoffMs)
+            return { processed, failed }
+          }
         }
         setCaptureOutboxPhase('claim')
         const rows = await supabaseClient.claimCaptureOutbox({ limit: 1 })
@@ -781,11 +801,16 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               ])
             }
             setCaptureOutboxPhase('failure_ack', attempt)
-            await withDeadline(
-              supabaseClient.failCaptureOutbox?.({ sessionId, sequence, claimToken, attempt, error: error?.message ?? String(error) }),
-              resolvedOutboxWorkDeadlineMs,
-              `capture outbox failure acknowledgement deadline exceeded for ${sessionId}:${sequence}`,
-            )
+            const failureAckKey = `${sessionId}\u0000${sequence}\u0000${claimToken}\u0000${attempt}`
+            if (!attemptedFailureAcks.has(failureAckKey)) {
+              attemptedFailureAcks.add(failureAckKey)
+              if (attemptedFailureAcks.size > 10000) attemptedFailureAcks.delete(attemptedFailureAcks.values().next().value)
+              await withDeadline(
+                supabaseClient.failCaptureOutbox?.({ sessionId, sequence, claimToken, attempt, error: error?.message ?? String(error) }),
+                resolvedOutboxWorkDeadlineMs,
+                `capture outbox failure acknowledgement deadline exceeded for ${sessionId}:${sequence}`,
+              )
+            }
             // The durable row owns its retry schedule. Continue immediately so another
             // session is never held behind this row's backoff.
           } finally {

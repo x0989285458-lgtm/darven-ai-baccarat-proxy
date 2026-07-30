@@ -7,7 +7,7 @@ import { createApp } from '../src/server.js'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-function fakeChild({ respond = true, respondTo = null, exitDelayMs = 0, ignoreKill = false } = {}) {
+function fakeChild({ respond = true, respondTo = null, responseResult = null, exitDelayMs = 0, ignoreKill = false } = {}) {
   const child = new EventEmitter()
   child.connected = true
   child.exitCode = null
@@ -16,7 +16,7 @@ function fakeChild({ respond = true, respondTo = null, exitDelayMs = 0, ignoreKi
   child.send = (message, callback) => {
     child.sent.push(structuredClone(message))
     callback?.(null)
-    if (respond && (!respondTo || respondTo(message))) setImmediate(() => child.emit('message', { type: 'response', id: message.id, ok: true, result: null, snapshots: { [message.runtime]: { status: 'ready' } } }))
+    if (respond && (!respondTo || respondTo(message))) setImmediate(() => child.emit('message', { type: 'response', id: message.id, ok: true, result: typeof responseResult === 'function' ? responseResult(message) : responseResult, snapshots: { [message.runtime]: { status: 'ready' } } }))
   }
   child.kill = (signal) => {
     if (ignoreKill) return false
@@ -138,8 +138,8 @@ test('a stalled runtime hydration returns pending readiness without killing the 
     },
   })
 
-  assert.deepEqual(await client.prepare(), { prepared: 0, pending: 1, failed: 0, disabled: 0 })
-  assert.deepEqual(await client.prepare(), { prepared: 0, pending: 1, failed: 0, disabled: 0 })
+  assert.deepEqual(await client.prepare(), { enabled: 1, prepared: 0, pending: 1, queued: 0, failed: 0, disabled: 0 })
+  assert.deepEqual(await client.prepare(), { enabled: 1, prepared: 0, pending: 1, queued: 0, failed: 0, disabled: 0 })
   assert.equal(children.length, 1)
   assert.equal(children[0].signalCode, null)
   assert.equal(client.status().generation, 1)
@@ -210,7 +210,7 @@ test('an unconfirmed isolated child termination enters server fatal mode without
     killGraceMs: 5,
     killConfirmMs: 20,
     forkImpl() {
-      const child = fakeChild({ respond: true, respondTo: (message) => message.kind === 'prepare', ignoreKill: true })
+      const child = fakeChild({ respond: true, respondTo: (message) => message.kind === 'prepare', responseResult: { enabled: 0, prepared: 0, pending: 0, queued: 0, failed: 0 }, ignoreKill: true })
       children.push(child)
       return child
     },
@@ -355,7 +355,7 @@ test('an active child must exit before the exact lease failure is acknowledged',
     killGraceMs: 5,
     killConfirmMs: 200,
     forkImpl() {
-      const child = fakeChild({ respond: true, respondTo: (message) => message.kind === 'prepare', exitDelayMs: 30 })
+      const child = fakeChild({ respond: true, respondTo: (message) => message.kind === 'prepare', responseResult: { enabled: 0, prepared: 0, pending: 0, queued: 0, failed: 0 }, exitDelayMs: 30 })
       child.once('exit', () => { exitAt = Date.now() })
       return child
     },
@@ -407,7 +407,11 @@ test('child hydration finishes before claim and does not consume the exact outbo
     runtime(_key, { enabled }) {
       return { enabled, observeTable() {}, settleRound() {}, snapshot() { return { status: 'ready' } } }
     },
-    async prepare() { await delay(30); preparedAt = Date.now() },
+    async prepare() {
+      await delay(30)
+      preparedAt = Date.now()
+      return { enabled: 7, prepared: 7, pending: 0, queued: 0, failed: 0, disabled: 0 }
+    },
     async processCapture() {},
     status() { return { running: true, generation: 1, pending: 0, stopping: false } },
     async stop() {},
@@ -444,8 +448,8 @@ test('child hydration finishes before claim and does not consume the exact outbo
   await app.stop()
 })
 
-test('pending shadow hydration preserves Formal table ingest but prevents exact lease completion', async () => {
-  let claimed = false
+test('pending or queued shadow hydration does not claim, consume an attempt, or run Formal lease work', async () => {
+  let claims = 0
   let formalCalls = 0
   let completed = 0
   const failures = []
@@ -453,7 +457,7 @@ test('pending shadow hydration preserves Formal table ingest but prevents exact 
     runtime(_key, { enabled }) {
       return { enabled, observeTable() {}, settleRound() {}, snapshot() { return { status: 'initializing' } } }
     },
-    async prepare() { return { prepared: 6, pending: 1, failed: 0, disabled: 0 } },
+    async prepare() { return { enabled: 7, prepared: 6, pending: 1, queued: 0, failed: 0, disabled: 0 } },
     async processCapture() {
       const error = new Error('shadow runtime batch failed (v105-v8:hydrate:not_ready)')
       error.code = 'SHADOW_RUNTIME_BATCH_FAILED'
@@ -477,12 +481,8 @@ test('pending shadow hydration preserves Formal table ingest but prevents exact 
     supabaseClient: {
       configured: true,
       async claimCaptureOutbox() {
-        if (claimed) return []
-        claimed = true
-        return [{ session_id: 'hydrate-pending', sequence: 1, claim_token: 'lease-pending', attempts: 1, payload: { work: {
-          sessionId: 'hydrate-pending', status: { connected: true, authenticated: true },
-          tables: [{ tableId: 'BAG01', shoe: 88, round: 20 }], rounds: [],
-        } } }]
+        claims += 1
+        return []
       },
       async completeCaptureOutbox() { completed += 1 },
       async failCaptureOutbox(identity) { failures.push(identity); return { failed: true, retry_after_ms: 1000 } },
@@ -494,11 +494,11 @@ test('pending shadow hydration preserves Formal table ingest but prevents exact 
     },
   })
 
-  assert.deepEqual(await app.drainCaptureOutbox(), { processed: 0, failed: 1 })
-  assert.equal(formalCalls, 1)
+  assert.deepEqual(await app.drainCaptureOutbox(), { processed: 0, failed: 0 })
+  assert.equal(claims, 0)
+  assert.equal(formalCalls, 0)
   assert.equal(completed, 0)
-  assert.equal(failures.length, 1)
-  assert.equal(JSON.parse((await app.inject({ url: '/api/tables' })).body).length, 1)
+  assert.equal(failures.length, 0)
   await app.stop()
 })
 
@@ -512,7 +512,7 @@ test('shutdown kills an isolated child before waiting on its unsettled capture w
     runtime(_key, { enabled }) {
       return { enabled, observeTable() {}, settleRound() {}, snapshot() { return { status: 'ready' } } }
     },
-    async prepare() { return { prepared: 7, pending: 0, failed: 0, disabled: 0 } },
+    async prepare() { return { enabled: 7, prepared: 7, pending: 0, queued: 0, failed: 0, disabled: 0 } },
     async processCapture() {
       captureStarted()
       await new Promise((_, reject) => { rejectCapture = reject })
@@ -602,6 +602,135 @@ test('prepare failure is observable with a bounded code and never claims an outb
   const status = JSON.parse((await app.inject({ url: '/api/status' })).body)
   assert.equal(status.shadowProcessStatus.lastFailure.code, 'SHADOW_RUNTIME_BATCH_FAILED')
   assert.deepEqual(status.shadowProcessStatus.lastFailure.diagnostics, [{ runtime: 'v105-v9', stage: 'hydrate', code: 'db_request' }])
+  await app.stop()
+})
+
+test('missing or malformed shadow readiness never claims an outbox lease', async () => {
+  for (const readiness of [null, {}, { enabled: 3, prepared: 4, pending: 0, queued: 0, failed: 0 }]) {
+    let claims = 0
+    const processClient = {
+      runtime(_key, { enabled }) {
+        return { enabled, observeTable() {}, settleRound() {}, snapshot() { return { status: 'initializing' } } }
+      },
+      async prepare() { return readiness },
+      status() { return { running: true, generation: 1, pending: 0, stopping: false } },
+      async stop() {},
+    }
+    const app = createApp({
+      autoConnect: false,
+      production: false,
+      memberAuthRequired: false,
+      requireVerifiedStrategy: false,
+      isolateShadowProcess: true,
+      shadowProcessClient: processClient,
+      outboxBackoffMs: 1000,
+      supabaseClient: {
+        configured: true,
+        async claimCaptureOutbox() { claims += 1; return [] },
+        async readIssuedPrediction() { return null },
+      },
+      v100FormalRuntime: { enabled: false },
+    })
+
+    assert.deepEqual(await app.drainCaptureOutbox(), { processed: 0, failed: 0 })
+    assert.equal(claims, 0)
+    await app.stop()
+  }
+})
+
+test('structured prepare failure is observable and never claims or failure-ACKs an outbox lease', async () => {
+  let claims = 0
+  let failureAcks = 0
+  const readiness = { enabled: 3, prepared: 2, pending: 0, queued: 0, failed: 1, disabled: 4 }
+  const processClient = {
+    runtime(_key, { enabled }) {
+      return { enabled, observeTable() {}, settleRound() {}, snapshot() { return { status: 'initializing' } } }
+    },
+    async prepare() { return readiness },
+    status() { return { running: true, generation: 1, pending: 0, stopping: false } },
+    async stop() {},
+  }
+  const app = createApp({
+    autoConnect: false,
+    production: false,
+    memberAuthRequired: false,
+    requireVerifiedStrategy: false,
+    isolateShadowProcess: true,
+    shadowProcessClient: processClient,
+    outboxBackoffMs: 1000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() { claims += 1; return [] },
+      async failCaptureOutbox() { failureAcks += 1 },
+      async readIssuedPrediction() { return null },
+    },
+    v100FormalRuntime: { enabled: false },
+  })
+
+  assert.deepEqual(await app.drainCaptureOutbox(), { processed: 0, failed: 0 })
+  assert.equal(claims, 0)
+  assert.equal(failureAcks, 0)
+  const status = JSON.parse((await app.inject({ url: '/api/status' })).body)
+  assert.deepEqual(status.shadowProcessReadiness, readiness)
+  await app.stop()
+})
+
+test('Formal raw ingest and status stay responsive while child hydration remains queued', async () => {
+  let persisted = 0
+  let claims = 0
+  const processClient = {
+    runtime(_key, { enabled }) {
+      return { enabled, observeTable() {}, settleRound() {}, snapshot() { return { status: 'initializing' } } }
+    },
+    async prepare() { return { enabled: 3, prepared: 0, pending: 1, queued: 2, failed: 0, disabled: 4 } },
+    status() { return { running: true, generation: 1, pending: 0, stopping: false } },
+    async stop() {},
+  }
+  const app = createApp({
+    autoConnect: false,
+    production: false,
+    memberAuthRequired: false,
+    requireVerifiedStrategy: false,
+    isolateShadowProcess: true,
+    shadowProcessClient: processClient,
+    ingestKey: 'worker-key',
+    now: () => 1_000_000,
+    outboxBackoffMs: 1000,
+    supabaseClient: {
+      configured: true,
+      async writeCloudTableSnapshot() {},
+      async persistCaptureEnvelope({ roundKeys }) {
+        persisted += 1
+        return { duplicate: false, acceptedRoundKeys: roundKeys }
+      },
+      async claimCaptureOutbox() { claims += 1; return [] },
+      async readIssuedPrediction() { return null },
+    },
+    v100FormalRuntime: { enabled: false },
+  })
+  const envelope = {
+    protocolVersion: 'v105', timestamp: 1_000_000, sequence: 1, roundKeys: [],
+    snapshot: {
+      buildVersion: '105', sessionId: 'hydrate-live', connected: true, authenticated: true,
+      tables: [{ tableId: 'BAG01', shoe: 88, round: 20 }], rounds: [],
+    },
+  }
+
+  const ingest = await Promise.race([
+    app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': 'worker-key' }, body: JSON.stringify(envelope) }),
+    delay(100).then(() => ({ statusCode: 599 })),
+  ])
+  const status = await Promise.race([
+    app.inject({ url: '/api/status' }),
+    delay(100).then(() => ({ statusCode: 599 })),
+  ])
+  await delay(0)
+
+  assert.equal(ingest.statusCode, 200)
+  assert.equal(status.statusCode, 200)
+  assert.equal(persisted, 1)
+  assert.equal(claims, 0)
+  assert.equal(JSON.parse(status.body).connected, true)
   await app.stop()
 })
 

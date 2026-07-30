@@ -1,9 +1,9 @@
 {
-  "releaseName": "v105影子Hydration生命週期修正版1",
-  "releaseVersion": "v105-shadow-hydration-lifecycle.1",
-  "gitTag": "v105-shadow-hydration-lifecycle.1",
-  "applicationVersion": "1.0.23",
-  "baseRelease": "v1.0.22",
+  "releaseName": "v105影子序列Hydration修正版1",
+  "releaseVersion": "v105-shadow-hydration-serial.1",
+  "gitTag": "v105-shadow-hydration-serial.1",
+  "applicationVersion": "1.0.24",
+  "baseRelease": "v1.0.23",
   "strategyVersion": "v105",
   "protocolVersion": "v105",
   "databaseMigrationRequired": false,
@@ -45,6 +45,13 @@
     "shadowPartialWritesBeforeReady": false,
     "shadowHistoryRequestTimeoutPropagated": true,
     "shutdownStopsChildBeforeOutboxWait": true,
+    "shadowHydrationConcurrency": 1,
+    "shadowHydrationRetryOrder": "fifo_tail",
+    "shadowReadinessRequiredFields": ["enabled", "prepared", "pending", "queued", "failed"],
+    "shadowReadinessCountConsistent": true,
+    "outboxClaimRequiresAllShadowReady": true,
+    "shadowReadinessPollingDoesNotConsumeAttempt": true,
+    "failureAckAttemptedOnce": true,
     "exactNoIssuanceOnly": true,
     "schedulerRejectsAfterClosing": true,
     "staleIssuanceReconcilesLatest": true,
@@ -62,7 +69,7 @@
     "live-five-minute-e2e"
   ],
   "rollback": {
-    "targetTag": "v1.0.22",
+    "targetTag": "v1.0.23",
     "preserveQueueCursorJournal": true,
     "preserveOutboxHistory": true,
     "requireUnfinishedOutboxZeroBeforeRollback": true

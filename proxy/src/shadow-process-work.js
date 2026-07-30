@@ -6,13 +6,16 @@ const EXPECTED_SETTLEMENT_NOOPS = new Map([
 ])
 const MAX_CONCURRENT_RUNTIME_OPERATIONS = 9
 const hydrationStates = new WeakMap()
+const hydrationSchedulers = new WeakMap()
 
 export function prepareShadowRuntimes(runtimes) {
   const entries = enabledRuntimeEntries(runtimes)
+  const scheduler = hydrationScheduler(runtimes)
   for (const [, runtime] of entries) {
     const current = hydrationStates.get(runtime)
-    ensureRuntimeHydration(runtime, { retryFailed: current?.status === 'error' && current.failureObserved === true })
+    queueRuntimeHydration(scheduler, runtime, { retryFailed: current?.status === 'error' && current.failureObserved === true })
   }
+  pumpHydrationScheduler(scheduler)
   const states = entries.map(([, runtime]) => hydrationStates.get(runtime))
   const failures = entries.flatMap(([runtimeKey, runtime]) => {
     const state = hydrationStates.get(runtime)
@@ -22,8 +25,10 @@ export function prepareShadowRuntimes(runtimes) {
   })
   if (failures.length > 0) throwRuntimeDiagnostics(failures)
   return {
+    enabled: entries.length,
     prepared: states.filter((state) => state?.status === 'ready').length,
     pending: states.filter((state) => state?.status === 'pending').length,
+    queued: states.filter((state) => state?.status === 'queued').length,
     failed: states.filter((state) => state?.status === 'error').length,
     disabled: Math.max(0, runtimes.size - entries.length),
   }
@@ -56,12 +61,36 @@ export async function processShadowCapture(runtimes, payload = {}) {
   return summary
 }
 
-function ensureRuntimeHydration(runtime, { retryFailed = false } = {}) {
+function hydrationScheduler(runtimes) {
+  let scheduler = hydrationSchedulers.get(runtimes)
+  if (!scheduler) {
+    scheduler = { queue: [], active: null }
+    hydrationSchedulers.set(runtimes, scheduler)
+  }
+  return scheduler
+}
+
+function queueRuntimeHydration(scheduler, runtime, { retryFailed = false } = {}) {
   const current = hydrationStates.get(runtime)
-  if (current?.status === 'ready' || current?.status === 'pending') return current
+  if (current?.status === 'ready' || current?.status === 'pending' || current?.status === 'queued') return current
   if (current?.status === 'error' && retryFailed !== true) return current
-  const state = { status: 'pending', errorCode: null, failureObserved: false, promise: null }
+  const state = { status: 'queued', errorCode: null, failureObserved: false, promise: null, scheduler }
   hydrationStates.set(runtime, state)
+  scheduler.queue.push(runtime)
+  return state
+}
+
+function pumpHydrationScheduler(scheduler) {
+  if (scheduler.active) return
+  let runtime = null
+  while (scheduler.queue.length > 0 && !runtime) {
+    const candidate = scheduler.queue.shift()
+    if (hydrationStates.get(candidate)?.status === 'queued') runtime = candidate
+  }
+  if (!runtime) return
+  const state = hydrationStates.get(runtime)
+  scheduler.active = runtime
+  state.status = 'pending'
   state.promise = Promise.resolve()
     .then(() => runtime.start?.())
     .then(() => {
@@ -72,8 +101,11 @@ function ensureRuntimeHydration(runtime, { retryFailed = false } = {}) {
       state.status = 'error'
       state.errorCode = classifyRuntimeError(error)
     })
-    .finally(() => { state.promise = null })
-  return state
+    .finally(() => {
+      state.promise = null
+      if (scheduler.active === runtime) scheduler.active = null
+      pumpHydrationScheduler(scheduler)
+    })
 }
 
 function enabledRuntimeEntries(runtimes) {
