@@ -65,6 +65,13 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
   const latest = new Map()
   const identityTails = new Map()
   const withIdentityPermit = createConcurrencyPermit(MAX_FORMAL_IDENTITY_CONCURRENCY)
+  let processTail = Promise.resolve()
+
+  function withProcessTail(task) {
+    const current = processTail.catch(() => {}).then(task)
+    processTail = current
+    return current
+  }
 
   function withIdentityTail(key, task) {
     const previous = identityTails.get(key) ?? Promise.resolve()
@@ -84,6 +91,32 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
     const ledger = await writer.readV100RankLedger({ source, tableId, shoe })
     loaded.add(key)
     if (ledger) ledgers.set(key, structuredClone(ledger))
+  }
+
+  async function hydrateTables(tables = []) {
+    if (typeof writer?.readV100RankLedgers !== 'function') return
+    const identities = []
+    const requestedKeys = new Set()
+    for (const table of tables) {
+      const tableId = String(table?.tableId ?? '')
+      const shoe = String(table?.shoe ?? '')
+      if (!tableId || !shoe) continue
+      const key = identityKey(source, tableId, shoe)
+      if (loaded.has(key) || requestedKeys.has(key)) continue
+      requestedKeys.add(key)
+      identities.push({ source, tableId, shoe })
+    }
+    if (identities.length === 0) return
+    const rows = await writer.readV100RankLedgers(identities)
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const rowSource = String(row?.identity?.source ?? row?.source ?? '')
+      const tableId = String(row?.identity?.table_id ?? row?.identity?.tableId ?? row?.table_id ?? row?.tableId ?? '')
+      const shoe = String(row?.identity?.shoe ?? row?.shoe_no ?? row?.shoe ?? '')
+      const key = identityKey(rowSource, tableId, shoe)
+      if (!requestedKeys.has(key)) throw new Error('v100 durable rank ledger batch returned an unexpected identity')
+      ledgers.set(key, structuredClone(row))
+    }
+    for (const key of requestedKeys) loaded.add(key)
   }
 
   async function applyIdentityRounds(key, events = []) {
@@ -148,45 +181,49 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
     enabled: Boolean(enabled),
     async processSnapshot({ tables = [], rounds = [] } = {}) {
       if (!enabled) return { enabled: false, predictions: [] }
-      if (!writer?.configured || typeof writer.readV100RankLedger !== 'function' || typeof writer.applyV100RankLedgerEvent !== 'function') {
-        throw new Error('v102 formal runtime requires a configured durable writer')
-      }
+      return withProcessTail(async () => {
+        if (!writer?.configured || typeof writer.readV100RankLedger !== 'function' || typeof writer.applyV100RankLedgerEvent !== 'function') {
+          throw new Error('v102 formal runtime requires a configured durable writer')
+        }
 
-      const workByIdentity = new Map()
-      const workFor = (key) => {
-        if (!workByIdentity.has(key)) workByIdentity.set(key, { tables: [], events: [] })
-        return workByIdentity.get(key)
-      }
-      for (const table of tables) {
-        workFor(identityKey(source, table.tableId, table.shoe)).tables.push(table)
-      }
-      for (const round of rounds) {
-        const event = { ...round, source: round.source ?? source }
-        workFor(identityKey(event.source, event.tableId, event.shoe)).events.push(event)
-      }
+        const workByIdentity = new Map()
+        const workFor = (key) => {
+          if (!workByIdentity.has(key)) workByIdentity.set(key, { tables: [], events: [] })
+          return workByIdentity.get(key)
+        }
+        for (const table of tables) {
+          workFor(identityKey(source, table.tableId, table.shoe)).tables.push(table)
+        }
+        for (const round of rounds) {
+          const event = { ...round, source: round.source ?? source }
+          workFor(identityKey(event.source, event.tableId, event.shoe)).events.push(event)
+        }
 
-      const results = await settleWithConcurrency([...workByIdentity.entries()], ([key, work]) => (
-        withIdentityTail(key, () => withIdentityPermit(async () => {
-          for (const table of work.tables) await hydrateTable(table)
-          await applyIdentityRounds(key, work.events)
-          return work.tables.map(scoreTable).filter(Boolean)
-        }))
-      ))
-      const failure = results.find((result) => result.status === 'rejected')
-      if (failure) throw failure.reason
+        await withIdentityPermit(() => hydrateTables(tables))
 
-      const predictions = results.flatMap((result) => result.value)
-      const predictionByIdentity = new Map(predictions.map((prediction) => [
-        identityKey(source, prediction.targetTableId, prediction.targetShoe),
-        prediction,
-      ]))
-      const formalTables = tables.map((table) => {
-        const prediction = predictionByIdentity.get(identityKey(source, table.tableId, table.shoe))
-        return prediction?.v102RankLedger
-          ? { ...structuredClone(table), v102RankLedger: structuredClone(prediction.v102RankLedger) }
-          : structuredClone(table)
+        const results = await settleWithConcurrency([...workByIdentity.entries()], ([key, work]) => (
+          withIdentityTail(key, () => withIdentityPermit(async () => {
+            for (const table of work.tables) await hydrateTable(table)
+            await applyIdentityRounds(key, work.events)
+            return work.tables.map(scoreTable).filter(Boolean)
+          }))
+        ))
+        const failure = results.find((result) => result.status === 'rejected')
+        if (failure) throw failure.reason
+
+        const predictions = results.flatMap((result) => result.value)
+        const predictionByIdentity = new Map(predictions.map((prediction) => [
+          identityKey(source, prediction.targetTableId, prediction.targetShoe),
+          prediction,
+        ]))
+        const formalTables = tables.map((table) => {
+          const prediction = predictionByIdentity.get(identityKey(source, table.tableId, table.shoe))
+          return prediction?.v102RankLedger
+            ? { ...structuredClone(table), v102RankLedger: structuredClone(prediction.v102RankLedger) }
+            : structuredClone(table)
+        })
+        return { enabled: true, predictions, tables: formalTables }
       })
-      return { enabled: true, predictions, tables: formalTables }
     },
     snapshot() {
       return { enabled: Boolean(enabled), predictions: [...latest.values()].map((value) => structuredClone(value)) }

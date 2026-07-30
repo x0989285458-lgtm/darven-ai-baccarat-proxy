@@ -97,6 +97,24 @@ test('claim, complete, and fail use the direct DB RPC path with unforgeable leas
   assert.deepEqual(queries[2].values, ['s', 2, 'token-2', 3, 'safe error'])
 })
 
+test('batch rank-ledger hydration uses one parameterized exact-identity Direct DB query', async () => {
+  const queries = []
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    strategyPool: { async query(query) { queries.push(query); return { rows: [] } } },
+    fetchImpl: async () => assert.fail('Direct DB batch hydration must not use REST'),
+  })
+  const identities = [
+    { source: 'mt-cloud', tableId: 'BAG01', shoe: 'S1' },
+    { source: 'mt-cloud', tableId: 'BAG10', shoe: 'S9' },
+  ]
+
+  assert.deepEqual(await client.readV100RankLedgers(identities), [])
+  assert.equal(queries.length, 1)
+  assert.match(queries[0].text, /unnest\(\$1::text\[\], \$2::text\[\], \$3::text\[\]\)/i)
+  assert.deepEqual(queries[0].values, [['mt-cloud', 'mt-cloud'], ['BAG01', 'BAG10'], ['S1', 'S9']])
+})
+
 test('outbox health is available through direct DB and REST fallback', async () => {
   const direct = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,

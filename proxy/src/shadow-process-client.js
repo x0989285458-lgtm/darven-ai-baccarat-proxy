@@ -73,12 +73,19 @@ export function createShadowProcessClient({
         clearTimeout(forceTimer)
         clearTimeout(confirmTimer)
         target.removeListener?.('exit', onExit)
-        if (child === target) child = null
         if (error) {
+          error.code = 'SHADOW_PROCESS_TERMINATION_UNCONFIRMED'
           terminationFailure = error
+          lastFailure = {
+            at: new Date().toISOString(),
+            kind: 'termination',
+            code: error.code,
+            diagnostics: [],
+          }
           rejectGeneration(targetGeneration, error)
           reject(error)
         } else {
+          if (child === target) child = null
           resolve()
         }
       }
@@ -217,12 +224,14 @@ export function createShadowProcessClient({
     runtime,
     stop,
     status: () => ({
-      running: Boolean(child?.connected),
+      running: Boolean(child && (terminationFailure || child.connected)),
       generation,
       pending: pending.size,
       stopping,
       terminating: Boolean(terminating),
       terminationFailed: Boolean(terminationFailure),
+      phase: terminationFailure ? 'fatal' : terminating ? 'terminating' : 'ready',
+      code: terminationFailure ? 'SHADOW_PROCESS_TERMINATION_UNCONFIRMED' : null,
       lastFailure: structuredClone(lastFailure),
       lastSuccess: structuredClone(lastSuccess),
     }),

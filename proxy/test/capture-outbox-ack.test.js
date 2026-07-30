@@ -118,10 +118,12 @@ test('restart drains a pending durable outbox item before marking it complete', 
   assert.deepEqual(completed, [{ sessionId: 'outbox-worker', sequence: 7, claimToken: 'lease-7', attempt: 1 }])
 })
 
-test('shadow work must drain before durable outbox completion and a permanent hang is failed for retry', async () => {
+test('shadow work must settle before a timed-out lease is failed for retry', async () => {
   let claimed = false
   let completed = 0
   const failures = []
+  let releaseSettlement
+  const settlementGate = new Promise((resolve) => { releaseSettlement = resolve })
   const app = createApp({
     autoConnect: false,
     outboxWorkDeadlineMs: 25,
@@ -142,11 +144,15 @@ test('shadow work must drain before durable outbox completion and a permanent ha
     v105ShadowRuntime: {
       enabled: true,
       async observeTable() {},
-      async settleRound() { await new Promise(() => {}) },
+      async settleRound() { await settlementGate },
     },
   })
 
-  const result = await app.drainCaptureOutbox()
+  const draining = app.drainCaptureOutbox()
+  await delay(35)
+  assert.equal(failures.length, 0, 'failure ACK must not release a lease while shadow work is still active')
+  releaseSettlement()
+  const result = await draining
   assert.deepEqual(result, { processed: 0, failed: 1 })
   assert.equal(completed, 0)
   assert.equal(failures.length, 1)
@@ -443,7 +449,7 @@ test('an earlier health wakeup replaces an already scheduled later retry timer',
   assert.ok(claimCalls >= 2, `earlier health wakeup was ignored: ${claimCalls} claim`)
 })
 
-test('temporary claim and work failures auto-retry while poison work is isolated', async () => {
+test('temporary claim failure retries but an uncancellable exact failure ACK is never duplicated', async () => {
   let claimCalls = 0
   let failCalls = 0
   const completed = []
@@ -461,8 +467,7 @@ test('temporary claim and work failures auto-retry while poison work is isolated
       async completeCaptureOutbox({ sequence }) { completed.push(sequence); return { completed: true } },
       async failCaptureOutbox(identity) {
         failCalls += 1
-        if (failCalls === 1) throw new Error('temporary fail RPC outage')
-        return { failed: true, isolated: true, ...identity }
+        throw new Error(`temporary fail RPC outage for ${identity.claimToken}`)
       },
     },
     v100FormalRuntime: { enabled: false },
@@ -470,8 +475,8 @@ test('temporary claim and work failures auto-retry while poison work is isolated
   await app.drainCaptureOutbox().catch(() => {})
   await app.waitForCaptureOutboxIdle()
   assert.ok(claimCalls >= 3)
-  assert.ok(failCalls >= 2)
-  assert.deepEqual(completed, [2], 'poison row must not block the next sequence after isolation')
+  assert.equal(failCalls, 1)
+  assert.deepEqual(completed, [2], 'a failure ACK outage must not drop the next claimable Final')
 })
 
 test('each consumer work item has a deadline and records failure through its exact lease', async () => {
@@ -495,6 +500,50 @@ test('each consumer work item has a deadline and records failure through its exa
   assert.match(failure.error, /deadline exceeded/i)
   assert.equal(failure.claimToken, 'lease-1')
   assert.equal(failure.attempt, 1)
+})
+
+test('formal deadline waits for the underlying work to settle before failure ACK permits a retry', async () => {
+  let claimCalls = 0
+  let formalCalls = 0
+  let activeFormal = 0
+  let maxActiveFormal = 0
+  let failureAckWhileFormalActive = false
+  const completed = []
+  const app = createApp({
+    autoConnect: false, outboxWorkDeadlineMs: 10, outboxBackoffMs: 1,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        claimCalls += 1
+        if (claimCalls > 2) return []
+        return [claimedRow(1, { attempts: claimCalls, claim_token: `lease-attempt-${claimCalls}` })]
+      },
+      async completeCaptureOutbox({ attempt }) { completed.push(attempt); return { completed: true } },
+      async failCaptureOutbox() {
+        failureAckWhileFormalActive = activeFormal > 0
+        return { failed: true, retry_after_ms: 0 }
+      },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) {
+        formalCalls += 1
+        const call = formalCalls
+        activeFormal += 1
+        maxActiveFormal = Math.max(maxActiveFormal, activeFormal)
+        if (call === 1) await delay(40)
+        activeFormal -= 1
+        return { tables }
+      },
+    },
+  })
+
+  await app.drainCaptureOutbox()
+  await app.waitForCaptureOutboxIdle()
+
+  assert.equal(failureAckWhileFormalActive, false, 'failure ACK must remain fenced behind the timed-out Formal promise')
+  assert.equal(maxActiveFormal, 1, 'a reclaimed attempt must not overlap the old Formal lifecycle')
+  assert.deepEqual(completed, [2])
 })
 
 test('consumer deadline includes the completion ACK RPC', async () => {
@@ -538,6 +587,85 @@ test('stalled failure RPC is bounded and cannot block shutdown forever', async (
     delay(200).then(() => false),
   ])
   assert.equal(settled, true)
+  await app.stop()
+})
+
+test('scaled 120-second failure path sends one exact failure ACK while processing stays reclaimable and pending grows', async () => {
+  let claimed = false
+  let processing = 0
+  let pending = 1
+  let failureAckCalls = 0
+  let releaseFormal
+  const formalGate = new Promise((resolve) => { releaseFormal = resolve })
+  const app = createApp({
+    autoConnect: false, outboxWorkDeadlineMs: 30, outboxBackoffMs: 1,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        pending -= 1
+        processing += 1
+        return [claimedRow(1, { payload: { work: envelope().snapshot } })]
+      },
+      async failCaptureOutbox() {
+        failureAckCalls += 1
+        await new Promise(() => {})
+      },
+      async getCaptureOutboxHealth() {
+        return { pending, processing, error: 0, dead_letter: 0, next_wakeup_at: null }
+      },
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot() { await formalGate } },
+  })
+  setTimeout(() => { pending += 2 }, 10).unref?.()
+
+  const startedAt = Date.now()
+  const draining = app.drainCaptureOutbox()
+  await delay(40)
+  assert.equal(failureAckCalls, 0, 'failure ACK must stay fenced while Formal remains active')
+  const statusResponse = await app.inject({ method: 'GET', url: '/api/status' })
+  assert.equal(JSON.parse(statusResponse.body).captureOutboxPhase.phase, 'formal_settling')
+  releaseFormal()
+  await draining.catch(() => {})
+  const elapsedMs = Date.now() - startedAt
+
+  assert.equal(processing, 1, 'unacknowledged exact lease must remain processing for DB stale-lease reclaim')
+  assert.equal(pending, 2, 'new durable Final rows remain queued behind the processing FIFO head')
+  assert.equal(failureAckCalls, 1, 'an uncancellable exact failure ACK must never overlap with retries')
+  assert.ok(elapsedMs < 150, `scaled drain reproduced the 30 + 3x30 second stall: ${elapsedMs}ms`)
+  await app.stop()
+})
+
+test('status exposes only bounded outbox phase diagnostics while formal work is blocked', async () => {
+  let claimed = false
+  let releaseFormal
+  const formalGate = new Promise((resolve) => { releaseFormal = resolve })
+  const app = createApp({
+    autoConnect: false, outboxWorkDeadlineMs: 20,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(1, { payload: { work: envelope().snapshot } })]
+      },
+      async completeCaptureOutbox() {},
+      async failCaptureOutbox() {},
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot() { await formalGate } },
+  })
+  const drain = app.drainCaptureOutbox()
+  await delay(30)
+
+  const response = await app.inject({ method: 'GET', url: '/api/status' })
+  const status = JSON.parse(response.body)
+  assert.equal(status.captureOutboxPhase.phase, 'formal_settling')
+  assert.equal(status.captureOutboxPhase.attempt, 1)
+  assert.deepEqual(Object.keys(status.captureOutboxPhase).sort(), ['attempt', 'phase', 'startedAt'])
+
+  releaseFormal()
+  await drain.catch(() => {})
   await app.stop()
 })
 

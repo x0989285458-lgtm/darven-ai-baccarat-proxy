@@ -2432,6 +2432,61 @@ export function createSupabaseIngestionClient({
       if (rows.length !== 1) throw new Error('conflicting v100 durable rank ledger identity')
       return normalizeV100DurableRankLedger(rows[0], { source: normalizedSource, tableId: normalizedTable, shoe: normalizedShoe })
     },
+    async readV100RankLedgers(identities = []) {
+      const exact = []
+      const seen = new Set()
+      for (const identity of Array.isArray(identities) ? identities : []) {
+        const source = String(identity?.source ?? '')
+        const tableId = String(identity?.tableId ?? identity?.table_id ?? '')
+        const shoe = String(identity?.shoe ?? identity?.shoe_no ?? '')
+        if (!source || !tableId || !shoe) throw new Error('v100 durable rank ledger batch identity is incomplete')
+        const key = JSON.stringify([source, tableId, shoe])
+        if (seen.has(key)) continue
+        seen.add(key)
+        exact.push({ source, tableId, shoe })
+      }
+      if (exact.length === 0) return []
+      if (exact.length > 128) throw new Error('v100 durable rank ledger batch exceeds maximum identities')
+      let rows
+      if (priorityStrategyDb && typeof priorityStrategyDb.query === 'function') {
+        rows = (await priorityStrategyDb.query({
+          text: `with requested(source, table_id, shoe_no) as (
+                   select * from unnest($1::text[], $2::text[], $3::text[])
+                 )
+                 select ledger.source, ledger.table_id, ledger.shoe_no, ledger.complete_through_round,
+                        ledger.seen_dealt_rank_counts, ledger.seen_dealt_code_counts,
+                        ledger.undealt_after_observed_deals, ledger.cards_seen_dealt, ledger.status,
+                        ledger.ledger_checksum, ledger.revision, ledger.physical_remaining_exact,
+                        ledger.burn_observation_status
+                   from public.shoe_rank_ledgers as ledger
+                   join requested using (source, table_id, shoe_no)`,
+          values: [exact.map((item) => item.source), exact.map((item) => item.tableId), exact.map((item) => item.shoe)],
+        })).rows
+      } else {
+        const groups = await Promise.all(exact.map((identity) => getRest('shoe_rank_ledgers', {
+          select: 'source,table_id,shoe_no,complete_through_round,seen_dealt_rank_counts,seen_dealt_code_counts,undealt_after_observed_deals,cards_seen_dealt,status,ledger_checksum,revision,physical_remaining_exact,burn_observation_status',
+          source: `eq.${identity.source}`,
+          table_id: `eq.${identity.tableId}`,
+          shoe_no: `eq.${identity.shoe}`,
+          limit: '2',
+        })))
+        if (groups.some((group) => !Array.isArray(group) || group.length > 1)) {
+          throw new Error('conflicting v100 durable rank ledger batch identity')
+        }
+        rows = groups.flat()
+      }
+      if (!Array.isArray(rows)) throw new Error('v100 durable rank ledger batch returned invalid rows')
+      const expected = new Set(exact.map((item) => JSON.stringify([item.source, item.tableId, item.shoe])))
+      const returned = new Set()
+      return rows.map((row) => {
+        const key = JSON.stringify([String(row?.source ?? ''), String(row?.table_id ?? ''), String(row?.shoe_no ?? '')])
+        if (!expected.has(key) || returned.has(key)) throw new Error('conflicting v100 durable rank ledger batch identity')
+        returned.add(key)
+        return normalizeV100DurableRankLedger(row, {
+          source: row.source, tableId: row.table_id, shoe: row.shoe_no,
+        })
+      })
+    },
     async reconcilePredictionLifecycle({ source = SOURCE, tableId, currentShoe, currentVisibleRound } = {}) {
       const visibleRound = Number(currentVisibleRound)
       const normalizedShoe = currentShoe == null ? '' : String(currentShoe)

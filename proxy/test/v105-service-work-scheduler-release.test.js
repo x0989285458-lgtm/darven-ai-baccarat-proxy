@@ -6,10 +6,10 @@ const readJson = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url
 
 test('service work scheduler release freezes strategy while bounding proxy work', () => {
   const manifest = readJson('../../release/v105-service-work-scheduler-release-manifest.json')
-  assert.equal(manifest.releaseName, 'v105影子程序預載修正版1')
-  assert.equal(manifest.releaseVersion, 'v105-shadow-process-hydration.1')
-  assert.equal(manifest.gitTag, 'v105-shadow-process-hydration.1')
-  assert.equal(manifest.applicationVersion, '1.0.19')
+  assert.equal(manifest.releaseName, 'v105正式佇列生命週期修正版1')
+  assert.equal(manifest.releaseVersion, 'v105-outbox-lifecycle-fence.1')
+  assert.equal(manifest.gitTag, 'v105-outbox-lifecycle-fence.1')
+  assert.equal(manifest.applicationVersion, '1.0.20')
   assert.equal(manifest.strategyVersion, 'v105')
   assert.equal(manifest.protocolVersion, 'v105')
   assert.equal(manifest.databaseMigrationRequired, false)
@@ -31,6 +31,11 @@ test('service work scheduler release freezes strategy while bounding proxy work'
   assert.equal(manifest.behavior.exactLeaseAbsoluteDeadlineFence, true)
   assert.equal(manifest.behavior.childExitConfirmedBeforeLeaseFailure, true)
   assert.equal(manifest.behavior.formalEnrichedTablesSentToChild, true)
+  assert.equal(manifest.behavior.formalRankLedgerBatchHydration, true)
+  assert.equal(manifest.behavior.formalSnapshotFifo, true)
+  assert.equal(manifest.behavior.underlyingLeasePhaseSettledBeforeFailureAck, true)
+  assert.equal(manifest.behavior.failureAckAttempts, 1)
+  assert.equal(manifest.behavior.unconfirmedChildTermination, 'fatal_process_exit_70')
   assert.equal(manifest.behavior.hydrationBeforeOutboxClaim, true)
   assert.equal(manifest.behavior.hydrationConcurrency, 'enabled_runtimes')
   assert.equal(manifest.behavior.captureConcurrency, 'per_item_across_runtimes')
@@ -43,10 +48,19 @@ test('service work scheduler release freezes strategy while bounding proxy work'
   assert.equal(manifest.behavior.predictionRulesChanged, false)
   assert.equal(manifest.behavior.predictionWeightsChanged, false)
   assert.equal(manifest.behavior.settlementSemanticsChanged, false)
+  assert.deepEqual(manifest.deploymentOrder, [
+    'proxy-render-exact-commit',
+    'outbox-live-drain',
+    'watchdog-health-readback',
+    'live-five-minute-e2e',
+  ])
+  assert.equal(manifest.rollback.targetTag, 'v1.0.19')
+  assert.equal(manifest.rollback.preserveQueueCursorJournal, true)
+  assert.equal(manifest.rollback.preserveOutboxHistory, true)
 })
 
-test('all deployable packages use application version 1.0.19', () => {
+test('all deployable packages use application version 1.0.20', () => {
   for (const path of ['../package.json', '../../frontend/package.json', '../../cloud-browser-worker/package.json']) {
-    assert.equal(readJson(path).version, '1.0.19')
+    assert.equal(readJson(path).version, '1.0.20')
   }
 })

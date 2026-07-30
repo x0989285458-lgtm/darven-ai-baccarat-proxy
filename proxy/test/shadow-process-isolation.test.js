@@ -160,8 +160,75 @@ test('an unconfirmed child termination fails closed and prevents a replacement g
     /termination could not be confirmed/i,
   )
   assert.equal(children.length, 1)
+  assert.equal(client.status().running, true)
   assert.equal(client.status().terminationFailed, true)
+  assert.equal(client.status().phase, 'fatal')
+  assert.equal(client.status().code, 'SHADOW_PROCESS_TERMINATION_UNCONFIRMED')
   await assert.rejects(client.stop(), /termination could not be confirmed/i)
+})
+
+test('an unconfirmed isolated child termination enters server fatal mode without releasing or reclaiming the lease', async () => {
+  const children = []
+  let claims = 0
+  let failureAckCalls = 0
+  let fatalHandlerCalls = 0
+  const processClient = createShadowProcessClient({
+    requestTimeoutMs: 5,
+    killGraceMs: 5,
+    killConfirmMs: 20,
+    forkImpl() {
+      const child = fakeChild({ respond: true, respondTo: (message) => message.kind === 'prepare', ignoreKill: true })
+      children.push(child)
+      return child
+    },
+  })
+  const app = createApp({
+    autoConnect: false,
+    production: false,
+    memberAuthRequired: false,
+    requireVerifiedStrategy: false,
+    isolateShadowProcess: true,
+    shadowProcessClient: processClient,
+    fatalHandler({ code, exitCode }) {
+      fatalHandlerCalls += 1
+      assert.equal(code, 'SHADOW_PROCESS_TERMINATION_UNCONFIRMED')
+      assert.equal(exitCode, 70)
+    },
+    outboxWorkDeadlineMs: 100,
+    outboxBackoffMs: 1,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        claims += 1
+        return [{ session_id: 'fatal-child', sequence: 1, claim_token: 'lease-fatal', attempts: 1, payload: { work: {
+          sessionId: 'fatal-child', status: { connected: true, authenticated: true }, tables: [], rounds: [],
+        } } }]
+      },
+      async completeCaptureOutbox() { assert.fail('unconfirmed child work must not complete') },
+      async failCaptureOutbox() { failureAckCalls += 1 },
+      async readIssuedPrediction() { return null },
+    },
+    v100FormalRuntime: { enabled: false },
+  })
+
+  assert.deepEqual(await app.drainCaptureOutbox(), { processed: 0, failed: 1 })
+  assert.deepEqual(await app.drainCaptureOutbox(), { processed: 0, failed: 0 })
+  await delay(20)
+
+  assert.equal(failureAckCalls, 0)
+  assert.equal(claims, 1)
+  assert.equal(children.length, 1)
+  assert.equal(fatalHandlerCalls, 1)
+  const status = JSON.parse((await app.inject({ url: '/api/status' })).body)
+  assert.deepEqual(status.captureOutboxPhase, {
+    phase: 'fatal',
+    code: 'SHADOW_PROCESS_TERMINATION_UNCONFIRMED',
+    startedAt: status.captureOutboxPhase.startedAt,
+  })
+  assert.equal(status.shadowProcessStatus.running, true)
+  assert.equal(status.shadowProcessStatus.terminationFailed, true)
+  assert.doesNotMatch(JSON.stringify(status.captureOutboxPhase), /fatal-child|lease-fatal/i)
+  await app.stop()
 })
 
 test('real shadow child boots, replies over IPC, and exits without any database write', async () => {
@@ -248,10 +315,12 @@ test('an active child must exit before the exact lease failure is acknowledged',
   let claimed = false
   let exitAt = 0
   let failAt = 0
+  let failureAckCalls = 0
+  let fatalHandlerCalls = 0
   const processClient = createShadowProcessClient({
-    requestTimeoutMs: 100,
+    requestTimeoutMs: 500,
     killGraceMs: 5,
-    killConfirmMs: 100,
+    killConfirmMs: 200,
     forkImpl() {
       const child = fakeChild({ respond: true, respondTo: (message) => message.kind === 'prepare', exitDelayMs: 30 })
       child.once('exit', () => { exitAt = Date.now() })
@@ -271,7 +340,8 @@ test('an active child must exit before the exact lease failure is acknowledged',
     requireVerifiedStrategy: false,
     isolateShadowProcess: true,
     shadowProcessClient: processClient,
-    outboxWorkDeadlineMs: 10,
+    fatalHandler() { fatalHandlerCalls += 1 },
+    outboxWorkDeadlineMs: 100,
     outboxBackoffMs: 1,
     supabaseClient: {
       configured: true,
@@ -281,7 +351,7 @@ test('an active child must exit before the exact lease failure is acknowledged',
         return [{ session_id: work.sessionId, sequence: 1, claim_token: 'lease-child', attempts: 1, payload: { work } }]
       },
       async completeCaptureOutbox() { assert.fail('expired child work must not complete') },
-      async failCaptureOutbox() { failAt = Date.now() },
+      async failCaptureOutbox() { failureAckCalls += 1; failAt = Date.now() },
       async readIssuedPrediction() { return null },
     },
     v100FormalRuntime: { enabled: false },
@@ -291,6 +361,8 @@ test('an active child must exit before the exact lease failure is acknowledged',
   assert.deepEqual(result, { processed: 0, failed: 1 })
   assert.notEqual(exitAt, 0)
   assert.equal(failAt >= exitAt, true)
+  assert.equal(failureAckCalls, 1)
+  assert.equal(fatalHandlerCalls, 0)
   await app.stop()
 })
 
