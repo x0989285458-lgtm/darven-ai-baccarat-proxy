@@ -9,8 +9,8 @@ const runbookUrl = new URL('docs/runbooks/v105-shadow-compact-hydration-release.
 test('compact hydration release is DB-first with split migration and fail-closed ledger gates', async () => {
   const manifest = JSON.parse(await readFile(manifestUrl, 'utf8'))
 
-  assert.equal(manifest.releaseVersion, 'v105-shadow-compact-hydration.1')
-  assert.equal(manifest.gitTag, 'v105-shadow-compact-hydration.1')
+  assert.equal(manifest.releaseVersion, 'v105-shadow-compact-hydration.2')
+  assert.equal(manifest.gitTag, 'v105-shadow-compact-hydration.2')
   assert.equal(manifest.applicationVersion, '1.0.25')
   assert.equal(manifest.baseRelease, 'v1.0.24')
   assert.deepEqual(manifest.database.migrations, [
@@ -45,6 +45,7 @@ test('compact hydration rollback preserves DB evidence and refuses runtime resta
   assert.equal(manifest.rollback.requireRawFormalTenTablesHealthy, true)
   assert.match(runbook, /supabase\s+migration\s+list\s+--linked/i)
   assert.match(runbook, /supabase\s+db\s+push\s+--dry-run/i)
+  assert.match(runbook, /CREATE INDEX CONCURRENTLY[\s\S]*autocommit[\s\S]*migration repair 20260730010000 --status applied/i)
   assert.match(runbook, /indisvalid[\s\S]*indisready/i)
   assert.match(runbook, /V105_SHADOW_(?:V7_|V8_|V9_)?ENABLED[\s\S]*false/i)
   assert.match(runbook, /V6\/V7\/V8\/V9[\s\S]*只部署修復、不啟用/i)

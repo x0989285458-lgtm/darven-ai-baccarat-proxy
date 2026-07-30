@@ -64,11 +64,13 @@ dry-run 必須只列出以下順序，否則 BLOCK：
 
 ## 2. DB-first 套用
 
-保持 7 個 Runtime Env 全為 false，執行一次：
+保持 7 個 Runtime Env 全為 false。Supabase CLI 2.109.1 會以 pipeline 執行 migration，PostgreSQL 會拒絕 pipeline 內的 `CREATE INDEX CONCURRENTLY`，因此禁止直接對第一版執行 `supabase db push`。
 
-    supabase db push --linked
+由單一 DB operator 使用後端 transaction-pooler 連線，先驗證第一版 migration SHA-256 精確為 `a9251ab2e6367915923f3188bc6425e91de0783c6ed1c7e436bbda94675a66d4`，再將檔案中的 4 個白名單 `CREATE INDEX CONCURRENTLY` 逐條以獨立 autocommit Query 執行，不得放進 transaction 或 pipeline。四個 index 全部讀回 `indisvalid=true`、`indisready=true` 後，才執行：
 
-第一版只含 4 個 CREATE INDEX CONCURRENTLY IF NOT EXISTS，且沒有明示交易；第二版只含 4 個 RPC 與 ACL，並在單一交易內。若任一步失敗，停止，不部署 Render。
+    supabase migration repair 20260730010000 --status applied --db-url "$SUPABASE_DB_CONNECTION_STRING" --yes
+
+Repair後再次執行 `supabase db push --dry-run`，必須只剩 `20260730010100_v105_shadow_compact_hydration_rpcs.sql`。第二版只含 4 個 RPC 與 ACL並自帶單一交易，此時才執行一次 `supabase db push --yes`。若任一步失敗，停止，不部署 Render。
 
 Concurrent build 失敗可能留下 invalid index。立即讀回：
 

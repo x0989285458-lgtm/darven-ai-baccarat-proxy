@@ -1,7 +1,7 @@
 {
   "release": "v105-shadow-compact-hydration",
-  "releaseVersion": "v105-shadow-compact-hydration.1",
-  "gitTag": "v105-shadow-compact-hydration.1",
+  "releaseVersion": "v105-shadow-compact-hydration.2",
+  "gitTag": "v105-shadow-compact-hydration.2",
   "applicationVersion": "1.0.25",
   "baseRelease": "v1.0.24",
   "scope": [
@@ -49,8 +49,9 @@
       "verify-seven-shadow-runtime-env-disabled",
       "migration-ledger-and-catalog-preflight",
       "supabase-cli-dry-run",
-      "database-index-phase",
+      "database-index-autocommit-phase",
       "index-valid-ready-readback",
+      "index-ledger-repair-after-readback",
       "database-rpc-phase",
       "rpc-acl-and-610-row-readback",
       "postgrest-schema-cache-readiness",
