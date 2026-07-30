@@ -29,7 +29,7 @@ export function createV105ShadowRuntime({ enabled = true, writer = null, request
         if (!writer?.configured || typeof writer.getV105ShadowHistory !== 'function') {
           throw new Error('v105 shadow history reader is unavailable')
         }
-        const rows = await withTimeout(writer.getV105ShadowHistory({ limit: 10000 }), requestTimeoutMs, 'v105 shadow history hydration')
+        const rows = await writer.getV105ShadowHistory({ limit: 10000, requestTimeoutMs })
         historyRows = (Array.isArray(rows) ? rows : [])
           .filter(isV105ShadowHistoryRow)
           .map((row) => structuredClone(row))

@@ -2762,13 +2762,13 @@ export function createSupabaseIngestionClient({
       }, { requestTimeoutMs: shadowTimeoutMs })
       return Array.isArray(rows) && rows.length === 1 ? rows[0] : null
     },
-    async getV105ShadowHistory({ limit = 10000 } = {}) {
+    async getV105ShadowHistory({ limit = 10000, requestTimeoutMs = shadowTimeoutMs } = {}) {
       const rows = await getRest('v105_shadow_v6_history', {
         select: 'prediction_id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,predicted_result,confidence,prediction_payload,same_side_streak,independent_support_count,shoe_bias_suppressed,lock_risk,actual_result,actual_facts,is_hit,settlement_status,settlement_final,settlement_source_action,head_results,resolved_at,settlement_sequence',
         strategy_version: 'eq.v105-shadow-v6-road-pattern', prediction_timing: 'eq.pre_result_context',
         prediction_issued_at: 'not.is.null', order: 'prediction_issued_at.desc,prediction_id.desc',
         limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
-      }, { requestTimeoutMs: shadowTimeoutMs })
+      }, { requestTimeoutMs })
       return (Array.isArray(rows) ? rows : []).filter((row) => row?.strategy_version === 'v105-shadow-v6-road-pattern'
         && row?.prediction_timing === 'pre_result_context' && Boolean(row?.prediction_issued_at))
     },
@@ -2823,13 +2823,13 @@ export function createSupabaseIngestionClient({
       }, { requestTimeoutMs: shadowTimeoutMs })
       return Array.isArray(rows) && rows.length === 1 ? rows[0] : null
     },
-    async getV105ShadowV7History({ limit = 10000 } = {}) {
+    async getV105ShadowV7History({ limit = 10000, requestTimeoutMs = shadowTimeoutMs } = {}) {
       const rows = await getRest('v105_shadow_v7_history', {
         select: 'prediction_id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,predicted_result,confidence,prediction_payload,same_side_streak,independent_support_count,shoe_bias_suppressed,lock_risk,actual_result,actual_facts,is_hit,settlement_status,settlement_final,settlement_source_action,head_results,resolved_at,settlement_sequence',
         strategy_version: 'eq.v105-shadow-v7-ask-road', prediction_timing: 'eq.pre_result_context',
         prediction_issued_at: 'not.is.null', order: 'prediction_issued_at.desc,prediction_id.desc',
         limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
-      }, { requestTimeoutMs: shadowTimeoutMs })
+      }, { requestTimeoutMs })
       return (Array.isArray(rows) ? rows : []).filter((row) => row?.strategy_version === 'v105-shadow-v7-ask-road'
         && row?.prediction_timing === 'pre_result_context' && Boolean(row?.prediction_issued_at))
     },
@@ -2887,13 +2887,13 @@ export function createSupabaseIngestionClient({
       }, { requestTimeoutMs: shadowTimeoutMs })
       return Array.isArray(rows) && rows.length === 1 ? rows[0] : null
     },
-    async getV105ShadowV8History({ limit = 10000 } = {}) {
+    async getV105ShadowV8History({ limit = 10000, requestTimeoutMs = shadowTimeoutMs } = {}) {
       const rows = await getRest('v105_shadow_v8_history', {
         select: 'prediction_id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,predicted_result,confidence,prediction_payload,same_side_streak,independent_support_count,shoe_bias_suppressed,lock_risk,actual_result,actual_facts,is_hit,settlement_status,settlement_final,settlement_source_action,head_results,resolved_at,settlement_sequence',
         strategy_version: 'eq.v105-shadow-v8-run-length-ask-road', prediction_timing: 'eq.pre_result_context',
         prediction_issued_at: 'not.is.null', order: 'prediction_issued_at.desc,prediction_id.desc',
         limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
-      }, { requestTimeoutMs: shadowTimeoutMs })
+      }, { requestTimeoutMs })
       return (Array.isArray(rows) ? rows : []).filter((row) => row?.strategy_version === 'v105-shadow-v8-run-length-ask-road'
         && row?.prediction_timing === 'pre_result_context' && Boolean(row?.prediction_issued_at))
     },
@@ -2950,13 +2950,13 @@ export function createSupabaseIngestionClient({
       }, { requestTimeoutMs: shadowTimeoutMs })
       return Array.isArray(rows) && rows.length === 1 ? rows[0] : null
     },
-    async getV105ShadowV9History({ limit = 10000 } = {}) {
+    async getV105ShadowV9History({ limit = 10000, requestTimeoutMs = shadowTimeoutMs } = {}) {
       const rows = await getRest('v105_shadow_v9_history', {
         select: 'prediction_id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,predicted_result,confidence,prediction_payload,same_side_streak,independent_support_count,shoe_bias_suppressed,lock_risk,actual_result,actual_facts,is_hit,settlement_status,settlement_final,settlement_source_action,head_results,resolved_at,settlement_sequence',
         strategy_version: 'eq.v105-shadow-v9-weighted-v7-v8', prediction_timing: 'eq.pre_result_context',
         prediction_issued_at: 'not.is.null', order: 'prediction_issued_at.desc,prediction_id.desc',
         limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
-      }, { requestTimeoutMs: shadowTimeoutMs })
+      }, { requestTimeoutMs })
       return (Array.isArray(rows) ? rows : []).filter((row) => row?.strategy_version === 'v105-shadow-v9-weighted-v7-v8'
         && row?.prediction_timing === 'pre_result_context' && Boolean(row?.prediction_issued_at))
     },

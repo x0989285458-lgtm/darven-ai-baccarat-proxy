@@ -2047,12 +2047,20 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       mtClient.stop()
       chromeClient.stop()
       cloudCaptureClient.stop()
-      await outboxDrainPromise?.catch(() => {})
+      const isolatedShadowStop = Promise.resolve().then(() => isolatedShadowProcess?.stop?.())
+      void isolatedShadowStop.catch(() => {})
+      try {
+        await withDeadline(
+          outboxDrainPromise?.catch(() => {}) ?? Promise.resolve(),
+          resolvedShadowShutdownDeadlineMs,
+          'capture outbox shutdown deadline exceeded',
+        )
+      } catch {}
       await serviceWorkScheduler.closeAndWait()
       try {
         await withDeadline(
           Promise.all([
-            isolatedShadowProcess?.stop?.() ?? Promise.resolve(),
+            isolatedShadowStop,
             shadowServiceWork.closeAndWait(),
             shadowWorkScheduler.closeAndWait(),
           ]),

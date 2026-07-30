@@ -5,25 +5,48 @@ const EXPECTED_SETTLEMENT_NOOPS = new Map([
   ['v105-v9', 'v105 shadow v9 settlement has no immutable issuance'],
 ])
 const MAX_CONCURRENT_RUNTIME_OPERATIONS = 9
+const hydrationStates = new WeakMap()
 
-export async function prepareShadowRuntimes(runtimes) {
+export function prepareShadowRuntimes(runtimes) {
   const entries = enabledRuntimeEntries(runtimes)
-  const results = await Promise.allSettled(entries.map(async ([runtimeKey, runtime]) => {
-    const startedAt = Date.now()
-    await runtime.start?.()
-    return { runtime: runtimeKey, elapsedMs: Date.now() - startedAt }
-  }))
-  throwRuntimeFailures(entries, results, 'hydrate')
-  return { prepared: entries.length, disabled: Math.max(0, runtimes.size - entries.length) }
+  for (const [, runtime] of entries) {
+    const current = hydrationStates.get(runtime)
+    ensureRuntimeHydration(runtime, { retryFailed: current?.status === 'error' && current.failureObserved === true })
+  }
+  const states = entries.map(([, runtime]) => hydrationStates.get(runtime))
+  const failures = entries.flatMap(([runtimeKey, runtime]) => {
+    const state = hydrationStates.get(runtime)
+    if (state?.status !== 'error' || state.failureObserved === true) return []
+    state.failureObserved = true
+    return [{ runtime: runtimeKey, stage: 'hydrate', code: state.errorCode ?? 'runtime_error' }]
+  })
+  if (failures.length > 0) throwRuntimeDiagnostics(failures)
+  return {
+    prepared: states.filter((state) => state?.status === 'ready').length,
+    pending: states.filter((state) => state?.status === 'pending').length,
+    failed: states.filter((state) => state?.status === 'error').length,
+    disabled: Math.max(0, runtimes.size - entries.length),
+  }
 }
 
 export async function processShadowCapture(runtimes, payload = {}) {
   const entries = enabledRuntimeEntries(runtimes)
+  prepareShadowRuntimes(runtimes)
+  await new Promise((resolve) => setImmediate(resolve))
+  const readyEntries = entries.filter(([, runtime]) => hydrationStates.get(runtime)?.status === 'ready')
+  const unavailable = entries.flatMap(([runtimeKey, runtime]) => {
+    const state = hydrationStates.get(runtime)
+    if (state?.status === 'ready') return []
+    return [{ runtime: runtimeKey, stage: 'hydrate', code: state?.errorCode ?? 'not_ready' }]
+  })
   const summary = { observed: 0, settled: 0, noops: 0 }
-  await runIdentityPhase(entries, Array.isArray(payload.tables) ? payload.tables : [], 'observeTable', {}, (results) => {
+  const tables = Array.isArray(payload.tables) ? payload.tables : []
+  const rounds = Array.isArray(payload.rounds) ? payload.rounds : []
+  if ((tables.length > 0 || rounds.length > 0) && unavailable.length > 0) throwRuntimeDiagnostics(unavailable)
+  await runIdentityPhase(readyEntries, tables, 'observeTable', {}, (results) => {
     summary.observed += results.filter((result) => result.status === 'fulfilled').length
   })
-  await runIdentityPhase(entries, Array.isArray(payload.rounds) ? payload.rounds : [], 'settleRound', { allowSettlementNoop: true }, (results) => {
+  await runIdentityPhase(readyEntries, rounds, 'settleRound', { allowSettlementNoop: true }, (results) => {
     for (const result of results) {
       if (result.status !== 'fulfilled') continue
       if (result.value?.noop === true) summary.noops += 1
@@ -31,6 +54,26 @@ export async function processShadowCapture(runtimes, payload = {}) {
     }
   })
   return summary
+}
+
+function ensureRuntimeHydration(runtime, { retryFailed = false } = {}) {
+  const current = hydrationStates.get(runtime)
+  if (current?.status === 'ready' || current?.status === 'pending') return current
+  if (current?.status === 'error' && retryFailed !== true) return current
+  const state = { status: 'pending', errorCode: null, failureObserved: false, promise: null }
+  hydrationStates.set(runtime, state)
+  state.promise = Promise.resolve()
+    .then(() => runtime.start?.())
+    .then(() => {
+      state.status = 'ready'
+      state.errorCode = null
+    })
+    .catch((error) => {
+      state.status = 'error'
+      state.errorCode = classifyRuntimeError(error)
+    })
+    .finally(() => { state.promise = null })
+  return state
 }
 
 function enabledRuntimeEntries(runtimes) {
@@ -90,6 +133,10 @@ function throwRuntimeFailures(entries, results, stage) {
     })
   }
   if (diagnostics.length === 0) return
+  throwRuntimeDiagnostics(diagnostics)
+}
+
+function throwRuntimeDiagnostics(diagnostics) {
   const error = new Error(`shadow runtime batch failed (${diagnostics.map((item) => `${item.runtime}:${item.stage}:${item.code}`).join(',')})`)
   error.code = 'SHADOW_RUNTIME_BATCH_FAILED'
   error.diagnostics = diagnostics

@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { createShadowProcessClient } from '../src/shadow-process-client.js'
+import { prepareShadowRuntimes } from '../src/shadow-process-work.js'
 import { createApp } from '../src/server.js'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -110,6 +111,38 @@ test('a capture batch timeout kills the child and the next durable retry uses a 
   assert.notEqual(children[0].signalCode, null)
   await client.processCapture({ tables: [], rounds: [{ tableId: 'BAG01', round: 2 }] })
   assert.equal(children.length, 2)
+  await client.stop()
+})
+
+test('a stalled runtime hydration returns pending readiness without killing the child or advancing generation', async () => {
+  const children = []
+  const stalledRuntime = {
+    enabled: true,
+    async start() { await new Promise(() => {}) },
+  }
+  const runtimes = new Map([['v105-v8', stalledRuntime]])
+  const client = createShadowProcessClient({
+    startupTimeoutMs: 20,
+    killGraceMs: 5,
+    forkImpl() {
+      const child = fakeChild({ respond: false })
+      child.send = (message, callback) => {
+        callback?.(null)
+        if (message.kind !== 'prepare') return
+        Promise.resolve(prepareShadowRuntimes(runtimes)).then((result) => {
+          setImmediate(() => child.emit('message', { type: 'response', id: message.id, ok: true, result }))
+        })
+      }
+      children.push(child)
+      return child
+    },
+  })
+
+  assert.deepEqual(await client.prepare(), { prepared: 0, pending: 1, failed: 0, disabled: 0 })
+  assert.deepEqual(await client.prepare(), { prepared: 0, pending: 1, failed: 0, disabled: 0 })
+  assert.equal(children.length, 1)
+  assert.equal(children[0].signalCode, null)
+  assert.equal(client.status().generation, 1)
   await client.stop()
 })
 
@@ -409,6 +442,124 @@ test('child hydration finishes before claim and does not consume the exact outbo
   assert.equal(preparedAt > 0, true)
   assert.equal(claimedAt >= preparedAt, true)
   await app.stop()
+})
+
+test('pending shadow hydration preserves Formal table ingest but prevents exact lease completion', async () => {
+  let claimed = false
+  let formalCalls = 0
+  let completed = 0
+  const failures = []
+  const processClient = {
+    runtime(_key, { enabled }) {
+      return { enabled, observeTable() {}, settleRound() {}, snapshot() { return { status: 'initializing' } } }
+    },
+    async prepare() { return { prepared: 6, pending: 1, failed: 0, disabled: 0 } },
+    async processCapture() {
+      const error = new Error('shadow runtime batch failed (v105-v8:hydrate:not_ready)')
+      error.code = 'SHADOW_RUNTIME_BATCH_FAILED'
+      error.diagnostics = [{ runtime: 'v105-v8', stage: 'hydrate', code: 'not_ready' }]
+      throw error
+    },
+    status() {
+      return { running: true, generation: 1, pending: 0, stopping: false, terminationFailed: false }
+    },
+    async stop() {},
+  }
+  const app = createApp({
+    autoConnect: false,
+    production: false,
+    memberAuthRequired: false,
+    requireVerifiedStrategy: false,
+    isolateShadowProcess: true,
+    shadowProcessClient: processClient,
+    outboxWorkDeadlineMs: 100,
+    outboxBackoffMs: 1000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [{ session_id: 'hydrate-pending', sequence: 1, claim_token: 'lease-pending', attempts: 1, payload: { work: {
+          sessionId: 'hydrate-pending', status: { connected: true, authenticated: true },
+          tables: [{ tableId: 'BAG01', shoe: 88, round: 20 }], rounds: [],
+        } } }]
+      },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox(identity) { failures.push(identity); return { failed: true, retry_after_ms: 1000 } },
+      async readIssuedPrediction() { return null },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) { formalCalls += 1; return { tables } },
+    },
+  })
+
+  assert.deepEqual(await app.drainCaptureOutbox(), { processed: 0, failed: 1 })
+  assert.equal(formalCalls, 1)
+  assert.equal(completed, 0)
+  assert.equal(failures.length, 1)
+  assert.equal(JSON.parse((await app.inject({ url: '/api/tables' })).body).length, 1)
+  await app.stop()
+})
+
+test('shutdown kills an isolated child before waiting on its unsettled capture work', async () => {
+  let claimed = false
+  let captureStarted
+  const started = new Promise((resolve) => { captureStarted = resolve })
+  let stopCalls = 0
+  let rejectCapture
+  const processClient = {
+    runtime(_key, { enabled }) {
+      return { enabled, observeTable() {}, settleRound() {}, snapshot() { return { status: 'ready' } } }
+    },
+    async prepare() { return { prepared: 7, pending: 0, failed: 0, disabled: 0 } },
+    async processCapture() {
+      captureStarted()
+      await new Promise((_, reject) => { rejectCapture = reject })
+    },
+    status() {
+      return { running: true, generation: 1, pending: 1, stopping: stopCalls > 0, terminationFailed: false }
+    },
+    async stop() {
+      stopCalls += 1
+      rejectCapture?.(new Error('shadow process client stopped'))
+    },
+  }
+  const app = createApp({
+    autoConnect: false,
+    production: false,
+    memberAuthRequired: false,
+    requireVerifiedStrategy: false,
+    isolateShadowProcess: true,
+    shadowProcessClient: processClient,
+    outboxWorkDeadlineMs: 1000,
+    shadowShutdownDeadlineMs: 50,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [{ session_id: 'shutdown-pending', sequence: 1, claim_token: 'lease-shutdown', attempts: 1, payload: { work: {
+          sessionId: 'shutdown-pending', status: { connected: true, authenticated: true }, tables: [], rounds: [],
+        } } }]
+      },
+      async completeCaptureOutbox() { assert.fail('unsettled capture must not complete') },
+      async failCaptureOutbox() { return { failed: true, retry_after_ms: 1000 } },
+      async readIssuedPrediction() { return null },
+    },
+    v100FormalRuntime: { enabled: false },
+  })
+
+  const drain = app.drainCaptureOutbox()
+  await started
+  const stopped = await Promise.race([
+    app.stop().then(() => true),
+    delay(100).then(() => false),
+  ])
+
+  assert.equal(stopped, true)
+  assert.equal(stopCalls, 1)
+  assert.deepEqual(await drain, { processed: 0, failed: 1 })
 })
 
 test('prepare failure is observable with a bounded code and never claims an outbox lease', async () => {

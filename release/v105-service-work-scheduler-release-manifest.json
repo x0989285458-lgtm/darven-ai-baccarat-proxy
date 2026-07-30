@@ -1,9 +1,9 @@
 {
-  "releaseName": "v105影子冷啟租約修正版1",
-  "releaseVersion": "v105-shadow-cold-lease.1",
-  "gitTag": "v105-shadow-cold-lease.1",
-  "applicationVersion": "1.0.22",
-  "baseRelease": "v1.0.21",
+  "releaseName": "v105影子Hydration生命週期修正版1",
+  "releaseVersion": "v105-shadow-hydration-lifecycle.1",
+  "gitTag": "v105-shadow-hydration-lifecycle.1",
+  "applicationVersion": "1.0.23",
+  "baseRelease": "v1.0.22",
   "strategyVersion": "v105",
   "protocolVersion": "v105",
   "databaseMigrationRequired": false,
@@ -38,6 +38,13 @@
     "shadowMaxConcurrentRuntimeOperations": 9,
     "shadowSameTablePayloadOrder": "sequential",
     "outboxWorkDeadlineMs": 45000,
+    "shadowHydrationReadiness": "per_runtime",
+    "shadowHydrationPendingSingleFlight": true,
+    "shadowHydrationFailureObservedBeforeRetry": true,
+    "shadowCaptureRequiresAllEnabledRuntimesReady": true,
+    "shadowPartialWritesBeforeReady": false,
+    "shadowHistoryRequestTimeoutPropagated": true,
+    "shutdownStopsChildBeforeOutboxWait": true,
     "exactNoIssuanceOnly": true,
     "schedulerRejectsAfterClosing": true,
     "staleIssuanceReconcilesLatest": true,
@@ -55,7 +62,7 @@
     "live-five-minute-e2e"
   ],
   "rollback": {
-    "targetTag": "v1.0.21",
+    "targetTag": "v1.0.22",
     "preserveQueueCursorJournal": true,
     "preserveOutboxHistory": true,
     "requireUnfinishedOutboxZeroBeforeRollback": true

@@ -6,10 +6,10 @@ const readJson = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url
 
 test('service work scheduler release freezes strategy while bounding proxy work', () => {
   const manifest = readJson('../../release/v105-service-work-scheduler-release-manifest.json')
-  assert.equal(manifest.releaseName, 'v105影子冷啟租約修正版1')
-  assert.equal(manifest.releaseVersion, 'v105-shadow-cold-lease.1')
-  assert.equal(manifest.gitTag, 'v105-shadow-cold-lease.1')
-  assert.equal(manifest.applicationVersion, '1.0.22')
+  assert.equal(manifest.releaseName, 'v105影子Hydration生命週期修正版1')
+  assert.equal(manifest.releaseVersion, 'v105-shadow-hydration-lifecycle.1')
+  assert.equal(manifest.gitTag, 'v105-shadow-hydration-lifecycle.1')
+  assert.equal(manifest.applicationVersion, '1.0.23')
   assert.equal(manifest.strategyVersion, 'v105')
   assert.equal(manifest.protocolVersion, 'v105')
   assert.equal(manifest.databaseMigrationRequired, false)
@@ -43,6 +43,13 @@ test('service work scheduler release freezes strategy while bounding proxy work'
   assert.equal(manifest.behavior.shadowMaxConcurrentRuntimeOperations, 9)
   assert.equal(manifest.behavior.shadowSameTablePayloadOrder, 'sequential')
   assert.equal(manifest.behavior.outboxWorkDeadlineMs, 45000)
+  assert.equal(manifest.behavior.shadowHydrationReadiness, 'per_runtime')
+  assert.equal(manifest.behavior.shadowHydrationPendingSingleFlight, true)
+  assert.equal(manifest.behavior.shadowHydrationFailureObservedBeforeRetry, true)
+  assert.equal(manifest.behavior.shadowCaptureRequiresAllEnabledRuntimesReady, true)
+  assert.equal(manifest.behavior.shadowPartialWritesBeforeReady, false)
+  assert.equal(manifest.behavior.shadowHistoryRequestTimeoutPropagated, true)
+  assert.equal(manifest.behavior.shutdownStopsChildBeforeOutboxWait, true)
   assert.equal(manifest.behavior.exactNoIssuanceOnly, true)
   assert.equal(manifest.behavior.schedulerRejectsAfterClosing, true)
   assert.equal(manifest.behavior.staleIssuanceReconcilesLatest, true)
@@ -58,13 +65,13 @@ test('service work scheduler release freezes strategy while bounding proxy work'
     'watchdog-health-readback',
     'live-five-minute-e2e',
   ])
-  assert.equal(manifest.rollback.targetTag, 'v1.0.21')
+  assert.equal(manifest.rollback.targetTag, 'v1.0.22')
   assert.equal(manifest.rollback.preserveQueueCursorJournal, true)
   assert.equal(manifest.rollback.preserveOutboxHistory, true)
 })
 
-test('all deployable packages use application version 1.0.22', () => {
+test('all deployable packages use application version 1.0.23', () => {
   for (const path of ['../package.json', '../../frontend/package.json', '../../cloud-browser-worker/package.json']) {
-    assert.equal(readJson(path).version, '1.0.22')
+    assert.equal(readJson(path).version, '1.0.23')
   }
 })

@@ -38,7 +38,7 @@ export function createV105ShadowV8Runtime({
     if (!hydrationPromise) {
       hydrationPromise = Promise.resolve().then(async () => {
         if (!writer?.configured || typeof writer.getV105ShadowV8History !== 'function') throw new Error('v105 shadow v8 history reader is unavailable')
-        const rows = await withTimeout(writer.getV105ShadowV8History({ limit: 10000 }), requestTimeoutMs, 'v105 shadow v8 history hydration')
+        const rows = await writer.getV105ShadowV8History({ limit: 10000, requestTimeoutMs })
         historyRows = (Array.isArray(rows) ? rows : [])
           .filter(isOwnHistoryRow)
           .map((row) => structuredClone(row))
