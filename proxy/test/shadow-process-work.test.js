@@ -59,6 +59,48 @@ test('capture preserves table-before-round phases while running each table acros
   assert.equal(calls.findIndex((item) => item.startsWith('settle:')) > calls.findLastIndex((item) => item.startsWith('observe:end:')), true)
 })
 
+test('ten-table capture stays inside the scaled lease with bounded cross-table concurrency', async () => {
+  const tableIds = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
+  const calls = []
+  let active = 0
+  let maxActive = 0
+  const runtimes = new Map(['v105-v7', 'v105-v8', 'v105-v9'].map((key) => [key, runtime({
+    async observeTable(table) {
+      calls.push(`observe:start:${key}:${table.tableId}`)
+      active += 1
+      maxActive = Math.max(maxActive, active)
+      await delay(25)
+      active -= 1
+      calls.push(`observe:end:${key}:${table.tableId}`)
+    },
+    async settleRound(round) {
+      calls.push(`settle:${key}:${round.tableId}:${round.round}`)
+    },
+  })]))
+  const payload = {
+    tables: tableIds.map((tableId) => ({ tableId, shoe: 105, round: 20 })),
+    rounds: [
+      { tableId: 'BAG01', shoe: 105, round: 19 },
+      { tableId: 'BAG01', shoe: 105, round: 20 },
+    ],
+  }
+
+  const startedAt = Date.now()
+  const result = await processShadowCapture(runtimes, payload)
+  const elapsedMs = Date.now() - startedAt
+
+  assert.deepEqual(result, { observed: 30, settled: 6, noops: 0 })
+  assert.equal(calls.filter((item) => item.startsWith('observe:start:')).length, 30)
+  assert.equal(maxActive > runtimes.size, true, `ten tables stayed serial across identities (maxActive=${maxActive})`)
+  assert.equal(maxActive <= 9, true, `runtime work exceeded the bounded concurrency budget (maxActive=${maxActive})`)
+  assert.equal(elapsedMs < 180, true, `ten-table capture exceeded the scaled lease (${elapsedMs}ms)`)
+  assert.equal(calls.findIndex((item) => item.startsWith('settle:')) > calls.findLastIndex((item) => item.startsWith('observe:end:')), true)
+  assert.deepEqual(
+    calls.filter((item) => item.startsWith('settle:v105-v9:BAG01')).map((item) => Number(item.split(':').at(-1))),
+    [19, 20],
+  )
+})
+
 test('disabled legacy runtimes are skipped and v105 settlement without immutable issuance is a normal no-op', async () => {
   const forbidden = async () => assert.fail('disabled runtime must not run')
   const noIssuance = (message) => async () => { throw new Error(message) }

@@ -1,9 +1,9 @@
 {
-  "releaseName": "v105正式佇列生命週期修正版1",
-  "releaseVersion": "v105-outbox-lifecycle-fence.1",
-  "gitTag": "v105-outbox-lifecycle-fence.1",
-  "applicationVersion": "1.0.20",
-  "baseRelease": "v1.0.19",
+  "releaseName": "v105影子多桌服務率修正版1",
+  "releaseVersion": "v105-shadow-table-concurrency.1",
+  "gitTag": "v105-shadow-table-concurrency.1",
+  "applicationVersion": "1.0.21",
+  "baseRelease": "v1.0.20",
   "strategyVersion": "v105",
   "protocolVersion": "v105",
   "databaseMigrationRequired": false,
@@ -34,6 +34,9 @@
     "hydrationBeforeOutboxClaim": true,
     "hydrationConcurrency": "enabled_runtimes",
     "captureConcurrency": "per_item_across_runtimes",
+    "shadowCrossTableConcurrency": "bounded_by_table_identity",
+    "shadowMaxConcurrentRuntimeOperations": 9,
+    "shadowSameTablePayloadOrder": "sequential",
     "exactNoIssuanceOnly": true,
     "schedulerRejectsAfterClosing": true,
     "staleIssuanceReconcilesLatest": true,
@@ -51,7 +54,7 @@
     "live-five-minute-e2e"
   ],
   "rollback": {
-    "targetTag": "v1.0.19",
+    "targetTag": "v1.0.20",
     "preserveQueueCursorJournal": true,
     "preserveOutboxHistory": true,
     "requireUnfinishedOutboxZeroBeforeRollback": true
