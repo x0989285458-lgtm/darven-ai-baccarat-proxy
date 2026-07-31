@@ -36,6 +36,71 @@ test('live MT sockets send the browser Origin and User-Agent required by the gat
   client.stop()
 })
 
+test('heartbeat and later Finals use the renewed lease instead of the generation startup snapshot', async () => {
+  let nowMs = 0
+  const delivered = []
+  let activeLease = { mode: 'api', ownerId: 'api-primary', epoch: 4, fence: 'fence-4', status: 'active', expiresAt: 15_000 }
+  const sourceOwner = {
+    lease: () => structuredClone(activeLease),
+    assertCurrent(candidate) {
+      if (candidate.expiresAt <= nowMs) throw new Error('stale_source_fence')
+      return true
+    },
+    async nextEventSource() {
+      return { mode: 'api', ownerId: 'api-primary', epoch: 4, fence: 'fence-4', sequence: 1 }
+    },
+  }
+  const harness = createHarness({ sourceOwner, onFinal: async (event) => delivered.push(event) })
+  const client = createMtApiClient(harness.options)
+  await client.start()
+  harness.openAll()
+  harness.authenticateAll()
+  await harness.flush(2)
+
+  activeLease = { ...activeLease, expiresAt: 30_000 }
+  nowMs = 20_000
+  assert.doesNotThrow(() => harness.runInterval(0))
+  harness.acknowledgeJoins()
+  harness.receive('game', summaryPacket(8))
+  await harness.flush(2)
+  assert.equal(client.snapshot().joined, true)
+  assert.equal(delivered.length, 1)
+  assert.deepEqual(delivered[0].source, { mode: 'api', ownerId: 'api-primary', epoch: 4, fence: 'fence-4', sequence: 1 })
+
+  activeLease = { ...activeLease, epoch: 5, fence: 'fence-5', expiresAt: 40_000 }
+  assert.throws(() => harness.runInterval(0), /stale_source_fence/)
+  client.stop()
+})
+
+test('a Final allocation race cannot let an old socket generation adopt a new epoch or fence', async () => {
+  const delivered = []
+  const errors = []
+  let activeLease = { mode: 'api', ownerId: 'api-primary', epoch: 4, fence: 'fence-4', status: 'active', expiresAt: 30_000 }
+  const sourceOwner = {
+    lease: () => structuredClone(activeLease),
+    assertCurrent: () => true,
+    async nextEventSource() {
+      activeLease = { ...activeLease, epoch: 5, fence: 'fence-5', expiresAt: 40_000 }
+      return { mode: 'api', ownerId: 'api-primary', epoch: 4, fence: 'fence-4', sequence: 1 }
+    },
+  }
+  const harness = createHarness({
+    sourceOwner,
+    onFinal: async (event) => delivered.push(event),
+    onError: (error) => errors.push(String(error)),
+  })
+  const client = createMtApiClient(harness.options)
+  await client.start()
+  harness.openAll()
+  harness.authenticateAll()
+  harness.acknowledgeJoins()
+  harness.receive('game', summaryPacket(8))
+  await harness.flush(4)
+  assert.deepEqual(delivered, [])
+  assert.deepEqual(errors, ['stale_source_fence'])
+  client.stop()
+})
+
 test('Reviewer P1 Join/Tables: an exact Tables response before dual join ACK is delivered once after join and generation cache resets', async () => {
   const delivered = []
   const harness = createHarness({ onTables: async (tables) => delivered.push(tables) })
@@ -501,7 +566,7 @@ function createHarness({
   onFinal = async () => {}, onTables = async () => {}, onError = () => {}, refresh = async () => {},
   getSessionToken = async () => 'opaque-session-value', nextEventSource, now = Date.now,
   reconnectDelayMs = 0, reconnectMaxDelayMs, setTimeoutFn, clearTimeoutFn,
-  socketFailureCalls = [],
+  socketFailureCalls = [], sourceOwner,
 } = {}) {
   const sockets = []
   const timers = []
@@ -514,7 +579,7 @@ function createHarness({
     ...(nextEventSource ? { nextEventSource } : {}),
   }
   const options = {
-    sourceOwner: owner,
+    sourceOwner: sourceOwner ?? owner,
     sessionManager: { getSessionToken, refresh },
     createSocket: (url, socketOptions) => {
       socketCalls += 1
@@ -560,6 +625,7 @@ function createHarness({
     generationAuthTokens(generation) {
       return generations()[generation - 1].map((socket) => socket.sent.find((packet) => actionName(packet).endsWith('/authenticate'))?.body?.token)
     },
+    runInterval(index = 0) { return timers[index]() },
     async flush(turns = 1) {
       for (let turn = 0; turn < turns; turn += 1) await new Promise((resolve) => setImmediate(resolve))
     },

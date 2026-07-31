@@ -148,19 +148,23 @@ export function createMtApiClient({
     const final = normalizeFinalPayload(payload, finalAction)
     if (!final) return
     if (!exactJoinComplete(current)) return
-    sourceOwner.assertCurrent(current.lease)
+    refreshGenerationLease(current)
     eventSequence += 1
     const source = typeof sourceOwner.nextEventSource === 'function'
       ? await sourceOwner.nextEventSource(current.lease)
       : sourceOwner.eventSource(eventSequence, current.lease)
-    current.lease = sourceOwner.lease?.() ?? current.lease
+    refreshGenerationLease(current)
+    if (source?.mode !== current.lease.mode || source?.ownerId !== current.lease.ownerId
+      || Number(source?.epoch) !== Number(current.lease.epoch) || source?.fence !== current.lease.fence) {
+      throw new Error('stale_source_fence')
+    }
     await onFinal({ ...final, source })
   }
 
   function joinWhenReady(current) {
     if (!isCurrent(current) || (current.joinRequested.game && current.joinRequested.chat)
       || !current.authenticated.game || !current.authenticated.chat) return
-    sourceOwner.assertCurrent(current.lease)
+    refreshGenerationLease(current)
     if (!current.joinRequested.chat && send(current.chat, chatJoinPacket())) current.joinRequested.chat = true
     if (!current.joinRequested.game && send(current.game, multipleJoinPacket())) current.joinRequested.game = true
     if (current.joinRequested.game && current.joinRequested.chat) startHeartbeat(current)
@@ -177,11 +181,22 @@ export function createMtApiClient({
     clearIntervalFn(heartbeatTimer)
     heartbeatTimer = setIntervalFn(() => {
       if (!isCurrent(current)) return
-      sourceOwner.assertCurrent(current.lease)
+      refreshGenerationLease(current)
       send(current.game, pingPacket())
       send(current.chat, pingPacket())
     }, Math.max(1, Number(heartbeatMs) || 1))
     heartbeatTimer?.unref?.()
+  }
+
+  function refreshGenerationLease(current) {
+    const renewed = sourceOwner.lease?.() ?? current.lease
+    if (!renewed || renewed.mode !== current.lease?.mode || renewed.ownerId !== current.lease?.ownerId
+      || Number(renewed.epoch) !== Number(current.lease?.epoch) || renewed.fence !== current.lease?.fence) {
+      throw new Error('stale_source_fence')
+    }
+    current.lease = renewed
+    sourceOwner.assertCurrent(current.lease)
+    return current.lease
   }
 
   function scheduleReconnect(current) {

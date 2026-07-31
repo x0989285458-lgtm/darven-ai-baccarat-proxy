@@ -1,8 +1,8 @@
 {
-  "releaseName": "v105 MT API Primary UA Hotfix",
-  "releaseVersion": "v105-mt-api-primary.2",
-  "gitTag": "v105-mt-api-primary.2",
-  "applicationVersion": "1.0.27",
+  "releaseName": "v105 MT API Primary Lease Hotfix",
+  "releaseVersion": "v105-mt-api-primary.3",
+  "gitTag": "v105-mt-api-primary.3",
+  "applicationVersion": "1.0.28",
   "formalStrategyVersion": "v105",
   "applicationVersionChanged": true,
   "releaseScope": {
@@ -75,7 +75,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "be929589b2076256daa4ac501dd6f11c130ecb75e4aa2997af4725f350b0c4a7"
+      "sha256": "eb8cb20acc391c532e8b1464e8f10e795e29acb546231b8019ae915dfcebcf1a"
     },
     "migration": {
       "algorithm": "sha256",
@@ -86,13 +86,13 @@
       "algorithm": "sha256",
       "paths": ["proxy/package.json", "proxy/package-lock.json", "proxy/deploy/render.yaml", "proxy/src", "shared"],
       "excludedPaths": [],
-      "sha256": "1760110dadbcc4a0b57af8085ac72ea0a814486931011626eccee741cd438407"
+      "sha256": "93669a34fedf508a3594ae2d197bc5fb7550567b25861ee52001e689a54e3260"
     },
     "workerBuildInput": {
       "algorithm": "sha256",
       "paths": ["cloud-browser-worker/.dockerignore", "cloud-browser-worker/Dockerfile", "cloud-browser-worker/package.json", "cloud-browser-worker/package-lock.json", "cloud-browser-worker/src", "shared"],
       "excludedPaths": [],
-      "sha256": "af84c8af20cd37d79aaf101a163d68060e60a5003bd2db9b0a6ee4e2a28ada05"
+      "sha256": "43e2272bff39bc5af46efefccf18dc12c13ba12811ceb456c156f8fad46d1e91"
     },
     "attestation": {
       "externalFileRequired": true,
