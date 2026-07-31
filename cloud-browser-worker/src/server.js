@@ -294,6 +294,7 @@ async function ensureSourceRuntime() {
       gapDetector: createGapDetector(),
       replayProvider,
       allowFreshBaseline: process.env.MT_FRESH_BASELINE_ONCE === 'true',
+      allowGapDelivery: process.env.MT_ALLOW_GAP_DELIVERY === 'true',
       freshBaselineWarmupMs: Number(process.env.MT_FRESH_BASELINE_WARMUP_MS ?? 15_000),
       createApiClient: ({ onFinal, onTables }) => createMtApiClient({
         sourceOwner: owner,

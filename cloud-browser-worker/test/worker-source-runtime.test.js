@@ -52,6 +52,25 @@ test('runtime blocks Live ACK on a gap, replays exact missing Finals first, then
   assert.deepEqual(liveSnapshot.rounds.map((round) => round.round), [11])
 })
 
+test('operator gap-delivery mode records missing rounds but keeps later Finals journaled and ACKable', async (t) => {
+  const fixture = await runtimeFixture(t, { allowGapDelivery: true })
+  await fixture.runtime.start()
+  const durable = await fixture.journal.append(await fixture.finalEvent(7))
+  await fixture.journal.ack(durable.identity, durable.hash)
+  await fixture.handlers.onTables([{ table_id: 'BAG01', shoe: 91, round: 9 }])
+
+  await fixture.handlers.onFinal(await fixture.finalEvent(9))
+  assert.deepEqual((await fixture.runtime.getDeliverySnapshot()).rounds.map((round) => round.round), [9])
+  await fixture.runtime.acknowledge({ acceptedRoundKeys: ['BAG01:91:9'] })
+
+  await fixture.handlers.onFinal(await fixture.finalEvent(11))
+  assert.deepEqual((await fixture.runtime.getDeliverySnapshot()).rounds.map((round) => round.round), [11])
+  const state = fixture.runtime.snapshot()
+  assert.deepEqual(state.gaps, [])
+  assert.equal(state.liveGate, null)
+  assert.deepEqual(state.bypassedGaps.map((gap) => gap.rounds), [[8], [10]])
+})
+
 test('Reviewer P0: durable cursor 7 rejects same-shoe Final 9 before journal append or delivery', async () => {
   const appended = []
   let stopped = false
@@ -388,6 +407,7 @@ test('cross-shoe coverage is not remembered until every replay Final is journale
 async function runtimeFixture(t, {
   replayProvider = { replay: async () => ({ ok: false, events: [], liveGate: 'record_contract_unverified' }) },
   allowFreshBaseline = false,
+  allowGapDelivery = false,
   freshBaselineWarmupMs = 0,
   clockMs = Date.now,
 } = {}) {
@@ -403,7 +423,7 @@ async function runtimeFixture(t, {
   let browserStarts = 0
   const runtime = createWorkerSourceRuntime({
     sourceOwner: owner, journal, gapDetector: createGapDetector(), replayProvider,
-    allowFreshBaseline, freshBaselineWarmupMs, clockMs,
+    allowFreshBaseline, allowGapDelivery, freshBaselineWarmupMs, clockMs,
     createApiClient: (value) => {
       Object.assign(handlers, value)
       return { start: async () => { apiStarts += 1 }, stop: () => {} }

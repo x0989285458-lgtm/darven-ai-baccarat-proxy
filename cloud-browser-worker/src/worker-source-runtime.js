@@ -13,6 +13,7 @@ export function createWorkerSourceRuntime({
   setIntervalFn = setInterval,
   clearIntervalFn = clearInterval,
   allowFreshBaseline = false,
+  allowGapDelivery = false,
   freshBaselineWarmupMs = 0,
   clockMs = Date.now,
 } = {}) {
@@ -25,6 +26,7 @@ export function createWorkerSourceRuntime({
   let gaps = []
   let started = false
   let lastReplayGate = null
+  const bypassedGaps = []
   const crossShoeCoverage = new Set()
   let leaseTimer = null
   let sourceProgressTracker = null
@@ -92,26 +94,32 @@ export function createWorkerSourceRuntime({
     }
     const continuityGap = freshBaselineTables.has(tableId) ? null : detectLiveFinalGap(event)
     if (continuityGap) {
-      gaps = [continuityGap]
-      lastReplayGate = 'live_final_continuity_gap'
-      try {
-        await resolveGaps()
-      } catch (error) {
-        if (leaseTimer) clearIntervalFn(leaseTimer)
-        leaseTimer = null
-        apiClient?.stop?.()
-        started = false
-        throw error
-      }
-      const cursor = journal.cursor(canonicalProductionTableId(event?.tableId ?? event?.table_id))
-      if (cursor?.origin === 'snapshot-pusher-exact-ack-cursor'
-        && (Number(event?.shoe) !== Number(cursor.shoe) || Number(event?.round) !== Number(cursor.round) + 1)) {
-        lastReplayGate = 'bootstrap_cursor_ack_required'
-        if (leaseTimer) clearIntervalFn(leaseTimer)
-        leaseTimer = null
-        apiClient?.stop?.()
-        started = false
-        throw new Error('live_ack_blocked:bootstrap_cursor_ack_required')
+      if (allowGapDelivery) {
+        rememberBypassedGap(continuityGap)
+        gaps = []
+        lastReplayGate = null
+      } else {
+        gaps = [continuityGap]
+        lastReplayGate = 'live_final_continuity_gap'
+        try {
+          await resolveGaps()
+        } catch (error) {
+          if (leaseTimer) clearIntervalFn(leaseTimer)
+          leaseTimer = null
+          apiClient?.stop?.()
+          started = false
+          throw error
+        }
+        const cursor = journal.cursor(canonicalProductionTableId(event?.tableId ?? event?.table_id))
+        if (cursor?.origin === 'snapshot-pusher-exact-ack-cursor'
+          && (Number(event?.shoe) !== Number(cursor.shoe) || Number(event?.round) !== Number(cursor.round) + 1)) {
+          lastReplayGate = 'bootstrap_cursor_ack_required'
+          if (leaseTimer) clearIntervalFn(leaseTimer)
+          leaseTimer = null
+          apiClient?.stop?.()
+          started = false
+          throw new Error('live_ack_blocked:bootstrap_cursor_ack_required')
+        }
       }
     }
     await journal.append(event)
@@ -246,7 +254,21 @@ export function createWorkerSourceRuntime({
 
   function updateGaps() {
     const cursors = new Map(tables.map((table) => [table.tableId, journal.cursor(table.tableId)]).filter(([, cursor]) => cursor))
-    gaps = gapDetector.detect({ tables, cursors })
+    const detected = gapDetector.detect({ tables, cursors })
+    if (allowGapDelivery) {
+      for (const gap of detected) rememberBypassedGap(gap)
+      gaps = []
+      lastReplayGate = null
+      return
+    }
+    gaps = detected
+  }
+
+  function rememberBypassedGap(gap) {
+    const key = JSON.stringify(gap)
+    if (bypassedGaps.some((candidate) => JSON.stringify(candidate) === key)) return
+    bypassedGaps.push(structuredClone(gap))
+    if (bypassedGaps.length > 100) bypassedGaps.shift()
   }
 
   function currentSource() {
@@ -259,6 +281,7 @@ export function createWorkerSourceRuntime({
     start, stop, onFinal, onTables, getDeliverySnapshot, acknowledge, rebindDeliveryQueue,
     snapshot: () => ({
       started, source: lease && currentSource(), gaps: structuredClone(gaps), liveGate: lastReplayGate,
+      bypassedGaps: structuredClone(bypassedGaps),
       ...(apiClient?.snapshot?.() ?? {}), tableCount: tables.length,
       sourceProgressAt: sourceProgressTracker?.sourceProgressAt ?? null,
     }),
