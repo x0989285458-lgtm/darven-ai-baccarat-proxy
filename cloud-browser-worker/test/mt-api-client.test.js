@@ -101,7 +101,7 @@ test('a Final allocation race cannot let an old socket generation adopt a new ep
   client.stop()
 })
 
-test('Reviewer P1 Join/Tables: an exact Tables response before dual join ACK is delivered once after join and generation cache resets', async () => {
+test('Reviewer P1 Join/Tables: Chat has no ACK, so exact Tables release only after the genuine Game join ACK', async () => {
   const delivered = []
   const harness = createHarness({ onTables: async (tables) => delivered.push(tables) })
   const client = createMtApiClient(harness.options)
@@ -113,9 +113,6 @@ test('Reviewer P1 Join/Tables: an exact Tables response before dual join ACK is 
 
   harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: tables1 } })
   harness.receiveGeneration(1, 'game', { action: '/api/v1/gametype/*/game/*/room/*/mulitple_join', err: 0 })
-  await harness.flush()
-  assert.equal(delivered.length, 0)
-  harness.receiveGeneration(1, 'chat', { action: '/api/v1/chat/room/*/table/*/join', err: 0 })
   await harness.flush()
   assert.equal(delivered.length, 1)
   assert.deepEqual(delivered[0], tables1)

@@ -165,7 +165,10 @@ export function createMtApiClient({
     if (!isCurrent(current) || (current.joinRequested.game && current.joinRequested.chat)
       || !current.authenticated.game || !current.authenticated.chat) return
     refreshGenerationLease(current)
-    if (!current.joinRequested.chat && send(current.chat, chatJoinPacket())) current.joinRequested.chat = true
+    if (!current.joinRequested.chat && send(current.chat, chatJoinPacket())) {
+      current.joinRequested.chat = true
+      current.joined.chat = true
+    }
     if (!current.joinRequested.game && send(current.game, multipleJoinPacket())) current.joinRequested.game = true
     if (current.joinRequested.game && current.joinRequested.chat) startHeartbeat(current)
   }
