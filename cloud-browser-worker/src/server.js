@@ -145,8 +145,12 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`${SERVICE} ${BUILD_VERSION} listening on :${PORT}`)
-  if (MT_CAPTURE_ROLE === 'canonical') snapshotPusher.start()
-  else if (MT_CAPTURE_ROLE === 'backup-journal') void ensureBackupJournalRuntime().catch(() => {})
+  if (MT_CAPTURE_ROLE === 'canonical') {
+    if (MT_SOURCE_MODE === 'api') {
+      void ensureSourceRuntime().catch((error) => { lastError = redactUrlSecrets(error?.message ?? String(error)) })
+    }
+    snapshotPusher.start()
+  } else if (MT_CAPTURE_ROLE === 'backup-journal') void ensureBackupJournalRuntime().catch(() => {})
 })
 
 async function getSnapshot() {

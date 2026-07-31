@@ -19,6 +19,9 @@ test('server defaults to API owner and wires journal ACK through the existing sn
   assert.match(source, /MT_BACKUP_SESSION_TOKEN_FILE/)
   assert.doesNotMatch(source, /MT_SECOND_SESSION_TOKEN_AVAILABLE/)
   assert.match(source, /await quiesceWorkerProducers\(\{[\s\S]*sourceRuntime,[\s\S]*snapshotPusher,[\s\S]*abortAfterTimeout:/)
+  const startup = source.slice(source.indexOf('server.listen'), source.indexOf('async function getSnapshot'))
+  assert.match(startup, /MT_CAPTURE_ROLE === 'canonical'[\s\S]*MT_SOURCE_MODE === 'api'[\s\S]*ensureSourceRuntime\(\)/)
+  assert.ok(startup.indexOf('ensureSourceRuntime()') < startup.indexOf('snapshotPusher.start()'), 'API runtime must initialize before the pusher can request its first snapshot')
 })
 
 test('Reviewer P1 server wiring: browser, backup role, and stale backup env fail before server listen', () => {
