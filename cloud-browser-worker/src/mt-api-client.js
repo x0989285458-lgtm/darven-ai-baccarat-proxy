@@ -16,6 +16,7 @@ export function createMtApiClient({
   chatUrl = DEFAULT_CHAT_URL,
   reconnectDelayMs = 3_000,
   reconnectMaxDelayMs = 30_000,
+  connectTimeoutMs = 15_000,
   heartbeatMs = 5_000,
   setTimeoutFn = setTimeout,
   clearTimeoutFn = clearTimeout,
@@ -62,6 +63,7 @@ export function createMtApiClient({
       opened: { game: false, chat: false },
       joinRequested: { game: false, chat: false },
       joined: { game: false, chat: false },
+      openTimers: { game: null, chat: null },
       pendingTables: null,
       lastMessageAt: null,
       reconnectScheduled: false,
@@ -77,8 +79,20 @@ export function createMtApiClient({
 
   function attach(current, kind) {
     const socket = current[kind]
+    const timeout = Math.max(0, Number(connectTimeoutMs) || 0)
+    if (timeout > 0) {
+      current.openTimers[kind] = setTimeoutFn(() => {
+        current.openTimers[kind] = null
+        if (!isCurrent(current) || current.opened[kind]) return
+        handleError(new Error(`mt_socket_open_timeout:${kind}`))
+        scheduleReconnect(current)
+      }, timeout)
+      current.openTimers[kind]?.unref?.()
+    }
     socket.on('open', () => {
       if (!isCurrent(current)) return
+      clearTimeoutFn(current.openTimers[kind])
+      current.openTimers[kind] = null
       current.opened[kind] = true
       send(socket, authenticatePacket(kind, current.sessionValue))
     })
@@ -268,6 +282,12 @@ export function createMtApiClient({
   }
 
   function closeGeneration(current) {
+    if (current?.openTimers) {
+      clearTimeoutFn(current.openTimers.game)
+      clearTimeoutFn(current.openTimers.chat)
+      current.openTimers.game = null
+      current.openTimers.chat = null
+    }
     current?.game?.close?.()
     current?.chat?.close?.()
   }

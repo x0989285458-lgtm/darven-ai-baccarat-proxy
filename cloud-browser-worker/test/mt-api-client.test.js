@@ -549,6 +549,28 @@ test('real close events stay suppressed until one auth refresh resolves, then ex
   client.stop()
 })
 
+test('socket open timeout closes a hung generation and reconnects both sockets', async () => {
+  const timers = createManualTimers()
+  const errors = []
+  const harness = createHarness({
+    connectTimeoutMs: 15_000,
+    reconnectDelayMs: 0,
+    setTimeoutFn: timers.setTimeout,
+    clearTimeoutFn: timers.clearTimeout,
+    onError: (error) => errors.push(String(error)),
+  })
+  const client = createMtApiClient(harness.options)
+  await client.start()
+  assert.equal(harness.sockets.length, 2)
+  assert.equal(timers.nextDelay(), 15_000)
+  await timers.runNext()
+  assert.equal(harness.sockets.every((socket) => socket.closed), true)
+  assert.ok(errors.some((error) => error.includes('mt_socket_open_timeout:game')))
+  await timers.runNext()
+  assert.equal(harness.sockets.length, 4)
+  client.stop()
+})
+
 test('failed auth refresh remains stopped with no reconnect generation', async () => {
   const harness = createHarness({ refresh: async () => { throw new Error('refresh-failed') } })
   const client = createMtApiClient(harness.options)
@@ -567,7 +589,7 @@ test('failed auth refresh remains stopped with no reconnect generation', async (
 function createHarness({
   onFinal = async () => {}, onTables = async () => {}, onError = () => {}, refresh = async () => {},
   getSessionToken = async () => 'opaque-session-value', nextEventSource, now = Date.now,
-  reconnectDelayMs = 0, reconnectMaxDelayMs, setTimeoutFn, clearTimeoutFn,
+  reconnectDelayMs = 0, reconnectMaxDelayMs, connectTimeoutMs = 0, setTimeoutFn, clearTimeoutFn,
   socketFailureCalls = [], sourceOwner,
 } = {}) {
   const sockets = []
@@ -595,6 +617,7 @@ function createHarness({
     onError,
     now,
     reconnectDelayMs,
+    connectTimeoutMs,
     ...(reconnectMaxDelayMs == null ? {} : { reconnectMaxDelayMs }),
     setTimeoutFn: setTimeoutFn ?? ((fn) => { queueMicrotask(fn); return fn }),
     clearTimeoutFn: clearTimeoutFn ?? (() => {}),
