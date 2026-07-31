@@ -3,6 +3,7 @@ import { canonicalProductionTableId, PRODUCTION_TABLE_IDS } from './table-policy
 
 const DEFAULT_GAME_URL = 'wss://a1.ofalive99.net/game/ws'
 const DEFAULT_CHAT_URL = 'wss://a2.ofalive99.net/chat/ws'
+const MT_BROWSER_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/149 Safari/537.36'
 
 export function createMtApiClient({
   sourceOwner,
@@ -316,7 +317,7 @@ function pingPacket() {
 }
 
 function socketOptions(kind) {
-  return { kind, headers: { Origin: 'https://gsa.ofalive99.net' } }
+  return { kind, headers: { Origin: 'https://gsa.ofalive99.net', 'User-Agent': MT_BROWSER_USER_AGENT } }
 }
 
 function send(socket, packet) {

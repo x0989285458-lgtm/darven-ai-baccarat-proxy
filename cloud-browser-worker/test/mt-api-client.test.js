@@ -26,6 +26,16 @@ test('API owner authenticates Game and Chat then performs one exact ten-table jo
   assert.equal(harness.sentActions('chat').includes('/api/v1/chat/room/*/table/*/join'), true)
 })
 
+test('live MT sockets send the browser Origin and User-Agent required by the gateway', async () => {
+  const harness = createHarness()
+  const client = createMtApiClient(harness.options)
+  await client.start()
+  assert.equal(harness.socketAt(0).options.headers.Origin, 'https://gsa.ofalive99.net')
+  assert.match(harness.socketAt(0).options.headers['User-Agent'], /^Mozilla\/5\.0 .+Chrome\/149 /)
+  assert.deepEqual(harness.socketAt(1).options.headers, harness.socketAt(0).options.headers)
+  client.stop()
+})
+
 test('Reviewer P1 Join/Tables: an exact Tables response before dual join ACK is delivered once after join and generation cache resets', async () => {
   const delivered = []
   const harness = createHarness({ onTables: async (tables) => delivered.push(tables) })
@@ -506,10 +516,10 @@ function createHarness({
   const options = {
     sourceOwner: owner,
     sessionManager: { getSessionToken, refresh },
-    createSocket: (url) => {
+    createSocket: (url, socketOptions) => {
       socketCalls += 1
       if (socketFailureCalls.includes(socketCalls)) throw new Error(`temporary-socket-creation-failure:${socketCalls}`)
-      const socket = new FakeSocket(url)
+      const socket = new FakeSocket(url, socketOptions)
       sockets.push(socket)
       return socket
     },
@@ -586,9 +596,10 @@ function createManualTimers() {
 }
 
 class FakeSocket extends EventEmitter {
-  constructor(url) {
+  constructor(url, options = {}) {
     super()
     this.url = url
+    this.options = options
     this.kind = url.includes('/chat/') ? 'chat' : 'game'
     this.readyState = 0
     this.sent = []
