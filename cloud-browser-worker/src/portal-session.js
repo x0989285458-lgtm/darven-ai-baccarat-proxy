@@ -334,11 +334,21 @@ async function closeAnnouncement(page, maxClosures = 6) {
 }
 
 async function clickTextAndCapturePopup(context, page, text, timeoutMs) {
-  const locator = page.getByText(text, { exact: true }).first()
-  if (typeof locator.waitFor === 'function') {
-    await locator.waitFor({ state: 'visible', timeout: timeoutMs }).catch(() => {})
+  const candidates = page.getByText(text, { exact: true })
+  const waiter = typeof candidates.last === 'function' ? candidates.last() : candidates.first()
+  if (typeof waiter.waitFor === 'function') {
+    await waiter.waitFor({ state: 'visible', timeout: timeoutMs }).catch(() => {})
   }
-  if (!await locator.isVisible().catch(() => false)) throw new Error('required portal game link was not found')
+  let locator = waiter
+  if (typeof candidates.count === 'function' && typeof candidates.nth === 'function') {
+    const count = await candidates.count()
+    locator = null
+    for (let index = count - 1; index >= 0; index -= 1) {
+      const candidate = candidates.nth(index)
+      if (await candidate.isVisible().catch(() => false)) { locator = candidate; break }
+    }
+  }
+  if (!locator || !await locator.isVisible().catch(() => false)) throw new Error('required portal game link was not found')
   const popupPromise = context.waitForEvent('page', { timeout: Math.min(1500, timeoutMs) }).catch(() => null)
   await locator.click()
   return (await popupPromise) ?? page

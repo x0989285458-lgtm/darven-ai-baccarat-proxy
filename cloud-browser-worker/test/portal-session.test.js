@@ -58,6 +58,26 @@ test('portal MT opening accepts a popup page', async () => {
   assert.deepEqual(portal.clickedMtText, ['MT真人'])
 })
 
+test('portal MT opening chooses the last visible duplicate control instead of the header decoy', async () => {
+  const clicked = []
+  const popup = fakePage('https://mt.example/game')
+  const controls = [0, 1].map((index) => ({
+    waitFor: async () => {},
+    isVisible: async () => true,
+    click: async () => { clicked.push(index) },
+  }))
+  const hidden = () => ({ isVisible: async () => false })
+  const portal = {
+    locator: () => ({ first: hidden, last: hidden }),
+    getByText: (text) => text === 'MT真人'
+      ? { first: () => controls[0], last: () => controls[1], count: async () => 2, nth: (index) => controls[index] }
+      : { first: hidden, last: hidden, count: async () => 0, nth: hidden },
+  }
+  const context = { waitForEvent: async () => popup }
+  assert.equal(await openPortalMtPage({ context, portalPage: portal, timeoutMs: 20 }), popup)
+  assert.deepEqual(clicked, [1])
+})
+
 test('portal MT popup listener starts only after a delayed MT control becomes visible', async () => {
   let visible = false
   let resolvePopup
