@@ -4,6 +4,9 @@ export function buildWorkerHealth({ service, version, buildInfo = {}, configured
     sessionId: source?.sessionId == null ? null : String(source.sessionId),
     connected: source?.connected === true,
     authenticated: source?.authenticated === true,
+    ...(typeof source?.joined === 'boolean' ? { joined: source.joined } : {}),
+    ...(source?.lastMessageAt == null ? {} : { lastMessageAt: String(source.lastMessageAt) }),
+    ...(typeof source?.reconnecting === 'boolean' ? { reconnecting: source.reconnecting } : {}),
     tableCount: finiteNonNegative(source?.tableCount ?? (Array.isArray(source?.tables) ? source.tables.length : 0)),
     snapshotAt: source?.snapshotAt ?? source?.timestamp ?? null,
     ...(sourceProgressAt == null ? {} : { sourceProgressAt: String(sourceProgressAt) }),
@@ -28,6 +31,7 @@ export function buildWorkerHealth({ service, version, buildInfo = {}, configured
   const sourceProgressAgeMs = Number(nowMs) - sourceProgressAtMs
   const sourceReady = normalizedSource.connected
     && normalizedSource.authenticated
+    && normalizedSource.joined !== false
     && normalizedSource.tableCount === Number(expectedTableCount)
   const sourceProgressExpected = sourceReady && sourceProgressAt != null
   const sourceProgressStale = sourceProgressExpected

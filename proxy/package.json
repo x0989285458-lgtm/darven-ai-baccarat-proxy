@@ -1,6 +1,6 @@
 {
   "name": "draven-mt-data-proxy-v105",
-  "version": "1.0.25",
+  "version": "1.0.26",
   "private": true,
   "type": "module",
   "description": "Draven MT百家資料代理伺服器 v105：五路通用週期正式版，主採大路週期，其餘四路輔助驗證。",

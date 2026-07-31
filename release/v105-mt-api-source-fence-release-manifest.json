@@ -1,0 +1,201 @@
+{
+  "releaseName": "v105 MT API Primary",
+  "releaseVersion": "v105-mt-api-primary.1",
+  "gitTag": "v105-mt-api-primary.1",
+  "applicationVersion": "1.0.26",
+  "formalStrategyVersion": "v105",
+  "applicationVersionChanged": true,
+  "releaseScope": {
+    "mode": "single-session-api-primary",
+    "canonicalSource": "api",
+    "workerEnvironment": {
+      "MT_SOURCE_MODE": "api",
+      "MT_CAPTURE_ROLE": "canonical"
+    },
+    "browserEnabled": false,
+    "backupReplayEnabled": false,
+    "recordContract": "unverified",
+    "gapPolicy": "fail-closed-stop-ack-and-alert",
+    "deferred": ["second-independent-session-backup", "record-replay"]
+  },
+  "deploymentOrder": [
+    "database-additive",
+    "database-catalog-acl-readback",
+    "proxy-compatible",
+    "new-api-worker",
+    "durable-source-readback",
+    "require-fenced-ingest-finalize"
+  ],
+  "database": {
+    "migration": "supabase/migrations/20260731010000_v105_capture_source_fence.sql",
+    "table": "public.v105_capture_source_fence",
+    "rpc": "public.persist_v105_fenced_capture_envelope(jsonb)",
+    "atomicFenceAndEnvelope": true,
+    "serviceRoleOnly": true
+  },
+  "proxy": {
+    "compatibleBeforeFinalize": true,
+    "unfencedLegacyRpcAllowedOnlyWhenSourceAbsent": true,
+    "fencedRpcFallbackAllowed": false,
+    "finalizeEnvironment": "REQUIRE_FENCED_INGEST=true"
+  },
+  "browserColdBackup": {
+    "requiresSource": true,
+    "sourceMode": "browser",
+    "requiresOwnerIdEpochFence": true
+  },
+  "readbackGate": {
+    "requireExactModeOwnerIdEpochFence": true,
+    "requireNewApiWorkerAckSource": true,
+    "requireOldEpochRejectedAfterProxyRestart": true
+  },
+  "releaseBinding": {
+    "implementationTree": {
+      "algorithm": "sha256",
+      "paths": [
+        "cloud-browser-worker/.dockerignore",
+        "cloud-browser-worker/Dockerfile",
+        "cloud-browser-worker/package.json",
+        "cloud-browser-worker/package-lock.json",
+        "cloud-browser-worker/src",
+        "frontend/package.json",
+        "frontend/package-lock.json",
+        "proxy/package.json",
+        "proxy/package-lock.json",
+        "proxy/deploy/render.yaml",
+        "proxy/src",
+        "shared",
+        "supabase/migrations/20260731010000_v105_capture_source_fence.sql",
+        "scripts/verify-v105-mt-api-release.mjs",
+        "scripts/trusted-registry-readback-adapter.mjs",
+        "release/v105-mt-api-source-fence-release-manifest.json",
+        "release/attestations"
+      ],
+      "excludedPaths": [
+        "release/v105-mt-api-source-fence-release-manifest.json",
+        "release/attestations"
+      ],
+      "sha256": "7877f5c59a856a8d22e02180c52b7a221febae2a0c1a1ac24bcf12075900f615"
+    },
+    "migration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260731010000_v105_capture_source_fence.sql",
+      "sha256": "aa4730458d093c08275eaa4c0d3e9b87b2088de3da9b302890615edf0b7dbc89"
+    },
+    "proxyBuildInput": {
+      "algorithm": "sha256",
+      "paths": ["proxy/package.json", "proxy/package-lock.json", "proxy/deploy/render.yaml", "proxy/src", "shared"],
+      "excludedPaths": [],
+      "sha256": "dd659b345f7d10d4c0e7d1ae326d0c7e86a105edfe71694463c19b9665dee5b4"
+    },
+    "workerBuildInput": {
+      "algorithm": "sha256",
+      "paths": ["cloud-browser-worker/.dockerignore", "cloud-browser-worker/Dockerfile", "cloud-browser-worker/package.json", "cloud-browser-worker/package-lock.json", "cloud-browser-worker/src", "shared"],
+      "excludedPaths": [],
+      "sha256": "eb52fd3ea0f44d2416f1ce7fa273407c3454b5fa4e3e6c358333fea3e5133c84"
+    },
+    "attestation": {
+      "externalFileRequired": true,
+      "immutableCommitAndAnnotatedTagRequired": true,
+      "imageDigestReadbackRequired": true,
+      "phase": "post-build-pre-cutover",
+      "independentBuildReceiptsRequired": true,
+      "fixedRegistryAdapterRequired": true,
+      "fixedRegistryAdapter": "scripts/trusted-registry-readback-adapter.mjs",
+      "arbitraryReadbackJsonRejected": true,
+      "abortOnMismatch": true
+    }
+  },
+  "rollback": {
+    "target": {
+      "commit": "b1cd90d2bdb0cc1bea38f63066002eef62136bcd",
+      "tree": "55357e0ffc0133413690083ad976a86d7e251015",
+      "proxyArtifact": "proxy-from-exact-target",
+      "browserWorkerArtifact": "cloud-browser-worker-from-exact-target"
+    },
+    "order": [
+      {
+        "id": "stop-api-intake-sockets-renewal",
+        "requireApiIntakeStopped": true,
+        "requireRenewalTimerStopped": true,
+        "requireStopAcknowledgement": true
+      },
+      {
+        "id": "drain-pusher-queue",
+        "requireDrainComplete": true,
+        "unfinishedCounts": ["pending", "processing", "error", "dead-letter"]
+      },
+      {
+        "id": "stop-pusher-and-wait",
+        "requirePusherStopped": true,
+        "requireInFlight": 0,
+        "abortAfterTimeoutRequired": true
+      },
+      {
+        "id": "checkpoint-queue-cursor-journal",
+        "checkpoint": ["queue", "cursor", "journal"],
+        "requireChecksums": true,
+        "requireCursorBaseline": true
+      },
+      {
+        "id": "readback-zero-and-preserved",
+        "requireAllUnfinishedCountsZero": true,
+        "requireCheckpointReadback": true,
+        "requireCursorNonRegression": true,
+        "abortBeforeArtifactRollbackOnFailure": true
+      },
+      {
+        "id": "disable-fenced-requirement",
+        "setEnvironment": "REQUIRE_FENCED_INGEST=false",
+        "requireEnvironmentReadback": "false"
+      },
+      {
+        "id": "readback-old-unfenced-accepted",
+        "requireOldUnfencedAccepted": true,
+        "abortBeforeProxyRollbackOnFailure": true
+      },
+      {
+        "id": "rollback-proxy-compatible",
+        "artifact": "proxy-from-exact-target",
+        "requireCompatibleStatusReadback": true
+      },
+      {
+        "id": "readback-lease-stopped-no-socket",
+        "requireLeaseStopped": true,
+        "requireApiSocketCount": 0
+      },
+      {
+        "id": "start-old-browser-worker",
+        "artifact": "cloud-browser-worker-from-exact-target",
+        "requireBrowserOwnerReadback": true
+      }
+    ],
+    "preserve": ["queue", "cursor", "journal"],
+    "requireAllUnfinishedCountsZero": true,
+    "unfinishedCounts": ["pending", "processing", "error", "dead-letter"],
+    "requireNoNewLostFinals": true,
+    "requireCursorNonRegression": true,
+    "requireProducerQuiesce": true,
+    "abortGates": [
+      "rollback-target-readback-mismatch",
+      "unfinished-count-nonzero",
+      "producer-not-quiesced",
+      "drain-checkpoint-readback-failed",
+      "old-unfenced-not-accepted",
+      "proxy-compatibility-readback-failed",
+      "api-owner-lease-not-stopped",
+      "api-owner-socket-still-open",
+      "queue-cursor-journal-preservation-failed",
+      "new-lost-final-detected",
+      "cursor-regression-detected"
+    ]
+  },
+  "behavior": {
+    "predictionRulesChanged": false,
+    "predictionWeightsChanged": false,
+    "predictionThresholdsChanged": false,
+    "uiChanged": false,
+    "v6ToV9Changed": false,
+    "versionChanged": true
+  }
+}

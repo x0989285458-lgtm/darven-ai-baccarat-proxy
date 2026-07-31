@@ -2197,6 +2197,10 @@ export function createSupabaseIngestionClient({
           text: 'select public.persist_v105_capture_envelope($1::jsonb) as persist_v105_capture_envelope',
           values: [body?.p_capture],
         },
+        'rpc/persist_v105_fenced_capture_envelope': {
+          text: 'select public.persist_v105_fenced_capture_envelope($1::jsonb) as persist_v105_fenced_capture_envelope',
+          values: [body?.p_capture],
+        },
         'rpc/complete_v105_capture_settlement_outbox': {
           text: 'select public.complete_v105_capture_settlement_outbox($1::text, $2::bigint, $3::uuid, $4::integer) as complete_v105_capture_settlement_outbox',
           values: [body?.p_session_id, body?.p_sequence, body?.p_claim_token, body?.p_attempt],
@@ -3458,7 +3462,7 @@ export function createSupabaseIngestionClient({
       inFlightRoundWrites.set(roundKey, writePromise)
       return writePromise
     },
-    async persistCaptureEnvelope({ sessionId, sequence, roundKeys = [], status = {}, tables = [], rounds = [], capturedAt = null } = {}) {
+    async persistCaptureEnvelope({ sessionId, sequence, roundKeys = [], status = {}, tables = [], rounds = [], capturedAt = null, source = null } = {}) {
       const normalizedSessionId = String(sessionId ?? '')
       const normalizedSequence = Number(sequence)
       if (!normalizedSessionId || !Number.isSafeInteger(normalizedSequence) || normalizedSequence < 1) {
@@ -3490,7 +3494,10 @@ export function createSupabaseIngestionClient({
       statusRow.last_round_at = roundRows.length > 0
         ? roundRows.map((row) => row.received_at).sort().at(-1)
         : null
-      const acknowledgement = await postDurableRest('rpc/persist_v105_capture_envelope', {
+      const rpcPath = source == null
+        ? 'rpc/persist_v105_capture_envelope'
+        : 'rpc/persist_v105_fenced_capture_envelope'
+      const acknowledgement = await postDurableRest(rpcPath, {
         p_capture: {
           session_id: normalizedSessionId,
           sequence: normalizedSequence,
@@ -3499,6 +3506,7 @@ export function createSupabaseIngestionClient({
           snapshot: snapshotRow,
           rounds: roundRows,
           work: { sessionId: normalizedSessionId, status, tables, rounds },
+          ...(source == null ? {} : { source: structuredClone(source) }),
         },
       }, undefined, { requireObject: true, priority: true })
       const acknowledgedKeys = Array.isArray(acknowledgement?.accepted_round_keys)

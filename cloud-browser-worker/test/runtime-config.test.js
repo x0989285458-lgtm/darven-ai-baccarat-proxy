@@ -1,7 +1,19 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as runtimeConfig from '../src/runtime-config.js'
-import { BUILD_VERSION, publicBuildInfo, validateProductionConfig } from '../src/runtime-config.js'
+import { BUILD_VERSION, publicBuildInfo, validateProductionConfig, validateReleaseRuntimeScope } from '../src/runtime-config.js'
+
+test('Reviewer P1 runtime scope: release 1.0.26 permits only API canonical with empty backup environment', () => {
+  assert.doesNotThrow(() => validateReleaseRuntimeScope({ MT_SOURCE_MODE: 'api', MT_CAPTURE_ROLE: 'canonical' }))
+  assert.throws(() => validateReleaseRuntimeScope({ MT_SOURCE_MODE: 'browser', MT_CAPTURE_ROLE: 'canonical' }), /release_runtime_source_mode_must_be_api/)
+  assert.throws(() => validateReleaseRuntimeScope({ MT_SOURCE_MODE: 'api', MT_CAPTURE_ROLE: 'backup-journal' }), /release_runtime_capture_role_must_be_canonical/)
+  assert.throws(() => validateReleaseRuntimeScope({
+    MT_SOURCE_MODE: 'api', MT_CAPTURE_ROLE: 'canonical', MT_BACKUP_FINAL_JOURNAL_PATH: 'stale.jsonl',
+  }), /release_runtime_backup_environment_must_be_empty/)
+  assert.throws(() => validateReleaseRuntimeScope({
+    MT_SOURCE_MODE: 'api', MT_CAPTURE_ROLE: 'canonical', MT_BACKUP_SESSION_TOKEN_FILE: 'stale-token-file',
+  }), /release_runtime_backup_environment_must_be_empty/)
+})
 
 test('production refuses startup unless all worker security and push settings exist', () => {
   assert.throws(

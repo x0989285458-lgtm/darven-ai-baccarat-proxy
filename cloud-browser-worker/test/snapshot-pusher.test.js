@@ -1160,6 +1160,52 @@ test('large durable queue is atomically compressed and restores without losing i
   await assert.rejects(readFile(queuePath), { code: 'ENOENT' })
 })
 
+test('Reviewer P1 rollback producer quiesce aborts and settles the current tick, then rejects every new tick', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-pusher-quiesce-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  let fetchStarted
+  const started = new Promise((resolve) => { fetchStarted = resolve })
+  let snapshotCalls = 0
+  const events = []
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://memory.invalid/snapshot', key: 'memory-key', queuePath,
+    getSnapshot: async () => {
+      snapshotCalls += 1
+      return {
+        sessionId: 'memory-session', buildVersion: '105', tables: [],
+        rounds: [{ tableId: 'BAG01', shoe: 8, round: 1, winner: 'banker', rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6] }],
+      }
+    },
+    isRoundDeliverable: () => true,
+    fetchImpl: async (_url, options) => new Promise((resolve, reject) => {
+      void resolve
+      events.push('fetch-start')
+      fetchStarted()
+      options.signal.addEventListener('abort', () => {
+        events.push('fetch-abort')
+        reject(new Error('aborted-by-stop'))
+      }, { once: true })
+    }),
+  })
+
+  const tickPromise = pusher.tick()
+  await started
+  assert.equal(pusher.snapshot().active, true)
+  assert.equal(pusher.snapshot().inFlight, 1)
+
+  await pusher.stopAndWait({ abortAfterTimeout: 0 })
+  assert.equal(await tickPromise, false)
+  assert.deepEqual(events, ['fetch-start', 'fetch-abort'])
+  assert.equal(pusher.snapshot().active, false)
+  assert.equal(pusher.snapshot().inFlight, 0)
+  assert.equal(pusher.snapshot().stopped, true)
+  assert.equal(pusher.snapshot().queueEntryCount, 1, 'aborted delivery remains durable instead of becoming a false zero')
+
+  assert.equal(await pusher.tick(), false)
+  assert.equal(snapshotCalls, 1, 'no new pending work may be collected after quiesce')
+})
+
 async function listen(server) {
   await new Promise((resolve, reject) => {
     server.once('error', reject)

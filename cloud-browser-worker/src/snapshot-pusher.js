@@ -26,6 +26,9 @@ export function createSnapshotPusher({
   queueCompressionThresholdBytes = 1024 * 1024,
   queueJournalThresholdEntries = 100,
   isRoundDeliverable = () => true,
+  onAcknowledged = async () => {},
+  onRebindQueue = null,
+  faultInjector = async () => {},
   now = Date.now,
 } = {}) {
   const roundLimit = Math.max(1, Number(maxRoundsPerEnvelope) || 5)
@@ -51,13 +54,27 @@ export function createSnapshotPusher({
   let lastError = null
   let lastAcknowledgedSessionId = null
   let lastAcknowledgedSequence = null
+  let stopped = false
+  let currentTickPromise = null
+  let currentController = null
 
-  async function tick() {
-    if (!targetUrl || !key || typeof getSnapshot !== 'function' || active || stateInvalid) return false
+  function tick() {
+    if (stopped || !targetUrl || !key || typeof getSnapshot !== 'function' || active || stateInvalid) return Promise.resolve(false)
+    const promise = runTick()
+    currentTickPromise = promise
+    const clear = () => {
+      if (currentTickPromise === promise) currentTickPromise = null
+    }
+    promise.then(clear, clear)
+    return promise
+  }
+
+  async function runTick() {
     active = true
     try {
       await restoreState()
       if (stateInvalid) return false
+      if (await recoverRemoteAcknowledgement()) return true
       let timestamp = Number(now())
       await collectSnapshot(timestamp)
       let lastCaptureAt = timestamp
@@ -78,6 +95,7 @@ export function createSnapshotPusher({
         if (!envelope) break
         lastAttemptAtMs = requestTimestamp
         const controller = new AbortController()
+        currentController = controller
         const timeout = setTimeout(() => controller.abort(), requestTimeoutMs)
         try {
           const response = await fetchImpl(targetUrl, {
@@ -89,11 +107,17 @@ export function createSnapshotPusher({
           })
           const acknowledgement = await readAcknowledgement(response, envelope)
           if (!acknowledgement) throw new Error(`push failed with invalid acknowledgement (${response?.status ?? 'unknown'})`)
-          for (const roundKey of acknowledgement.acceptedRoundKeys) acknowledgedRoundKeys.add(roundKey)
-          queue.splice(0, delivery.entryCount)
-          trimCursor()
+          const receipt = {
+            sessionId: String(envelope.sessionId ?? ''),
+            sequence: Number(envelope.sequence),
+            acceptedRoundKeys: acknowledgement.acceptedRoundKeys,
+            ...(envelope.source ? { source: structuredClone(envelope.source) } : {}),
+            acknowledgedAtMs: requestTimestamp,
+          }
+          queue[0] = { ...queue[0], deliveryState: 'remote_ack_pending', remoteAckReceipt: receipt }
           await saveQueue()
-          await saveCursor()
+          await faultInjector('after_remote_ack_checkpoint', structuredClone(receipt))
+          await finalizeRemoteAcknowledgement(queue[0])
           failures = 0
           nextAttemptAt = 0
           lastSuccessAtMs = requestTimestamp
@@ -109,6 +133,7 @@ export function createSnapshotPusher({
           return acknowledgedAny
         } finally {
           clearTimeout(timeout)
+          if (currentController === controller) currentController = null
         }
       }
       return acknowledgedAny
@@ -128,6 +153,7 @@ export function createSnapshotPusher({
 
   async function collectSnapshot(timestamp) {
     const snapshot = sanitizeProductionSnapshot(await getSnapshot())
+    await rebindQueuedTransport(snapshot, timestamp)
     const rounds = Array.isArray(snapshot?.rounds) ? snapshot.rounds : []
     const candidates = uniqueRoundCandidates(rounds
       .filter((round) => isRoundDeliverable(round))
@@ -172,6 +198,92 @@ export function createSnapshotPusher({
     }
   }
 
+  async function recoverRemoteAcknowledgement() {
+    if (queue[0]?.deliveryState !== 'remote_ack_pending') return false
+    await finalizeRemoteAcknowledgement(queue[0])
+    failures = 0
+    nextAttemptAt = 0
+    lastError = null
+    return true
+  }
+
+  async function finalizeRemoteAcknowledgement(entry) {
+    const receipt = normalizeRemoteAckReceipt(entry)
+    const journalReceipt = {
+      sessionId: receipt.sessionId,
+      sequence: receipt.sequence,
+      acceptedRoundKeys: [...receipt.acceptedRoundKeys],
+      ...(receipt.source ? { source: structuredClone(receipt.source) } : {}),
+    }
+    await onAcknowledged(journalReceipt)
+    await faultInjector('after_journal_ack', structuredClone(receipt))
+    for (const roundKeyValue of receipt.acceptedRoundKeys) acknowledgedRoundKeys.add(roundKeyValue)
+    trimCursor()
+    await saveCursor()
+    if (queue[0]?.sequence !== entry.sequence || queue[0]?.deliveryState !== 'remote_ack_pending') {
+      throw new Error('remote_ack_pending_head_changed')
+    }
+    queue.shift()
+    await saveQueue()
+    lastSuccessAtMs = receipt.acknowledgedAtMs
+    lastAcknowledgedSessionId = receipt.sessionId || null
+    lastAcknowledgedSequence = receipt.sequence
+  }
+
+  async function rebindQueuedTransport(snapshot, timestamp) {
+    const targetSource = normalizeSource(snapshot?.source)
+    const targetSessionId = String(snapshot?.sessionId ?? '')
+    if (queue.length === 0 || !targetSource) return
+    const needsRebind = queue.some((entry) => (
+      JSON.stringify(normalizeSource(entry.source)) !== JSON.stringify(targetSource)
+      || String(entry.sessionId ?? '') !== targetSessionId
+    ))
+    if (!needsRebind) return
+    if (typeof onRebindQueue !== 'function') throw new Error('queued_source_rebind_required')
+    const roundKeys = queue.flatMap((entry) => entry.roundKeys.map(String))
+    const reboundRounds = await onRebindQueue({
+      roundKeys: [...roundKeys], source: structuredClone(targetSource), sessionId: targetSessionId,
+      snapshot: structuredClone(snapshot),
+    })
+    if (!Array.isArray(reboundRounds) || reboundRounds.length !== roundKeys.length) throw new Error('queued_source_rebind_incomplete')
+    const byIdentity = new Map()
+    for (const round of reboundRounds) {
+      const keyValue = roundKey(round)
+      if (!keyValue || byIdentity.has(keyValue)) throw new Error('queued_source_rebind_incomplete')
+      const eventSource = normalizeEventSource(round?.source)
+      if (!eventSource || JSON.stringify(normalizeSource(eventSource)) !== JSON.stringify(targetSource)) throw new Error('queued_source_rebind_mismatch')
+      byIdentity.set(keyValue, round)
+    }
+    let nextSequence = Math.max(lastSequence, Number(timestamp) || 0)
+    const reboundQueue = queue.map((entry) => {
+      const rounds = entry.snapshot.rounds.map((oldRound) => {
+        const identity = roundKey(oldRound)
+        const rebound = byIdentity.get(identity)
+        if (!rebound || JSON.stringify(withoutTransport(rebound)) !== JSON.stringify(withoutTransport(oldRound))) {
+          throw new Error('queued_source_rebind_payload_changed')
+        }
+        return {
+          ...oldRound,
+          capturedSource: structuredClone(rebound.capturedSource ?? oldRound.capturedSource ?? oldRound.source),
+          source: structuredClone(normalizeEventSource(rebound.source)),
+        }
+      })
+      nextSequence += 1
+      return {
+        ...entry,
+        capturedSource: structuredClone(entry.capturedSource ?? entry.source),
+        source: structuredClone(targetSource),
+        sessionId: targetSessionId,
+        sequence: nextSequence,
+        snapshot: { ...entry.snapshot, sessionId: targetSessionId, source: structuredClone(targetSource), rounds },
+      }
+    })
+    queue = reboundQueue
+    lastSequence = nextSequence
+    await saveQueue()
+    await saveCursor()
+  }
+
   function splitOversizedQueueEntries(entries) {
     const bounded = []
     let changed = false
@@ -207,6 +319,7 @@ export function createSnapshotPusher({
     return {
       protocolVersion: 'v105',
       sessionId: String(snapshot?.sessionId ?? ''),
+      ...(normalizeSource(snapshot?.source) ? { source: normalizeSource(snapshot.source) } : {}),
       timestamp,
       captureTimestamp: timestamp,
       sequence,
@@ -378,6 +491,7 @@ export function createSnapshotPusher({
       ...envelope,
       protocolVersion: 'v105',
       sessionId: String(envelope.sessionId ?? snapshot.sessionId ?? ''),
+      ...(normalizeSource(envelope.source ?? snapshot.source) ? { source: normalizeSource(envelope.source ?? snapshot.source) } : {}),
       timestamp: Number(envelope.timestamp),
       captureTimestamp,
       sequence: Number(envelope.sequence),
@@ -387,6 +501,16 @@ export function createSnapshotPusher({
         buildVersion: BUILD_VERSION,
         rounds: keyedRounds.map(({ round, key }) => normalizeRoundForEnvelope(round, key)),
       },
+    }
+    if (envelope.deliveryState != null && envelope.deliveryState !== 'remote_ack_pending') {
+      throw new Error('corrupt queue state: invalid delivery state')
+    }
+    if (envelope.deliveryState === 'remote_ack_pending') {
+      normalizedEnvelope.deliveryState = 'remote_ack_pending'
+      normalizedEnvelope.remoteAckReceipt = normalizeRemoteAckReceipt(normalizedEnvelope)
+    } else {
+      delete normalizedEnvelope.deliveryState
+      delete normalizedEnvelope.remoteAckReceipt
     }
     const originalPayload = { ...originalSnapshot }
     const normalizedPayload = { ...normalizedEnvelope.snapshot }
@@ -449,40 +573,81 @@ export function createSnapshotPusher({
 
   function start() {
     if (timer || !targetUrl || !key || stateInvalid) return
-    void tick().catch(() => stop())
-    timer = setInterval(() => { void tick().catch(() => stop()) }, Math.max(1000, Number(intervalMs) || 5000))
+    stopped = false
+    void tick().catch(() => { void stop() })
+    timer = setInterval(() => { void tick().catch(() => { void stop() }) }, Math.max(1000, Number(intervalMs) || 5000))
     timer.unref?.()
   }
 
-  function stop() {
+  function stopTimer() {
     if (timer) clearInterval(timer)
     timer = null
+  }
+
+  async function drain({ maxTicks = 100 } = {}) {
+    stopTimer()
+    if (currentTickPromise) await currentTickPromise
+    const limit = Math.max(1, Number(maxTicks) || 100)
+    for (let attempt = 0; attempt < limit; attempt += 1) {
+      const progressed = await tick()
+      if (queue.length === 0) return snapshot()
+      if (!progressed) throw new Error('snapshot_pusher_drain_incomplete')
+    }
+    throw new Error('snapshot_pusher_drain_limit_exceeded')
+  }
+
+  async function stopAndWait({ abortAfterTimeout = requestTimeoutMs } = {}) {
+    stopped = true
+    stopTimer()
+    const pending = currentTickPromise
+    if (pending) {
+      const delay = Math.max(0, Number(abortAfterTimeout) || 0)
+      let abortTimer = null
+      if (delay === 0) currentController?.abort()
+      else {
+        abortTimer = setTimeout(() => currentController?.abort(), delay)
+        abortTimer.unref?.()
+      }
+      try { await pending } catch {}
+      finally { if (abortTimer) clearTimeout(abortTimer) }
+    }
+    return snapshot()
+  }
+
+  async function stop(options) {
+    return stopAndWait(options)
+  }
+
+  function snapshot() {
+    const head = queue[0] ?? null
+    return {
+      active,
+      inFlight: currentTickPromise ? 1 : 0,
+      stopped,
+      stateInvalid,
+      legacyMutableQueueDetected,
+      queueEntryCount: queue.length,
+      queuedRoundKeyCount: queue.reduce((total, entry) => total + (entry.roundKeys?.length ?? 0), 0),
+      headSessionId: head?.sessionId == null ? null : String(head.sessionId),
+      headSequence: Number.isSafeInteger(Number(head?.sequence)) ? Number(head.sequence) : null,
+      consecutiveFailures: failures,
+      nextAttemptAtMs: nextAttemptAt || null,
+      lastAttemptAtMs,
+      lastSuccessAtMs,
+      lastError,
+      lastAcknowledgedSessionId,
+      lastAcknowledgedSequence,
+    }
   }
 
   return {
     tick,
     start,
     stop,
+    drain,
+    stopAndWait,
     isRunning: () => Boolean(timer),
-    snapshot() {
-      const head = queue[0] ?? null
-      return {
-        active,
-        stateInvalid,
-        legacyMutableQueueDetected,
-        queueEntryCount: queue.length,
-        queuedRoundKeyCount: queue.reduce((total, entry) => total + (entry.roundKeys?.length ?? 0), 0),
-        headSessionId: head?.sessionId == null ? null : String(head.sessionId),
-        headSequence: Number.isSafeInteger(Number(head?.sequence)) ? Number(head.sequence) : null,
-        consecutiveFailures: failures,
-        nextAttemptAtMs: nextAttemptAt || null,
-        lastAttemptAtMs,
-        lastSuccessAtMs,
-        lastError,
-        lastAcknowledgedSessionId,
-        lastAcknowledgedSequence,
-      }
-    },
+    snapshot,
   }
 }
 
@@ -533,5 +698,54 @@ async function readAcknowledgement(response, envelope) {
     || Number(body?.sequence) !== Number(envelope?.sequence)
     || acceptedKeys.length !== expectedKeys.length
     || acceptedKeys.some((roundKeyValue, index) => roundKeyValue !== expectedKeys[index])) return null
+  if (envelope?.source && JSON.stringify(normalizeSource(body?.source)) !== JSON.stringify(normalizeSource(envelope.source))) return null
   return { acceptedRoundKeys: acceptedKeys }
+}
+
+function normalizeRemoteAckReceipt(envelope) {
+  const receipt = envelope?.remoteAckReceipt
+  const expectedKeys = Array.isArray(envelope?.roundKeys) ? envelope.roundKeys.map(String) : []
+  const acceptedRoundKeys = Array.isArray(receipt?.acceptedRoundKeys) ? receipt.acceptedRoundKeys.map(String) : []
+  const acknowledgedAtMs = Number(receipt?.acknowledgedAtMs)
+  if (String(receipt?.sessionId ?? '') !== String(envelope?.sessionId ?? '')
+    || Number(receipt?.sequence) !== Number(envelope?.sequence)
+    || acceptedRoundKeys.length !== expectedKeys.length
+    || acceptedRoundKeys.some((keyValue, index) => keyValue !== expectedKeys[index])
+    || !Number.isSafeInteger(acknowledgedAtMs)) throw new Error('remote_ack_pending_receipt_invalid')
+  const normalized = {
+    sessionId: String(receipt.sessionId), sequence: Number(receipt.sequence), acceptedRoundKeys, acknowledgedAtMs,
+  }
+  if (envelope?.source) {
+    const source = normalizeSource(receipt?.source)
+    if (JSON.stringify(source) !== JSON.stringify(normalizeSource(envelope.source))) throw new Error('remote_ack_pending_receipt_invalid')
+    normalized.source = source
+  }
+  return normalized
+}
+
+function normalizeSource(source) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return null
+  const normalized = {
+    mode: String(source.mode ?? ''), ownerId: String(source.ownerId ?? ''),
+    epoch: Number(source.epoch), fence: String(source.fence ?? ''),
+  }
+  if (!['api', 'browser', 'replay'].includes(normalized.mode)
+    || !normalized.ownerId
+    || !Number.isSafeInteger(normalized.epoch) || normalized.epoch < 1
+    || !normalized.fence) return null
+  return normalized
+}
+
+function normalizeEventSource(source) {
+  const transport = normalizeSource(source)
+  const sequence = Number(source?.sequence)
+  if (!transport || !Number.isSafeInteger(sequence) || sequence < 1) return null
+  return { ...transport, sequence }
+}
+
+function withoutTransport(round = {}) {
+  const value = structuredClone(round)
+  delete value.source
+  delete value.capturedSource
+  return value
 }
