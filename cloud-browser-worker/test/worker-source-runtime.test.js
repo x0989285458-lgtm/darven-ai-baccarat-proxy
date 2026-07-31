@@ -124,9 +124,10 @@ test('fresh baseline warmup discards join replay before accepting the first new 
     allowFreshBaseline: true, freshBaselineWarmupMs: 5_000, clockMs: () => clock,
   })
   await fixture.runtime.start()
+  clock = 10_000
   await fixture.handlers.onFinal(await fixture.finalEvent(9))
   assert.deepEqual((await fixture.runtime.getDeliverySnapshot()).rounds, [])
-  clock = 6_001
+  clock = 15_001
   await fixture.handlers.onFinal(await fixture.finalEvent(10))
   assert.deepEqual((await fixture.runtime.getDeliverySnapshot()).rounds.map((round) => round.round), [10])
 })
