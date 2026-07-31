@@ -1,8 +1,8 @@
 {
-  "releaseName": "v105 MT API Primary Table Inventory Hotfix",
-  "releaseVersion": "v105-mt-api-primary.6",
-  "gitTag": "v105-mt-api-primary.6",
-  "applicationVersion": "1.0.31",
+  "releaseName": "v105 MT API Primary Table Inventory and Join Wire Hotfix",
+  "releaseVersion": "v105-mt-api-primary.7",
+  "gitTag": "v105-mt-api-primary.7",
+  "applicationVersion": "1.0.32",
   "formalStrategyVersion": "v105",
   "applicationVersionChanged": true,
   "releaseScope": {
@@ -75,7 +75,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "a0907c679458628ee1c14bd6bc6a6b7ae033af0088b2bc6aad4d3b0b94bfa489"
+      "sha256": "c8e595be61d4d85f88ecc06d8b144a735fd5aaa30bbbb2cecf98d83d06258f66"
     },
     "migration": {
       "algorithm": "sha256",
@@ -86,13 +86,13 @@
       "algorithm": "sha256",
       "paths": ["proxy/package.json", "proxy/package-lock.json", "proxy/deploy/render.yaml", "proxy/src", "shared"],
       "excludedPaths": [],
-      "sha256": "4f704a631e421d6f03d43dcca263e964cb233635bde5a68c9c25de144f7d69d0"
+      "sha256": "fbc1845ff37b46284d568f920848a6121a91cd428b54bec97941460a68cc4d27"
     },
     "workerBuildInput": {
       "algorithm": "sha256",
       "paths": ["cloud-browser-worker/.dockerignore", "cloud-browser-worker/Dockerfile", "cloud-browser-worker/package.json", "cloud-browser-worker/package-lock.json", "cloud-browser-worker/src", "shared"],
       "excludedPaths": [],
-      "sha256": "907c66ec409d542adbd14978bb07ee1b7360e03199820c9b94196ea3fa85006c"
+      "sha256": "5f7001481c66886833bb309ef0994a93e4727458d23001960c61540fee15329f"
     },
     "attestation": {
       "externalFileRequired": true,

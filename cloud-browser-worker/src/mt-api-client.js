@@ -300,7 +300,7 @@ export function multipleJoinPacket(tableIds = PRODUCTION_TABLE_IDS) {
   if (exact.length !== PRODUCTION_TABLE_IDS.length || exact.some((value, index) => value !== PRODUCTION_TABLE_IDS[index])) {
     throw new Error('mt_api_exact_ten_tables_required')
   }
-  return { method: 'GET', action: { name: '/api/v1/gametype/*/game/*/room/*/mulitple_join', data: { table_id: [...exact] } } }
+  return { method: 'GET', action: { name: '/api/v1/gametype/*/game/*/room/*/mulitple_join', data: { table_id: exact.join(',') } } }
 }
 
 function authenticatePacket(kind, sessionValue) {

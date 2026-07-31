@@ -21,7 +21,7 @@ test('API owner authenticates Game and Chat then performs one exact ten-table jo
   await harness.flush(2)
 
   const join = harness.packet('game', '/api/v1/gametype/*/game/*/room/*/mulitple_join')
-  assert.deepEqual(join.action.data.table_id, PRODUCTION_TABLE_IDS)
+  assert.equal(join.action.data.table_id, PRODUCTION_TABLE_IDS.join(','))
   assert.equal(harness.sentActions('game').filter((action) => action.endsWith('/mulitple_join')).length, 1)
   assert.equal(harness.sentActions('chat').includes('/api/v1/chat/room/*/table/*/join'), true)
 })
