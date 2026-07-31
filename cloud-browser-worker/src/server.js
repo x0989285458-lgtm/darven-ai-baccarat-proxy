@@ -293,6 +293,7 @@ async function ensureSourceRuntime() {
       journal,
       gapDetector: createGapDetector(),
       replayProvider,
+      allowFreshBaseline: process.env.MT_FRESH_BASELINE_ONCE === 'true',
       createApiClient: ({ onFinal, onTables }) => createMtApiClient({
         sourceOwner: owner,
         sessionManager,

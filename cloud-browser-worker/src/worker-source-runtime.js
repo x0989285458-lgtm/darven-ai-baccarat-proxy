@@ -1,4 +1,4 @@
-import { canonicalProductionTableId, sortProductionTables } from './table-policy.js'
+import { canonicalProductionTableId, PRODUCTION_TABLE_IDS, sortProductionTables } from './table-policy.js'
 import { updateSourceProgressTracker } from './worker-health.js'
 
 export function createWorkerSourceRuntime({
@@ -12,6 +12,7 @@ export function createWorkerSourceRuntime({
   leaseRenewalMs = 5_000,
   setIntervalFn = setInterval,
   clearIntervalFn = clearInterval,
+  allowFreshBaseline = false,
 } = {}) {
   if (!sourceOwner || !journal || !gapDetector || !replayProvider || typeof createApiClient !== 'function') {
     throw new Error('worker_source_runtime_dependencies_required')
@@ -25,6 +26,7 @@ export function createWorkerSourceRuntime({
   const crossShoeCoverage = new Set()
   let leaseTimer = null
   let sourceProgressTracker = null
+  const freshBaselineTables = new Set(allowFreshBaseline ? PRODUCTION_TABLE_IDS : [])
   void startBrowser
 
   async function start() {
@@ -76,7 +78,7 @@ export function createWorkerSourceRuntime({
         || Number(source.epoch) !== Number(currentLease?.epoch) || source.fence !== currentLease?.fence) throw new Error('stale_source_fence')
       return
     }
-    const continuityGap = detectLiveFinalGap(event)
+    const continuityGap = freshBaselineTables.has(tableId) ? null : detectLiveFinalGap(event)
     if (continuityGap) {
       gaps = [continuityGap]
       lastReplayGate = 'live_final_continuity_gap'
@@ -175,7 +177,10 @@ export function createWorkerSourceRuntime({
   async function acknowledge(receipt = {}) {
     const accepted = new Set((receipt.acceptedRoundKeys ?? []).map(String))
     for (const entry of journal.pending()) {
-      if (accepted.has(entry.identity)) await journal.ack(entry.identity, entry.hash)
+      if (accepted.has(entry.identity)) {
+        await journal.ack(entry.identity, entry.hash)
+        freshBaselineTables.delete(canonicalProductionTableId(entry.event?.tableId))
+      }
     }
     updateGaps()
   }

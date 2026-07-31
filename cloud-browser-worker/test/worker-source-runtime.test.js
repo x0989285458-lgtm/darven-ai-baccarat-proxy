@@ -108,6 +108,16 @@ test('Reviewer P0 empty journal: BAG01 shoe 91 round 9 is gap blocked before app
   await assert.rejects(runtime.getDeliverySnapshot(), /live_ack_blocked:journal_cursor_baseline_missing/)
 })
 
+test('operator-approved fresh baseline accepts first observed Final, then restores gap fail-closed after ACK', async (t) => {
+  const fixture = await runtimeFixture(t, { allowFreshBaseline: true })
+  await fixture.runtime.start()
+  await fixture.handlers.onTables([{ table_id: 'BAG01' }])
+  await fixture.handlers.onFinal(await fixture.finalEvent(9))
+  assert.deepEqual((await fixture.runtime.getDeliverySnapshot()).rounds.map((round) => round.round), [9])
+  await fixture.runtime.acknowledge({ acceptedRoundKeys: ['BAG01:91:9'] })
+  await assert.rejects(fixture.handlers.onFinal(await fixture.finalEvent(11)), /live_ack_blocked:/)
+})
+
 test('Reviewer P0 empty journal: round 1 is the only accepted new-shoe baseline', async () => {
   const appended = []
   const lease = { mode: 'api', ownerId: 'api-primary', epoch: 1, fence: 'fence-1', status: 'active', expiresAt: 10_000 }
@@ -361,7 +371,10 @@ test('cross-shoe coverage is not remembered until every replay Final is journale
   assert.equal(replayCalls, 2)
 })
 
-async function runtimeFixture(t, { replayProvider = { replay: async () => ({ ok: false, events: [], liveGate: 'record_contract_unverified' }) } } = {}) {
+async function runtimeFixture(t, {
+  replayProvider = { replay: async () => ({ ok: false, events: [], liveGate: 'record_contract_unverified' }) },
+  allowFreshBaseline = false,
+} = {}) {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-source-runtime-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const owner = createWorkerSourceOwner({
@@ -373,7 +386,7 @@ async function runtimeFixture(t, { replayProvider = { replay: async () => ({ ok:
   let apiStarts = 0
   let browserStarts = 0
   const runtime = createWorkerSourceRuntime({
-    sourceOwner: owner, journal, gapDetector: createGapDetector(), replayProvider,
+    sourceOwner: owner, journal, gapDetector: createGapDetector(), replayProvider, allowFreshBaseline,
     createApiClient: (value) => {
       Object.assign(handlers, value)
       return { start: async () => { apiStarts += 1 }, stop: () => {} }
