@@ -106,12 +106,17 @@ test('Reviewer P1 Join/Tables: Chat has no ACK, so exact Tables release only aft
   const harness = createHarness({ onTables: async (tables) => delivered.push(tables) })
   const client = createMtApiClient(harness.options)
   const tables1 = PRODUCTION_TABLE_IDS.map((table_id) => ({ table_id, shoe: 91, round: 8 }))
+  const providerTables1 = [
+    ...tables1,
+    ...['BAG11', 'BAG12', 'BAG13', 'BAG13A', 'BAG15', 'DTG01', 'DTG02', 'NUG01', 'SBG01']
+      .map((table_id) => ({ table_id, shoe: 91, round: 8 })),
+  ].reverse()
   const tables2 = PRODUCTION_TABLE_IDS.map((table_id) => ({ table_id, shoe: 92, round: 1 }))
   await client.start()
   harness.openAll()
   harness.authenticateAll()
 
-  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: tables1 } })
+  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: providerTables1 } })
   harness.receiveGeneration(1, 'game', { action: '/api/v1/gametype/*/game/*/room/*/mulitple_join', err: 0 })
   await harness.flush()
   assert.equal(delivered.length, 1)

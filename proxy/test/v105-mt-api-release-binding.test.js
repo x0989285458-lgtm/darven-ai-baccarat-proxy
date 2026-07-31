@@ -13,9 +13,9 @@ import {
 import * as releaseVerifier from '../../scripts/verify-v105-mt-api-release.mjs'
 
 test('release scope freezes one existing session as API-only canonical capture', () => {
-  assert.equal(manifest.releaseVersion, 'v105-mt-api-primary.5')
-  assert.equal(manifest.gitTag, 'v105-mt-api-primary.5')
-  assert.equal(manifest.applicationVersion, '1.0.30')
+  assert.equal(manifest.releaseVersion, 'v105-mt-api-primary.6')
+  assert.equal(manifest.gitTag, 'v105-mt-api-primary.6')
+  assert.equal(manifest.applicationVersion, '1.0.31')
   assert.deepEqual(manifest.releaseScope, {
     mode: 'single-session-api-primary',
     canonicalSource: 'api',

@@ -368,11 +368,16 @@ function exactJoinComplete(current) {
 }
 
 function validateExactTables(tables) {
-  if (!Array.isArray(tables) || tables.length !== PRODUCTION_TABLE_IDS.length) return null
-  const identities = tables.map((table) => canonicalProductionTableId(table?.tableId ?? table?.table_id))
-  if (new Set(identities).size !== PRODUCTION_TABLE_IDS.length
-    || PRODUCTION_TABLE_IDS.some((tableId) => !identities.includes(tableId))) return null
-  return structuredClone(tables)
+  if (!Array.isArray(tables)) return null
+  const byIdentity = new Map()
+  for (const table of tables) {
+    const identity = canonicalProductionTableId(table?.tableId ?? table?.table_id)
+    if (!PRODUCTION_TABLE_IDS.includes(identity)) continue
+    if (byIdentity.has(identity)) return null
+    byIdentity.set(identity, table)
+  }
+  if (byIdentity.size !== PRODUCTION_TABLE_IDS.length) return null
+  return PRODUCTION_TABLE_IDS.map((tableId) => structuredClone(byIdentity.get(tableId)))
 }
 
 function finalActionName(action) {

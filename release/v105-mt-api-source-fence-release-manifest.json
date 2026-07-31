@@ -1,8 +1,8 @@
 {
-  "releaseName": "v105 MT API Primary Chat Join Hotfix",
-  "releaseVersion": "v105-mt-api-primary.5",
-  "gitTag": "v105-mt-api-primary.5",
-  "applicationVersion": "1.0.30",
+  "releaseName": "v105 MT API Primary Table Inventory Hotfix",
+  "releaseVersion": "v105-mt-api-primary.6",
+  "gitTag": "v105-mt-api-primary.6",
+  "applicationVersion": "1.0.31",
   "formalStrategyVersion": "v105",
   "applicationVersionChanged": true,
   "releaseScope": {
@@ -75,7 +75,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "f7c66c4ce0bf8633d83acd0d1a949d200e3e17949399ffc4451732f747711735"
+      "sha256": "a0907c679458628ee1c14bd6bc6a6b7ae033af0088b2bc6aad4d3b0b94bfa489"
     },
     "migration": {
       "algorithm": "sha256",
@@ -86,13 +86,13 @@
       "algorithm": "sha256",
       "paths": ["proxy/package.json", "proxy/package-lock.json", "proxy/deploy/render.yaml", "proxy/src", "shared"],
       "excludedPaths": [],
-      "sha256": "30ac5e4f80bc63ea28b7cec6a7959e878c257dd5fb9d3611b9ccb7387339e048"
+      "sha256": "4f704a631e421d6f03d43dcca263e964cb233635bde5a68c9c25de144f7d69d0"
     },
     "workerBuildInput": {
       "algorithm": "sha256",
       "paths": ["cloud-browser-worker/.dockerignore", "cloud-browser-worker/Dockerfile", "cloud-browser-worker/package.json", "cloud-browser-worker/package-lock.json", "cloud-browser-worker/src", "shared"],
       "excludedPaths": [],
-      "sha256": "1fc439ebcc258e708cd1550ffee2b57591eef098fde7afd1ac31c133177bf437"
+      "sha256": "907c66ec409d542adbd14978bb07ee1b7360e03199820c9b94196ea3fa85006c"
     },
     "attestation": {
       "externalFileRequired": true,
