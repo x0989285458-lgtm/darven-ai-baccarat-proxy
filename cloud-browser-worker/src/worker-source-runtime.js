@@ -13,6 +13,8 @@ export function createWorkerSourceRuntime({
   setIntervalFn = setInterval,
   clearIntervalFn = clearInterval,
   allowFreshBaseline = false,
+  freshBaselineWarmupMs = 0,
+  clockMs = Date.now,
 } = {}) {
   if (!sourceOwner || !journal || !gapDetector || !replayProvider || typeof createApiClient !== 'function') {
     throw new Error('worker_source_runtime_dependencies_required')
@@ -27,6 +29,7 @@ export function createWorkerSourceRuntime({
   let leaseTimer = null
   let sourceProgressTracker = null
   const freshBaselineTables = new Set(allowFreshBaseline ? PRODUCTION_TABLE_IDS : [])
+  const freshBaselineReadyAt = Number(clockMs()) + Math.max(0, Number(freshBaselineWarmupMs) || 0)
   void startBrowser
 
   async function start() {
@@ -76,6 +79,12 @@ export function createWorkerSourceRuntime({
       const source = event?.source
       if (!source || source.mode !== currentLease?.mode || source.ownerId !== currentLease?.ownerId
         || Number(source.epoch) !== Number(currentLease?.epoch) || source.fence !== currentLease?.fence) throw new Error('stale_source_fence')
+      return
+    }
+    if (freshBaselineTables.has(tableId) && Number(clockMs()) < freshBaselineReadyAt) {
+      sourceProgressTracker = updateSourceProgressTracker(sourceProgressTracker, {
+        snapshotAt: now(), tables, rounds: [event],
+      })
       return
     }
     const continuityGap = freshBaselineTables.has(tableId) ? null : detectLiveFinalGap(event)

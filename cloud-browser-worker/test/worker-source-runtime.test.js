@@ -118,6 +118,19 @@ test('operator-approved fresh baseline accepts first observed Final, then restor
   await assert.rejects(fixture.handlers.onFinal(await fixture.finalEvent(11)), /live_ack_blocked:/)
 })
 
+test('fresh baseline warmup discards join replay before accepting the first new live Final', async (t) => {
+  let clock = 1_000
+  const fixture = await runtimeFixture(t, {
+    allowFreshBaseline: true, freshBaselineWarmupMs: 5_000, clockMs: () => clock,
+  })
+  await fixture.runtime.start()
+  await fixture.handlers.onFinal(await fixture.finalEvent(9))
+  assert.deepEqual((await fixture.runtime.getDeliverySnapshot()).rounds, [])
+  clock = 6_001
+  await fixture.handlers.onFinal(await fixture.finalEvent(10))
+  assert.deepEqual((await fixture.runtime.getDeliverySnapshot()).rounds.map((round) => round.round), [10])
+})
+
 test('Reviewer P0 empty journal: round 1 is the only accepted new-shoe baseline', async () => {
   const appended = []
   const lease = { mode: 'api', ownerId: 'api-primary', epoch: 1, fence: 'fence-1', status: 'active', expiresAt: 10_000 }
@@ -374,6 +387,8 @@ test('cross-shoe coverage is not remembered until every replay Final is journale
 async function runtimeFixture(t, {
   replayProvider = { replay: async () => ({ ok: false, events: [], liveGate: 'record_contract_unverified' }) },
   allowFreshBaseline = false,
+  freshBaselineWarmupMs = 0,
+  clockMs = Date.now,
 } = {}) {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-source-runtime-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
@@ -386,7 +401,8 @@ async function runtimeFixture(t, {
   let apiStarts = 0
   let browserStarts = 0
   const runtime = createWorkerSourceRuntime({
-    sourceOwner: owner, journal, gapDetector: createGapDetector(), replayProvider, allowFreshBaseline,
+    sourceOwner: owner, journal, gapDetector: createGapDetector(), replayProvider,
+    allowFreshBaseline, freshBaselineWarmupMs, clockMs,
     createApiClient: (value) => {
       Object.assign(handlers, value)
       return { start: async () => { apiStarts += 1 }, stop: () => {} }
