@@ -1,8 +1,8 @@
 {
-  "releaseName": "v105 MT API Primary Worker Startup Ordering Hotfix",
-  "releaseVersion": "v105-mt-api-primary.17",
-  "gitTag": "v105-mt-api-primary.17",
-  "applicationVersion": "1.0.42",
+  "releaseName": "v105 新局路單預測立即推送版",
+  "releaseVersion": "v105-mt-api-primary.18",
+  "gitTag": "v105-mt-api-primary.18",
+  "applicationVersion": "1.0.43",
   "formalStrategyVersion": "v105",
   "applicationVersionChanged": true,
   "releaseScope": {
@@ -28,6 +28,16 @@
     "revalidateAccountAndRoleOnEveryProtectedRequest": true,
     "transientValidationStatus": 503,
     "invalidAuthorizationStatus": 401
+  },
+  "newRoundDelivery": {
+    "trigger": "durable-next-prediction-ready",
+    "payload": "existing-tables-sse-with-road-and-exact-v105-prediction",
+    "immediateBroadcast": true,
+    "singleFlightCoalescing": true,
+    "heartbeatFallbackMs": 3000,
+    "blocksCaptureOutboxAck": false,
+    "frontendChanged": false,
+    "historyQueryChanged": false
   },
   "deploymentOrder": [
     "database-additive",
@@ -86,7 +96,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "b21c55e08699d451612dfd633226deb2d5ff898a1ef54f3bc3078fae8d2ea1de"
+      "sha256": "0b96ef23c5ff233a8dbba8c175d19f5a882ef4ccacb63ecc6f27025d156923e7"
     },
     "migration": {
       "algorithm": "sha256",
@@ -97,13 +107,13 @@
       "algorithm": "sha256",
       "paths": ["proxy/package.json", "proxy/package-lock.json", "proxy/deploy/render.yaml", "proxy/src", "shared"],
       "excludedPaths": [],
-      "sha256": "0bd352ef6064c04510ff9b879dc1c029e125b3ba0c95bc6a3ee88aa0d4dd160b"
+      "sha256": "1c46d9ed0960b316159d381137650ebebac5c58f8592f57635c46c8a69a45a47"
     },
     "workerBuildInput": {
       "algorithm": "sha256",
       "paths": ["cloud-browser-worker/.dockerignore", "cloud-browser-worker/Dockerfile", "cloud-browser-worker/package.json", "cloud-browser-worker/package-lock.json", "cloud-browser-worker/src", "shared"],
       "excludedPaths": [],
-      "sha256": "dad90cbae841786ada8c4fcd7f683a83d3331e22944af08d933c3417ee550a77"
+      "sha256": "616cb8b6c3f2566bbc124a9abdbbe7ea6c44f328835508432234b9fae97739b1"
     },
     "attestation": {
       "externalFileRequired": true,

@@ -348,6 +348,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const issuedPredictionReadRetryAt = new Map()
   const issuanceRetryAt = new Map()
   const expiredPredictionKeys = new Set()
+  const immediateBroadcastPredictionIds = new Set()
   const settlingPredictionPromises = new Map()
   const lifecycleGuardsByTable = new Map()
   const latestObservedScreenByTable = new Map()
@@ -407,6 +408,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const resolvedMemberSessionTtlMs = Math.min(30 * 60 * 1000, Math.max(60000, Number(memberSessionTtlMs) || 30 * 60 * 1000))
   const resolvedAdminSessionTtlInput = Number(requestedAdminSessionTtlMs)
   const adminSessionTtlMs = Math.min(30 * 60 * 1000, Math.max(60000, Number.isFinite(resolvedAdminSessionTtlInput) ? resolvedAdminSessionTtlInput : 30 * 60 * 1000))
+  let requestTablesBroadcast = () => {}
   const state = createProxyState({
     inferSnapshotRounds: !strictRealCardRounds,
     onTablesUpdated: (tables) => {
@@ -1678,10 +1680,23 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       const latestObserved = latestObservedScreenByTable.get(tableId)
       if (latestObserved?.shoe !== shoe || latestObserved?.visibleRound !== visibleRound) return
     }
-    await savePendingPrediction(table)
+    const preparedPrediction = await savePendingPrediction(table)
     if (reconciliationError) {
       state.setStatus({ persistenceStatus: 'error', persistenceError: reconciliationError?.message ?? String(reconciliationError) })
+      return preparedPrediction
     }
+    if (canReconcile) requestDurablePredictionBroadcast(preparedPrediction)
+    return preparedPrediction
+  }
+
+  function requestDurablePredictionBroadcast(prediction) {
+    const predictionId = String(prediction?.predictionId ?? '')
+    if (!predictionId || !prediction?.issuedAt || immediateBroadcastPredictionIds.has(predictionId)) return
+    immediateBroadcastPredictionIds.add(predictionId)
+    while (immediateBroadcastPredictionIds.size > 10000) {
+      immediateBroadcastPredictionIds.delete(immediateBroadcastPredictionIds.values().next().value)
+    }
+    requestTablesBroadcast(true)
   }
 
   function savePendingPrediction(table) {
@@ -2091,9 +2106,31 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
   }
 
+  let tablesBroadcastPromise = null
+  let tablesBroadcastPending = false
+  let tablesBroadcastForcePending = false
+  let tablesBroadcastStopping = false
+  requestTablesBroadcast = (force = false) => {
+    if (tablesBroadcastStopping) return
+    tablesBroadcastPending = true
+    tablesBroadcastForcePending = tablesBroadcastForcePending || force === true
+    if (tablesBroadcastPromise) return
+    tablesBroadcastPromise = (async () => {
+      while (tablesBroadcastPending && !tablesBroadcastStopping) {
+        const forceNext = tablesBroadcastForcePending
+        tablesBroadcastPending = false
+        tablesBroadcastForcePending = false
+        await broadcastTables(forceNext)
+      }
+    })().finally(() => {
+      tablesBroadcastPromise = null
+      if (tablesBroadcastPending && !tablesBroadcastStopping) requestTablesBroadcast(tablesBroadcastForcePending)
+    })
+  }
+
   function ensureStreamTimer() {
     if (streamTimer) return
-    streamTimer = setInterval(() => { void broadcastTables(false) }, 3000)
+    streamTimer = setInterval(() => { requestTablesBroadcast(false) }, 3000)
   }
 
   function stopStreamTimerIfIdle() {
@@ -2116,7 +2153,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     const client = { res, headers }
     streamClients.add(client)
     ensureStreamTimer()
-    void broadcastTables(true)
+    requestTablesBroadcast(true)
     res.on('close', () => { streamClients.delete(client); stopStreamTimerIfIdle() })
   }
   const listenHost = host ?? (deployConfig.deployMode === 'cloud' ? '0.0.0.0' : '127.0.0.1')
@@ -2125,6 +2162,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     state,
     server,
     async start() {
+      tablesBroadcastStopping = false
       const listeningServer = await new Promise((resolve) => server.listen(port, listenHost, () => resolve(server)))
       if (requireVerifiedStrategy && supabaseClient?.configured === true && typeof supabaseClient.ensureInitialStrategy === 'function') {
         try {
@@ -2160,6 +2198,13 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       return listeningServer
     },
     async stop() {
+      tablesBroadcastStopping = true
+      tablesBroadcastPending = false
+      tablesBroadcastForcePending = false
+      if (streamTimer) {
+        clearInterval(streamTimer)
+        streamTimer = null
+      }
       outboxStopping = true
       if (outboxWakeTimer) {
         clearTimeout(outboxWakeTimer)
@@ -2172,6 +2217,15 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       mtClient.stop()
       chromeClient.stop()
       cloudCaptureClient.stop()
+      for (const client of streamClients) client.res.end()
+      streamClients.clear()
+      try {
+        await withDeadline(
+          tablesBroadcastPromise?.catch(() => {}) ?? Promise.resolve(),
+          resolvedShadowShutdownDeadlineMs,
+          'tables broadcast shutdown deadline exceeded',
+        )
+      } catch {}
       const isolatedShadowStop = Promise.resolve().then(() => isolatedShadowProcess?.stop?.())
       void isolatedShadowStop.catch(() => {})
       try {

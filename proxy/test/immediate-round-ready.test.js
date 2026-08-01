@@ -1,0 +1,323 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { createApp } from '../src/server.js'
+
+const table = {
+  tableId: 'BAG01', shoe: 88, round: 20,
+  bankerCount: 10, playerCount: 9, tieCount: 1,
+  bankerPairCount: 2, playerPairCount: 1,
+  beadPlateRaw: '0102', bigRoadRaw: '0102', bigEyeRaw: '12', smallRoadRaw: '21', cockroachRaw: '11',
+  nextBankerRaw: '1', nextPlayerRaw: '2',
+  sourceUpdatedAt: new Date().toISOString(),
+}
+
+async function readSseEvent(reader, timeoutMs = 4500) {
+  const decoder = new TextDecoder()
+  let text = ''
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timed out waiting for SSE event')), timeoutMs))
+  while (!text.includes('\n\n')) {
+    const result = await Promise.race([reader.read(), timeout])
+    if (result.done) return { event: 'closed', data: null }
+    text += decoder.decode(result.value, { stream: true }).replace(/\r\n/g, '\n')
+  }
+  const block = text.slice(0, text.indexOf('\n\n'))
+  const event = block.split('\n').find((line) => line.startsWith('event:'))?.slice(6).trim() ?? 'message'
+  const data = block.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('\n')
+  return { event, data: data ? JSON.parse(data) : null }
+}
+
+function issued(candidate) {
+  return {
+    ...candidate,
+    predictionId: `prediction-${candidate.targetTableId}-${candidate.targetRound}`,
+    issuedAt: new Date().toISOString(),
+  }
+}
+
+test('prediction readiness does not broadcast before durable issuance completes', async () => {
+  let releaseRound22
+  let round22Candidate
+  const round22Issuance = new Promise((resolve) => { releaseRound22 = resolve })
+  const supabaseClient = {
+    configured: true,
+    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' }),
+    getV105FormalHistory: async () => [],
+    reconcilePredictionLifecycle: async () => {},
+    issuePrediction: async (candidate) => {
+      if (candidate.targetRound !== 22) return issued(candidate)
+      round22Candidate = candidate
+      return round22Issuance
+    },
+  }
+  const app = createApp({ autoConnect: false, port: 0, requireVerifiedStrategy: true, supabaseClient })
+  app.state.setTables([table])
+  await app.start()
+  const controller = new AbortController()
+  const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal })).body.getReader()
+
+  try {
+    await readSseEvent(reader)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    app.state.setTables([{ ...table, round: 21, bigRoadRaw: '0102#0202', sourceUpdatedAt: new Date(Date.now() + 1).toISOString() }])
+    const timerEvent = readSseEvent(reader, 4500)
+    const early = await Promise.race([
+      timerEvent.then(() => 'event'),
+      new Promise((resolve) => setTimeout(() => resolve('waiting'), 200)),
+    ])
+    assert.equal(early, 'waiting')
+
+    const timerPayload = await timerEvent
+    assert.equal(timerPayload.event, 'tables')
+    assert.equal(timerPayload.data.tables[0].round, 21)
+
+    const readinessEvent = readSseEvent(reader, 1500)
+    releaseRound22(issued(round22Candidate))
+    const advanced = await readinessEvent
+    assert.equal(advanced.event, 'tables')
+    assert.equal(advanced.data.tables[0].round, 21)
+    assert.equal(advanced.data.tables[0].prediction.targetRound, 21)
+  } finally {
+    controller.abort()
+    await app.stop()
+  }
+})
+
+test('failed durable prediction issuance does not trigger an immediate tables broadcast', async () => {
+  const supabaseClient = {
+    configured: true,
+    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' }),
+    getV105FormalHistory: async () => [],
+    reconcilePredictionLifecycle: async () => {},
+    issuePrediction: async (candidate) => candidate.targetRound === 22 ? null : issued(candidate),
+  }
+  const app = createApp({ autoConnect: false, port: 0, requireVerifiedStrategy: true, supabaseClient })
+  app.state.setTables([table])
+  await app.start()
+  const controller = new AbortController()
+  const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal })).body.getReader()
+
+  try {
+    await readSseEvent(reader)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    app.state.setTables([{ ...table, round: 21, bigRoadRaw: '0102#0202', sourceUpdatedAt: new Date(Date.now() + 1).toISOString() }])
+    const pendingEvent = readSseEvent(reader, 1500).then(() => 'event').catch(() => 'closed')
+    const result = await Promise.race([
+      pendingEvent,
+      new Promise((resolve) => setTimeout(() => resolve('quiet'), 350)),
+    ])
+    assert.equal(result, 'quiet')
+    controller.abort()
+    await pendingEvent
+  } finally {
+    controller.abort()
+    await app.stop()
+  }
+})
+
+test('database reconciliation failure suppresses immediate broadcast even when durable issuance succeeds', async () => {
+  const supabaseClient = {
+    configured: true,
+    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' }),
+    getV105FormalHistory: async () => [],
+    reconcilePredictionLifecycle: async () => { throw new Error('database final reconciliation failed') },
+    issuePrediction: async (candidate) => issued(candidate),
+  }
+  const app = createApp({ autoConnect: false, port: 0, requireVerifiedStrategy: true, supabaseClient })
+  app.state.setTables([table])
+  await app.start()
+  const controller = new AbortController()
+  const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal })).body.getReader()
+
+  try {
+    await readSseEvent(reader)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    app.state.setTables([{ ...table, round: 21, bigRoadRaw: '0102#0202', sourceUpdatedAt: new Date(Date.now() + 1).toISOString() }])
+    const pendingEvent = readSseEvent(reader, 1500).then(() => 'event').catch(() => 'closed')
+    const result = await Promise.race([
+      pendingEvent,
+      new Promise((resolve) => setTimeout(() => resolve('quiet'), 350)),
+    ])
+    assert.equal(result, 'quiet')
+    controller.abort()
+    await pendingEvent
+  } finally {
+    controller.abort()
+    await app.stop()
+  }
+})
+
+test('simultaneous table prediction readiness keeps immediate broadcasts single-flight', async () => {
+  let activeAuthorizations = 0
+  let maxActiveAuthorizations = 0
+  let measureAuthorizations = false
+  const licenseAdminClient = {
+    validateMemberLogin: async ({ memberAccount } = {}) => ({ ok: true, memberAccount: memberAccount ?? 'Member001', license: { id: 'license-1', status: 'active' } }),
+    validateMemberSession: async () => {
+      if (!measureAuthorizations) return { ok: true }
+      activeAuthorizations += 1
+      maxActiveAuthorizations = Math.max(maxActiveAuthorizations, activeAuthorizations)
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      activeAuthorizations -= 1
+      return { ok: true }
+    },
+  }
+  const supabaseClient = {
+    configured: true,
+    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' }),
+    getV105FormalHistory: async () => [],
+    reconcilePredictionLifecycle: async () => {},
+    issuePrediction: async (candidate) => issued(candidate),
+  }
+  const app = createApp({ autoConnect: false, port: 0, requireVerifiedStrategy: true, memberAuthRequired: true, licenseAdminClient, supabaseClient })
+  const tableB = { ...table, tableId: 'BAG02' }
+  app.state.setTables([table, tableB])
+  await app.start()
+  const login = JSON.parse((await app.inject({ method: 'POST', url: '/api/online-license/member-login', body: JSON.stringify({ memberAccount: 'Member001', verificationPassword: 'VERIFY001' }) })).body)
+  const controller = new AbortController()
+  const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, {
+    headers: { authorization: `Bearer ${login.memberSessionToken}` },
+    signal: controller.signal,
+  })).body.getReader()
+
+  try {
+    await readSseEvent(reader)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    measureAuthorizations = true
+    app.state.setTables([
+      { ...table, round: 21, sourceUpdatedAt: new Date(Date.now() + 1).toISOString() },
+      { ...tableB, round: 21, sourceUpdatedAt: new Date(Date.now() + 1).toISOString() },
+    ])
+    await readSseEvent(reader, 1500)
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    assert.equal(maxActiveAuthorizations, 1)
+  } finally {
+    controller.abort()
+    await app.stop()
+  }
+})
+
+test('duplicate same-screen updates wait for the heartbeat instead of triggering immediate SSE', async () => {
+  const supabaseClient = {
+    configured: true,
+    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' }),
+    getV105FormalHistory: async () => [],
+    reconcilePredictionLifecycle: async () => {},
+    issuePrediction: async (candidate) => issued(candidate),
+  }
+  const app = createApp({ autoConnect: false, port: 0, requireVerifiedStrategy: true, supabaseClient })
+  app.state.setTables([table])
+  await app.start()
+  await app.waitForServiceWorkIdle()
+  const controller = new AbortController()
+  const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal })).body.getReader()
+
+  try {
+    await readSseEvent(reader)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    app.state.setTables([{ ...table }])
+    const pendingEvent = readSseEvent(reader, 1500).then(() => 'event').catch(() => 'closed')
+    const result = await Promise.race([
+      pendingEvent,
+      new Promise((resolve) => setTimeout(() => resolve('quiet'), 350)),
+    ])
+    assert.equal(result, 'quiet')
+    controller.abort()
+    await pendingEvent
+  } finally {
+    controller.abort()
+    await app.stop()
+  }
+})
+
+test('heartbeat and initial stream broadcasts share the global single-flight coordinator', async () => {
+  let activeReads = 0
+  let maxActiveReads = 0
+  let released = false
+  const waiting = []
+  const emptySnapshot = { tables: [], snapshot_at: new Date().toISOString() }
+  const supabaseClient = {
+    configured: true,
+    getLatestCloudTableSnapshot: async () => {
+      if (released) return emptySnapshot
+      activeReads += 1
+      maxActiveReads = Math.max(maxActiveReads, activeReads)
+      return new Promise((resolve) => waiting.push(() => {
+        activeReads -= 1
+        resolve(emptySnapshot)
+      }))
+    },
+  }
+  const app = createApp({ autoConnect: false, port: 0, supabaseClient })
+  await app.start()
+  const controller = new AbortController()
+  const responsePromise = fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal }).catch(() => null)
+
+  try {
+    while (waiting.length < 1) await new Promise((resolve) => setTimeout(resolve, 5))
+    await new Promise((resolve) => setTimeout(resolve, 3200))
+    assert.equal(maxActiveReads, 1)
+  } finally {
+    released = true
+    for (const release of waiting.splice(0)) release()
+    await responsePromise
+    controller.abort()
+    await app.stop()
+  }
+})
+
+test('shutdown bounds an in-flight immediate broadcast authorization check', async () => {
+  let holdAuthorization = false
+  let authorizationStarted = false
+  let releaseAuthorization
+  const authorizationGate = new Promise((resolve) => { releaseAuthorization = resolve })
+  const licenseAdminClient = {
+    validateMemberLogin: async ({ memberAccount } = {}) => ({ ok: true, memberAccount: memberAccount ?? 'Member001', license: { id: 'license-1', status: 'active' } }),
+    validateMemberSession: async () => {
+      if (!holdAuthorization) return { ok: true }
+      authorizationStarted = true
+      return authorizationGate
+    },
+  }
+  const supabaseClient = {
+    configured: true,
+    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' }),
+    getV105FormalHistory: async () => [],
+    reconcilePredictionLifecycle: async () => {},
+    issuePrediction: async (candidate) => issued(candidate),
+  }
+  const app = createApp({
+    autoConnect: false,
+    port: 0,
+    requireVerifiedStrategy: true,
+    memberAuthRequired: true,
+    shadowShutdownDeadlineMs: 50,
+    licenseAdminClient,
+    supabaseClient,
+  })
+  app.state.setTables([table])
+  await app.start()
+  await app.waitForServiceWorkIdle()
+  const login = JSON.parse((await app.inject({ method: 'POST', url: '/api/online-license/member-login', body: JSON.stringify({ memberAccount: 'Member001', verificationPassword: 'VERIFY001' }) })).body)
+  const controller = new AbortController()
+  const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, {
+    headers: { authorization: `Bearer ${login.memberSessionToken}` },
+    signal: controller.signal,
+  })).body.getReader()
+  await readSseEvent(reader)
+  holdAuthorization = true
+  app.state.setTables([{ ...table, round: 21, sourceUpdatedAt: new Date(Date.now() + 1).toISOString() }])
+  while (!authorizationStarted) await new Promise((resolve) => setTimeout(resolve, 5))
+  controller.abort()
+
+  const stopping = app.stop()
+  const outcome = await Promise.race([
+    stopping.then(() => 'stopped'),
+    new Promise((resolve) => setTimeout(() => resolve('blocked'), 250)),
+  ])
+  try {
+    assert.equal(outcome, 'stopped')
+  } finally {
+    releaseAuthorization({ ok: true })
+    await stopping
+  }
+})

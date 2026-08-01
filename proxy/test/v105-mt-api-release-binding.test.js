@@ -13,9 +13,9 @@ import {
 import * as releaseVerifier from '../../scripts/verify-v105-mt-api-release.mjs'
 
 test('release scope freezes one existing session as API-only canonical capture', () => {
-  assert.equal(manifest.releaseVersion, 'v105-mt-api-primary.17')
-  assert.equal(manifest.gitTag, 'v105-mt-api-primary.17')
-  assert.equal(manifest.applicationVersion, '1.0.42')
+  assert.equal(manifest.releaseVersion, 'v105-mt-api-primary.18')
+  assert.equal(manifest.gitTag, 'v105-mt-api-primary.18')
+  assert.equal(manifest.applicationVersion, '1.0.43')
   assert.deepEqual(manifest.releaseScope, {
     mode: 'single-session-api-primary',
     canonicalSource: 'api',
@@ -36,6 +36,16 @@ test('release scope freezes one existing session as API-only canonical capture',
     revalidateAccountAndRoleOnEveryProtectedRequest: true,
     transientValidationStatus: 503,
     invalidAuthorizationStatus: 401,
+  })
+  assert.deepEqual(manifest.newRoundDelivery, {
+    trigger: 'durable-next-prediction-ready',
+    payload: 'existing-tables-sse-with-road-and-exact-v105-prediction',
+    immediateBroadcast: true,
+    singleFlightCoalescing: true,
+    heartbeatFallbackMs: 3000,
+    blocksCaptureOutboxAck: false,
+    frontendChanged: false,
+    historyQueryChanged: false,
   })
 })
 

@@ -77,6 +77,7 @@ test('startup verifies the active strategy before accepting live tables', async 
       ready = true
     },
     getV105FormalHistory: async () => [],
+    reconcilePredictionLifecycle: async () => {},
     issuePrediction: async (candidate) => {
       futureCandidate = candidate
       return { ...candidate, predictionId: 'verified-future', issuedAt: '2026-07-17T01:00:00.000Z' }
@@ -174,6 +175,51 @@ test('SSE sends table data when prediction TTL expires and when tables become em
     const empty = await readSseEvent(reader)
     assert.equal(empty.event, 'tables')
     assert.deepEqual(empty.data.tables, [])
+  } finally {
+    controller.abort()
+    await app.stop()
+  }
+})
+
+test('prediction readiness pushes the advanced road and exact prediction before the three-second heartbeat', async () => {
+  const issued = []
+  const supabaseClient = {
+    configured: true,
+    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' }),
+    getV105FormalHistory: async () => [],
+    reconcilePredictionLifecycle: async () => {},
+    issuePrediction: async (candidate) => {
+      issued.push(candidate.targetRound)
+      return {
+        ...candidate,
+        predictionId: `prediction-${candidate.targetRound}`,
+        issuedAt: new Date().toISOString(),
+      }
+    },
+  }
+  const app = createApp({ autoConnect: false, port: 0, requireVerifiedStrategy: true, supabaseClient })
+  app.state.setTables([table])
+  await app.start()
+  const controller = new AbortController()
+  const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal })).body.getReader()
+
+  try {
+    await readSseEvent(reader)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    app.state.setTables([{
+      ...table,
+      round: 21,
+      bigRoadRaw: '0102#0202',
+      sourceUpdatedAt: new Date(Date.now() + 1).toISOString(),
+    }])
+
+    const advanced = await readSseEvent(reader, 750)
+    assert.equal(advanced.event, 'tables')
+    assert.equal(advanced.data.tables[0].round, 21)
+    assert.equal(advanced.data.tables[0].bigRoadRaw, '0102#0202')
+    assert.equal(advanced.data.tables[0].prediction.targetRound, 21)
+    assert.equal(advanced.data.tables[0].prediction.strategyVersion, 'v105')
+    assert.ok(issued.includes(22), 'next prediction preparation must complete before the immediate push')
   } finally {
     controller.abort()
     await app.stop()
