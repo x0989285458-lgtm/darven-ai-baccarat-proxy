@@ -12,6 +12,103 @@ test('formal backlog delivery preserves the stable five-second cadence with boun
   assert.match(server, /PUSH_REQUEST_TIMEOUT_MS\s*\?\?\s*120000/)
   assert.match(server, /PUSH_MAX_ROUNDS_PER_DELIVERY\s*\?\?\s*5/)
   assert.match(server, /PUSH_MAX_DRAIN_PER_TICK\s*\?\?\s*5/)
+  assert.match(server, /signalFinalReady:\s*\(\)\s*=>\s*snapshotPusher\.trigger\(\)/)
+})
+
+test('an explicit Final trigger durably queues and delivers without waiting for the interval timer', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-immediate-final-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const sent = []
+  const final = {
+    tableId: 'BAG01', shoe: 91, round: 1, winner: 'banker', sourceAction: 'summary', final: true,
+    rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], playerPoint: 4, bankerPoint: 6,
+  }
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key',
+    queuePath: path.join(dir, 'latest.json'), intervalMs: 60_000,
+    getSnapshot: async () => ({ sessionId: 'vm', buildVersion: '105', tables: [], rounds: [final] }),
+    fetchImpl: async (_url, options) => {
+      sent.push(JSON.parse(options.body))
+      return acceptedResponse(options)
+    },
+  })
+
+  assert.equal(await pusher.trigger(), true)
+  assert.deepEqual(sent.map((entry) => entry.roundKeys), [['BAG01:91:1']])
+})
+
+test('a Final arriving during an active push is coalesced into a follow-up immediate drain', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-coalesced-final-trigger-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  let rounds = [finalRound(1)]
+  let releaseFirst
+  let markStarted
+  const firstGate = new Promise((resolve) => { releaseFirst = resolve })
+  const firstStarted = new Promise((resolve) => { markStarted = resolve })
+  const sent = []
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key',
+    queuePath: path.join(dir, 'latest.json'), intervalMs: 60_000,
+    getSnapshot: async () => ({ sessionId: 'vm', buildVersion: '105', tables: [], rounds }),
+    fetchImpl: async (_url, options) => {
+      sent.push(JSON.parse(options.body))
+      if (sent.length === 1) {
+        markStarted()
+        await firstGate
+      }
+      return acceptedResponse(options)
+    },
+  })
+
+  const first = pusher.trigger()
+  await firstStarted
+  rounds = [finalRound(1), finalRound(2)]
+  const second = pusher.trigger()
+  releaseFirst()
+  await Promise.all([first, second])
+
+  assert.deepEqual(sent.map((entry) => entry.roundKeys), [['BAG01:91:1'], ['BAG01:91:2']])
+
+  function finalRound(round) {
+    return {
+      tableId: 'BAG01', shoe: 91, round, winner: 'banker', sourceAction: 'summary', final: true,
+      rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], playerPoint: 4, bankerPoint: 6,
+    }
+  }
+})
+
+test('a Final signalled at the trigger-loop completion boundary cannot be lost', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-trigger-boundary-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  let rounds = [finalRound(1)]
+  let boundaryInjected = false
+  let boundaryTrigger = null
+  const sent = []
+  let pusher
+  pusher = createSnapshotPusher({
+    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key',
+    queuePath: path.join(dir, 'latest.json'), intervalMs: 60_000,
+    getSnapshot: async () => ({ sessionId: 'vm', buildVersion: '105', tables: [], rounds }),
+    fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
+    faultInjector: async (point) => {
+      if (point !== 'trigger_loop_idle' || boundaryInjected) return
+      boundaryInjected = true
+      rounds = [finalRound(1), finalRound(2)]
+      boundaryTrigger = pusher.trigger()
+    },
+  })
+
+  await pusher.trigger()
+  await boundaryTrigger
+
+  assert.deepEqual(sent.map((entry) => entry.roundKeys), [['BAG01:91:1'], ['BAG01:91:2']])
+
+  function finalRound(round) {
+    return {
+      tableId: 'BAG01', shoe: 91, round, winner: 'banker', sourceAction: 'summary', final: true,
+      rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], playerPoint: 4, bankerPoint: 6,
+    }
+  }
 })
 
 test('one tick re-collects after a slow ACK before continuing the bounded FIFO drain', async (t) => {

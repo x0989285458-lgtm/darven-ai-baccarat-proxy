@@ -27,6 +27,18 @@ test('runtime starts API as sole owner, journals Final, and advances cursor only
   assert.deepEqual((await fixture.runtime.getDeliverySnapshot()).rounds, [])
 })
 
+test('a durably journaled Final signals immediate delivery without waiting for the periodic snapshot cadence', async (t) => {
+  const deliverySignals = []
+  const fixture = await runtimeFixture(t, {
+    signalFinalReady: () => deliverySignals.push(fixture.journal.pending().map((entry) => entry.identity)),
+  })
+  await fixture.runtime.start()
+
+  await fixture.handlers.onFinal(await fixture.finalEvent(1))
+
+  assert.deepEqual(deliverySignals, [['BAG01:91:1']])
+})
+
 test('runtime blocks Live ACK on a gap, replays exact missing Finals first, then resumes live event', async (t) => {
   const replayed = []
   const fixture = await runtimeFixture(t, {
@@ -410,6 +422,7 @@ async function runtimeFixture(t, {
   allowGapDelivery = false,
   freshBaselineWarmupMs = 0,
   clockMs = Date.now,
+  signalFinalReady = () => {},
 } = {}) {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-source-runtime-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
@@ -424,6 +437,7 @@ async function runtimeFixture(t, {
   const runtime = createWorkerSourceRuntime({
     sourceOwner: owner, journal, gapDetector: createGapDetector(), replayProvider,
     allowFreshBaseline, allowGapDelivery, freshBaselineWarmupMs, clockMs,
+    signalFinalReady,
     createApiClient: (value) => {
       Object.assign(handlers, value)
       return { start: async () => { apiStarts += 1 }, stop: () => {} }

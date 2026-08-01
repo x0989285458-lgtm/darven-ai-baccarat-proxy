@@ -57,6 +57,8 @@ export function createSnapshotPusher({
   let stopped = false
   let currentTickPromise = null
   let currentController = null
+  let triggerRequested = false
+  let triggerLoopPromise = null
 
   function tick() {
     if (stopped || !targetUrl || !key || typeof getSnapshot !== 'function' || active || stateInvalid) return Promise.resolve(false)
@@ -67,6 +69,33 @@ export function createSnapshotPusher({
     }
     promise.then(clear, clear)
     return promise
+  }
+
+  function trigger() {
+    if (stopped || !targetUrl || !key || typeof getSnapshot !== 'function' || stateInvalid) return Promise.resolve(false)
+    triggerRequested = true
+    if (triggerLoopPromise) return triggerLoopPromise
+    const loop = runTriggeredTicks()
+    const promise = loop.finally(() => {
+      if (triggerLoopPromise === promise) triggerLoopPromise = null
+      if (triggerRequested && !stopped && !stateInvalid) return trigger()
+      return undefined
+    })
+    triggerLoopPromise = promise
+    return promise
+  }
+
+  async function runTriggeredTicks() {
+    let progressed = false
+    do {
+      triggerRequested = false
+      const inFlight = currentTickPromise
+      if (inFlight) progressed = (await inFlight) || progressed
+      if (stopped || stateInvalid) break
+      progressed = (await tick()) || progressed
+    } while (triggerRequested)
+    await faultInjector('trigger_loop_idle')
+    return progressed
   }
 
   async function runTick() {
@@ -642,6 +671,7 @@ export function createSnapshotPusher({
 
   return {
     tick,
+    trigger,
     start,
     stop,
     drain,

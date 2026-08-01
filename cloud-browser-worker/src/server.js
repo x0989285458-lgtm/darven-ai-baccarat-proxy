@@ -296,6 +296,7 @@ async function ensureSourceRuntime() {
       allowFreshBaseline: process.env.MT_FRESH_BASELINE_ONCE === 'true',
       allowGapDelivery: process.env.MT_ALLOW_GAP_DELIVERY === 'true',
       freshBaselineWarmupMs: Number(process.env.MT_FRESH_BASELINE_WARMUP_MS ?? 15_000),
+      signalFinalReady: () => snapshotPusher.trigger(),
       createApiClient: ({ onFinal, onTables }) => createMtApiClient({
         sourceOwner: owner,
         sessionManager,

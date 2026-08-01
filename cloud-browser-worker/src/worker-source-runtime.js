@@ -16,6 +16,7 @@ export function createWorkerSourceRuntime({
   allowGapDelivery = false,
   freshBaselineWarmupMs = 0,
   clockMs = Date.now,
+  signalFinalReady = () => {},
 } = {}) {
   if (!sourceOwner || !journal || !gapDetector || !replayProvider || typeof createApiClient !== 'function') {
     throw new Error('worker_source_runtime_dependencies_required')
@@ -126,6 +127,10 @@ export function createWorkerSourceRuntime({
     sourceProgressTracker = updateSourceProgressTracker(sourceProgressTracker, {
       snapshotAt: now(), tables, rounds: [event],
     })
+    try {
+      const signal = signalFinalReady({ tableId, identity })
+      if (signal && typeof signal.catch === 'function') void signal.catch(() => {})
+    } catch {}
   }
 
   function detectLiveFinalGap(event) {
