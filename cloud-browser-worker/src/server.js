@@ -19,6 +19,7 @@ import { createBackupJournalReplayProvider } from './backup-journal-replay.js'
 import { createBackupJournalRuntime } from './backup-journal-runtime.js'
 import { createBrowserSourceRuntime } from './browser-source-runtime.js'
 import { quiesceWorkerProducers } from './worker-shutdown.js'
+import { createRetryingStartup } from './startup-retry.js'
 import {
   assertAllowedMtUrl,
   createPortalRefreshController,
@@ -70,6 +71,7 @@ let sourceProgressTracker = null
 let lastError = null
 let sourceRuntime = null
 let sourceRuntimePromise = null
+let apiStartupController = null
 let browserSourceRuntime = null
 let backupJournalRuntime = null
 let backupJournalRuntimePromise = null
@@ -147,9 +149,15 @@ server.listen(PORT, () => {
   console.log(`${SERVICE} ${BUILD_VERSION} listening on :${PORT}`)
   if (MT_CAPTURE_ROLE === 'canonical') {
     if (MT_SOURCE_MODE === 'api') {
-      void ensureSourceRuntime().catch((error) => { lastError = redactUrlSecrets(error?.message ?? String(error)) })
-    }
-    snapshotPusher.start()
+      apiStartupController = createRetryingStartup({
+        start: ensureSourceRuntime,
+        onReady: () => { lastError = null; snapshotPusher.start() },
+        onError: (error) => { lastError = redactUrlSecrets(error?.message ?? String(error)) },
+        baseDelayMs: Number(process.env.MT_SOURCE_STARTUP_RETRY_BASE_MS ?? 1000),
+        maxDelayMs: Number(process.env.MT_SOURCE_STARTUP_RETRY_MAX_MS ?? 30000),
+      })
+      void apiStartupController.begin()
+    } else snapshotPusher.start()
   } else if (MT_CAPTURE_ROLE === 'backup-journal') void ensureBackupJournalRuntime().catch(() => {})
 })
 
@@ -306,7 +314,12 @@ async function ensureSourceRuntime() {
         onError: (message) => { lastError = redactUrlSecrets(message) },
       }),
     })
-    await runtime.start()
+    try {
+      await runtime.start()
+    } catch (error) {
+      await runtime.stop?.().catch(() => {})
+      throw error
+    }
     sourceRuntime = runtime
     return runtime
   })().finally(() => { sourceRuntimePromise = null })
@@ -589,6 +602,7 @@ let shutdownPromise = null
 async function shutdown() {
   if (shutdownPromise) return shutdownPromise
   shutdownPromise = (async () => {
+    if (apiStartupController) await apiStartupController.stop()
     await quiesceWorkerProducers({
       sourceRuntime,
       backupJournalRuntime,

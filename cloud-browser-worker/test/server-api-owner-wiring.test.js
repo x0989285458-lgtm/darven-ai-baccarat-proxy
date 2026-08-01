@@ -20,8 +20,10 @@ test('server defaults to API owner and wires journal ACK through the existing sn
   assert.doesNotMatch(source, /MT_SECOND_SESSION_TOKEN_AVAILABLE/)
   assert.match(source, /await quiesceWorkerProducers\(\{[\s\S]*sourceRuntime,[\s\S]*snapshotPusher,[\s\S]*abortAfterTimeout:/)
   const startup = source.slice(source.indexOf('server.listen'), source.indexOf('async function getSnapshot'))
-  assert.match(startup, /MT_CAPTURE_ROLE === 'canonical'[\s\S]*MT_SOURCE_MODE === 'api'[\s\S]*ensureSourceRuntime\(\)/)
-  assert.ok(startup.indexOf('ensureSourceRuntime()') < startup.indexOf('snapshotPusher.start()'), 'API runtime must initialize before the pusher can request its first snapshot')
+  assert.match(startup, /createRetryingStartup\(\{[\s\S]*start:\s*ensureSourceRuntime,[\s\S]*onReady:[\s\S]*snapshotPusher\.start\(\)[\s\S]*onError:[\s\S]*\}\)[\s\S]*void apiStartupController\.begin\(\)/)
+  assert.doesNotMatch(startup, /ensureSourceRuntime\(\)\.catch[\s\S]*snapshotPusher\.start\(\)/, 'pusher must not start independently before API runtime initialization settles')
+  const shutdown = source.slice(source.indexOf('async function shutdown'))
+  assert.ok(shutdown.indexOf('if (apiStartupController) await apiStartupController.stop()') < shutdown.indexOf('await quiesceWorkerProducers'), 'startup retry must settle before producer shutdown')
 })
 
 test('Reviewer P1 server wiring: browser, backup role, and stale backup env fail before server listen', () => {
