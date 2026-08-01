@@ -17,6 +17,7 @@ export function createMtApiClient({
   reconnectDelayMs = 3_000,
   reconnectMaxDelayMs = 30_000,
   connectTimeoutMs = 15_000,
+  tablesRefreshTimeoutMs = 10_000,
   heartbeatMs = 5_000,
   setTimeoutFn = setTimeout,
   clearTimeoutFn = clearTimeout,
@@ -33,6 +34,9 @@ export function createMtApiClient({
   let eventSequence = 0
   let reconnecting = false
   let refreshPromise = null
+  let latestTables = null
+  const latestFinalScreenByTable = new Map()
+  const resolvedTablesRefreshTimeoutMs = Math.max(1_000, Number(tablesRefreshTimeoutMs) || 10_000)
 
   async function start() {
     stopped = false
@@ -65,6 +69,7 @@ export function createMtApiClient({
       joined: { game: false, chat: false },
       openTimers: { game: null, chat: null },
       pendingTables: null,
+      tablesRefreshRequestedAtMs: null,
       lastMessageAt: null,
       reconnectScheduled: false,
       reconnectAttempt: 0,
@@ -127,7 +132,7 @@ export function createMtApiClient({
       }
       current.authenticated[kind] = true
       send(current[kind], memberPacket(kind))
-      if (kind === 'game') send(current.game, tablesPacket())
+      if (kind === 'game') requestTables(current)
       joinWhenReady(current)
       return
     }
@@ -150,10 +155,13 @@ export function createMtApiClient({
       return
     }
     if (Array.isArray(payload?.msg?.tables)) {
+      current.tablesRefreshRequestedAtMs = null
       const validated = validateExactTables(payload.msg.tables)
       if (validated) {
-        if (exactJoinComplete(current)) await onTables(validated)
-        else current.pendingTables = validated
+        const merged = mergeExactTablesMonotonic(latestTables, validated, latestFinalScreenByTable)
+        latestTables = merged
+        if (exactJoinComplete(current)) await onTables(merged)
+        else current.pendingTables = merged
       }
     }
     if (kind !== 'game') return
@@ -173,6 +181,15 @@ export function createMtApiClient({
       throw new Error('stale_source_fence')
     }
     await onFinal({ ...final, source })
+    const previousFinalScreen = latestFinalScreenByTable.get(final.tableId)
+    if (isStrictlyNewerScreen(previousFinalScreen, final)) {
+      latestFinalScreenByTable.set(final.tableId, { shoe: final.shoe, round: final.round })
+    }
+    if (latestTables) {
+      latestTables = advanceExactTableFromFinal(latestTables, final, now)
+      await onTables(latestTables)
+    }
+    requestTables(current)
   }
 
   function joinWhenReady(current) {
@@ -191,7 +208,18 @@ export function createMtApiClient({
     if (!isCurrent(current) || !exactJoinComplete(current) || !current.pendingTables) return
     const pending = current.pendingTables
     current.pendingTables = null
+    latestTables = pending
     await onTables(pending)
+  }
+
+  function requestTables(current) {
+    if (!isCurrent(current)) return false
+    const currentTimeMs = Number(now())
+    if (current.tablesRefreshRequestedAtMs != null
+      && currentTimeMs - Number(current.tablesRefreshRequestedAtMs) < resolvedTablesRefreshTimeoutMs) return false
+    if (!send(current.game, tablesPacket())) return false
+    current.tablesRefreshRequestedAtMs = currentTimeMs
+    return true
   }
 
   function startHeartbeat(current) {
@@ -398,6 +426,50 @@ function validateExactTables(tables) {
   }
   if (byIdentity.size !== PRODUCTION_TABLE_IDS.length) return null
   return PRODUCTION_TABLE_IDS.map((tableId) => structuredClone(byIdentity.get(tableId)))
+}
+
+function mergeExactTablesMonotonic(previousTables, incomingTables, finalScreens = new Map()) {
+  const previousById = new Map((Array.isArray(previousTables) ? previousTables : [])
+    .map((table) => [canonicalProductionTableId(table?.tableId ?? table?.table_id), table]))
+  return incomingTables.map((incoming) => {
+    const tableId = canonicalProductionTableId(incoming?.tableId ?? incoming?.table_id)
+    const previous = previousById.get(tableId)
+    let selected = incoming
+    const previousShoe = Number(previous?.shoe)
+    const incomingShoe = Number(incoming?.shoe)
+    const previousRound = Number(previous?.round)
+    const incomingRound = Number(incoming?.round)
+    const staleNumericShoe = previous && Number.isSafeInteger(previousShoe) && Number.isSafeInteger(incomingShoe) && incomingShoe < previousShoe
+    const staleSameShoeRound = previous && String(incoming?.shoe) === String(previous?.shoe)
+      && Number.isSafeInteger(previousRound) && Number.isSafeInteger(incomingRound) && incomingRound < previousRound
+    if (staleNumericShoe || staleSameShoeRound) selected = previous
+    const finalScreen = finalScreens.get(tableId)
+    if (finalScreen && (Number(selected?.shoe) < Number(finalScreen.shoe)
+      || (String(selected?.shoe) === String(finalScreen.shoe) && Number(selected?.round) < Number(finalScreen.round)))) {
+      selected = { ...structuredClone(selected), shoe: finalScreen.shoe, round: finalScreen.round }
+    }
+    return structuredClone(selected)
+  })
+}
+
+function advanceExactTableFromFinal(tables, final, now) {
+  const finalTableId = canonicalProductionTableId(final?.tableId)
+  const sourceUpdatedAt = new Date(Number(now())).toISOString()
+  return tables.map((table) => canonicalProductionTableId(table?.tableId ?? table?.table_id) === finalTableId
+    ? (isStrictlyNewerScreen(table, final)
+        ? { ...structuredClone(table), shoe: final.shoe, round: final.round, sourceUpdatedAt }
+        : structuredClone(table))
+    : structuredClone(table))
+}
+
+function isStrictlyNewerScreen(previous, candidate) {
+  if (!previous) return true
+  const previousShoe = Number(previous?.shoe)
+  const candidateShoe = Number(candidate?.shoe)
+  const previousRound = Number(previous?.round)
+  const candidateRound = Number(candidate?.round)
+  if (![previousShoe, candidateShoe, previousRound, candidateRound].every(Number.isSafeInteger)) return false
+  return candidateShoe > previousShoe || (candidateShoe === previousShoe && candidateRound > previousRound)
 }
 
 function finalActionName(action) {

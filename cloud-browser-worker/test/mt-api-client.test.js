@@ -135,6 +135,115 @@ test('Reviewer P1 Join/Tables: Chat has no ACK, so exact Tables release only aft
   client.stop()
 })
 
+test('summary advances the live table snapshot and refreshes provider tables without allowing stale regression', async () => {
+  const delivered = []
+  const harness = createHarness({ onTables: async (tables) => delivered.push(tables) })
+  const client = createMtApiClient(harness.options)
+  const initialTables = PRODUCTION_TABLE_IDS.map((table_id) => ({ table_id, shoe: 88, round: 8 }))
+  await client.start()
+  harness.openAll()
+  harness.authenticateAll()
+  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: initialTables } })
+  harness.acknowledgeJoins()
+  await harness.flush(2)
+
+  harness.receive('game', summaryPacket(9))
+  await harness.flush(4)
+  assert.equal(delivered.at(-1).find((table) => table.table_id === 'BAG01').round, 9)
+  assert.equal(harness.sentActions('game').filter((action) => action.endsWith('/tables')).length, 2)
+
+  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: initialTables } })
+  await harness.flush(2)
+  assert.equal(delivered.at(-1).find((table) => table.table_id === 'BAG01').round, 9)
+  client.stop()
+})
+
+test('summary before the initial tables response is buffered and prevents a duplicate refresh request', async () => {
+  const delivered = []
+  const harness = createHarness({ onTables: async (tables) => delivered.push(tables) })
+  const client = createMtApiClient(harness.options)
+  const initialTables = PRODUCTION_TABLE_IDS.map((table_id) => ({ table_id, shoe: 88, round: 8 }))
+  await client.start()
+  harness.openAll()
+  harness.authenticateAll()
+  harness.acknowledgeJoins()
+  harness.receive('game', summaryPacket(9))
+  await harness.flush(3)
+  assert.equal(delivered.length, 0)
+  assert.equal(harness.sentActions('game').filter((action) => action.endsWith('/tables')).length, 1)
+
+  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: initialTables } })
+  await harness.flush(2)
+  assert.equal(delivered.at(-1).find((table) => table.table_id === 'BAG01').round, 9)
+  client.stop()
+})
+
+test('a reconnect generation cannot regress a table already advanced by summary', async () => {
+  const delivered = []
+  const harness = createHarness({ onTables: async (tables) => delivered.push(tables) })
+  const client = createMtApiClient(harness.options)
+  const initialTables = PRODUCTION_TABLE_IDS.map((table_id) => ({ table_id, shoe: 88, round: 8 }))
+  await client.start()
+  harness.openAll()
+  harness.authenticateAll()
+  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: initialTables } })
+  harness.acknowledgeJoins()
+  harness.receive('game', summaryPacket(9))
+  await harness.flush(3)
+
+  harness.socket('game').emit('close')
+  await harness.flush(2)
+  harness.openGeneration(2)
+  harness.receiveGeneration(2, 'game', { action: '/api/v1/authenticate', err: 0 })
+  harness.receiveGeneration(2, 'chat', { action: '/api/v1/chat/authenticate', err: 0 })
+  harness.receiveGeneration(2, 'game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: initialTables } })
+  harness.acknowledgeJoins(2)
+  await harness.flush(3)
+  assert.equal(delivered.at(-1).find((table) => table.table_id === 'BAG01').round, 9)
+  client.stop()
+})
+
+test('a lost tables refresh response is retried after the bounded timeout', async () => {
+  let nowMs = 1_000
+  const delivered = []
+  const harness = createHarness({ now: () => nowMs, tablesRefreshTimeoutMs: 10_000, onTables: async (tables) => delivered.push(tables) })
+  const client = createMtApiClient(harness.options)
+  const initialTables = PRODUCTION_TABLE_IDS.map((table_id) => ({ table_id, shoe: 88, round: 8 }))
+  await client.start()
+  harness.openAll()
+  harness.authenticateAll()
+  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: initialTables } })
+  harness.acknowledgeJoins()
+  harness.receive('game', summaryPacket(9))
+  await harness.flush(3)
+  assert.equal(harness.sentActions('game').filter((action) => action.endsWith('/tables')).length, 2)
+
+  nowMs += 10_001
+  harness.receive('game', summaryPacket(10))
+  await harness.flush(3)
+  assert.equal(harness.sentActions('game').filter((action) => action.endsWith('/tables')).length, 3)
+  assert.equal(delivered.at(-1).find((table) => table.table_id === 'BAG01').round, 10)
+  client.stop()
+})
+
+test('an out-of-order or duplicate summary cannot regress the monotonic table screen', async () => {
+  const delivered = []
+  const harness = createHarness({ onTables: async (tables) => delivered.push(tables) })
+  const client = createMtApiClient(harness.options)
+  const initialTables = PRODUCTION_TABLE_IDS.map((table_id) => ({ table_id, shoe: 88, round: 10 }))
+  await client.start()
+  harness.openAll()
+  harness.authenticateAll()
+  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: initialTables } })
+  harness.acknowledgeJoins()
+  harness.receive('game', summaryPacket(12))
+  harness.receive('game', summaryPacket(11))
+  harness.receive('game', summaryPacket(12))
+  await harness.flush(6)
+  assert.equal(delivered.at(-1).find((table) => table.table_id === 'BAG01').round, 12)
+  client.stop()
+})
+
 test('Reviewer P1 summary-only: only summary with exact ten fields becomes Final; show_poker and show_win stay provisional', async () => {
   const events = []
   const harness = createHarness({ onFinal: async (event) => events.push(event) })
@@ -589,7 +698,7 @@ test('failed auth refresh remains stopped with no reconnect generation', async (
 function createHarness({
   onFinal = async () => {}, onTables = async () => {}, onError = () => {}, refresh = async () => {},
   getSessionToken = async () => 'opaque-session-value', nextEventSource, now = Date.now,
-  reconnectDelayMs = 0, reconnectMaxDelayMs, connectTimeoutMs = 0, setTimeoutFn, clearTimeoutFn,
+  reconnectDelayMs = 0, reconnectMaxDelayMs, connectTimeoutMs = 0, tablesRefreshTimeoutMs, setTimeoutFn, clearTimeoutFn,
   socketFailureCalls = [], sourceOwner,
 } = {}) {
   const sockets = []
@@ -618,6 +727,7 @@ function createHarness({
     now,
     reconnectDelayMs,
     connectTimeoutMs,
+    ...(tablesRefreshTimeoutMs == null ? {} : { tablesRefreshTimeoutMs }),
     ...(reconnectMaxDelayMs == null ? {} : { reconnectMaxDelayMs }),
     setTimeoutFn: setTimeoutFn ?? ((fn) => { queueMicrotask(fn); return fn }),
     clearTimeoutFn: clearTimeoutFn ?? (() => {}),
