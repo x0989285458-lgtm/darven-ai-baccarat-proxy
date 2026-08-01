@@ -380,6 +380,8 @@ test('release manifest freezes DB-first cutover through fenced finalize and brow
   assert.equal(existsSync(manifestUrl), true, 'source-fence release manifest is missing')
   const manifest = JSON.parse(readFileSync(manifestUrl, 'utf8'))
   assert.deepEqual(manifest.deploymentOrder, [
+    'v9-shadow-hydration-migration',
+    'v9-shadow-hydration-catalog-acl-readback',
     'database-additive',
     'database-catalog-acl-readback',
     'proxy-compatible',
@@ -409,6 +411,7 @@ test('Reviewer P1 Rollback Gate drains, checkpoints, and reads back zero unfinis
     'readback-zero-and-preserved',
     'disable-fenced-requirement',
     'readback-old-unfenced-accepted',
+    'disable-v9-shadow-before-proxy-rollback',
     'rollback-proxy-compatible',
     'readback-lease-stopped-no-socket',
     'start-old-browser-worker',
@@ -422,9 +425,14 @@ test('Reviewer P1 Rollback Gate drains, checkpoints, and reads back zero unfinis
   assert.equal(manifest.rollback.order[4].abortBeforeArtifactRollbackOnFailure, true)
   assert.equal(manifest.rollback.order[5].setEnvironment, 'REQUIRE_FENCED_INGEST=false')
   assert.equal(manifest.rollback.order[6].requireOldUnfencedAccepted, true)
-  assert.equal(manifest.rollback.order[8].requireLeaseStopped, true)
-  assert.equal(manifest.rollback.order[8].requireApiSocketCount, 0)
+  assert.equal(manifest.rollback.order[7].setEnvironment, 'V105_SHADOW_V9_ENABLED=false')
+  assert.equal(manifest.rollback.order[7].requireEnvironmentReadback, 'false')
+  assert.equal(manifest.rollback.order[7].preserveShadowEvidence, true)
+  assert.equal(manifest.rollback.order[9].requireLeaseStopped, true)
+  assert.equal(manifest.rollback.order[9].requireApiSocketCount, 0)
   assert.deepEqual(manifest.rollback.preserve, ['queue', 'cursor', 'journal'])
+  assert.equal(manifest.rollback.preserveShadowEvidence, true)
+  assert.equal(manifest.rollback.requireV9ShadowDisabledBeforeProxyRollback, true)
   assert.equal(manifest.rollback.requireAllUnfinishedCountsZero, true)
   assert.deepEqual(manifest.rollback.unfinishedCounts, ['pending', 'processing', 'error', 'dead-letter'])
   assert.equal(manifest.rollback.requireNoNewLostFinals, true)
@@ -442,6 +450,7 @@ test('Reviewer P1 Rollback Gate drains, checkpoints, and reads back zero unfinis
     'queue-cursor-journal-preservation-failed',
     'new-lost-final-detected',
     'cursor-regression-detected',
+    'v9-shadow-disable-readback-failed',
   ])
 
   const zero = { pending: 0, processing: 0, error: 0, 'dead-letter': 0 }

@@ -78,6 +78,12 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
   if (!binding) throw new Error('release_binding_missing')
   const implementation = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.implementationTree, 'implementation_tree')
   const migration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, { algorithm: binding.migration.algorithm, paths: [binding.migration.path], excludedPaths: [], sha256: binding.migration.sha256 }, 'migration')
+  const shadowHydrationMigration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, {
+    algorithm: binding.shadowHydrationMigration?.algorithm,
+    paths: [binding.shadowHydrationMigration?.path],
+    excludedPaths: [],
+    sha256: binding.shadowHydrationMigration?.sha256,
+  }, 'shadow_hydration_migration')
   const proxy = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.proxyBuildInput, 'proxy_build_input')
   const worker = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.workerBuildInput, 'worker_build_input')
   const exclusions = binding.implementationTree.excludedPaths?.map(normalizeRelative) ?? []
@@ -85,13 +91,44 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
     if (!exclusions.includes(required)) throw new Error(`implementation_tree_self_reference_not_excluded:${required}`)
   }
   verifyTrustedEvidenceContract(binding)
+  verifyV9ShadowRollbackContract(manifest, binding)
   return {
     ok: true,
     implementationTreeSha256: implementation.sha256,
     migrationSha256: migration.sha256,
+    shadowHydrationMigrationSha256: shadowHydrationMigration.sha256,
     proxyBuildInputSha256: proxy.sha256,
     workerBuildInputSha256: worker.sha256,
   }
+}
+
+export function verifyV9ShadowRollbackContract(manifest = {}, binding = manifest?.releaseBinding ?? {}) {
+  const shadowMigration = manifest?.database?.shadowHydrationMigration
+  const deployment = manifest?.deploymentOrder
+  const rollback = manifest?.rollback
+  const order = Array.isArray(rollback?.order) ? rollback.order : []
+  const disableIndex = order.findIndex((step) => step?.id === 'disable-v9-shadow-before-proxy-rollback')
+  const proxyIndex = order.findIndex((step) => step?.id === 'rollback-proxy-compatible')
+  const disable = order[disableIndex]
+  if (!Array.isArray(deployment)
+    || deployment[0] !== 'v9-shadow-hydration-migration'
+    || deployment[1] !== 'v9-shadow-hydration-catalog-acl-readback'
+    || shadowMigration?.path !== binding?.shadowHydrationMigration?.path
+    || shadowMigration?.rpc !== 'public.get_v105_shadow_v9_compact_history(integer)'
+    || shadowMigration?.serviceRoleOnly !== true
+    || shadowMigration?.catalogAclReadbackRequired !== true
+    || disableIndex < 0 || proxyIndex < 0 || disableIndex >= proxyIndex
+    || disable?.setEnvironment !== 'V105_SHADOW_V9_ENABLED=false'
+    || disable?.requireEnvironmentReadback !== 'false'
+    || disable?.preserveShadowEvidence !== true
+    || disable?.abortBeforeProxyRollbackOnFailure !== true
+    || rollback?.preserveShadowEvidence !== true
+    || rollback?.requireV9ShadowDisabledBeforeProxyRollback !== true
+    || !Array.isArray(rollback?.abortGates)
+    || !rollback.abortGates.includes('v9-shadow-disable-readback-failed')) {
+    throw new Error('v9_shadow_rollback_contract_invalid')
+  }
+  return { ok: true }
 }
 
 export function verifyTrustedEvidenceContract(binding = {}) {
@@ -119,7 +156,7 @@ export function verifyExternalReleaseAttestation(attestation = {}, expected = {}
   if (!String(expected.gitTag ?? '').trim() || attestation.tag !== expected.gitTag) throw new Error('attestation_tag_mismatch')
   if (!/^[a-f0-9]{40}$/.test(String(expected.candidateIndexTree ?? ''))
     || attestation.tree !== expected.candidateIndexTree) throw new Error('attestation_tree_mismatch')
-  const digestFields = ['implementationTreeSha256', 'migrationSha256', 'proxyBuildInputSha256', 'workerBuildInputSha256']
+  const digestFields = ['implementationTreeSha256', 'migrationSha256', 'shadowHydrationMigrationSha256', 'proxyBuildInputSha256', 'workerBuildInputSha256']
   for (const field of digestFields) {
     if (!/^[a-f0-9]{64}$/.test(String(attestation[field] ?? '')) || attestation[field] !== expected[field]) {
       throw new Error(`attestation_${field}_mismatch`)

@@ -3962,7 +3962,7 @@ function validateV105ShadowCompactHistory(rows, { version, perTableLimit }) {
       || !Number.isSafeInteger(Number(row.round_no)) || Number(row.round_no) < 1
       || row.strategy_version !== version
       || row.prediction_timing !== 'pre_result_context'
-      || !Number.isFinite(Date.parse(row.prediction_issued_at))
+      || !Number.isFinite(compactHistoryTimestampMs(row.prediction_issued_at))
       || !['banker', 'player'].includes(row.predicted_result)
       || !Number.isSafeInteger(Number(row.same_side_streak)) || Number(row.same_side_streak) < 1
       || (row.settlement_final !== true && row.settlement_final !== false)
@@ -3982,13 +3982,33 @@ function validateV105ShadowCompactHistory(rows, { version, perTableLimit }) {
       if (count > 1) throw new Error('v105 shadow compact history exceeded the per-table pending row limit')
       pendingTableCounts.set(row.table_id, count)
     }
-    const ordering = [Date.parse(row.prediction_issued_at), String(row.prediction_id)]
+    const ordering = [compactHistoryTimestampMs(row.prediction_issued_at), String(row.prediction_id)]
     if (previous && (ordering[0] < previous[0] || (ordering[0] === previous[0] && compareStableText(ordering[1], previous[1]) < 0))) {
       throw new Error('v105 shadow compact history returned unstable row ordering')
     }
     previous = ordering
     return Object.fromEntries(V105_SHADOW_COMPACT_HISTORY_KEYS.map((key) => [key, row[key]]))
   })
+}
+
+function compactHistoryTimestampMs(value) {
+  if (value instanceof Date) return value.getTime()
+  if (typeof value !== 'string') return Number.NaN
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(value)
+  if (!match) return Number.NaN
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const hour = Number(match[4])
+  const minute = Number(match[5])
+  const second = Number(match[6])
+  const offsetHour = match[8] === 'Z' ? 0 : Number(match[10])
+  const offsetMinute = match[8] === 'Z' ? 0 : Number(match[11])
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const daysInMonth = [0, 31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > daysInMonth[month]
+    || hour > 23 || minute > 59 || second > 59 || offsetHour > 23 || offsetMinute > 59) return Number.NaN
+  return Date.parse(value)
 }
 
 function compareStableText(left, right) {

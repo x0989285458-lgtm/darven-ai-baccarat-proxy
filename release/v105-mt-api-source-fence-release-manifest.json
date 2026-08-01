@@ -1,8 +1,8 @@
 {
-  "releaseName": "v105 新局路單預測立即推送版",
-  "releaseVersion": "v105-mt-api-primary.18",
-  "gitTag": "v105-mt-api-primary.18",
-  "applicationVersion": "1.0.43",
+  "releaseName": "v105 影子v9 Hydration毫秒排序修復版",
+  "releaseVersion": "v105-mt-api-primary.19",
+  "gitTag": "v105-mt-api-primary.19",
+  "applicationVersion": "1.0.44",
   "formalStrategyVersion": "v105",
   "applicationVersionChanged": true,
   "releaseScope": {
@@ -16,11 +16,17 @@
     "backupReplayEnabled": false,
     "recordContract": "unverified",
     "gapPolicy": "fail-closed-stop-ack-and-alert",
-    "deferred": ["second-independent-session-backup", "record-replay"]
+    "deferred": [
+      "second-independent-session-backup",
+      "record-replay"
+    ]
   },
   "adminSession": {
     "mode": "aes-256-gcm-stateless-with-live-db-revalidation",
-    "secretEnvironmentPriority": ["ADMIN_SESSION_SECRET", "MEMBER_SESSION_SECRET"],
+    "secretEnvironmentPriority": [
+      "ADMIN_SESSION_SECRET",
+      "MEMBER_SESSION_SECRET"
+    ],
     "minimumSecretBytes": 32,
     "productionFailClosed": true,
     "ttlMinMs": 60000,
@@ -37,9 +43,11 @@
     "heartbeatFallbackMs": 3000,
     "blocksCaptureOutboxAck": false,
     "frontendChanged": false,
-    "historyQueryChanged": false
+    "historyQueryChanged": true
   },
   "deploymentOrder": [
+    "v9-shadow-hydration-migration",
+    "v9-shadow-hydration-catalog-acl-readback",
     "database-additive",
     "database-catalog-acl-readback",
     "proxy-compatible",
@@ -52,7 +60,13 @@
     "table": "public.v105_capture_source_fence",
     "rpc": "public.persist_v105_fenced_capture_envelope(jsonb)",
     "atomicFenceAndEnvelope": true,
-    "serviceRoleOnly": true
+    "serviceRoleOnly": true,
+    "shadowHydrationMigration": {
+      "path": "supabase/migrations/20260801162200_v105_shadow_v9_hydration_millisecond_order.sql",
+      "rpc": "public.get_v105_shadow_v9_compact_history(integer)",
+      "serviceRoleOnly": true,
+      "catalogAclReadbackRequired": true
+    }
   },
   "proxy": {
     "compatibleBeforeFinalize": true,
@@ -87,6 +101,7 @@
         "proxy/src",
         "shared",
         "supabase/migrations/20260731010000_v105_capture_source_fence.sql",
+        "supabase/migrations/20260801162200_v105_shadow_v9_hydration_millisecond_order.sql",
         "scripts/verify-v105-mt-api-release.mjs",
         "scripts/trusted-registry-readback-adapter.mjs",
         "release/v105-mt-api-source-fence-release-manifest.json",
@@ -96,7 +111,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "0b96ef23c5ff233a8dbba8c175d19f5a882ef4ccacb63ecc6f27025d156923e7"
+      "sha256": "fd18a865a03481fdcf3b597a88587e3872550469024eef75727588f01ec89acf"
     },
     "migration": {
       "algorithm": "sha256",
@@ -105,15 +120,28 @@
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
-      "paths": ["proxy/package.json", "proxy/package-lock.json", "proxy/deploy/render.yaml", "proxy/src", "shared"],
+      "paths": [
+        "proxy/package.json",
+        "proxy/package-lock.json",
+        "proxy/deploy/render.yaml",
+        "proxy/src",
+        "shared"
+      ],
       "excludedPaths": [],
-      "sha256": "1c46d9ed0960b316159d381137650ebebac5c58f8592f57635c46c8a69a45a47"
+      "sha256": "27ece958274d7bfff6c4a7a0a1502a735b4413de7d17845579b111a8793684bd"
     },
     "workerBuildInput": {
       "algorithm": "sha256",
-      "paths": ["cloud-browser-worker/.dockerignore", "cloud-browser-worker/Dockerfile", "cloud-browser-worker/package.json", "cloud-browser-worker/package-lock.json", "cloud-browser-worker/src", "shared"],
+      "paths": [
+        "cloud-browser-worker/.dockerignore",
+        "cloud-browser-worker/Dockerfile",
+        "cloud-browser-worker/package.json",
+        "cloud-browser-worker/package-lock.json",
+        "cloud-browser-worker/src",
+        "shared"
+      ],
       "excludedPaths": [],
-      "sha256": "616cb8b6c3f2566bbc124a9abdbbe7ea6c44f328835508432234b9fae97739b1"
+      "sha256": "a0e2a6666f25a64265e5941f0a4e2fa1f4688d4db755fc2578ca43a61428ae60"
     },
     "attestation": {
       "externalFileRequired": true,
@@ -125,6 +153,11 @@
       "fixedRegistryAdapter": "scripts/trusted-registry-readback-adapter.mjs",
       "arbitraryReadbackJsonRejected": true,
       "abortOnMismatch": true
+    },
+    "shadowHydrationMigration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260801162200_v105_shadow_v9_hydration_millisecond_order.sql",
+      "sha256": "1532547446c46a94373f1b4758f1b464798b3d5583f4a73492c83000a662a974"
     }
   },
   "rollback": {
@@ -144,7 +177,12 @@
       {
         "id": "drain-pusher-queue",
         "requireDrainComplete": true,
-        "unfinishedCounts": ["pending", "processing", "error", "dead-letter"]
+        "unfinishedCounts": [
+          "pending",
+          "processing",
+          "error",
+          "dead-letter"
+        ]
       },
       {
         "id": "stop-pusher-and-wait",
@@ -154,7 +192,11 @@
       },
       {
         "id": "checkpoint-queue-cursor-journal",
-        "checkpoint": ["queue", "cursor", "journal"],
+        "checkpoint": [
+          "queue",
+          "cursor",
+          "journal"
+        ],
         "requireChecksums": true,
         "requireCursorBaseline": true
       },
@@ -176,6 +218,13 @@
         "abortBeforeProxyRollbackOnFailure": true
       },
       {
+        "id": "disable-v9-shadow-before-proxy-rollback",
+        "setEnvironment": "V105_SHADOW_V9_ENABLED=false",
+        "requireEnvironmentReadback": "false",
+        "preserveShadowEvidence": true,
+        "abortBeforeProxyRollbackOnFailure": true
+      },
+      {
         "id": "rollback-proxy-compatible",
         "artifact": "proxy-from-exact-target",
         "requireCompatibleStatusReadback": true
@@ -191,9 +240,18 @@
         "requireBrowserOwnerReadback": true
       }
     ],
-    "preserve": ["queue", "cursor", "journal"],
+    "preserve": [
+      "queue",
+      "cursor",
+      "journal"
+    ],
     "requireAllUnfinishedCountsZero": true,
-    "unfinishedCounts": ["pending", "processing", "error", "dead-letter"],
+    "unfinishedCounts": [
+      "pending",
+      "processing",
+      "error",
+      "dead-letter"
+    ],
     "requireNoNewLostFinals": true,
     "requireCursorNonRegression": true,
     "requireProducerQuiesce": true,
@@ -208,8 +266,11 @@
       "api-owner-socket-still-open",
       "queue-cursor-journal-preservation-failed",
       "new-lost-final-detected",
-      "cursor-regression-detected"
-    ]
+      "cursor-regression-detected",
+      "v9-shadow-disable-readback-failed"
+    ],
+    "preserveShadowEvidence": true,
+    "requireV9ShadowDisabledBeforeProxyRollback": true
   },
   "behavior": {
     "predictionRulesChanged": false,
@@ -218,5 +279,13 @@
     "uiChanged": false,
     "v6ToV9Changed": false,
     "versionChanged": true
+  },
+  "shadowHydrationHotfix": {
+    "strategyVersion": "v105-shadow-v9-weighted-v7-v8",
+    "runtimeFlag": "V105_SHADOW_V9_ENABLED=true",
+    "preservesFormalV105": true,
+    "preservesShadowHistory": true,
+    "changesWeightsOrThresholds": false,
+    "nodeDateMillisecondOrdering": true
   }
 }

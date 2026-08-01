@@ -232,3 +232,46 @@ for (const item of CASES) {
     assert.equal((await client[item.method]({ perTableLimit: 60 })).length, 610)
   })
 }
+
+test('Direct DB compact history preserves millisecond ordering from pg Date objects', async () => {
+  const version = 'v105-shadow-v9-weighted-v7-v8'
+  const first = {
+    ...compactRow(version, { index: 1 }),
+    prediction_id: 'ad53098a-ab2b-4cda-8e66-854e47561f69',
+    prediction_issued_at: new Date('2026-07-29T14:20:23.839Z'),
+  }
+  const second = {
+    ...compactRow(version, { index: 2 }),
+    prediction_id: '9f3add63-1845-487a-ad4c-246604cf47c6',
+    prediction_issued_at: new Date('2026-07-29T14:20:23.945Z'),
+  }
+  const strategyPool = { async query() { return { rows: [first, second] } } }
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    strategyPool,
+  })
+
+  const rows = await client.getV105ShadowV9History({ perTableLimit: 60 })
+
+  assert.equal(rows.length, 2)
+  assert.equal(rows[0].prediction_id, first.prediction_id)
+  assert.equal(rows[1].prediction_id, second.prediction_id)
+})
+
+test('compact history rejects non-Date non-RFC3339 and timezone-less timestamps', async () => {
+  const version = 'v105-shadow-v9-weighted-v7-v8'
+  for (const invalidTimestamp of [
+    0, 1, '2026-07-29T14:20:23', new Date('invalid'),
+    '2026-02-30T14:20:23Z', '2026-04-31T14:20:23Z', '2026-02-29T14:20:23Z',
+    '2026-07-29T24:00:00Z', '2026-07-29T14:60:00Z', '2026-07-29T14:20:60Z',
+    '2026-07-29T14:20:23+24:00', '2026-07-29T14:20:23+12:60',
+  ]) {
+    const row = { ...compactRow(version), prediction_issued_at: invalidTimestamp }
+    const strategyPool = { async query() { return { rows: [row] } } }
+    const client = createSupabaseIngestionClient({
+      url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+      strategyPool,
+    })
+    await assert.rejects(client.getV105ShadowV9History({ perTableLimit: 60 }), /compact history/i)
+  }
+})
