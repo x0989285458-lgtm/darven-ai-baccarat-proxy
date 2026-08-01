@@ -95,7 +95,7 @@ test('server exposes online license status and bootstrap endpoints', async () =>
   assert.equal(status.statusCode, 200)
   assert.equal(unauthBootstrap.statusCode, 401)
   assert.equal(bootstrap.statusCode, 200)
-  assert.deepEqual(calls, [['login', 'dv1788'], ['status', 'dv1788'], ['bootstrap', 'Dv1788']])
+  assert.deepEqual(calls, [['login', 'dv1788'], ['login', 'dv1788'], ['status', 'dv1788'], ['login', 'dv1788'], ['bootstrap', 'Dv1788']])
 })
 
 function fakeResult(sql, params) {

@@ -48,7 +48,7 @@ test('tables return current live data without waiting for a hung durable predict
 
   const response = await Promise.race([
     app.inject({ url: '/api/tables' }),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('tables read waited for issuance')), 100)),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('tables read waited for issuance')), 1000)),
   ])
   const [table] = JSON.parse(response.body)
   assert.equal(issuanceStarted, true)

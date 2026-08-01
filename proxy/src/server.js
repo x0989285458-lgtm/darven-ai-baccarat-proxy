@@ -36,6 +36,8 @@ const WORKER_PROTOCOL_VERSION = 'v105'
 const LIFECYCLE_IDENTITIES_PER_TABLE = 256
 const LIFECYCLE_SHOES_PER_TABLE = 64
 const MEMBER_SESSION_TOKEN_VERSION = 1
+const ADMIN_SESSION_TOKEN_VERSION = 1
+const ADMIN_SESSION_SECRET_MIN_BYTES = 32
 
 export function createServiceWorkScheduler({ yieldControl = () => new Promise((resolve) => setImmediate(resolve)) } = {}) {
   const priorityQueue = []
@@ -209,6 +211,40 @@ function openMemberSession(token, key) {
   }
 }
 
+function deriveAdminSessionKey(secret) {
+  const value = String(secret ?? '')
+  return Buffer.byteLength(value, 'utf8') >= ADMIN_SESSION_SECRET_MIN_BYTES
+    ? crypto.createHash('sha256').update(`admin-session-v1:${value}`).digest()
+    : null
+}
+
+function sealAdminSession(session, key) {
+  const iv = crypto.randomBytes(12)
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv)
+  const encrypted = Buffer.concat([cipher.update(JSON.stringify(session), 'utf8'), cipher.final()])
+  const tag = cipher.getAuthTag()
+  return Buffer.concat([Buffer.from([ADMIN_SESSION_TOKEN_VERSION]), iv, tag, encrypted]).toString('base64url')
+}
+
+function openAdminSession(token, key) {
+  try {
+    const value = Buffer.from(String(token ?? ''), 'base64url')
+    if (value.length <= 29 || value[0] !== ADMIN_SESSION_TOKEN_VERSION) return null
+    const iv = value.subarray(1, 13)
+    const tag = value.subarray(13, 29)
+    const encrypted = value.subarray(29)
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv)
+    decipher.setAuthTag(tag)
+    const session = JSON.parse(Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8'))
+    if (!session || typeof session !== 'object' || Array.isArray(session)
+      || typeof session.adminAccount !== 'string' || !session.adminAccount
+      || typeof session.role !== 'string' || !Number.isFinite(session.expiresAtMs)) return null
+    return session
+  } catch {
+    return null
+  }
+}
+
 function acceptLifecycleScreenIdentity(guardsByTable, { tableId, shoe, visibleRound }) {
   const identity = `${tableId}:${shoe}:${visibleRound}`
   const guard = guardsByTable.get(tableId) ?? {
@@ -274,7 +310,7 @@ export function resolveFrontendCorsOrigin(configuredOrigin, requestOrigin) {
   }
 }
 
-export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 45000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionSecret = process.env.MEMBER_SESSION_SECRET, memberSessionValidationTtlMs = Number(process.env.MEMBER_SESSION_VALIDATION_TTL_MS ?? 0), v104FormalRequestTimeoutMs = Number(process.env.V104_FORMAL_REQUEST_TIMEOUT_MS ?? 10000), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), shadowServiceWorkTimeoutMs = Number(process.env.SHADOW_SERVICE_WORK_TIMEOUT_MS ?? 2000), shadowShutdownDeadlineMs = Number(process.env.SHADOW_SHUTDOWN_DEADLINE_MS ?? 5000), isolateShadowProcess = process.env.NODE_ENV === 'production' && process.env.SHADOW_PROCESS_ENABLED !== 'false', shadowProcessClient = null, fatalHandler = null, fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null, v104ShadowRuntime = null, v104IterationShadowRuntime = null, v105ShadowRuntime = null, v105ShadowV7Runtime = null, v105ShadowV8Runtime = null, v105ShadowV9Runtime = null, v104FormalRuntime = null, dailyMemoryRollover = null, requireFencedIngest = process.env.REQUIRE_FENCED_INGEST === 'true', sourceFenceStore = null } = {}) {
+export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 45000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionSecret = process.env.MEMBER_SESSION_SECRET, adminSessionSecret = process.env.ADMIN_SESSION_SECRET || memberSessionSecret, adminSessionTtlMs: requestedAdminSessionTtlMs = Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionValidationTtlMs = Number(process.env.MEMBER_SESSION_VALIDATION_TTL_MS ?? 0), v104FormalRequestTimeoutMs = Number(process.env.V104_FORMAL_REQUEST_TIMEOUT_MS ?? 10000), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), shadowServiceWorkTimeoutMs = Number(process.env.SHADOW_SERVICE_WORK_TIMEOUT_MS ?? 2000), shadowShutdownDeadlineMs = Number(process.env.SHADOW_SHUTDOWN_DEADLINE_MS ?? 5000), isolateShadowProcess = process.env.NODE_ENV === 'production' && process.env.SHADOW_PROCESS_ENABLED !== 'false', shadowProcessClient = null, fatalHandler = null, fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null, v104ShadowRuntime = null, v104IterationShadowRuntime = null, v105ShadowRuntime = null, v105ShadowV7Runtime = null, v105ShadowV8Runtime = null, v105ShadowV9Runtime = null, v104FormalRuntime = null, dailyMemoryRollover = null, requireFencedIngest = process.env.REQUIRE_FENCED_INGEST === 'true', sourceFenceStore = null } = {}) {
   const ingestSourceFence = sourceFenceStore ?? createInMemoryIngestSourceFence()
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
@@ -291,6 +327,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const shouldAutoConnect = autoConnect ?? deployConfig.autoConnect
   const strictRealCardRounds = process.env.REQUIRE_REAL_CARD_ROUNDS !== 'false'
   const adminSessions = new Map()
+  const adminSessionKey = deriveAdminSessionKey(adminSessionSecret)
   const legacyIngestSequences = new Map()
   const ingestSessionLocks = new Map()
   let outboxDrainPromise = null
@@ -368,7 +405,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const captureProgressMaxAgeMs = Math.max(30000, Number(process.env.CAPTURE_PROGRESS_MAX_AGE_MS ?? 180000) || 180000)
   const expiredPredictionKeyLimit = Math.max(1, Number(maxExpiredPredictionKeys) || 10000)
   const resolvedMemberSessionTtlMs = Math.min(30 * 60 * 1000, Math.max(60000, Number(memberSessionTtlMs) || 30 * 60 * 1000))
-  const adminSessionTtlMs = Math.max(60000, Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000) || 30 * 60 * 1000)
+  const resolvedAdminSessionTtlInput = Number(requestedAdminSessionTtlMs)
+  const adminSessionTtlMs = Math.min(30 * 60 * 1000, Math.max(60000, Number.isFinite(resolvedAdminSessionTtlInput) ? resolvedAdminSessionTtlInput : 30 * 60 * 1000))
   const state = createProxyState({
     inferSnapshotRounds: !strictRealCardRounds,
     onTablesUpdated: (tables) => {
@@ -872,7 +910,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     async function adminWrite(action, { requireSession = false, requireSuper = false } = {}) {
       try {
         const payload = parseJsonBody(rawBody)
-        const session = requireSession ? (requireSuper ? requireSuperAdminSession(payload, requestUrl, headers) : requireAdminSession(payload, requestUrl, headers)) : null
+        const session = requireSession ? await (requireSuper ? requireSuperAdminSession(payload, requestUrl, headers) : requireAdminSession(payload, requestUrl, headers)) : null
         const scopedPayload = session ? { ...payload, adminAccount: session.adminAccount } : payload
         return jsonResponse(200, await action(scopedPayload, session), frontendOrigin)
       } catch (error) {
@@ -915,7 +953,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       if (method !== 'GET') return jsonResponse(405, { ok: false, error: 'Method Not Allowed' }, frontendOrigin)
       if (hasSensitiveAuthQuery(requestUrl)) return jsonResponse(400, { ok: false, error: 'admin session is not allowed in query' }, frontendOrigin)
       try {
-        requireSuperAdminSession({}, requestUrl, headers)
+        await requireSuperAdminSession({}, requestUrl, headers)
         const { counters, rows, reportRows, suggestionRows } = await readV104IterationShadowAdminState()
         const status = buildShadowAdminStatus(rows)
         const actionCounts = {
@@ -950,7 +988,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       if (hasSensitiveAuthQuery(requestUrl)) return jsonResponse(400, { ok: false, error: 'admin session is not allowed in query' }, frontendOrigin)
       try {
         const payload = parseJsonBody(rawBody)
-        const session = requireSuperAdminSession(payload, requestUrl, headers)
+        const session = await requireSuperAdminSession(payload, requestUrl, headers)
         if (typeof supabaseClient?.reviewV104IterationShadowSuggestion !== 'function') throw new Error('iteration shadow review writer is unavailable')
         const reviewed = await supabaseClient.reviewV104IterationShadowSuggestion({
           suggestionId: decodeURIComponent(shadowSuggestionReviewMatch[1]), decision: payload.decision, reviewer: session.adminAccount,
@@ -966,7 +1004,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       if (method !== 'GET') return jsonResponse(405, { ok: false, error: 'Method Not Allowed' }, frontendOrigin)
       if (hasSensitiveAuthQuery(requestUrl)) return jsonResponse(400, { ok: false, error: 'admin session is not allowed in query' }, frontendOrigin)
       try {
-        requireSuperAdminSession({}, requestUrl, headers)
+        await requireSuperAdminSession({}, requestUrl, headers)
         const { reportRows } = await readV104IterationShadowAdminState()
         const cycleNumber = Number(shadowReportImageMatch[1])
         const reportRow = (Array.isArray(reportRows) ? reportRows : []).find((item) => Number(item.cycle_number) === cycleNumber)
@@ -1244,7 +1282,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     if (method === 'POST' && pathname === '/api/online-core/settings') {
       try {
         const payload = parseJsonBody(rawBody)
-        const session = requireSuperAdminSession(payload, requestUrl, headers)
+        const session = await requireSuperAdminSession(payload, requestUrl, headers)
         const result = await onlineCoreClient.updateAppSetting?.({ ...payload, updatedBy: session.adminAccount })
         return jsonResponse(200, { ok: true, result }, frontendOrigin)
       } catch (error) {
@@ -1254,7 +1292,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     if (method === 'POST' && pathname === '/api/online-core/feature-flags') {
       try {
         const payload = parseJsonBody(rawBody)
-        const session = requireSuperAdminSession(payload, requestUrl, headers)
+        const session = await requireSuperAdminSession(payload, requestUrl, headers)
         const result = await onlineCoreClient.updateFeatureFlag?.({ ...payload, updatedBy: session.adminAccount })
         return jsonResponse(200, { ok: true, result }, frontendOrigin)
       } catch (error) {
@@ -1272,7 +1310,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
     if (pathname === '/api/online-license/status') {
       try {
-        const session = requireAdminSession({}, requestUrl, headers)
+        const session = await requireAdminSession({}, requestUrl, headers)
         return jsonResponse(200, await licenseAdminClient.getStatus?.({ adminAccount: session.adminAccount }), frontendOrigin)
       } catch (error) {
         return jsonResponse(error?.statusCode ?? 401, { configured: Boolean(licenseAdminClient?.configured), managers: [], agents: [], plans: [], licenses: [], error: error?.message ?? String(error) }, frontendOrigin)
@@ -1330,11 +1368,19 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   }
 
   function issueAdminSession(loginResult = {}, fallbackAccount = '') {
+    if (production && !adminSessionKey) {
+      const error = new Error('admin session secret is not configured securely')
+      error.statusCode = 503
+      throw error
+    }
     const adminAccount = resolveAdminAccount(loginResult, fallbackAccount)
-    const token = crypto.randomBytes(32).toString('base64url')
-    const expiresAtMs = Date.now() + adminSessionTtlMs
+    const expiresAtMs = now() + adminSessionTtlMs
     const expiresAt = new Date(expiresAtMs).toISOString()
-    adminSessions.set(token, { adminAccount, role: resolveAdminRole(loginResult), expiresAtMs })
+    const session = { adminAccount, role: resolveAdminRole(loginResult), expiresAtMs }
+    const token = adminSessionKey
+      ? sealAdminSession(session, adminSessionKey)
+      : crypto.randomBytes(32).toString('base64url')
+    adminSessions.set(token, session)
     return { token, expiresAt }
   }
 
@@ -1423,26 +1469,55 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     return validationPromise
   }
 
-  function requireAdminSession(payload = {}, requestUrl, headers = {}) {
+  async function requireAdminSession(payload = {}, requestUrl, headers = {}) {
     const token = payload.adminSessionToken
       ?? headers['x-admin-session-token']
       ?? headers['authorization']?.replace(/^Bearer\s+/i, '')
-    const session = token ? adminSessions.get(String(token)) : null
-    if (!session || session.expiresAtMs <= Date.now()) {
-      if (token) adminSessions.delete(String(token))
-      const error = new Error('admin session is required')
-      error.statusCode = 401
-      throw error
+    const normalizedToken = token ? String(token) : ''
+    let session = normalizedToken ? adminSessions.get(normalizedToken) : null
+    if (!session && normalizedToken && adminSessionKey) {
+      session = openAdminSession(normalizedToken, adminSessionKey)
+      if (session) adminSessions.set(normalizedToken, session)
+    }
+    if (!session || session.expiresAtMs <= now()) {
+      if (normalizedToken) adminSessions.delete(normalizedToken)
+      throwAdminSessionError('admin session is required', 401)
+    }
+
+    if (typeof licenseAdminClient?.validateAgentLogin !== 'function') throwAdminSessionError('admin authorization validation is unavailable', 503)
+    let validation
+    try {
+      validation = await licenseAdminClient.validateAgentLogin({ agentAccount: session.adminAccount })
+    } catch {
+      throwAdminSessionError('admin authorization validation is temporarily unavailable', 503)
+    }
+    if (session.expiresAtMs <= now()) {
+      adminSessions.delete(normalizedToken)
+      throwAdminSessionError('admin session is required', 401)
+    }
+    const currentAccount = resolveAdminAccount(validation)
+    const currentRole = resolveAdminRole(validation)
+    const authorized = validation?.ok === true
+      && String(currentAccount).toLowerCase() === String(session.adminAccount).toLowerCase()
+      && String(currentRole).toLowerCase() === String(session.role).toLowerCase()
+    if (!authorized) {
+      adminSessions.delete(normalizedToken)
+      throwAdminSessionError('admin session is required', 401)
     }
     return session
   }
 
-
-  function requireSuperAdminSession(payload = {}, requestUrl, headers = {}) {
-    const session = requireAdminSession(payload, requestUrl, headers)
+  async function requireSuperAdminSession(payload = {}, requestUrl, headers = {}) {
+    const session = await requireAdminSession(payload, requestUrl, headers)
     if (String(session.adminAccount).toLowerCase() === 'dv1788' || ['total','super'].includes(String(session.role ?? '').toLowerCase())) return session
     const error = new Error('super admin session is required')
     error.statusCode = 403
+    throw error
+  }
+
+  function throwAdminSessionError(message, statusCode) {
+    const error = new Error(message)
+    error.statusCode = statusCode
     throw error
   }
 

@@ -49,8 +49,11 @@ test('server exposes backend-only license operation endpoints', async () => {
   assert.equal(remove.statusCode, 200)
   assert.deepEqual(calls, [
     ['login', 'DV1788'],
+    ['login', 'DV1788'],
     ['status', 'DVAI1788_001', 'suspended', 'DV1788'],
+    ['login', 'DV1788'],
     ['extend', 'DVAI1788_001', 15, 'DV1788'],
+    ['login', 'DV1788'],
     ['delete', 'DVAI1788_001', 'DV1788'],
   ])
 })

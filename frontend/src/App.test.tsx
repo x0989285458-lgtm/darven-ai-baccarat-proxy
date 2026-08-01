@@ -1201,7 +1201,7 @@ describe('AI百家預測軟體', () => {
         managers: [{ username: 'DV1788', role: 'total' }],
         agents: [{ code: 'DVAI', name: 'DV1788超級代理' }],
         plans: [{ name: '正式月卡', duration_days: 30 }],
-        licenses: [{ code: 'DVAI1788_001', status: 'active', agent_code: 'DVAI', plan_name: '正式月卡', expires_on: '2026-07-29' }],
+        licenses: [{ code: 'DVAI1788_001', status: 'active', agent_code: 'DVAI', plan_name: '正式月卡', expires_on: '2099-07-29' }],
       }) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ state: 'connected', message: '記憶中心已連線' }) })
     }))

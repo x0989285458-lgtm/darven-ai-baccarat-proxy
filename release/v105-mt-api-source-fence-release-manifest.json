@@ -1,8 +1,8 @@
 {
-  "releaseName": "v105 MT API Primary Table Inventory and Join Wire Hotfix",
-  "releaseVersion": "v105-mt-api-primary.7",
-  "gitTag": "v105-mt-api-primary.7",
-  "applicationVersion": "1.0.32",
+  "releaseName": "v105 MT API Primary Durable Admin Session Hotfix",
+  "releaseVersion": "v105-mt-api-primary.16",
+  "gitTag": "v105-mt-api-primary.16",
+  "applicationVersion": "1.0.41",
   "formalStrategyVersion": "v105",
   "applicationVersionChanged": true,
   "releaseScope": {
@@ -17,6 +17,17 @@
     "recordContract": "unverified",
     "gapPolicy": "fail-closed-stop-ack-and-alert",
     "deferred": ["second-independent-session-backup", "record-replay"]
+  },
+  "adminSession": {
+    "mode": "aes-256-gcm-stateless-with-live-db-revalidation",
+    "secretEnvironmentPriority": ["ADMIN_SESSION_SECRET", "MEMBER_SESSION_SECRET"],
+    "minimumSecretBytes": 32,
+    "productionFailClosed": true,
+    "ttlMinMs": 60000,
+    "ttlMaxMs": 1800000,
+    "revalidateAccountAndRoleOnEveryProtectedRequest": true,
+    "transientValidationStatus": 503,
+    "invalidAuthorizationStatus": 401
   },
   "deploymentOrder": [
     "database-additive",
@@ -75,7 +86,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "c8e595be61d4d85f88ecc06d8b144a735fd5aaa30bbbb2cecf98d83d06258f66"
+      "sha256": "3e0c4d1aca1f03083f657dfb8f3b6101cf6f795b9072c5c919f11a6fb1f9f059"
     },
     "migration": {
       "algorithm": "sha256",
@@ -86,13 +97,13 @@
       "algorithm": "sha256",
       "paths": ["proxy/package.json", "proxy/package-lock.json", "proxy/deploy/render.yaml", "proxy/src", "shared"],
       "excludedPaths": [],
-      "sha256": "fbc1845ff37b46284d568f920848a6121a91cd428b54bec97941460a68cc4d27"
+      "sha256": "a970fbba44d35fdf44eac48cb981e0c94e897a1f87669e615aff56d94f4297ae"
     },
     "workerBuildInput": {
       "algorithm": "sha256",
       "paths": ["cloud-browser-worker/.dockerignore", "cloud-browser-worker/Dockerfile", "cloud-browser-worker/package.json", "cloud-browser-worker/package-lock.json", "cloud-browser-worker/src", "shared"],
       "excludedPaths": [],
-      "sha256": "5f7001481c66886833bb309ef0994a93e4727458d23001960c61540fee15329f"
+      "sha256": "a9884fa499d82bf30395d3880c5b244137e3a8c8b79399b79a4cb3bcd7ae5e6d"
     },
     "attestation": {
       "externalFileRequired": true,

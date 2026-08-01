@@ -41,7 +41,9 @@ test('manages agent hierarchy through backend-only endpoints and logs deletes', 
   assert.equal(JSON.parse(cloudStatus.body).mtAutoLoginEnabled, false)
   assert.deepEqual(calls, [
     ['login', 'DVAI'],
+    ['login', 'DVAI'],
     ['createAgent', 'A1688', 'agent', 'Admin001', 'DVAI'],
+    ['login', 'DVAI'],
     ['deleteAgents', ['A1688'], 'DVAI'],
     ['cloudStatus'],
   ])

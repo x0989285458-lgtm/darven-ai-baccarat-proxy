@@ -13,9 +13,9 @@ import {
 import * as releaseVerifier from '../../scripts/verify-v105-mt-api-release.mjs'
 
 test('release scope freezes one existing session as API-only canonical capture', () => {
-  assert.equal(manifest.releaseVersion, 'v105-mt-api-primary.7')
-  assert.equal(manifest.gitTag, 'v105-mt-api-primary.7')
-  assert.equal(manifest.applicationVersion, '1.0.32')
+  assert.equal(manifest.releaseVersion, 'v105-mt-api-primary.16')
+  assert.equal(manifest.gitTag, 'v105-mt-api-primary.16')
+  assert.equal(manifest.applicationVersion, '1.0.41')
   assert.deepEqual(manifest.releaseScope, {
     mode: 'single-session-api-primary',
     canonicalSource: 'api',
@@ -25,6 +25,17 @@ test('release scope freezes one existing session as API-only canonical capture',
     recordContract: 'unverified',
     gapPolicy: 'fail-closed-stop-ack-and-alert',
     deferred: ['second-independent-session-backup', 'record-replay'],
+  })
+  assert.deepEqual(manifest.adminSession, {
+    mode: 'aes-256-gcm-stateless-with-live-db-revalidation',
+    secretEnvironmentPriority: ['ADMIN_SESSION_SECRET', 'MEMBER_SESSION_SECRET'],
+    minimumSecretBytes: 32,
+    productionFailClosed: true,
+    ttlMinMs: 60000,
+    ttlMaxMs: 1800000,
+    revalidateAccountAndRoleOnEveryProtectedRequest: true,
+    transientValidationStatus: 503,
+    invalidAuthorizationStatus: 401,
   })
 })
 
