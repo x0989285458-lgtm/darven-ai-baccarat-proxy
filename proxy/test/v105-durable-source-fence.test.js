@@ -382,6 +382,8 @@ test('release manifest freezes DB-first cutover through fenced finalize and brow
   assert.deepEqual(manifest.deploymentOrder, [
     'v9-shadow-hydration-migration',
     'v9-shadow-hydration-catalog-acl-readback',
+    'v10-shadow-migration',
+    'v10-shadow-catalog-acl-readback',
     'database-additive',
     'database-catalog-acl-readback',
     'proxy-compatible',
@@ -391,15 +393,15 @@ test('release manifest freezes DB-first cutover through fenced finalize and brow
   ])
   assert.equal(manifest.browserColdBackup.requiresSource, true)
   assert.equal(manifest.browserColdBackup.sourceMode, 'browser')
-  assert.equal(manifest.behavior.predictionRulesChanged, false)
+  assert.equal(manifest.behavior.predictionRulesChanged, true)
   assert.equal(manifest.behavior.versionChanged, true)
 })
 
 test('Reviewer P1 Rollback Gate drains, checkpoints, and reads back zero unfinished work before proxy or worker rollback', () => {
   const manifest = JSON.parse(readFileSync(manifestUrl, 'utf8'))
   assert.deepEqual(manifest.rollback.target, {
-    commit: 'b1cd90d2bdb0cc1bea38f63066002eef62136bcd',
-    tree: '55357e0ffc0133413690083ad976a86d7e251015',
+    commit: 'dc36e903d008e5f9dfec09d5f47fd454b822c91a',
+    tree: '8158a0b61095fcf723f574be5acb8993aeba5b19',
     proxyArtifact: 'proxy-from-exact-target',
     browserWorkerArtifact: 'cloud-browser-worker-from-exact-target',
   })
@@ -412,6 +414,7 @@ test('Reviewer P1 Rollback Gate drains, checkpoints, and reads back zero unfinis
     'disable-fenced-requirement',
     'readback-old-unfenced-accepted',
     'disable-v9-shadow-before-proxy-rollback',
+    'disable-v10-shadow-before-proxy-rollback',
     'rollback-proxy-compatible',
     'readback-lease-stopped-no-socket',
     'start-old-browser-worker',
@@ -428,11 +431,15 @@ test('Reviewer P1 Rollback Gate drains, checkpoints, and reads back zero unfinis
   assert.equal(manifest.rollback.order[7].setEnvironment, 'V105_SHADOW_V9_ENABLED=false')
   assert.equal(manifest.rollback.order[7].requireEnvironmentReadback, 'false')
   assert.equal(manifest.rollback.order[7].preserveShadowEvidence, true)
-  assert.equal(manifest.rollback.order[9].requireLeaseStopped, true)
-  assert.equal(manifest.rollback.order[9].requireApiSocketCount, 0)
+  assert.equal(manifest.rollback.order[8].setEnvironment, 'V105_SHADOW_V10_ENABLED=false')
+  assert.equal(manifest.rollback.order[8].requireEnvironmentReadback, 'false')
+  assert.equal(manifest.rollback.order[8].preserveShadowEvidence, true)
+  assert.equal(manifest.rollback.order[10].requireLeaseStopped, true)
+  assert.equal(manifest.rollback.order[10].requireApiSocketCount, 0)
   assert.deepEqual(manifest.rollback.preserve, ['queue', 'cursor', 'journal'])
   assert.equal(manifest.rollback.preserveShadowEvidence, true)
   assert.equal(manifest.rollback.requireV9ShadowDisabledBeforeProxyRollback, true)
+  assert.equal(manifest.rollback.requireV10ShadowDisabledBeforeProxyRollback, true)
   assert.equal(manifest.rollback.requireAllUnfinishedCountsZero, true)
   assert.deepEqual(manifest.rollback.unfinishedCounts, ['pending', 'processing', 'error', 'dead-letter'])
   assert.equal(manifest.rollback.requireNoNewLostFinals, true)
@@ -451,6 +458,7 @@ test('Reviewer P1 Rollback Gate drains, checkpoints, and reads back zero unfinis
     'new-lost-final-detected',
     'cursor-regression-detected',
     'v9-shadow-disable-readback-failed',
+    'v10-shadow-disable-readback-failed',
   ])
 
   const zero = { pending: 0, processing: 0, error: 0, 'dead-letter': 0 }

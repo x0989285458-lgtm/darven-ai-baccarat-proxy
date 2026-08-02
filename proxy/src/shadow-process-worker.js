@@ -6,6 +6,7 @@ import { createV105ShadowRuntime, resolveV105ShadowEnabled } from './v105-shadow
 import { createV105ShadowV7Runtime, resolveV105ShadowV7Enabled } from './v105-shadow-v7-runtime.js'
 import { createV105ShadowV8Runtime, resolveV105ShadowV8Enabled } from './v105-shadow-v8-runtime.js'
 import { createV105ShadowV9Runtime, resolveV105ShadowV9Enabled } from './v105-shadow-v9-runtime.js'
+import { createV105ShadowV10Runtime, resolveV105ShadowV10Enabled } from './v105-shadow-v10-runtime.js'
 import { prepareShadowRuntimes, processShadowCapture } from './shadow-process-work.js'
 
 const writer = createSupabaseIngestionClient({
@@ -33,6 +34,10 @@ const runtimes = new Map([
   })],
   ['v105-v9', createV105ShadowV9Runtime({
     enabled: resolveV105ShadowV9Enabled() && has('getV105ShadowV9History') && has('issueV105ShadowV9Prediction') && has('readV105ShadowV9Issuance') && has('settleV105ShadowV9Prediction'),
+    writer,
+  })],
+  ['v105-v10', createV105ShadowV10Runtime({
+    enabled: resolveV105ShadowV10Enabled() && has('getV105ShadowV10History') && has('issueV105ShadowV10Prediction') && has('readV105ShadowV10Issuance') && has('settleV105ShadowV10Prediction'),
     writer,
   })],
 ])

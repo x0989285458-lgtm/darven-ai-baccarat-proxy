@@ -1,13 +1,13 @@
 import { fork } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-const RUNTIME_KEYS = new Set(['v103', 'v104', 'v104-iteration', 'v105', 'v105-v7', 'v105-v8', 'v105-v9'])
+const RUNTIME_KEYS = new Set(['v103', 'v104', 'v104-iteration', 'v105', 'v105-v7', 'v105-v8', 'v105-v9', 'v105-v10'])
 const CHILD_ENV_ALLOWLIST = [
   'NODE_ENV', 'TZ',
   'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SUPABASE_DB_CONNECTION_STRING',
   'SUPABASE_REQUEST_TIMEOUT_MS', 'DURABLE_INGEST_REQUEST_TIMEOUT_MS',
   'V103_SHADOW_ENABLED', 'V104_SHADOW_ENABLED', 'V104_ITERATION_SHADOW_ENABLED',
-  'V105_SHADOW_V6_ENABLED', 'V105_SHADOW_V7_ENABLED', 'V105_SHADOW_V8_ENABLED', 'V105_SHADOW_V9_ENABLED',
+  'V105_SHADOW_V6_ENABLED', 'V105_SHADOW_V7_ENABLED', 'V105_SHADOW_V8_ENABLED', 'V105_SHADOW_V9_ENABLED', 'V105_SHADOW_V10_ENABLED',
 ]
 
 function buildChildEnv(source = {}) {
@@ -243,7 +243,7 @@ function createRemoteError(value) {
   const error = new Error(safeErrorMessage(source.message))
   error.code = /^SHADOW_[A-Z0-9_]+$/.test(String(source.code ?? '')) ? String(source.code) : 'SHADOW_RUNTIME_FAILED'
   error.diagnostics = Array.isArray(source.diagnostics)
-    ? source.diagnostics.slice(0, 7).map((item) => ({
+    ? source.diagnostics.slice(0, 8).map((item) => ({
         runtime: RUNTIME_KEYS.has(item?.runtime) ? item.runtime : 'unknown',
         stage: ['hydrate', 'observeTable', 'settleRound'].includes(item?.stage) ? item.stage : 'unknown',
         code: /^[a-z0-9_]+$/.test(String(item?.code ?? '')) ? String(item.code) : 'runtime_error',

@@ -3,29 +3,35 @@ const EXPECTED_SETTLEMENT_NOOPS = new Map([
   ['v105-v7', 'v105 shadow v7 settlement has no immutable issuance'],
   ['v105-v8', 'v105 shadow v8 settlement has no immutable issuance'],
   ['v105-v9', 'v105 shadow v9 settlement has no immutable issuance'],
+  ['v105-v10', 'v105 shadow v10 settlement has no immutable issuance'],
 ])
+const NON_BLOCKING_RUNTIME_KEYS = new Set(['v105-v10'])
 const MAX_CONCURRENT_RUNTIME_OPERATIONS = 9
+const MAX_QUEUED_BEST_EFFORT_CAPTURES = 2
 const hydrationStates = new WeakMap()
 const hydrationSchedulers = new WeakMap()
+const bestEffortSchedulers = new WeakMap()
 
 export function prepareShadowRuntimes(runtimes) {
   const entries = enabledRuntimeEntries(runtimes)
+  const requiredEntries = entries.filter(([runtimeKey]) => !NON_BLOCKING_RUNTIME_KEYS.has(runtimeKey))
   const scheduler = hydrationScheduler(runtimes)
   for (const [, runtime] of entries) {
     const current = hydrationStates.get(runtime)
     queueRuntimeHydration(scheduler, runtime, { retryFailed: current?.status === 'error' && current.failureObserved === true })
   }
   pumpHydrationScheduler(scheduler)
-  const states = entries.map(([, runtime]) => hydrationStates.get(runtime))
+  const states = requiredEntries.map(([, runtime]) => hydrationStates.get(runtime))
   const failures = entries.flatMap(([runtimeKey, runtime]) => {
     const state = hydrationStates.get(runtime)
     if (state?.status !== 'error' || state.failureObserved === true) return []
     state.failureObserved = true
     return [{ runtime: runtimeKey, stage: 'hydrate', code: state.errorCode ?? 'runtime_error' }]
   })
-  if (failures.length > 0) throwRuntimeDiagnostics(failures)
+  const blockingFailures = failures.filter((failure) => !NON_BLOCKING_RUNTIME_KEYS.has(failure.runtime))
+  if (blockingFailures.length > 0) throwRuntimeDiagnostics(blockingFailures)
   return {
-    enabled: entries.length,
+    enabled: requiredEntries.length,
     prepared: states.filter((state) => state?.status === 'ready').length,
     pending: states.filter((state) => state?.status === 'pending').length,
     queued: states.filter((state) => state?.status === 'queued').length,
@@ -36,10 +42,12 @@ export function prepareShadowRuntimes(runtimes) {
 
 export async function processShadowCapture(runtimes, payload = {}) {
   const entries = enabledRuntimeEntries(runtimes)
+  const requiredEntries = entries.filter(([runtimeKey]) => !NON_BLOCKING_RUNTIME_KEYS.has(runtimeKey))
+  const bestEffortEntries = entries.filter(([runtimeKey]) => NON_BLOCKING_RUNTIME_KEYS.has(runtimeKey))
   prepareShadowRuntimes(runtimes)
   await new Promise((resolve) => setImmediate(resolve))
-  const readyEntries = entries.filter(([, runtime]) => hydrationStates.get(runtime)?.status === 'ready')
-  const unavailable = entries.flatMap(([runtimeKey, runtime]) => {
+  const readyEntries = requiredEntries.filter(([, runtime]) => hydrationStates.get(runtime)?.status === 'ready')
+  const unavailable = requiredEntries.flatMap(([runtimeKey, runtime]) => {
     const state = hydrationStates.get(runtime)
     if (state?.status === 'ready') return []
     return [{ runtime: runtimeKey, stage: 'hydrate', code: state?.errorCode ?? 'not_ready' }]
@@ -58,7 +66,61 @@ export async function processShadowCapture(runtimes, payload = {}) {
       else summary.settled += 1
     }
   })
+  await enqueueBestEffortCapture(runtimes, bestEffortEntries, tables, rounds)
   return summary
+}
+
+async function runBestEffortCapture(entries, tables, rounds) {
+  await runIdentityPhase(entries, tables, 'observeTable', {}, () => {})
+  await runIdentityPhase(entries, rounds, 'settleRound', { allowSettlementNoop: true }, () => {})
+}
+
+async function enqueueBestEffortCapture(runtimes, entries, tables, rounds) {
+  if (entries.length === 0 || (tables.length === 0 && rounds.length === 0)) return
+  const scheduler = bestEffortScheduler(runtimes)
+  if (scheduler.queue.length >= MAX_QUEUED_BEST_EFFORT_CAPTURES) {
+    await new Promise((resolve) => scheduler.capacityWaiters.push(resolve))
+  }
+  scheduler.queue.push({
+    entries: entries.slice(),
+    tables: structuredClone(tables),
+    rounds: structuredClone(rounds),
+  })
+  pumpBestEffortScheduler(scheduler)
+}
+
+function bestEffortScheduler(runtimes) {
+  let scheduler = bestEffortSchedulers.get(runtimes)
+  if (!scheduler) {
+    scheduler = { queue: [], active: null, capacityWaiters: [] }
+    bestEffortSchedulers.set(runtimes, scheduler)
+  }
+  return scheduler
+}
+
+function pumpBestEffortScheduler(scheduler) {
+  if (scheduler.active || scheduler.queue.length === 0) return
+  const job = scheduler.queue.shift()
+  scheduler.active = job
+  scheduler.capacityWaiters.shift()?.()
+  void runBestEffortWithRetry(job).finally(() => {
+    if (scheduler.active === job) scheduler.active = null
+    pumpBestEffortScheduler(scheduler)
+  })
+}
+
+async function runBestEffortWithRetry(job) {
+  for (;;) {
+    try {
+      await runBestEffortCapture(job.entries, job.tables, job.rounds)
+      return
+    } catch {
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, 25)
+        timer.unref?.()
+      })
+    }
+  }
 }
 
 function hydrationScheduler(runtimes) {

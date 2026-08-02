@@ -13,8 +13,8 @@ import {
 import * as releaseVerifier from '../../scripts/verify-v105-mt-api-release.mjs'
 
 test('release scope freezes one existing session as API-only canonical capture', () => {
-  assert.equal(manifest.releaseVersion, 'v105-mt-api-primary.19')
-  assert.equal(manifest.gitTag, 'v105-mt-api-primary.19')
+  assert.equal(manifest.releaseVersion, 'v105-shadow-v10.1')
+  assert.equal(manifest.gitTag, 'v105-shadow-v10.1')
   assert.equal(manifest.applicationVersion, '1.0.44')
   assert.deepEqual(manifest.releaseScope, {
     mode: 'single-session-api-primary',
@@ -57,6 +57,19 @@ test('release scope freezes one existing session as API-only canonical capture',
   })
   assert.equal(manifest.releaseBinding.shadowHydrationMigration.path, 'supabase/migrations/20260801162200_v105_shadow_v9_hydration_millisecond_order.sql')
   assert.equal(manifest.releaseBinding.shadowHydrationMigration.sha256, '1532547446c46a94373f1b4758f1b464798b3d5583f4a73492c83000a662a974')
+  assert.deepEqual(manifest.shadowV10, {
+    strategyVersion: 'v105-shadow-v10-uncommon-road-structure',
+    runtimeFlag: 'V105_SHADOW_V10_ENABLED=true',
+    v9WeightShare: 0.9,
+    structureWeightShare: 0.1,
+    preservesFormalV105: true,
+    preservesV9: true,
+    preservesSidePredictions: true,
+    memberVisible: false,
+    independentCounterStartsAt: 0,
+    fixedFormalTableAllowlist: true,
+  })
+  assert.equal(manifest.releaseBinding.shadowV10Migration.path, 'supabase/migrations/20260802010000_v105_shadow_v10.sql')
 })
 
 test('release manifest freezes current implementation, migration, proxy, and worker build inputs', async () => {
@@ -69,6 +82,13 @@ test('release manifest freezes current implementation, migration, proxy, and wor
   assert.match(manifest.releaseBinding.proxyBuildInput.sha256, /^[a-f0-9]{64}$/)
   assert.match(manifest.releaseBinding.workerBuildInput.sha256, /^[a-f0-9]{64}$/)
   assert.equal(result.shadowHydrationMigrationSha256, manifest.releaseBinding.shadowHydrationMigration.sha256)
+  assert.equal(result.shadowV10MigrationSha256, manifest.releaseBinding.shadowV10Migration.sha256)
+  const v10Tampered = structuredClone(manifest)
+  v10Tampered.releaseBinding.shadowV10Migration.sha256 = '0'.repeat(64)
+  await assert.rejects(
+    verifyManifestDigests({ manifest: v10Tampered, repoRoot, candidateIndexTree }),
+    /shadow_v10_migration_digest_mismatch/,
+  )
   const tampered = structuredClone(manifest)
   tampered.releaseBinding.shadowHydrationMigration.sha256 = '0'.repeat(64)
   await assert.rejects(
@@ -112,6 +132,7 @@ test('Reviewer P1 attestation exact binding rejects old tag and wrong tree while
     commit: '1'.repeat(40), tree: candidateIndexTree, tagObject: 'a'.repeat(40), tag: manifest.gitTag,
     implementationTreeSha256: '3'.repeat(64), migrationSha256: '4'.repeat(64),
     shadowHydrationMigrationSha256: 'd'.repeat(64),
+    shadowV10MigrationSha256: 'e'.repeat(64),
     proxyBuildInputSha256: '5'.repeat(64), workerBuildInputSha256: '6'.repeat(64),
     images: {
       proxy: { expectedDigest: `sha256:${'7'.repeat(64)}`, readbackDigest: `sha256:${'7'.repeat(64)}` },
@@ -121,6 +142,7 @@ test('Reviewer P1 attestation exact binding rejects old tag and wrong tree while
   const expected = {
     implementationTreeSha256: '3'.repeat(64), migrationSha256: '4'.repeat(64),
     shadowHydrationMigrationSha256: 'd'.repeat(64),
+    shadowV10MigrationSha256: 'e'.repeat(64),
     proxyBuildInputSha256: '5'.repeat(64), workerBuildInputSha256: '6'.repeat(64),
     gitTag: manifest.gitTag, candidateIndexTree,
   }
@@ -247,6 +269,7 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
     commit, tree, tagObject: '7'.repeat(40), tag: manifest.gitTag,
     implementationTreeSha256: '8'.repeat(64), migrationSha256: '9'.repeat(64),
     shadowHydrationMigrationSha256: 'd'.repeat(64),
+    shadowV10MigrationSha256: 'e'.repeat(64),
     proxyBuildInputSha256: proxyInput, workerBuildInputSha256: workerInput,
     images: {
       proxy: { expectedDigest: proxyDigest, readbackDigest: proxyDigest },
@@ -257,6 +280,7 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
     gitTag: manifest.gitTag, candidateIndexTree: tree,
     implementationTreeSha256: external.implementationTreeSha256, migrationSha256: external.migrationSha256,
     shadowHydrationMigrationSha256: external.shadowHydrationMigrationSha256,
+    shadowV10MigrationSha256: external.shadowV10MigrationSha256,
     proxyBuildInputSha256: proxyInput, workerBuildInputSha256: workerInput,
   }).ok, true, 'external Git attestation no longer self-approves images')
   await assert.rejects(

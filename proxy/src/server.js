@@ -18,6 +18,7 @@ import { createV105ShadowRuntime, resolveV105ShadowEnabled } from './v105-shadow
 import { createV105ShadowV7Runtime, resolveV105ShadowV7Enabled } from './v105-shadow-v7-runtime.js'
 import { createV105ShadowV8Runtime, resolveV105ShadowV8Enabled } from './v105-shadow-v8-runtime.js'
 import { createV105ShadowV9Runtime, resolveV105ShadowV9Enabled } from './v105-shadow-v9-runtime.js'
+import { createV105ShadowV10Runtime, resolveV105ShadowV10Enabled } from './v105-shadow-v10-runtime.js'
 import { createShadowProcessClient } from './shadow-process-client.js'
 import { buildShadowAdminStatus } from './v104-iteration-shadow-report.js'
 import { createOnlineCoreClient } from './online-core.js'
@@ -310,7 +311,7 @@ export function resolveFrontendCorsOrigin(configuredOrigin, requestOrigin) {
   }
 }
 
-export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 45000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionSecret = process.env.MEMBER_SESSION_SECRET, adminSessionSecret = process.env.ADMIN_SESSION_SECRET || memberSessionSecret, adminSessionTtlMs: requestedAdminSessionTtlMs = Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionValidationTtlMs = Number(process.env.MEMBER_SESSION_VALIDATION_TTL_MS ?? 0), v104FormalRequestTimeoutMs = Number(process.env.V104_FORMAL_REQUEST_TIMEOUT_MS ?? 10000), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), shadowServiceWorkTimeoutMs = Number(process.env.SHADOW_SERVICE_WORK_TIMEOUT_MS ?? 2000), shadowShutdownDeadlineMs = Number(process.env.SHADOW_SHUTDOWN_DEADLINE_MS ?? 5000), isolateShadowProcess = process.env.NODE_ENV === 'production' && process.env.SHADOW_PROCESS_ENABLED !== 'false', shadowProcessClient = null, fatalHandler = null, fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null, v104ShadowRuntime = null, v104IterationShadowRuntime = null, v105ShadowRuntime = null, v105ShadowV7Runtime = null, v105ShadowV8Runtime = null, v105ShadowV9Runtime = null, v104FormalRuntime = null, dailyMemoryRollover = null, requireFencedIngest = process.env.REQUIRE_FENCED_INGEST === 'true', sourceFenceStore = null } = {}) {
+export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 45000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionSecret = process.env.MEMBER_SESSION_SECRET, adminSessionSecret = process.env.ADMIN_SESSION_SECRET || memberSessionSecret, adminSessionTtlMs: requestedAdminSessionTtlMs = Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionValidationTtlMs = Number(process.env.MEMBER_SESSION_VALIDATION_TTL_MS ?? 0), v104FormalRequestTimeoutMs = Number(process.env.V104_FORMAL_REQUEST_TIMEOUT_MS ?? 10000), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), shadowServiceWorkTimeoutMs = Number(process.env.SHADOW_SERVICE_WORK_TIMEOUT_MS ?? 2000), shadowShutdownDeadlineMs = Number(process.env.SHADOW_SHUTDOWN_DEADLINE_MS ?? 5000), isolateShadowProcess = process.env.NODE_ENV === 'production' && process.env.SHADOW_PROCESS_ENABLED !== 'false', shadowProcessClient = null, fatalHandler = null, fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v103ShadowRuntime = null, v104ShadowRuntime = null, v104IterationShadowRuntime = null, v105ShadowRuntime = null, v105ShadowV7Runtime = null, v105ShadowV8Runtime = null, v105ShadowV9Runtime = null, v105ShadowV10Runtime = null, v104FormalRuntime = null, dailyMemoryRollover = null, requireFencedIngest = process.env.REQUIRE_FENCED_INGEST === 'true', sourceFenceStore = null } = {}) {
   const ingestSourceFence = sourceFenceStore ?? createInMemoryIngestSourceFence()
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
@@ -396,6 +397,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   let v105ShadowV7 = null
   let v105ShadowV8 = null
   let v105ShadowV9 = null
+  let v105ShadowV10 = null
   let v104IterationShadowAdminCache = { expiresAtMs: 0, state: null }
   const v104Formal = v104FormalRuntime ?? (ALL_MT_EQUAL_STRATEGY_VERSION === 'v105'
     ? createV105FormalRuntime({ writer: supabaseClient, requestTimeoutMs: Math.max(1000, Number(v105FormalHydrationTimeoutMs) || 60000), allowUnconfigured: !requireVerifiedStrategy })
@@ -428,7 +430,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         })
         const observers = isolatedShadowProcess
           ? []
-          : [v103Shadow, v104Shadow, v104IterationShadow, v105Shadow, v105ShadowV7, v105ShadowV8, v105ShadowV9]
+          : [v103Shadow, v104Shadow, v104IterationShadow, v105Shadow, v105ShadowV7, v105ShadowV8, v105ShadowV9, v105ShadowV10]
         observers.forEach((runtime, index) => {
           if (runtime?.enabled !== true || typeof runtime.observeTable !== 'function') return
           const shadowKey = `observe:${index}:${String(table?.tableId ?? '')}`
@@ -463,6 +465,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           v105ShadowV7,
           v105ShadowV8,
           v105ShadowV9,
+          v105ShadowV10,
         ]
       for (const runtime of shadowSettlements) {
         if (runtime?.enabled !== true || typeof runtime.settleRound !== 'function') continue
@@ -627,6 +630,16 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         && typeof supabaseClient?.issueV105ShadowV9Prediction === 'function'
         && typeof supabaseClient?.readV105ShadowV9Issuance === 'function'
         && typeof supabaseClient?.settleV105ShadowV9Prediction === 'function',
+      writer: supabaseClient,
+    })
+  v105ShadowV10 = v105ShadowV10Runtime
+    ?? isolatedShadowProcess?.runtime('v105-v10', { enabled: resolveV105ShadowV10Enabled() })
+    ?? createV105ShadowV10Runtime({
+      enabled: resolveV105ShadowV10Enabled()
+        && typeof supabaseClient?.getV105ShadowV10History === 'function'
+        && typeof supabaseClient?.issueV105ShadowV10Prediction === 'function'
+        && typeof supabaseClient?.readV105ShadowV10Issuance === 'function'
+        && typeof supabaseClient?.settleV105ShadowV10Prediction === 'function',
       writer: supabaseClient,
     })
   const cloudCaptureClient = createCloudCaptureClient({ url: cloudBrowserUrl, state, writer: supabaseClient, v100Formal, fetchImpl, pollMs: deployConfig.cloudCapturePollMs, adminKey: process.env.WORKER_ADMIN_KEY })
@@ -2192,6 +2205,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       if (v105ShadowV7?.enabled === true && typeof v105ShadowV7.start === 'function') void Promise.resolve().then(() => v105ShadowV7.start()).catch(() => {})
       if (v105ShadowV8?.enabled === true && typeof v105ShadowV8.start === 'function') void Promise.resolve().then(() => v105ShadowV8.start()).catch(() => {})
       if (v105ShadowV9?.enabled === true && typeof v105ShadowV9.start === 'function') void Promise.resolve().then(() => v105ShadowV9.start()).catch(() => {})
+      if (v105ShadowV10?.enabled === true && typeof v105ShadowV10.start === 'function') void Promise.resolve().then(() => v105ShadowV10.start()).catch(() => {})
       void drainCaptureOutbox().catch((error) => {
         state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
       })
