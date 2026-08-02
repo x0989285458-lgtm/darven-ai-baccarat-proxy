@@ -387,6 +387,14 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const isolatedShadowProcess = isolateShadowProcess === true
     ? (shadowProcessClient ?? createShadowProcessClient())
     : null
+  const prepareRequiredShadowProcess = () => {
+    const prepare = isolatedShadowProcess?.prepareRequired ?? isolatedShadowProcess?.prepare
+    return typeof prepare === 'function' ? prepare.call(isolatedShadowProcess) : null
+  }
+  const prepareV10ShadowProcess = () => {
+    const prepare = isolatedShadowProcess?.prepareV10
+    return typeof prepare === 'function' ? prepare.call(isolatedShadowProcess) : null
+  }
   let v103Shadow = null
   let v104Shadow = null
   let v104IterationShadow = null
@@ -716,11 +724,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       let shouldContinue = false
       let nextWakeDelayMs = null
       try {
-        if (isolatedShadowProcess?.prepare) {
+        if (isolatedShadowProcess && (typeof isolatedShadowProcess.prepareRequired === 'function' || typeof isolatedShadowProcess.prepare === 'function')) {
           setCaptureOutboxPhase('prepare')
           let readiness
           try {
-            readiness = await isolatedShadowProcess.prepare()
+            readiness = await prepareRequiredShadowProcess()
           } catch (error) {
             state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
             throw error
@@ -896,13 +904,23 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
 
     if (pathname === '/health') {
       const cloudStatus = await readCloudSnapshotStatus()
-      const nextStatus = { ...state.snapshot().status, ...cloudStatus }
+      const liveShadowProcessStatus = isolatedShadowProcess?.status?.() ?? null
+      const nextStatus = {
+        ...state.snapshot().status,
+        ...cloudStatus,
+        ...(liveShadowProcessStatus ? { shadowProcessStatus: liveShadowProcessStatus } : {}),
+      }
       const health = buildServiceHealth(nextStatus)
       return jsonResponse(health.degraded ? 503 : 200, { ok: !health.degraded, service: SERVICE, version: VERSION, buildVersion: BUILD_VERSION, deployMode: deployConfig.deployMode, ...health }, frontendOrigin)
     }
     if (pathname === '/api/status') {
       const cloudStatus = await readCloudSnapshotStatus()
-      const nextStatus = { ...state.snapshot().status, ...cloudStatus }
+      const liveShadowProcessStatus = isolatedShadowProcess?.status?.() ?? null
+      const nextStatus = {
+        ...state.snapshot().status,
+        ...cloudStatus,
+        ...(liveShadowProcessStatus ? { shadowProcessStatus: liveShadowProcessStatus } : {}),
+      }
       const health = buildServiceHealth(nextStatus)
       return jsonResponse(200, { ...nextStatus, version: VERSION, buildVersion: BUILD_VERSION, deployMode: deployConfig.deployMode, ...health, statusText: cloudStatus?.statusText ?? describeCaptureStatus(nextStatus) }, frontendOrigin)
     }
@@ -2154,6 +2172,29 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
         }
       }
+      if (isolatedShadowProcess) {
+        try {
+          const requiredReadiness = await prepareRequiredShadowProcess()
+          if (requiredReadiness) state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status(), shadowProcessReadiness: requiredReadiness })
+        } catch {
+          state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
+        }
+        let v10Preparation = null
+        try {
+          v10Preparation = prepareV10ShadowProcess()
+        } catch {
+          state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
+        }
+        if (v10Preparation) {
+          void Promise.resolve(v10Preparation)
+            .then((readiness) => {
+              state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status(), shadowProcessV10Readiness: readiness ?? null })
+            })
+            .catch(() => {
+              state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
+            })
+        }
+      }
       if (shouldAutoConnect) {
         if (captureSource === 'cloud_browser' && cloudBrowserUrl) cloudCaptureClient.start()
         else if (captureUrl) chromeClient.start()
@@ -2198,8 +2239,17 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           'tables broadcast shutdown deadline exceeded',
         )
       } catch {}
-      const isolatedShadowStop = Promise.resolve().then(() => isolatedShadowProcess?.stop?.())
-      void isolatedShadowStop.catch(() => {})
+      isolatedShadowProcess?.beginStop?.()
+      const hasScopedShadowStops = typeof isolatedShadowProcess?.stopRequired === 'function'
+        && typeof isolatedShadowProcess?.stopV10 === 'function'
+      const isolatedRequiredShadowStop = Promise.resolve().then(() => (
+        hasScopedShadowStops ? isolatedShadowProcess?.stopRequired?.() : isolatedShadowProcess?.stop?.()
+      ))
+      const isolatedV10ShadowStop = Promise.resolve().then(() => (
+        hasScopedShadowStops ? isolatedShadowProcess?.stopV10?.() : null
+      ))
+      void isolatedRequiredShadowStop.catch(() => {})
+      void isolatedV10ShadowStop.catch(() => {})
       try {
         await withDeadline(
           outboxDrainPromise?.catch(() => {}) ?? Promise.resolve(),
@@ -2211,7 +2261,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       try {
         await withDeadline(
           Promise.all([
-            isolatedShadowStop,
+            isolatedRequiredShadowStop,
+            isolatedV10ShadowStop,
             shadowServiceWork.closeAndWait(),
             shadowWorkScheduler.closeAndWait(),
           ]),

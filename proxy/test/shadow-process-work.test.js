@@ -214,10 +214,15 @@ test('V9 hydration whose loader ignores timeout and abort remains one pending un
 
 test('capture preserves table-before-round phases while running each table across runtimes concurrently', async () => {
   const calls = []
+  let activeObservers = 0
+  let maxActiveObservers = 0
   const runtimes = new Map(['v103', 'v104', 'v104-iteration', 'v105-v9', 'v105-v10'].map((key) => [key, runtime({
     async observeTable(table) {
       calls.push(`observe:start:${key}:${table.tableId}`)
+      activeObservers += 1
+      maxActiveObservers = Math.max(maxActiveObservers, activeObservers)
       await delay(20)
+      activeObservers -= 1
       calls.push(`observe:end:${key}:${table.tableId}`)
     },
     async settleRound(round) {
@@ -225,17 +230,15 @@ test('capture preserves table-before-round phases while running each table acros
     },
   })]))
 
-  const startedAt = Date.now()
   const result = await processShadowCapture(runtimes, {
     tables: [{ tableId: 'BAG01' }],
     rounds: [{ tableId: 'BAG01', round: 9 }],
   })
-  const elapsedMs = Date.now() - startedAt
 
   assert.equal(result.observed, 4)
   assert.equal(result.settled, 4)
   assert.equal(result.noops, 0)
-  assert.equal(elapsedMs < 60, true, `runtime fan-out was serialized (${elapsedMs}ms)`)
+  assert.equal(maxActiveObservers >= 4, true, `required runtime fan-out was serialized (maxActive=${maxActiveObservers})`)
   const firstRequiredSettle = calls.findIndex((item) => item.startsWith('settle:') && !item.startsWith('settle:v105-v10:'))
   const lastRequiredObserve = calls.findLastIndex((item) => item.startsWith('observe:end:') && !item.startsWith('observe:end:v105-v10:'))
   assert.equal(firstRequiredSettle > lastRequiredObserve, true)

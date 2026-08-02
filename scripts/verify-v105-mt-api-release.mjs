@@ -90,6 +90,12 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
     excludedPaths: [],
     sha256: binding.shadowV10Migration?.sha256,
   }, 'shadow_v10_migration')
+  const shadowV6V8RetirementMigration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, {
+    algorithm: binding.shadowV6V8RetirementMigration?.algorithm,
+    paths: [binding.shadowV6V8RetirementMigration?.path],
+    excludedPaths: [],
+    sha256: binding.shadowV6V8RetirementMigration?.sha256,
+  }, 'shadow_v6_v8_retirement_migration')
   const proxy = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.proxyBuildInput, 'proxy_build_input')
   const worker = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.workerBuildInput, 'worker_build_input')
   const exclusions = binding.implementationTree.excludedPaths?.map(normalizeRelative) ?? []
@@ -99,12 +105,14 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
   verifyTrustedEvidenceContract(binding)
   verifyV9ShadowRollbackContract(manifest, binding)
   verifyV10ShadowRollbackContract(manifest, binding)
+  verifyV6V8RetirementContract(manifest, binding)
   return {
     ok: true,
     implementationTreeSha256: implementation.sha256,
     migrationSha256: migration.sha256,
     shadowHydrationMigrationSha256: shadowHydrationMigration.sha256,
     shadowV10MigrationSha256: shadowV10Migration.sha256,
+    shadowV6V8RetirementMigrationSha256: shadowV6V8RetirementMigration.sha256,
     proxyBuildInputSha256: proxy.sha256,
     workerBuildInputSha256: worker.sha256,
   }
@@ -165,6 +173,25 @@ export function verifyV10ShadowRollbackContract(manifest = {}, binding = manifes
   return { ok: true }
 }
 
+export function verifyV6V8RetirementContract(manifest = {}, binding = manifest?.releaseBinding ?? {}) {
+  const migration = manifest?.database?.shadowV6V8RetirementMigration
+  const deployment = Array.isArray(manifest?.deploymentOrder) ? manifest.deploymentOrder : []
+  const migrationIndex = deployment.indexOf('v6-v8-retirement-migration')
+  const readbackIndex = deployment.indexOf('v6-v8-retirement-catalog-acl-readback')
+  const v10ReadbackIndex = deployment.indexOf('v10-shadow-catalog-acl-readback')
+  const proxyIndex = deployment.indexOf('proxy-compatible')
+  if (migration?.path !== binding?.shadowV6V8RetirementMigration?.path
+    || migration?.dropsOnlyRetiredV6V8Objects !== true
+    || migration?.preservesV9V10AndFormalV105 !== true
+    || migration?.catalogAclReadbackRequired !== true
+    || migrationIndex <= v10ReadbackIndex
+    || readbackIndex !== migrationIndex + 1
+    || proxyIndex <= readbackIndex) {
+    throw new Error('shadow_v6_v8_retirement_contract_invalid')
+  }
+  return { ok: true }
+}
+
 export function verifyTrustedEvidenceContract(binding = {}) {
   const attestation = binding.attestation
   const adapter = 'scripts/trusted-registry-readback-adapter.mjs'
@@ -190,7 +217,7 @@ export function verifyExternalReleaseAttestation(attestation = {}, expected = {}
   if (!String(expected.gitTag ?? '').trim() || attestation.tag !== expected.gitTag) throw new Error('attestation_tag_mismatch')
   if (!/^[a-f0-9]{40}$/.test(String(expected.candidateIndexTree ?? ''))
     || attestation.tree !== expected.candidateIndexTree) throw new Error('attestation_tree_mismatch')
-  const digestFields = ['implementationTreeSha256', 'migrationSha256', 'shadowHydrationMigrationSha256', 'shadowV10MigrationSha256', 'proxyBuildInputSha256', 'workerBuildInputSha256']
+  const digestFields = ['implementationTreeSha256', 'migrationSha256', 'shadowHydrationMigrationSha256', 'shadowV10MigrationSha256', 'shadowV6V8RetirementMigrationSha256', 'proxyBuildInputSha256', 'workerBuildInputSha256']
   for (const field of digestFields) {
     if (!/^[a-f0-9]{64}$/.test(String(attestation[field] ?? '')) || attestation[field] !== expected[field]) {
       throw new Error(`attestation_${field}_mismatch`)
