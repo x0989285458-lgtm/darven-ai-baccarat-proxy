@@ -2033,12 +2033,15 @@ export function createSupabaseIngestionClient({
   dbConnectionString = null,
   strategyPool = null,
   strategyPoolFactory = (config) => new pg.Pool(config),
+  strategyPoolMax = 10,
 } = {}) {
   const configured = Boolean(url && serviceKey && fetchImpl)
   const rawStrategyDb = strategyPool ?? (dbConnectionString ? strategyPoolFactory({
     connectionString: resolveBackendReadConnectionString(dbConnectionString),
     ssl: { rejectUnauthorized: false },
-    max: 10,
+    max: Number.isInteger(strategyPoolMax) && strategyPoolMax >= 1 && strategyPoolMax <= 10
+      ? strategyPoolMax
+      : 10,
     connectionTimeoutMillis: 60000,
     query_timeout: 65000,
     statement_timeout: 60000,

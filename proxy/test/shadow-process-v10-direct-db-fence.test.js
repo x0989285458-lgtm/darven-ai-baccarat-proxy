@@ -56,6 +56,7 @@ test('required worker retains Direct DB pool while V10 scrubs every Direct DB en
     fetchImpl: async () => response([]), requireVerifiedStrategy: false,
   })
   assert.equal(poolConfigs.length, 1)
+  assert.equal(poolConfigs[0].max, 1, 'required V9 pool must reserve exactly one Direct DB connection')
   assert.equal(requiredEnv.SUPABASE_DB_CONNECTION_STRING, baseEnv.SUPABASE_DB_CONNECTION_STRING)
 
   const v10Env = { ...baseEnv }
