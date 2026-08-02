@@ -1,5 +1,6 @@
 import { fork } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { scrubDirectDatabaseEnv } from './shadow-process-env.js'
 
 const REQUIRED_RUNTIME_KEYS = new Set(['v103', 'v104', 'v104-iteration', 'v105-v9'])
 const V10_RUNTIME_KEY = 'v105-v10'
@@ -22,6 +23,7 @@ function buildChildEnv(source = {}, scope) {
   for (const key of CHILD_ENV_ALLOWLIST) {
     if (source[key] != null) target[key] = String(source[key])
   }
+  if (scope === V10_RUNTIME_KEY) scrubDirectDatabaseEnv(target)
   return target
 }
 

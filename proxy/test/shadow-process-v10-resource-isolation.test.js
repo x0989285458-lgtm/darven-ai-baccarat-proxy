@@ -86,6 +86,8 @@ test('required and V10 lanes fork distinct PIDs with fail-closed scopes and V10 
   const client = createShadowProcessClient({
     env: enabledEnv({
       SUPABASE_DB_CONNECTION_STRING: 'postgresql://example.invalid/db',
+      DATABASE_URL: 'postgresql://database-url.invalid/db',
+      PGHOST: 'direct-db.invalid',
       UNRELATED_PRIVATE_SECRET: 'omit',
     }),
     forkImpl: scopedFork(children),
@@ -98,6 +100,10 @@ test('required and V10 lanes fork distinct PIDs with fail-closed scopes and V10 
   assert.notEqual(children[0].pid, children[1].pid)
   assert.deepEqual(children.map((child) => child.scope), ['required', 'v105-v10'])
   assert.deepEqual(children.map((child) => child.options.env.SHADOW_PROCESS_RUNTIME_SCOPE), ['required', 'v105-v10'])
+  assert.equal(children[0].options.env.SUPABASE_DB_CONNECTION_STRING, 'postgresql://example.invalid/db')
+  for (const key of ['SUPABASE_DB_CONNECTION_STRING', 'DATABASE_URL', 'PGHOST']) {
+    assert.equal(key in children[1].options.env, false, `V10 child inherited Direct DB env ${key}`)
+  }
   assert.equal(children.every((child) => !('UNRELATED_PRIVATE_SECRET' in child.options.env)), true)
   const status = client.status()
   assert.equal(status.required.pid, children[0].pid)
@@ -298,6 +304,37 @@ test('V10 timeout, crash, and DB saturation never change required capture succes
   }
 })
 
+test('V10 startup hydration timeout cannot block required V9 capture or restart its child', async () => {
+  const children = []
+  const client = createShadowProcessClient({
+    env: enabledEnv(),
+    requestTimeoutMs: 100,
+    startupTimeoutMs: 15,
+    killGraceMs: 2,
+    killConfirmMs: 100,
+    forkImpl: scopedFork(children, {
+      required(child, message) {
+        child.respond(message, {
+          result: message.kind === 'prepare'
+            ? { enabled: 1, prepared: 1, pending: 0, queued: 0, failed: 0, disabled: 6 }
+            : { observed: 1, settled: 0, noops: 0 },
+        })
+      },
+      'v105-v10'(_child, _message) {},
+    }),
+  })
+
+  await client.prepareRequired()
+  const v10Preparation = client.prepareV10()
+  const result = await client.processCapture({ tables: [{ tableId: 'BAG01', shoe: 1, round: 20 }], rounds: [] })
+  assert.equal(result.observed, 1)
+  await assert.rejects(v10Preparation, /timeout/)
+  assert.equal(client.status().required.lastSuccess.kind, 'capture')
+  assert.equal(client.status().required.generation, 1)
+  assert.equal(client.status().required.terminationFailed, false)
+  await client.stop()
+})
+
 test('Outbox completion waits for required capture but never waits for a stalled V10 child', async (t) => {
   const children = []
   let releaseRequired
@@ -366,6 +403,77 @@ test('Outbox completion waits for required capture but never waits for a stalled
   assert.equal(status.shadowProcessStatus.required.generation, 1)
   assert.equal(status.shadowProcessStatus.required.terminationFailed, false)
   assert.equal(status.shadowProcessStatus.v105V10.lane.failed, 1)
+})
+
+test('V10 REST saturation cannot prevent required V9 capture or parent Outbox acknowledgement', async (t) => {
+  const children = []
+  let claimed = false
+  let completed = 0
+  let failed = 0
+  const client = createShadowProcessClient({
+    env: enabledEnv(),
+    requestTimeoutMs: 100,
+    forkImpl: scopedFork(children, {
+      required(child, message) {
+        child.respond(message, {
+          result: message.kind === 'prepare'
+            ? { enabled: 1, prepared: 1, pending: 0, queued: 0, failed: 0, disabled: 6 }
+            : { observed: 1, settled: 0, noops: 0 },
+        })
+      },
+      'v105-v10'(child, message) {
+        if (message.kind === 'prepare') {
+          child.respond(message, { result: { enabled: 1, prepared: 1, pending: 0, queued: 0, failed: 0, disabled: 0 } })
+          return
+        }
+        child.respond(message, {
+          ok: false,
+          error: {
+            message: 'PostgREST request saturated',
+            code: 'SHADOW_RUNTIME_BATCH_FAILED',
+            diagnostics: [{ runtime: 'v105-v10', stage: 'observeTable', code: 'db_request' }],
+          },
+        })
+      },
+    }),
+  })
+  await Promise.all([client.prepareRequired(), client.prepareV10()])
+  const work = {
+    sessionId: 'v10-rest-saturation',
+    status: { connected: true, authenticated: true },
+    tables: [{ tableId: 'BAG01', shoe: 1, round: 20 }],
+    rounds: [],
+  }
+  const app = createApp({
+    autoConnect: false,
+    production: false,
+    memberAuthRequired: false,
+    requireVerifiedStrategy: false,
+    isolateShadowProcess: true,
+    shadowProcessClient: client,
+    outboxWorkDeadlineMs: 1000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [{ session_id: work.sessionId, sequence: 1, claim_token: 'lease-rest', attempts: 1, payload: { work } }]
+      },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox() { failed += 1 },
+      async readIssuedPrediction() { return null },
+    },
+    v100FormalRuntime: { enabled: false },
+  })
+  t.after(() => app.stop())
+
+  assert.deepEqual(await app.drainCaptureOutbox(), { processed: 1, failed: 0 })
+  await waitFor(() => client.status().v105V10.lane.failed === 1, 'V10 REST saturation was not observed')
+  assert.equal(completed, 1)
+  assert.equal(failed, 0)
+  assert.equal(client.status().required.lastSuccess.kind, 'capture')
+  assert.equal(client.status().required.generation, 1)
+  assert.equal(client.status().required.terminationFailed, false)
 })
 
 test('startup and shutdown prepare and stop required and V10 lanes independently', async () => {

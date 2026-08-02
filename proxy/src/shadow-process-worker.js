@@ -1,9 +1,10 @@
-import { ALL_MT_EQUAL_STRATEGY_VERSION, createSupabaseIngestionClient } from './supabase-writer.js'
+import { ALL_MT_EQUAL_STRATEGY_VERSION } from './supabase-writer.js'
 import { createV103ShadowRuntime, resolveV103ShadowEnabled } from './v103-shadow-runtime.js'
 import { createV104ShadowRuntime, resolveV104ShadowEnabled } from './v104-shadow-runtime.js'
 import { createV104IterationShadowRuntime, resolveV104IterationShadowEnabled } from './v104-iteration-shadow-runtime.js'
 import { createV105ShadowV9Runtime, resolveV105ShadowV9Enabled } from './v105-shadow-v9-runtime.js'
 import { createV105ShadowV10Runtime, resolveV105ShadowV10Enabled } from './v105-shadow-v10-runtime.js'
+import { createShadowProcessWriter } from './shadow-process-writer.js'
 import { prepareShadowRuntimes, processShadowCapture } from './shadow-process-work.js'
 
 const RUNTIME_SCOPE = String(process.env.SHADOW_PROCESS_RUNTIME_SCOPE ?? '')
@@ -14,11 +15,7 @@ if (!RUNTIME_SCOPE_ALLOWLIST.has(RUNTIME_SCOPE)) {
   throw error
 }
 
-const writer = createSupabaseIngestionClient({
-  dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING,
-  requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000),
-  durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000),
-})
+const writer = createShadowProcessWriter({ scope: RUNTIME_SCOPE, env: process.env })
 
 const has = (name) => typeof writer?.[name] === 'function'
 const requiredRuntimes = () => new Map([
