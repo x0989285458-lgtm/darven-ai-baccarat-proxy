@@ -13,9 +13,9 @@ const hydrationStates = new WeakMap()
 const hydrationSchedulers = new WeakMap()
 const bestEffortSchedulers = new WeakMap()
 
-export function prepareShadowRuntimes(runtimes) {
+export function prepareShadowRuntimes(runtimes, { nonBlockingRuntimeKeys = NON_BLOCKING_RUNTIME_KEYS } = {}) {
   const entries = enabledRuntimeEntries(runtimes)
-  const requiredEntries = entries.filter(([runtimeKey]) => !NON_BLOCKING_RUNTIME_KEYS.has(runtimeKey))
+  const requiredEntries = entries.filter(([runtimeKey]) => !nonBlockingRuntimeKeys.has(runtimeKey))
   const scheduler = hydrationScheduler(runtimes)
   for (const [, runtime] of entries) {
     const current = hydrationStates.get(runtime)
@@ -29,7 +29,7 @@ export function prepareShadowRuntimes(runtimes) {
     state.failureObserved = true
     return [{ runtime: runtimeKey, stage: 'hydrate', code: state.errorCode ?? 'runtime_error' }]
   })
-  const blockingFailures = failures.filter((failure) => !NON_BLOCKING_RUNTIME_KEYS.has(failure.runtime))
+  const blockingFailures = failures.filter((failure) => !nonBlockingRuntimeKeys.has(failure.runtime))
   if (blockingFailures.length > 0) throwRuntimeDiagnostics(blockingFailures)
   return {
     enabled: requiredEntries.length,
@@ -41,11 +41,11 @@ export function prepareShadowRuntimes(runtimes) {
   }
 }
 
-export async function processShadowCapture(runtimes, payload = {}) {
+export async function processShadowCapture(runtimes, payload = {}, { nonBlockingRuntimeKeys = NON_BLOCKING_RUNTIME_KEYS } = {}) {
   const entries = enabledRuntimeEntries(runtimes)
-  const requiredEntries = entries.filter(([runtimeKey]) => !NON_BLOCKING_RUNTIME_KEYS.has(runtimeKey))
-  const bestEffortEntries = entries.filter(([runtimeKey]) => NON_BLOCKING_RUNTIME_KEYS.has(runtimeKey))
-  prepareShadowRuntimes(runtimes)
+  const requiredEntries = entries.filter(([runtimeKey]) => !nonBlockingRuntimeKeys.has(runtimeKey))
+  const bestEffortEntries = entries.filter(([runtimeKey]) => nonBlockingRuntimeKeys.has(runtimeKey))
+  prepareShadowRuntimes(runtimes, { nonBlockingRuntimeKeys })
   await new Promise((resolve) => setImmediate(resolve))
   const readyEntries = requiredEntries.filter(([, runtime]) => hydrationStates.get(runtime)?.status === 'ready')
   const unavailable = requiredEntries.flatMap(([runtimeKey, runtime]) => {

@@ -45,6 +45,7 @@ test('shadow process IPC sends only runtime work and inherits the exact database
       V105_SHADOW_V7_ENABLED: 'true',
       V105_SHADOW_V8_ENABLED: 'true',
       V105_SHADOW_V9_ENABLED: 'true',
+      V105_SHADOW_V10_ENABLED: 'false',
       UNRELATED_PRIVATE_SECRET: 'omit',
     },
     forkImpl(_path, _args, options) {
@@ -99,6 +100,7 @@ test('AbortSignal terminates the entire shadow child and the next durable retry 
 test('a capture batch timeout kills the child and the next durable retry uses a fresh process', async () => {
   const children = []
   const client = createShadowProcessClient({
+    env: { ...process.env, V105_SHADOW_V10_ENABLED: 'false' },
     requestTimeoutMs: 10,
     killGraceMs: 5,
     forkImpl() {
@@ -149,6 +151,7 @@ test('a stalled runtime hydration returns pending readiness without killing the 
 test('a timed-out request is not released and no new generation starts before the old child exit is confirmed', async () => {
   const children = []
   const client = createShadowProcessClient({
+    env: { ...process.env, V105_SHADOW_V10_ENABLED: 'false' },
     requestTimeoutMs: 5,
     killGraceMs: 10,
     killConfirmMs: 100,

@@ -9,6 +9,14 @@ import { createV105ShadowV9Runtime, resolveV105ShadowV9Enabled } from './v105-sh
 import { createV105ShadowV10Runtime, resolveV105ShadowV10Enabled } from './v105-shadow-v10-runtime.js'
 import { prepareShadowRuntimes, processShadowCapture } from './shadow-process-work.js'
 
+const RUNTIME_SCOPE = String(process.env.SHADOW_PROCESS_RUNTIME_SCOPE ?? '')
+const RUNTIME_SCOPE_ALLOWLIST = new Set(['required', 'v105-v10'])
+if (!RUNTIME_SCOPE_ALLOWLIST.has(RUNTIME_SCOPE)) {
+  const error = new Error('shadow process runtime scope is missing or invalid')
+  error.code = 'SHADOW_PROCESS_SCOPE_INVALID'
+  throw error
+}
+
 const writer = createSupabaseIngestionClient({
   dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING,
   requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000),
@@ -16,7 +24,7 @@ const writer = createSupabaseIngestionClient({
 })
 
 const has = (name) => typeof writer?.[name] === 'function'
-const runtimes = new Map([
+const requiredRuntimes = () => new Map([
   ['v103', createV103ShadowRuntime({ enabled: resolveV103ShadowEnabled(), writer })],
   ['v104', createV104ShadowRuntime({ enabled: ALL_MT_EQUAL_STRATEGY_VERSION !== 'v104' && resolveV104ShadowEnabled(), writer })],
   ['v104-iteration', createV104IterationShadowRuntime({ enabled: resolveV104IterationShadowEnabled(), writer })],
@@ -36,11 +44,17 @@ const runtimes = new Map([
     enabled: resolveV105ShadowV9Enabled() && has('getV105ShadowV9History') && has('issueV105ShadowV9Prediction') && has('readV105ShadowV9Issuance') && has('settleV105ShadowV9Prediction'),
     writer,
   })],
+])
+const v10Runtimes = () => new Map([
   ['v105-v10', createV105ShadowV10Runtime({
     enabled: resolveV105ShadowV10Enabled() && has('getV105ShadowV10History') && has('issueV105ShadowV10Prediction') && has('readV105ShadowV10Issuance') && has('settleV105ShadowV10Prediction'),
     writer,
   })],
 ])
+const runtimes = RUNTIME_SCOPE === 'required' ? requiredRuntimes() : v10Runtimes()
+const workOptions = RUNTIME_SCOPE === 'v105-v10'
+  ? { nonBlockingRuntimeKeys: new Set() }
+  : undefined
 
 function safeError(error) {
   return String(error?.message ?? error ?? 'shadow process work failed')
@@ -62,9 +76,9 @@ process.on('message', async (message) => {
   try {
     let result = null
     if (message.kind === 'prepare') {
-      result = await prepareShadowRuntimes(runtimes)
+      result = await prepareShadowRuntimes(runtimes, workOptions)
     } else if (message.kind === 'capture') {
-      result = await processShadowCapture(runtimes, structuredClone(message.payload))
+      result = await processShadowCapture(runtimes, structuredClone(message.payload), workOptions)
     } else {
       const runtime = runtimes.get(message.runtime)
       if (!runtime || runtime.enabled !== true) throw new Error('shadow runtime is disabled')
