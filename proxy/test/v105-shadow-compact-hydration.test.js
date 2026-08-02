@@ -4,9 +4,6 @@ import { createSupabaseIngestionClient } from '../src/supabase-writer.js'
 
 const TABLE_IDS = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
 const CASES = [
-  { label: 'V6', version: 'v105-shadow-v6-road-pattern', rpc: 'get_v105_shadow_v6_compact_history', method: 'getV105ShadowHistory', issueMethod: 'issueV105ShadowPrediction', readMethod: 'readV105ShadowIssuance', settleMethod: 'settleV105ShadowPrediction', runtime: '../src/v105-shadow-runtime.js', factory: 'createV105ShadowRuntime' },
-  { label: 'V7', version: 'v105-shadow-v7-ask-road', rpc: 'get_v105_shadow_v7_compact_history', method: 'getV105ShadowV7History', issueMethod: 'issueV105ShadowV7Prediction', readMethod: 'readV105ShadowV7Issuance', settleMethod: 'settleV105ShadowV7Prediction', runtime: '../src/v105-shadow-v7-runtime.js', factory: 'createV105ShadowV7Runtime' },
-  { label: 'V8', version: 'v105-shadow-v8-run-length-ask-road', rpc: 'get_v105_shadow_v8_compact_history', method: 'getV105ShadowV8History', issueMethod: 'issueV105ShadowV8Prediction', readMethod: 'readV105ShadowV8Issuance', settleMethod: 'settleV105ShadowV8Prediction', runtime: '../src/v105-shadow-v8-runtime.js', factory: 'createV105ShadowV8Runtime' },
   { label: 'V9', version: 'v105-shadow-v9-weighted-v7-v8', rpc: 'get_v105_shadow_v9_compact_history', method: 'getV105ShadowV9History', issueMethod: 'issueV105ShadowV9Prediction', readMethod: 'readV105ShadowV9Issuance', settleMethod: 'settleV105ShadowV9Prediction', runtime: '../src/v105-shadow-v9-runtime.js', factory: 'createV105ShadowV9Runtime' },
 ]
 const COMPACT_KEYS = [

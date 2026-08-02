@@ -26,8 +26,8 @@ function writer(history = []) {
 test('V9 has an independent default-enabled runtime switch', async () => {
   const { resolveV105ShadowV9Enabled } = await import('../src/v105-shadow-v9-runtime.js')
   assert.equal(resolveV105ShadowV9Enabled({}), true)
-  assert.equal(resolveV105ShadowV9Enabled({ V105_SHADOW_V9_ENABLED: 'false', V105_SHADOW_V8_ENABLED: 'true' }), false)
-  assert.equal(resolveV105ShadowV9Enabled({ V105_SHADOW_V9_ENABLED: 'true', V105_SHADOW_V8_ENABLED: 'false' }), true)
+  assert.equal(resolveV105ShadowV9Enabled({ V105_SHADOW_V9_ENABLED: 'false', V105_SHADOW_V10_ENABLED: 'true' }), false)
+  assert.equal(resolveV105ShadowV9Enabled({ V105_SHADOW_V9_ENABLED: 'true', V105_SHADOW_V10_ENABLED: 'false' }), true)
 })
 
 test('V9 independently issues only the fixed ten tables', async () => {

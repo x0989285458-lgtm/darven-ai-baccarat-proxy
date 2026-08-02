@@ -2,9 +2,6 @@ import { ALL_MT_EQUAL_STRATEGY_VERSION, createSupabaseIngestionClient } from './
 import { createV103ShadowRuntime, resolveV103ShadowEnabled } from './v103-shadow-runtime.js'
 import { createV104ShadowRuntime, resolveV104ShadowEnabled } from './v104-shadow-runtime.js'
 import { createV104IterationShadowRuntime, resolveV104IterationShadowEnabled } from './v104-iteration-shadow-runtime.js'
-import { createV105ShadowRuntime, resolveV105ShadowEnabled } from './v105-shadow-runtime.js'
-import { createV105ShadowV7Runtime, resolveV105ShadowV7Enabled } from './v105-shadow-v7-runtime.js'
-import { createV105ShadowV8Runtime, resolveV105ShadowV8Enabled } from './v105-shadow-v8-runtime.js'
 import { createV105ShadowV9Runtime, resolveV105ShadowV9Enabled } from './v105-shadow-v9-runtime.js'
 import { createV105ShadowV10Runtime, resolveV105ShadowV10Enabled } from './v105-shadow-v10-runtime.js'
 import { prepareShadowRuntimes, processShadowCapture } from './shadow-process-work.js'
@@ -20,18 +17,6 @@ const runtimes = new Map([
   ['v103', createV103ShadowRuntime({ enabled: resolveV103ShadowEnabled(), writer })],
   ['v104', createV104ShadowRuntime({ enabled: ALL_MT_EQUAL_STRATEGY_VERSION !== 'v104' && resolveV104ShadowEnabled(), writer })],
   ['v104-iteration', createV104IterationShadowRuntime({ enabled: resolveV104IterationShadowEnabled(), writer })],
-  ['v105', createV105ShadowRuntime({
-    enabled: resolveV105ShadowEnabled() && has('getV105ShadowHistory') && has('issueV105ShadowPrediction') && has('readV105ShadowIssuance') && has('settleV105ShadowPrediction'),
-    writer,
-  })],
-  ['v105-v7', createV105ShadowV7Runtime({
-    enabled: resolveV105ShadowV7Enabled() && has('getV105ShadowV7History') && has('issueV105ShadowV7Prediction') && has('readV105ShadowV7Issuance') && has('settleV105ShadowV7Prediction'),
-    writer,
-  })],
-  ['v105-v8', createV105ShadowV8Runtime({
-    enabled: resolveV105ShadowV8Enabled() && has('getV105ShadowV8History') && has('issueV105ShadowV8Prediction') && has('readV105ShadowV8Issuance') && has('settleV105ShadowV8Prediction'),
-    writer,
-  })],
   ['v105-v9', createV105ShadowV9Runtime({
     enabled: resolveV105ShadowV9Enabled() && has('getV105ShadowV9History') && has('issueV105ShadowV9Prediction') && has('readV105ShadowV9Issuance') && has('settleV105ShadowV9Prediction'),
     writer,

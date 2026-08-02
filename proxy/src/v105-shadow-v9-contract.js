@@ -1,18 +1,13 @@
 import { buildV105FormalPrediction } from './v105-formal-strategy.js'
 import {
-  V105_SHADOW_V7_VERSION,
-  buildV105ShadowV7Prediction,
-} from './v105-shadow-v7-contract.js'
-import {
-  V105_SHADOW_V8_TABLE_IDS,
-  V105_SHADOW_V8_VERSION,
-  buildV105ShadowV8Prediction,
-  buildV105ShadowV8Settlement,
-} from './v105-shadow-v8-contract.js'
+  V105_SHADOW_V9_SIGNAL_TABLE_IDS,
+  buildV105ShadowV9BaselineSettlement,
+  buildV105ShadowV9SignalBaseline,
+} from './v105-shadow-v9-signal-baseline.js'
 
 export const V105_SHADOW_V9_VERSION = 'v105-shadow-v9-weighted-v7-v8'
 export const V105_SHADOW_V9_RELEASE = V105_SHADOW_V9_VERSION
-export const V105_SHADOW_V9_TABLE_IDS = V105_SHADOW_V8_TABLE_IDS
+export const V105_SHADOW_V9_TABLE_IDS = V105_SHADOW_V9_SIGNAL_TABLE_IDS
 export const V105_SHADOW_V9_WEIGHTS = Object.freeze({
   v7RoadCycle: 0.35,
   v8AskRoad: 0.35,
@@ -22,8 +17,11 @@ export const V105_SHADOW_V9_WEIGHTS = Object.freeze({
 
 export function buildV105ShadowV9Prediction(table = {}, historyRows = [], issuanceContext = {}) {
   const ownHistory = Array.isArray(historyRows) ? historyRows : []
-  const v7 = buildV105ShadowV7Prediction(table, mapHistory(ownHistory, V105_SHADOW_V7_VERSION), issuanceContext)
-  const v8 = buildV105ShadowV8Prediction(table, mapHistory(ownHistory, V105_SHADOW_V8_VERSION), issuanceContext)
+  const { roadCyclePrediction: v7, runLengthPrediction: v8 } = buildV105ShadowV9SignalBaseline(
+    table,
+    ownHistory,
+    issuanceContext,
+  )
   const formal = buildV105FormalPrediction(table, mapHistory(ownHistory, 'v105'), issuanceContext)
   const signals = {
     v7RoadCycle: structuredClone(v7.askRoadSignal),
@@ -77,9 +75,7 @@ export function buildV105ShadowV9Settlement(round = {}, issued = {}) {
   if (issued?.strategyVersion !== V105_SHADOW_V9_VERSION) {
     throw new Error('V9 identity mismatch')
   }
-  const settlement = buildV105ShadowV8Settlement(round, {
-    ...structuredClone(issued), strategyVersion: V105_SHADOW_V8_VERSION,
-  })
+  const settlement = buildV105ShadowV9BaselineSettlement(round, issued)
   return { ...settlement, strategyVersion: V105_SHADOW_V9_VERSION }
 }
 

@@ -226,10 +226,8 @@ test('table updates coalesce to the latest snapshot and run all shadow observati
     requireVerifiedStrategy: false,
     supabaseClient: { configured: false },
     v100FormalRuntime: { enabled: false },
-    v105ShadowRuntime: runtime(),
-    v105ShadowV7Runtime: runtime(),
-    v105ShadowV8Runtime: runtime(),
     v105ShadowV9Runtime: runtime(),
+    v105ShadowV10Runtime: runtime(),
   })
   const tables = Array.from({ length: 10 }, (_, index) => ({
     tableId: `BAG${String(index + 1).padStart(2, '0')}`,
@@ -241,7 +239,7 @@ test('table updates coalesce to the latest snapshot and run all shadow observati
   await app.waitForServiceWorkIdle()
 
   assert.equal(maxActive, 1)
-  assert.equal(calls, 40)
+  assert.equal(calls, 20)
   await app.stop()
 })
 
@@ -254,16 +252,14 @@ test('one table observer failure does not skip later shadow observers', async ()
     requireVerifiedStrategy: false,
     supabaseClient: { configured: false },
     v100FormalRuntime: { enabled: false },
-    v105ShadowRuntime: { enabled: true, async observeTable() { throw new Error('expected v6 observer failure') } },
-    v105ShadowV7Runtime: { enabled: true, async observeTable() { observed.push('v7') } },
-    v105ShadowV8Runtime: { enabled: true, async observeTable() { observed.push('v8') } },
-    v105ShadowV9Runtime: { enabled: true, async observeTable() { observed.push('v9') } },
+    v105ShadowV9Runtime: { enabled: true, async observeTable() { throw new Error('expected V9 observer failure') } },
+    v105ShadowV10Runtime: { enabled: true, async observeTable() { observed.push('v10') } },
   })
 
   app.state.setTables([{ tableId: 'BAG01', shoe: 'S1', round: 1, bankerCount: 1, playerCount: 1 }])
   await app.waitForServiceWorkIdle()
 
-  assert.deepEqual(observed, ['v7', 'v8', 'v9'])
+  assert.deepEqual(observed, ['v10'])
   await app.stop()
 })
 
@@ -336,10 +332,8 @@ test('round shadow settlements use the priority service slot without detached fa
     requireVerifiedStrategy: false,
     supabaseClient: { configured: true, async readIssuedPrediction() { return null } },
     v100FormalRuntime: { enabled: false },
-    v105ShadowRuntime: runtime(),
-    v105ShadowV7Runtime: runtime(),
-    v105ShadowV8Runtime: runtime(),
     v105ShadowV9Runtime: runtime(),
+    v105ShadowV10Runtime: runtime(),
   })
 
   await applyCloudCapturePayload({
@@ -355,7 +349,7 @@ test('round shadow settlements use the priority service slot without detached fa
   })
   await app.waitForServiceWorkIdle()
 
-  assert.equal(calls, 8)
+  assert.equal(calls, 4)
   assert.equal(maxActive, 1)
   await app.stop()
 })
@@ -371,7 +365,7 @@ test('a hung shadow settlement times out and cannot block later shadows or forma
     shadowServiceWorkTimeoutMs: 20,
     supabaseClient: { configured: true, async readIssuedPrediction() { return null } },
     v100FormalRuntime: { enabled: false },
-    v105ShadowRuntime: {
+    v105ShadowV9Runtime: {
       enabled: true,
       async settleRound(_round, { signal } = {}) {
         await new Promise((_, reject) => {
@@ -384,7 +378,7 @@ test('a hung shadow settlement times out and cannot block later shadows or forma
         })
       },
     },
-    v105ShadowV7Runtime: { enabled: true, async settleRound() { laterShadowSettlements += 1 } },
+    v105ShadowV10Runtime: { enabled: true, async settleRound() { laterShadowSettlements += 1 } },
   })
   const round = {
     ...finalRound('BAG01', 1),
@@ -430,7 +424,7 @@ test('a Final queued behind a timed-out observation on the same shadow runtime i
     shadowServiceWorkTimeoutMs: 10,
     supabaseClient: { configured: true, async readIssuedPrediction() { return null } },
     v100FormalRuntime: { enabled: false },
-    v105ShadowRuntime: runtime,
+    v105ShadowV9Runtime: runtime,
   })
   app.state.setTables([{ tableId: 'BAG01', shoe: 'S1', round: 1, bankerCount: 1, playerCount: 1 }])
   await delay(15)
@@ -457,7 +451,7 @@ test('shutdown waits for queued service work before returning', async () => {
     requireVerifiedStrategy: false,
     supabaseClient: { configured: false },
     v100FormalRuntime: { enabled: false },
-    v105ShadowRuntime: {
+    v105ShadowV9Runtime: {
       enabled: true,
       async observeTable() {
         observationStarted = true
@@ -488,7 +482,7 @@ test('shutdown is bounded and observable when a shadow ignores AbortSignal forev
     shadowShutdownDeadlineMs: 20,
     supabaseClient: { configured: false },
     v100FormalRuntime: { enabled: false },
-    v105ShadowRuntime: {
+    v105ShadowV9Runtime: {
       enabled: true,
       async observeTable() { await new Promise(() => {}) },
     },

@@ -1,8 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { buildV105FormalPrediction } from '../src/v105-formal-strategy.js'
-import { buildV105ShadowV7Prediction } from '../src/v105-shadow-v7-contract.js'
-import { buildV105ShadowV8Prediction } from '../src/v105-shadow-v8-contract.js'
 
 const VERSION = 'v105-shadow-v9-weighted-v7-v8'
 const SIDE_HEADS = ['tie', 'superSix', 'bankerDragon', 'playerDragon', 'bankerPair', 'playerPair']
@@ -30,6 +29,8 @@ const table = {
   },
 }
 
+const predictionHash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
+
 test('V9 has exactly four 35/35/20/10 weights and no neutral reserve', async () => {
   const { V105_SHADOW_V9_WEIGHTS } = await import('../src/v105-shadow-v9-contract.js')
   assert.deepEqual(V105_SHADOW_V9_WEIGHTS, {
@@ -43,13 +44,28 @@ test('V9 has exactly four 35/35/20/10 weights and no neutral reserve', async () 
   assert.equal(Object.values(V105_SHADOW_V9_WEIGHTS).reduce((sum, weight) => sum + weight, 0), 1)
 })
 
-test('V9 carries the existing V7 road builder result and V8 ask-road builder result bit-for-bit', async () => {
+test('V9 signal baseline remains bit-for-bit compatible after retiring predecessor modules', async () => {
   const { buildV105ShadowV9Prediction } = await import('../src/v105-shadow-v9-contract.js')
-  const prediction = buildV105ShadowV9Prediction(table)
-  const v7 = buildV105ShadowV7Prediction(table)
-  const v8 = buildV105ShadowV8Prediction(table)
-  assert.deepEqual(prediction.signals.v7RoadCycle, v7.askRoadSignal)
-  assert.deepEqual(prediction.signals.v8AskRoad, v8.askRoadSignal)
+  const cases = [
+    [
+      table,
+      { priorShoe: 105, priorDirection: 'banker', priorSameSideStreak: 4 },
+      '68cfbba66e30895b9533e263f123ce43670f4d494697431e1732fb889a7e7146',
+    ],
+    [
+      { tableId: 'BAG02', shoe: 'S-9', round: 7, bankerCount: 3, playerCount: 4, tieCount: 0, beadPlateRaw: '0102', bigRoadRaw: 'B#P' },
+      {},
+      'fde3f6b334fbf3b585310edd2d8e0d17fdf5fe30c5792e5cff30794b883b5582',
+    ],
+    [
+      { tableId: 'BAG03', shoe: 3, round: 18, bankerCount: 9, playerCount: 9, tieCount: 1, beadPlateRaw: '0102010201', bigRoadRaw: 'B,B#P,P#B' },
+      {},
+      'f956ead43f5f7e95acc21ef5efcd9500c94c2311ab02c91d7083fd16d6fdfc78',
+    ],
+  ]
+  for (const [input, context, expected] of cases) {
+    assert.equal(predictionHash(buildV105ShadowV9Prediction(input, [], context)), expected)
+  }
 })
 
 test('V9 carries the formal recent-practical and deduplicated shoe-bias scores unchanged', async () => {
@@ -63,7 +79,6 @@ test('V9 carries the formal recent-practical and deduplicated shoe-bias scores u
 test('V9 is shadow-only with a unique identity and leaves all six side heads unchanged', async () => {
   const { V105_SHADOW_V9_VERSION, buildV105ShadowV9Prediction } = await import('../src/v105-shadow-v9-contract.js')
   const prediction = buildV105ShadowV9Prediction(table)
-  const v8 = buildV105ShadowV8Prediction(table)
   assert.equal(V105_SHADOW_V9_VERSION, VERSION)
   assert.equal(prediction.strategyVersion, VERSION)
   assert.equal(prediction.releaseCandidate, VERSION)
@@ -71,7 +86,10 @@ test('V9 is shadow-only with a unique identity and leaves all six side heads unc
   assert.equal(prediction.activationEligible, false)
   assert.equal(prediction.memberVisible, false)
   assert.equal(prediction.writesSideActions, false)
-  for (const head of SIDE_HEADS) assert.deepEqual(prediction.heads[head], v8.heads[head])
+  for (const head of SIDE_HEADS) {
+    assert.equal(prediction.heads[head].key, head)
+    assert.equal(prediction.heads[head].action, false)
+  }
 })
 
 test('V9 exact score tie follows formal v105 direction instead of forcing banker', async () => {
@@ -87,7 +105,9 @@ test('V9 settlement accepts verified Final only for the V9 identity', async () =
   const prediction = buildV105ShadowV9Prediction(table)
   const issued = { ...prediction, predictionId: 'v9-id', issuedAt: '2026-07-29T01:00:00.000Z' }
   const round = { ...table, round: 21, sourceAction: '/summary', winner: 'banker', rawResult: [1, 9, 2, 10, 0, 0, -1, -1, 3, 9] }
-  assert.equal(buildV105ShadowV9Settlement(round, issued).strategyVersion, VERSION)
+  const settlement = buildV105ShadowV9Settlement(round, issued)
+  assert.equal(settlement.strategyVersion, VERSION)
+  assert.equal(predictionHash(settlement), '6f38c22001575c4624e9448985e3c80c97b9972611982fbf5c22c80f70fee58c')
   for (const strategyVersion of ['v105-shadow-v6-road-pattern', 'v105-shadow-v7-ask-road', 'v105-shadow-v8-run-length-ask-road']) {
     assert.throws(() => buildV105ShadowV9Settlement(round, { ...issued, strategyVersion }), /V9|identity/i)
   }

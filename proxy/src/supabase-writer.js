@@ -2054,9 +2054,6 @@ export function createSupabaseIngestionClient({
   let shadowWriteQueue = Promise.resolve()
   let v104ShadowWriteQueue = Promise.resolve()
   let v104IterationShadowWriteQueue = Promise.resolve()
-  let v105ShadowWriteQueue = Promise.resolve()
-  const v105ShadowV7WriteQueues = new Map()
-  const v105ShadowV8WriteQueues = new Map()
   const v105ShadowV9WriteQueues = new Map()
   const v105ShadowV10WriteQueues = new Map()
   const completedRoundKeyLimit = Math.max(1, Number(maxCompletedRoundKeys) || 10000)
@@ -2330,12 +2327,6 @@ export function createSupabaseIngestionClient({
     return next
   }
 
-  function enqueueV105ShadowWrite(operation) {
-    const next = v105ShadowWriteQueue.catch(() => {}).then(operation)
-    v105ShadowWriteQueue = next.catch(() => {})
-    return next
-  }
-
   function enqueueKeyedShadowWrite(queues, key, operation) {
     const queueKey = String(key ?? '') || 'global'
     const previous = queues.get(queueKey) ?? Promise.resolve()
@@ -2346,14 +2337,6 @@ export function createSupabaseIngestionClient({
       if (queues.get(queueKey) === settled) queues.delete(queueKey)
     })
     return next
-  }
-
-  function enqueueV105ShadowV7Write(key, operation) {
-    return enqueueKeyedShadowWrite(v105ShadowV7WriteQueues, key, operation)
-  }
-
-  function enqueueV105ShadowV8Write(key, operation) {
-    return enqueueKeyedShadowWrite(v105ShadowV8WriteQueues, key, operation)
   }
 
   function enqueueV105ShadowV9Write(key, operation) {
@@ -2736,183 +2719,6 @@ export function createSupabaseIngestionClient({
       }, { requestTimeoutMs: shadowTimeoutMs })
       return (Array.isArray(rows) ? rows : []).filter((row) => row?.strategy_version === 'v104'
         && row?.prediction_timing === 'pre_result_context' && Boolean(row?.prediction_issued_at))
-    },
-    async issueV105ShadowPrediction(candidate = {}) {
-      const row = buildV104IterationShadowIssuanceRpcRow(candidate)
-      const acknowledgement = await enqueueV105ShadowWrite(() => postRest('rpc/issue_v105_shadow_v6_prediction', { p_prediction: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
-      const prediction = acknowledgement?.prediction
-      if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
-        || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at
-        || String(prediction.source ?? '') !== String(candidate.source ?? '')
-        || String(prediction.targetTableId ?? '') !== String(candidate.targetTableId ?? '')
-        || String(prediction.targetShoe ?? '') !== String(candidate.targetShoe ?? '')
-        || Number(prediction.targetRound) !== Number(candidate.targetRound)
-        || prediction.strategyVersion !== 'v105-shadow-v6-road-pattern'
-        || prediction.releaseCandidate !== 'v105-shadow-v6-road-pattern'
-        || prediction.formalStrategyVersion !== 'v105'
-        || prediction.predictionTiming !== 'pre_result_context'
-        || prediction.shadowOnly !== true || prediction.activationEligible !== false
-        || prediction.memberVisible !== false || prediction.writesSideActions !== false) {
-        throw new Error('v105 shadow issuance acknowledgement failed')
-      }
-      return structuredClone({ ...prediction, predictionId: acknowledgement.prediction_id, issuedAt: acknowledgement.prediction_issued_at })
-    },
-    async readV105ShadowIssuance({ source = SOURCE, tableId, shoe, round } = {}) {
-      const targetRound = Number(round)
-      if (!source || !tableId || shoe == null || !Number.isSafeInteger(targetRound) || targetRound < 1) return null
-      const rows = await getRest('v105_shadow_v6_issuances', {
-        select: 'id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,prediction_payload',
-        source: `eq.${source}`, table_id: `eq.${tableId}`, shoe_no: `eq.${shoe}`,
-        round_no: `eq.${targetRound}`, strategy_version: 'eq.v105-shadow-v6-road-pattern',
-        prediction_timing: 'eq.pre_result_context', prediction_issued_at: 'not.is.null', limit: '2',
-      }, { requestTimeoutMs: shadowTimeoutMs })
-      if (!Array.isArray(rows) || rows.length === 0) return null
-      if (rows.length !== 1) throw new Error('conflicting v105 shadow issuance identity')
-      const row = rows[0]
-      const prediction = row?.prediction_payload
-      if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
-        || String(row.source) !== String(source) || String(row.table_id) !== String(tableId)
-        || String(row.shoe_no) !== String(shoe) || Number(row.round_no) !== targetRound
-        || row.strategy_version !== 'v105-shadow-v6-road-pattern' || prediction.strategyVersion !== 'v105-shadow-v6-road-pattern'
-        || row.prediction_timing !== 'pre_result_context' || !row.id || !row.prediction_issued_at) {
-        throw new Error('v105 shadow issuance read failed')
-      }
-      return structuredClone({ ...prediction, predictionId: row.id, issuedAt: row.prediction_issued_at })
-    },
-    async settleV105ShadowPrediction(settlement = {}) {
-      const row = buildV104IterationShadowSettlementRpcRow(settlement)
-      const acknowledgement = await enqueueV105ShadowWrite(() => postRest('rpc/settle_v105_shadow_v6_prediction', { p_settlement: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
-      if (String(acknowledgement?.prediction_id ?? '') !== String(settlement.predictionId ?? '')) {
-        throw new Error('v105 shadow settlement acknowledgement failed')
-      }
-      return { ...acknowledgement, predictionId: acknowledgement.prediction_id }
-    },
-    async getV105ShadowCounters() {
-      const rows = await getRest('v105_shadow_v6_sequence_counters', {
-        select: 'settlement_count,main_action_count,tie_action_count,super_six_action_count,banker_dragon_action_count,player_dragon_action_count,banker_pair_action_count,player_pair_action_count,updated_at',
-        release_candidate: 'eq.v105-shadow-v6-road-pattern', limit: '1',
-      }, { requestTimeoutMs: shadowTimeoutMs })
-      return Array.isArray(rows) && rows.length === 1 ? rows[0] : null
-    },
-    async getV105ShadowHistory({ perTableLimit = 60, requestTimeoutMs = shadowTimeoutMs } = {}) {
-      return readV105ShadowCompactHistory(
-        'v105-shadow-v6-road-pattern', 'get_v105_shadow_v6_compact_history', perTableLimit, { requestTimeoutMs },
-      )
-    },
-    async issueV105ShadowV7Prediction(candidate = {}) {
-      const row = buildV104IterationShadowIssuanceRpcRow(candidate)
-      const acknowledgement = await enqueueV105ShadowV7Write(row.table_id, () => postRest('rpc/issue_v105_shadow_v7_prediction', { p_prediction: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
-      const prediction = acknowledgement?.prediction
-      if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
-        || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at
-        || String(prediction.source ?? '') !== String(candidate.source ?? '')
-        || String(prediction.targetTableId ?? '') !== String(candidate.targetTableId ?? '')
-        || String(prediction.targetShoe ?? '') !== String(candidate.targetShoe ?? '')
-        || Number(prediction.targetRound) !== Number(candidate.targetRound)
-        || prediction.strategyVersion !== 'v105-shadow-v7-ask-road'
-        || prediction.releaseCandidate !== 'v105-shadow-v7-ask-road'
-        || prediction.formalStrategyVersion !== 'v105' || prediction.predictionTiming !== 'pre_result_context'
-        || prediction.shadowOnly !== true || prediction.activationEligible !== false
-        || prediction.memberVisible !== false || prediction.writesSideActions !== false
-        || !prediction.askRoadSignal || typeof prediction.askRoadSignal !== 'object') {
-        throw new Error('v105 shadow v7 issuance acknowledgement failed')
-      }
-      return structuredClone({ ...prediction, predictionId: acknowledgement.prediction_id, issuedAt: acknowledgement.prediction_issued_at })
-    },
-    async readV105ShadowV7Issuance({ source = SOURCE, tableId, shoe, round } = {}) {
-      const targetRound = Number(round)
-      if (!source || !tableId || shoe == null || !Number.isSafeInteger(targetRound) || targetRound < 1) return null
-      const rows = await getRest('v105_shadow_v7_issuances', {
-        select: 'id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,prediction_payload',
-        source: `eq.${source}`, table_id: `eq.${tableId}`, shoe_no: `eq.${shoe}`, round_no: `eq.${targetRound}`,
-        strategy_version: 'eq.v105-shadow-v7-ask-road', prediction_timing: 'eq.pre_result_context', prediction_issued_at: 'not.is.null', limit: '2',
-      }, { requestTimeoutMs: shadowTimeoutMs })
-      if (!Array.isArray(rows) || rows.length === 0) return null
-      if (rows.length !== 1) throw new Error('conflicting v105 shadow v7 issuance identity')
-      const row = rows[0]; const prediction = row?.prediction_payload
-      if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
-        || String(row.source) !== String(source) || String(row.table_id) !== String(tableId)
-        || String(row.shoe_no) !== String(shoe) || Number(row.round_no) !== targetRound
-        || row.strategy_version !== 'v105-shadow-v7-ask-road' || prediction.strategyVersion !== 'v105-shadow-v7-ask-road'
-        || row.prediction_timing !== 'pre_result_context' || !row.id || !row.prediction_issued_at) throw new Error('v105 shadow v7 issuance read failed')
-      return structuredClone({ ...prediction, predictionId: row.id, issuedAt: row.prediction_issued_at })
-    },
-    async settleV105ShadowV7Prediction(settlement = {}) {
-      const row = buildV104IterationShadowSettlementRpcRow(settlement)
-      const acknowledgement = await enqueueV105ShadowV7Write(row.table_id, () => postRest('rpc/settle_v105_shadow_v7_prediction', { p_settlement: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
-      if (String(acknowledgement?.prediction_id ?? '') !== String(settlement.predictionId ?? '')) throw new Error('v105 shadow v7 settlement acknowledgement failed')
-      return { ...acknowledgement, predictionId: acknowledgement.prediction_id }
-    },
-    async getV105ShadowV7Counters() {
-      const rows = await getRest('v105_shadow_v7_sequence_counters', {
-        select: 'settlement_count,main_action_count,tie_action_count,super_six_action_count,banker_dragon_action_count,player_dragon_action_count,banker_pair_action_count,player_pair_action_count,updated_at',
-        release_candidate: 'eq.v105-shadow-v7-ask-road', limit: '1',
-      }, { requestTimeoutMs: shadowTimeoutMs })
-      return Array.isArray(rows) && rows.length === 1 ? rows[0] : null
-    },
-    async getV105ShadowV7History({ perTableLimit = 60, requestTimeoutMs = shadowTimeoutMs } = {}) {
-      return readV105ShadowCompactHistory(
-        'v105-shadow-v7-ask-road', 'get_v105_shadow_v7_compact_history', perTableLimit, { requestTimeoutMs },
-      )
-    },
-    async issueV105ShadowV8Prediction(candidate = {}) {
-      const row = buildV104IterationShadowIssuanceRpcRow(candidate)
-      const acknowledgement = await enqueueV105ShadowV8Write(row.table_id, () => postRest('rpc/issue_v105_shadow_v8_prediction', { p_prediction: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
-      const prediction = acknowledgement?.prediction
-      if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
-        || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at
-        || String(prediction.source ?? '') !== String(candidate.source ?? '')
-        || String(prediction.targetTableId ?? '') !== String(candidate.targetTableId ?? '')
-        || String(prediction.targetShoe ?? '') !== String(candidate.targetShoe ?? '')
-        || Number(prediction.targetRound) !== Number(candidate.targetRound)
-        || prediction.strategyVersion !== 'v105-shadow-v8-run-length-ask-road'
-        || prediction.releaseCandidate !== 'v105-shadow-v8-run-length-ask-road'
-        || prediction.formalStrategyVersion !== 'v105' || prediction.predictionTiming !== 'pre_result_context'
-        || prediction.shadowOnly !== true || prediction.activationEligible !== false
-        || prediction.memberVisible !== false || prediction.writesSideActions !== false
-        || !prediction.askRoadSignal || typeof prediction.askRoadSignal !== 'object') {
-        throw new Error('v105 shadow v8 issuance acknowledgement failed')
-      }
-      return structuredClone({ ...prediction, predictionId: acknowledgement.prediction_id, issuedAt: acknowledgement.prediction_issued_at })
-    },
-    async readV105ShadowV8Issuance({ source = SOURCE, tableId, shoe, round } = {}) {
-      const targetRound = Number(round)
-      if (!source || !tableId || shoe == null || !Number.isSafeInteger(targetRound) || targetRound < 1) return null
-      const rows = await getRest('v105_shadow_v8_issuances', {
-        select: 'id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,prediction_payload',
-        source: `eq.${source}`, table_id: `eq.${tableId}`, shoe_no: `eq.${shoe}`, round_no: `eq.${targetRound}`,
-        strategy_version: 'eq.v105-shadow-v8-run-length-ask-road', prediction_timing: 'eq.pre_result_context', prediction_issued_at: 'not.is.null', limit: '2',
-      }, { requestTimeoutMs: shadowTimeoutMs })
-      if (!Array.isArray(rows) || rows.length === 0) return null
-      if (rows.length !== 1) throw new Error('conflicting v105 shadow v8 issuance identity')
-      const row = rows[0]
-      const prediction = row?.prediction_payload
-      if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
-        || String(row.source) !== String(source) || String(row.table_id) !== String(tableId)
-        || String(row.shoe_no) !== String(shoe) || Number(row.round_no) !== targetRound
-        || row.strategy_version !== 'v105-shadow-v8-run-length-ask-road' || prediction.strategyVersion !== 'v105-shadow-v8-run-length-ask-road'
-        || row.prediction_timing !== 'pre_result_context' || !row.id || !row.prediction_issued_at) {
-        throw new Error('v105 shadow v8 issuance read failed')
-      }
-      return structuredClone({ ...prediction, predictionId: row.id, issuedAt: row.prediction_issued_at })
-    },
-    async settleV105ShadowV8Prediction(settlement = {}) {
-      const row = buildV104IterationShadowSettlementRpcRow(settlement)
-      const acknowledgement = await enqueueV105ShadowV8Write(row.table_id, () => postRest('rpc/settle_v105_shadow_v8_prediction', { p_settlement: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
-      if (String(acknowledgement?.prediction_id ?? '') !== String(settlement.predictionId ?? '')) throw new Error('v105 shadow v8 settlement acknowledgement failed')
-      return { ...acknowledgement, predictionId: acknowledgement.prediction_id }
-    },
-    async getV105ShadowV8Counters() {
-      const rows = await getRest('v105_shadow_v8_sequence_counters', {
-        select: 'settlement_count,main_action_count,tie_action_count,super_six_action_count,banker_dragon_action_count,player_dragon_action_count,banker_pair_action_count,player_pair_action_count,updated_at',
-        release_candidate: 'eq.v105-shadow-v8-run-length-ask-road', limit: '1',
-      }, { requestTimeoutMs: shadowTimeoutMs })
-      return Array.isArray(rows) && rows.length === 1 ? rows[0] : null
-    },
-    async getV105ShadowV8History({ perTableLimit = 60, requestTimeoutMs = shadowTimeoutMs } = {}) {
-      return readV105ShadowCompactHistory(
-        'v105-shadow-v8-run-length-ask-road', 'get_v105_shadow_v8_compact_history', perTableLimit, { requestTimeoutMs },
-      )
     },
     async issueV105ShadowV9Prediction(candidate = {}) {
       const row = buildV104IterationShadowIssuanceRpcRow(candidate)

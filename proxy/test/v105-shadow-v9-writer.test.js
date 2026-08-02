@@ -28,7 +28,7 @@ test('V9 writer uses only independent V9 RPCs, history, and a zeroed counter', a
   ])
 })
 
-test('a stalled V9 writer does not block formal, V7, or V8 writer calls', async () => {
+test('a stalled V9 writer does not block formal or V10 writer calls', async () => {
   let release
   const gate = new Promise((resolve) => { release = resolve })
   const client = createSupabaseIngestionClient({
@@ -39,19 +39,20 @@ test('a stalled V9 writer does not block formal, V7, or V8 writer calls', async 
         await gate
         return response({ prediction_id: 'v9', prediction_issued_at: '2026-07-29T01:00:00.000Z', prediction: candidate })
       }
-      if (path.endsWith('/rpc/issue_v105_shadow_v7_prediction')) return response({ prediction_id: 'v7', prediction_issued_at: '2026-07-29T01:00:00.000Z', prediction: { ...candidate, predictionId: 'v7', issuedAt: '2026-07-29T01:00:00.000Z', strategyVersion: 'v105-shadow-v7-ask-road', releaseCandidate: 'v105-shadow-v7-ask-road', askRoadSignal: {} } })
-      if (path.endsWith('/rpc/issue_v105_shadow_v8_prediction')) return response({ prediction_id: 'v8', prediction_issued_at: '2026-07-29T01:00:00.000Z', prediction: { ...candidate, predictionId: 'v8', issuedAt: '2026-07-29T01:00:00.000Z', strategyVersion: 'v105-shadow-v8-run-length-ask-road', releaseCandidate: 'v105-shadow-v8-run-length-ask-road', askRoadSignal: {} } })
+      if (path.endsWith('/rpc/issue_v105_shadow_v10_prediction')) {
+        const version = 'v105-shadow-v10-uncommon-road-structure'
+        return response({ prediction_id: 'v10', prediction_issued_at: '2026-07-29T01:00:00.000Z', prediction: { ...candidate, strategyVersion: version, releaseCandidate: version, structureDiagnostics: {} } })
+      }
       return response({ prediction_id: 'formal', prediction_issued_at: '2026-07-29T01:00:00.000Z', prediction: { ...candidate, predictionId: 'formal', issuedAt: '2026-07-29T01:00:00.000Z', strategyVersion: 'v105' } })
     },
   })
   const pendingV9 = client.issueV105ShadowV9Prediction(candidate)
   try {
     const formal = await client.issuePrediction({ ...candidate, strategyVersion: 'v105' })
-    const v7 = await client.issueV105ShadowV7Prediction({ ...candidate, strategyVersion: 'v105-shadow-v7-ask-road', releaseCandidate: 'v105-shadow-v7-ask-road' })
-    const v8 = await client.issueV105ShadowV8Prediction({ ...candidate, strategyVersion: 'v105-shadow-v8-run-length-ask-road', releaseCandidate: 'v105-shadow-v8-run-length-ask-road' })
+    const version = 'v105-shadow-v10-uncommon-road-structure'
+    const v10 = await client.issueV105ShadowV10Prediction({ ...candidate, strategyVersion: version, releaseCandidate: version, structureDiagnostics: {} })
     assert.equal(formal.predictionId, 'formal')
-    assert.equal(v7.predictionId, 'v7')
-    assert.equal(v8.predictionId, 'v8')
+    assert.equal(v10.predictionId, 'v10')
   } finally {
     release()
     await pendingV9

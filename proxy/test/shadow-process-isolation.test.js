@@ -41,10 +41,8 @@ test('shadow process IPC sends only runtime work and inherits the exact database
       V103_SHADOW_ENABLED: 'false',
       V104_SHADOW_ENABLED: 'false',
       V104_ITERATION_SHADOW_ENABLED: 'false',
-      V105_SHADOW_V6_ENABLED: 'true',
-      V105_SHADOW_V7_ENABLED: 'true',
-      V105_SHADOW_V8_ENABLED: 'true',
       V105_SHADOW_V9_ENABLED: 'true',
+      V105_SHADOW_V10_ENABLED: 'true',
       UNRELATED_PRIVATE_SECRET: 'omit',
     },
     forkImpl(_path, _args, options) {
@@ -54,7 +52,7 @@ test('shadow process IPC sends only runtime work and inherits the exact database
       return child
     },
   })
-  await client.runtime('v105', { enabled: true }).observeTable({ tableId: 'BAG01', shoe: 1, round: 2 })
+  await client.runtime('v105-v9', { enabled: true }).observeTable({ tableId: 'BAG01', shoe: 1, round: 2 })
   await client.processCapture({ tables: [{ tableId: 'BAG01' }], rounds: [{ tableId: 'BAG01', round: 3 }] })
 
   assert.equal(children.length, 1)
@@ -64,6 +62,10 @@ test('shadow process IPC sends only runtime work and inherits the exact database
   assert.equal(children[0].options.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS, '5678')
   assert.equal(children[0].options.env.V103_SHADOW_ENABLED, 'false')
   assert.equal(children[0].options.env.V105_SHADOW_V9_ENABLED, 'true')
+  assert.equal(children[0].options.env.V105_SHADOW_V10_ENABLED, 'true')
+  for (const key of ['V105_SHADOW_V6_ENABLED', 'V105_SHADOW_V7_ENABLED', 'V105_SHADOW_V8_ENABLED']) {
+    assert.equal(key in children[0].options.env, false)
+  }
   assert.equal('UNRELATED_PRIVATE_SECRET' in children[0].options.env, false)
   assert.doesNotMatch(JSON.stringify(children[0].sent), /SUPABASE_SERVICE_ROLE_KEY|UNRELATED_PRIVATE_SECRET/)
   assert.deepEqual(children[0].sent[0].payload, { tableId: 'BAG01', shoe: 1, round: 2 })
@@ -82,7 +84,7 @@ test('AbortSignal terminates the entire shadow child and the next durable retry 
       return child
     },
   })
-  const runtime = client.runtime('v105', { enabled: true })
+  const runtime = client.runtime('v105-v9', { enabled: true })
   const controller = new AbortController()
   const first = runtime.settleRound({ tableId: 'BAG01', shoe: 1, round: 2 }, { signal: controller.signal })
   await delay(0)
@@ -120,7 +122,7 @@ test('a stalled runtime hydration returns pending readiness without killing the 
     enabled: true,
     async start() { await new Promise(() => {}) },
   }
-  const runtimes = new Map([['v105-v8', stalledRuntime]])
+  const runtimes = new Map([['v105-v9', stalledRuntime]])
   const client = createShadowProcessClient({
     startupTimeoutMs: 20,
     killGraceMs: 5,
@@ -271,15 +273,13 @@ test('real shadow child boots, replies over IPC, and exits without any database 
       V103_SHADOW_ENABLED: 'false',
       V104_SHADOW_ENABLED: 'false',
       V104_ITERATION_SHADOW_ENABLED: 'false',
-      V105_SHADOW_V6_ENABLED: 'false',
-      V105_SHADOW_V7_ENABLED: 'false',
-      V105_SHADOW_V8_ENABLED: 'false',
       V105_SHADOW_V9_ENABLED: 'false',
+      V105_SHADOW_V10_ENABLED: 'false',
     },
     requestTimeoutMs: 5000,
   })
   await assert.rejects(
-    client.runtime('v105', { enabled: true }).observeTable({ tableId: 'BAG01', shoe: 1, round: 1 }),
+    client.runtime('v105-v9', { enabled: true }).observeTable({ tableId: 'BAG01', shoe: 1, round: 1 }),
     /disabled/i,
   )
   assert.equal(client.status().generation, 1)
@@ -457,11 +457,11 @@ test('pending or queued shadow hydration does not claim, consume an attempt, or 
     runtime(_key, { enabled }) {
       return { enabled, observeTable() {}, settleRound() {}, snapshot() { return { status: 'initializing' } } }
     },
-    async prepare() { return { enabled: 7, prepared: 6, pending: 1, queued: 0, failed: 0, disabled: 0 } },
+    async prepare() { return { enabled: 5, prepared: 4, pending: 1, queued: 0, failed: 0, disabled: 0 } },
     async processCapture() {
-      const error = new Error('shadow runtime batch failed (v105-v8:hydrate:not_ready)')
+      const error = new Error('shadow runtime batch failed (v105-v10:hydrate:not_ready)')
       error.code = 'SHADOW_RUNTIME_BATCH_FAILED'
-      error.diagnostics = [{ runtime: 'v105-v8', stage: 'hydrate', code: 'not_ready' }]
+      error.diagnostics = [{ runtime: 'v105-v10', stage: 'hydrate', code: 'not_ready' }]
       throw error
     },
     status() {

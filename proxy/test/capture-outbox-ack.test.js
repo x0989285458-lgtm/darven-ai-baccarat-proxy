@@ -141,7 +141,7 @@ test('shadow work must settle before a timed-out lease is failed for retry', asy
       async readIssuedPrediction() { return null },
     },
     v100FormalRuntime: { enabled: false },
-    v105ShadowRuntime: {
+    v105ShadowV9Runtime: {
       enabled: true,
       async observeTable() {},
       async settleRound() { await settlementGate },

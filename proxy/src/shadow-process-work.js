@@ -1,7 +1,4 @@
 const EXPECTED_SETTLEMENT_NOOPS = new Map([
-  ['v105', 'v105 shadow settlement has no immutable issuance'],
-  ['v105-v7', 'v105 shadow v7 settlement has no immutable issuance'],
-  ['v105-v8', 'v105 shadow v8 settlement has no immutable issuance'],
   ['v105-v9', 'v105 shadow v9 settlement has no immutable issuance'],
   ['v105-v10', 'v105 shadow v10 settlement has no immutable issuance'],
 ])
