@@ -8,6 +8,7 @@ const EXPECTED_SETTLEMENT_NOOPS = new Map([
 const NON_BLOCKING_RUNTIME_KEYS = new Set(['v105-v10'])
 const MAX_CONCURRENT_RUNTIME_OPERATIONS = 9
 const MAX_QUEUED_BEST_EFFORT_CAPTURES = 2
+const MAX_MERGED_BEST_EFFORT_IDENTITIES = 2000
 const hydrationStates = new WeakMap()
 const hydrationSchedulers = new WeakMap()
 const bestEffortSchedulers = new WeakMap()
@@ -66,7 +67,9 @@ export async function processShadowCapture(runtimes, payload = {}) {
       else summary.settled += 1
     }
   })
-  await enqueueBestEffortCapture(runtimes, bestEffortEntries, tables, rounds)
+  const bestEffort = await enqueueBestEffortCapture(runtimes, bestEffortEntries, tables, rounds)
+  if (bestEffort.coalesced > 0) summary.bestEffortCoalesced = bestEffort.coalesced
+  if (bestEffort.rejected > 0) summary.bestEffortRejected = bestEffort.rejected
   return summary
 }
 
@@ -76,10 +79,15 @@ async function runBestEffortCapture(entries, tables, rounds) {
 }
 
 async function enqueueBestEffortCapture(runtimes, entries, tables, rounds) {
-  if (entries.length === 0 || (tables.length === 0 && rounds.length === 0)) return
+  if (entries.length === 0 || (tables.length === 0 && rounds.length === 0)) return { coalesced: 0, rejected: 0 }
   const scheduler = bestEffortScheduler(runtimes)
   if (scheduler.queue.length >= MAX_QUEUED_BEST_EFFORT_CAPTURES) {
-    await new Promise((resolve) => scheduler.capacityWaiters.push(resolve))
+    const pending = scheduler.queue[scheduler.queue.length - 1]
+    const mergedTables = mergeBestEffortIdentities(pending.tables, tables, tableObservationIdentity)
+    const mergedRounds = mergeBestEffortIdentities(pending.rounds, rounds, settlementIdentity)
+    pending.tables = mergedTables.items
+    pending.rounds = mergedRounds.items
+    return { coalesced: 1, rejected: mergedTables.rejected + mergedRounds.rejected }
   }
   scheduler.queue.push({
     entries: entries.slice(),
@@ -87,12 +95,13 @@ async function enqueueBestEffortCapture(runtimes, entries, tables, rounds) {
     rounds: structuredClone(rounds),
   })
   pumpBestEffortScheduler(scheduler)
+  return { coalesced: 0, rejected: 0 }
 }
 
 function bestEffortScheduler(runtimes) {
   let scheduler = bestEffortSchedulers.get(runtimes)
   if (!scheduler) {
-    scheduler = { queue: [], active: null, capacityWaiters: [] }
+    scheduler = { queue: [], active: null }
     bestEffortSchedulers.set(runtimes, scheduler)
   }
   return scheduler
@@ -102,11 +111,36 @@ function pumpBestEffortScheduler(scheduler) {
   if (scheduler.active || scheduler.queue.length === 0) return
   const job = scheduler.queue.shift()
   scheduler.active = job
-  scheduler.capacityWaiters.shift()?.()
   void runBestEffortWithRetry(job).finally(() => {
     if (scheduler.active === job) scheduler.active = null
     pumpBestEffortScheduler(scheduler)
   })
+}
+
+function mergeBestEffortIdentities(existing, incoming, identity) {
+  const merged = new Map()
+  for (const item of existing) merged.set(identity(item), structuredClone(item))
+  for (const item of incoming) merged.set(identity(item), structuredClone(item))
+  let rejected = 0
+  while (merged.size > MAX_MERGED_BEST_EFFORT_IDENTITIES) {
+    merged.delete(merged.keys().next().value)
+    rejected += 1
+  }
+  return { items: [...merged.values()], rejected }
+}
+
+function tableObservationIdentity(table = {}) {
+  return JSON.stringify([
+    String(table.source ?? 'ofalive99'), String(table.tableId ?? ''),
+    String(table.shoe ?? ''), Number(table.round) + 1,
+  ])
+}
+
+function settlementIdentity(round = {}) {
+  return JSON.stringify([
+    String(round.source ?? 'ofalive99'), String(round.tableId ?? ''),
+    String(round.shoe ?? ''), Number(round.round),
+  ])
 }
 
 async function runBestEffortWithRetry(job) {

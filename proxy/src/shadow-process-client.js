@@ -255,7 +255,7 @@ function createRemoteError(value) {
 function safeResult(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const allowed = {}
-  for (const key of ['enabled', 'prepared', 'pending', 'queued', 'failed', 'disabled', 'observed', 'settled', 'noops']) {
+  for (const key of ['enabled', 'prepared', 'pending', 'queued', 'failed', 'disabled', 'observed', 'settled', 'noops', 'bestEffortCoalesced', 'bestEffortRejected']) {
     if (Number.isSafeInteger(value[key]) && value[key] >= 0) allowed[key] = value[key]
   }
   return allowed

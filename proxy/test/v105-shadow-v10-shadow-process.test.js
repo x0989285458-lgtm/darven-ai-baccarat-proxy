@@ -64,7 +64,7 @@ test('a stalled V10 capture runs best-effort without delaying the existing shado
   }
 })
 
-test('bounded V10 backlog backpressures only after capacity and preserves every issuance plus later Final', async (t) => {
+test('bounded V10 backlog coalesces after capacity without blocking parent ACK and preserves every issuance plus later Final', async (t) => {
   let releaseV10
   let firstWrite = true
   const v10Gate = new Promise((resolve) => { releaseV10 = resolve })
@@ -122,10 +122,11 @@ test('bounded V10 backlog backpressures only after capacity and preserves every 
   assert.deepEqual(seen.v9, [21, 22, 23, 24])
   assert.deepEqual(seen.v10, [21])
   const fourthBeforeRelease = await Promise.race([
-    captures[3].then(() => 'resolved'),
-    new Promise((resolve) => setTimeout(() => resolve('pending'), 30)),
+    captures[3],
+    new Promise((_, reject) => setTimeout(() => reject(new Error('V10 capacity blocked parent acknowledgement')), 100)),
   ])
-  assert.equal(fourthBeforeRelease, 'pending')
+  assert.equal(fourthBeforeRelease.bestEffortCoalesced, 1)
+  assert.equal(fourthBeforeRelease.bestEffortRejected ?? 0, 0)
 
   releaseV10()
   await Promise.all(captures)
