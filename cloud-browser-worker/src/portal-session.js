@@ -350,9 +350,17 @@ async function clickTextAndCapturePopup(context, page, text, timeoutMs) {
     }
   }
   if (!locator || !await locator.isVisible().catch(() => false)) throw new Error('required portal game link was not found')
-  const popupPromise = context.waitForEvent('page', { timeout: Math.min(1500, timeoutMs) }).catch(() => null)
-  await locator.click()
-  return (await popupPromise) ?? page
+  const clickAndReadPopup = async () => {
+    const popupPromise = context.waitForEvent('page', { timeout: Math.min(1500, timeoutMs) }).catch(() => null)
+    await locator.click()
+    return (await popupPromise) ?? page
+  }
+  try {
+    return await clickAndReadPopup()
+  } catch {
+    await closeAnnouncement(page)
+    return clickAndReadPopup()
+  }
 }
 
 function normalizeAllowedHosts(values) {
