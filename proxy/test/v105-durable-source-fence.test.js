@@ -405,6 +405,7 @@ test('release manifest freezes DB-first cutover through fenced finalize and brow
     'v6-v8-retirement-catalog-acl-readback',
     'database-additive',
     'database-catalog-acl-readback',
+    'capture-outbox-health-active-only-migration',
     'proxy-compatible',
     'new-api-worker',
     'durable-source-readback',
