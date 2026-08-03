@@ -1,8 +1,8 @@
 {
   "releaseName": "v105 影子V10大路非常見規律版",
-  "releaseVersion": "v105-shadow-v10.11",
-  "gitTag": "v105-shadow-v10.11",
-  "applicationVersion": "1.0.48",
+  "releaseVersion": "v105-shadow-v10.12",
+  "gitTag": "v105-shadow-v10.12",
+  "applicationVersion": "1.0.49",
   "formalStrategyVersion": "v105",
   "applicationVersionChanged": true,
   "releaseScope": {
@@ -138,7 +138,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "5c9c9cf8e1b574f5f6bd10c98b136f3e675c5f7462f8a272246acc2898aeb867"
+      "sha256": "25832ed7c4773d25a5a80c487d53b2f86a450fbe95d6fdeb2064916d5087530f"
     },
     "migration": {
       "algorithm": "sha256",
@@ -160,7 +160,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "ef9b92e8a1e409dbe40ce1d1862faf48c9be13eec67af8626362da02809736d5"
+      "sha256": "b0aeb5e9a8e0bacf4d6a1d72a188574104d151673fca4f9725f75389f5240c0f"
     },
     "workerBuildInput": {
       "algorithm": "sha256",
@@ -173,7 +173,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "6c0e2ecd5a289eabd8d60ffcce92dac757be87f822ec54c9ab4c9abfdc2dc26e"
+      "sha256": "525acc256a57ec5427804c1b2dc8ff0459c7838fab49334aa5a2bf97f1943bcf"
     },
     "attestation": {
       "externalFileRequired": true,

@@ -144,6 +144,61 @@ test('portal MT opening waits for the live-category animation to settle before c
   assert.ok(waitedMs >= 3000)
 })
 
+test('portal MT opening closes a delayed announcement overlay after entering the live category', async () => {
+  const popup = { waitForLoadState: async () => {} }
+  let liveOpened = false
+  let delayedOverlayClosed = false
+  let resolvePopup
+  const popupEvent = new Promise((resolve) => { resolvePopup = resolve })
+  const closeNode = {
+    isVisible: async () => liveOpened && !delayedOverlayClosed,
+    click: async () => { delayedOverlayClosed = true },
+  }
+  const closeControl = {
+    count: async () => 1,
+    first: () => closeNode,
+    last: () => closeNode,
+    nth: () => closeNode,
+  }
+  const hidden = {
+    count: async () => 0,
+    first: () => hidden,
+    last: () => hidden,
+    nth: () => hidden,
+    isVisible: async () => false,
+    click: async () => {},
+  }
+  const liveControl = {
+    count: async () => 1,
+    first: () => liveControl,
+    last: () => liveControl,
+    nth: () => liveControl,
+    isVisible: async () => true,
+    click: async () => { liveOpened = true },
+  }
+  const mtControl = {
+    count: async () => 1,
+    first: () => mtControl,
+    last: () => mtControl,
+    nth: () => mtControl,
+    waitFor: async () => {},
+    isVisible: async () => liveOpened,
+    click: async () => {
+      assert.equal(delayedOverlayClosed, true, '延遲公告遮罩必須在點MT真人前關閉')
+      resolvePopup(popup)
+    },
+  }
+  const portal = {
+    getByText: (text) => text === 'MT真人' ? mtControl : text === '真人' ? liveControl : hidden,
+    getByRole: () => closeControl,
+    locator: () => closeControl,
+    waitForTimeout: async () => {},
+  }
+  const context = { waitForEvent: async () => popupEvent }
+
+  assert.equal(await openPortalMtPage({ context, portalPage: portal, timeoutMs: 5000 }), popup)
+})
+
 test('portal MT opening accepts same-tab navigation', async () => {
   const portal = fakePage('https://ag001.3a1788.bet/', { sameTabUrl: 'https://mt.example/game' })
   const context = fakeContext([null])
