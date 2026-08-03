@@ -1,7 +1,7 @@
 {
   "releaseName": "v105 影子V10非常見路型結構版",
-  "releaseVersion": "v105-shadow-v10.7",
-  "gitTag": "v105-shadow-v10.7",
+  "releaseVersion": "v105-shadow-v10.8",
+  "gitTag": "v105-shadow-v10.8",
   "applicationVersion": "1.0.45",
   "formalStrategyVersion": "v105",
   "applicationVersionChanged": true,
@@ -72,7 +72,7 @@
       "catalogAclReadbackRequired": true
     },
     "shadowV10Migration": {
-      "path": "supabase/migrations/20260802010000_v105_shadow_v10.sql",
+      "path": "supabase/migrations/20260803093000_v105_shadow_v10_hydration_millisecond_order.sql",
       "serviceRoleOnly": true,
       "catalogAclReadbackRequired": true
     },
@@ -119,6 +119,7 @@
         "supabase/migrations/20260801162200_v105_shadow_v9_hydration_millisecond_order.sql",
         "supabase/migrations/20260802010000_v105_shadow_v10.sql",
         "supabase/migrations/20260802020000_retire_v105_shadow_v6_v8.sql",
+        "supabase/migrations/20260803093000_v105_shadow_v10_hydration_millisecond_order.sql",
         "scripts/verify-v105-mt-api-release.mjs",
         "scripts/trusted-registry-readback-adapter.mjs",
         "release/v105-mt-api-source-fence-release-manifest.json",
@@ -128,7 +129,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "e85dd83635f8f6b4353290595e0db367e3ce610e0785efa0c52155783102579a"
+      "sha256": "fafe1cb2f1f612bce23be917c561d4915edfa487d56f873ceb28cb0e177397b0"
     },
     "migration": {
       "algorithm": "sha256",
@@ -178,8 +179,8 @@
     },
     "shadowV10Migration": {
       "algorithm": "sha256",
-      "path": "supabase/migrations/20260802010000_v105_shadow_v10.sql",
-      "sha256": "665bc2a184cab287e2210309daa1262813f3945adb8f88b92634ef3fa387710e"
+      "path": "supabase/migrations/20260803093000_v105_shadow_v10_hydration_millisecond_order.sql",
+      "sha256": "98044e70dad6c6f82a42f5d003b1b7ee4bb0ea40a437627e1b9600e6008bd278"
     },
     "shadowV6V8RetirementMigration": {
       "algorithm": "sha256",

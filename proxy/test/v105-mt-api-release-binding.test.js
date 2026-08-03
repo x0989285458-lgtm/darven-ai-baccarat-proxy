@@ -13,8 +13,8 @@ import {
 import * as releaseVerifier from '../../scripts/verify-v105-mt-api-release.mjs'
 
 test('release scope freezes one existing session as API-only canonical capture', () => {
-  assert.equal(manifest.releaseVersion, 'v105-shadow-v10.7')
-  assert.equal(manifest.gitTag, 'v105-shadow-v10.7')
+  assert.equal(manifest.releaseVersion, 'v105-shadow-v10.8')
+  assert.equal(manifest.gitTag, 'v105-shadow-v10.8')
   assert.equal(manifest.applicationVersion, '1.0.45')
   assert.deepEqual(manifest.releaseScope, {
     mode: 'single-session-api-primary',
@@ -69,7 +69,7 @@ test('release scope freezes one existing session as API-only canonical capture',
     independentCounterStartsAt: 0,
     fixedFormalTableAllowlist: true,
   })
-  assert.equal(manifest.releaseBinding.shadowV10Migration.path, 'supabase/migrations/20260802010000_v105_shadow_v10.sql')
+  assert.equal(manifest.releaseBinding.shadowV10Migration.path, 'supabase/migrations/20260803093000_v105_shadow_v10_hydration_millisecond_order.sql')
   assert.equal(manifest.releaseBinding.shadowV6V8RetirementMigration.path, 'supabase/migrations/20260802020000_retire_v105_shadow_v6_v8.sql')
 })
 
