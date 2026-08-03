@@ -1,7 +1,7 @@
 {
   "releaseName": "v105 影子V10非常見路型結構版",
-  "releaseVersion": "v105-shadow-v10.5",
-  "gitTag": "v105-shadow-v10.5",
+  "releaseVersion": "v105-shadow-v10.6",
+  "gitTag": "v105-shadow-v10.6",
   "applicationVersion": "1.0.44",
   "formalStrategyVersion": "v105",
   "applicationVersionChanged": false,
@@ -128,7 +128,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "12ec35afb7b92b7d9a628982396f0980ee0554fa2adb7a7528309b4289fc24e1"
+      "sha256": "beb726ebf347b31858331253fe92234be6303ce65d5e3eec03e1c1cc95500b99"
     },
     "migration": {
       "algorithm": "sha256",
@@ -145,7 +145,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "7ffe79c95d771439c470a69104644793693b0ca5c3e56aea0fdfd465b3f7a9e9"
+      "sha256": "f78523e99171585622fa34e47bc2825581e484d2674002a875715f1049340cb9"
     },
     "workerBuildInput": {
       "algorithm": "sha256",

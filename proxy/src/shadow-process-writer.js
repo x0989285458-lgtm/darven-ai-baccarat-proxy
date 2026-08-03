@@ -19,7 +19,7 @@ export function createShadowProcessWriter({
     fetchImpl,
     requireVerifiedStrategy,
     dbConnectionString: env.SUPABASE_DB_CONNECTION_STRING,
-    strategyPoolMax: scope === 'required' ? 1 : 10,
+    strategyPoolMax: scope === 'required' ? 3 : 10,
     requestTimeoutMs: Number(env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000),
     durableWriteRequestTimeoutMs: Number(env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000),
   }
