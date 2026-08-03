@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildV105ShadowV9Prediction, V105_SHADOW_V9_WEIGHTS } from '../src/v105-shadow-v9-contract.js'
 
-const VERSION = 'v105-shadow-v10-uncommon-road-structure'
+const VERSION = 'v105-shadow-v10-big-road-uncommon-structure'
 const SIDE_HEADS = ['tie', 'superSix', 'bankerDragon', 'playerDragon', 'bankerPair', 'playerPair']
 const baseTable = {
   tableId: 'BAG01', shoe: 105, round: 20,
@@ -35,6 +35,55 @@ test('V10 neutral structure preserves V9 direction ordering and exact direction'
   assert.equal(Math.sign(v10.scoreTotals.banker - v10.scoreTotals.player), Math.sign(v9.scoreTotals.banker - v9.scoreTotals.player))
   assert.equal(v10.predictedResult, v9.predictedResult)
   assert.equal(v10.v9BaseDirection, v9.predictedResult)
+})
+
+test('V10 main prediction is invariant to missing, arbitrary, or contradictory bead plate input', async () => {
+  const { buildV105ShadowV10MainTable, buildV105ShadowV10Prediction } = await import('../src/v105-shadow-v10-contract.js')
+  const table = { ...baseTable, bigRoadRaw: 'B#P,P#B,B#P#B,B#P,P' }
+  const variants = [
+    { ...table, beadPlateRaw: '', nextBankerRaw: { bead_plate: '', big: 'B#P' }, nextPlayerRaw: { bead: '', big: 'B#P' } },
+    { ...table, beadPlateRaw: '0101010101010101', nextBankerRaw: { bead_plate: 'BBBB', big: 'B#P' }, nextPlayerRaw: { bead: 'PPPP', big: 'B#P' } },
+    { ...table, beadPlateRaw: '0202020202020202', nextBankerRaw: { beadPlateRaw: 'PPPP', big: 'B#P' }, nextPlayerRaw: { beadPlate: 'BBBB', big: 'B#P' } },
+    { ...table, bead_plate2: '01020201', beadPlateRaw: 'malformed-conflict', nextBankerRaw: { bead: 'BPBP', big: 'B#P' }, nextPlayerRaw: { bead_plate: 'PBPB', big: 'B#P' } },
+  ]
+  for (const variant of variants) {
+    const sanitized = buildV105ShadowV10MainTable(variant)
+    const beadKeys = []
+    const visit = (value) => {
+      if (Array.isArray(value)) return value.forEach(visit)
+      if (!value || typeof value !== 'object') return
+      for (const [key, nested] of Object.entries(value)) {
+        if (['bead', 'beadplate', 'beadplateraw', 'beadplate2'].includes(key.toLowerCase().replace(/[^a-z0-9]/g, ''))) beadKeys.push(key)
+        visit(nested)
+      }
+    }
+    visit(sanitized)
+    assert.deepEqual(beadKeys, [])
+    assert.equal(sanitized.bigRoadRaw, table.bigRoadRaw)
+    assert.equal(sanitized.nextBankerRaw.big, 'B#P')
+    assert.equal(sanitized.nextPlayerRaw.big, 'B#P')
+  }
+  const projectMain = (prediction) => ({
+    predictedResult: prediction.predictedResult,
+    confidence: prediction.confidence,
+    v9BaseDirection: prediction.v9BaseDirection,
+    sameSideStreak: prediction.sameSideStreak,
+    featureWeights: prediction.featureWeights,
+    scoreSources: prediction.scoreSources,
+    scoreTotals: prediction.scoreTotals,
+    signals: prediction.signals,
+    main: prediction.heads.main,
+    structureDiagnostics: prediction.structureDiagnostics,
+  })
+  const expected = projectMain(buildV105ShadowV10Prediction(variants[0]))
+  for (const variant of variants.slice(1)) {
+    assert.deepEqual(projectMain(buildV105ShadowV10Prediction(variant)), expected)
+  }
+  for (const variant of variants) {
+    const v9 = buildV105ShadowV9Prediction(variant)
+    const v10 = buildV105ShadowV10Prediction(variant)
+    for (const head of SIDE_HEADS) assert.deepEqual(v10.heads[head], v9.heads[head])
+  }
 })
 
 test('V10 eligible structure contributes only its ten-percent directional score and persists diagnostics', async () => {

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-const VERSION = 'v105-shadow-v10-uncommon-road-structure'
+const VERSION = 'v105-shadow-v10-big-road-uncommon-structure'
 const TABLE_IDS = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
 const table = (tableId = 'BAG01', round = 20) => ({
   tableId, shoe: 105, round, bankerCount: 12, playerCount: 8,
@@ -41,7 +41,7 @@ test('V10 independently issues only the fixed ten tables', async () => {
   await Promise.all(TABLE_IDS.map((tableId) => runtime.observeTable(table(tableId))))
   assert.deepEqual(store.candidates.map((candidate) => candidate.targetTableId), TABLE_IDS)
   assert.equal(await runtime.observeTable(table('BAG04')), null)
-  assert.equal(runtime.snapshot().historySource, 'v105_shadow_v10_only')
+  assert.equal(runtime.snapshot().historySource, 'v105_shadow_v10_big_road_only')
 })
 
 test('V10 restart hydrates only its own compact history and never rebuilds pending issuance', async () => {

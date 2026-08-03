@@ -205,7 +205,7 @@ export function createV105ShadowV10Runtime({
       strategyVersion: V105_SHADOW_V10_VERSION,
       status,
       error,
-      historySource: 'v105_shadow_v10_only',
+      historySource: 'v105_shadow_v10_big_road_only',
       historyRows: historyRows.length,
       pendingIssuances: issuances.size,
       queuedObservations: [...tableQueueDepths.values()].reduce((sum, depth) => sum + depth, 0),

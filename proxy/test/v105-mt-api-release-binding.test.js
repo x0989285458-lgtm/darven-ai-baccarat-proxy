@@ -13,9 +13,9 @@ import {
 import * as releaseVerifier from '../../scripts/verify-v105-mt-api-release.mjs'
 
 test('release scope freezes one existing session as API-only canonical capture', () => {
-  assert.equal(manifest.releaseVersion, 'v105-shadow-v10.8')
-  assert.equal(manifest.gitTag, 'v105-shadow-v10.8')
-  assert.equal(manifest.applicationVersion, '1.0.45')
+  assert.equal(manifest.releaseVersion, 'v105-shadow-v10.9')
+  assert.equal(manifest.gitTag, 'v105-shadow-v10.9')
+  assert.equal(manifest.applicationVersion, '1.0.46')
   assert.deepEqual(manifest.releaseScope, {
     mode: 'single-session-api-primary',
     canonicalSource: 'api',
@@ -58,7 +58,7 @@ test('release scope freezes one existing session as API-only canonical capture',
   assert.equal(manifest.releaseBinding.shadowHydrationMigration.path, 'supabase/migrations/20260801162200_v105_shadow_v9_hydration_millisecond_order.sql')
   assert.equal(manifest.releaseBinding.shadowHydrationMigration.sha256, '1532547446c46a94373f1b4758f1b464798b3d5583f4a73492c83000a662a974')
   assert.deepEqual(manifest.shadowV10, {
-    strategyVersion: 'v105-shadow-v10-uncommon-road-structure',
+    strategyVersion: 'v105-shadow-v10-big-road-uncommon-structure',
     runtimeFlag: 'V105_SHADOW_V10_ENABLED=true',
     v9WeightShare: 0.9,
     structureWeightShare: 0.1,
@@ -68,8 +68,13 @@ test('release scope freezes one existing session as API-only canonical capture',
     memberVisible: false,
     independentCounterStartsAt: 0,
     fixedFormalTableAllowlist: true,
+    inputSource: 'authoritative-big-road-only',
+    beadPlateUsed: false,
+    oldV10EvidencePreserved: true,
   })
-  assert.equal(manifest.releaseBinding.shadowV10Migration.path, 'supabase/migrations/20260803093000_v105_shadow_v10_hydration_millisecond_order.sql')
+  assert.equal(manifest.releaseBinding.shadowV10Migration.path, 'supabase/migrations/20260803113000_v105_shadow_v10_big_road.sql')
+  assert.equal(manifest.releaseBinding.captureOutboxHealthMigration.path, 'supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql')
+  assert.equal(manifest.releaseBinding.captureOutboxHealthMigration.sha256, 'c539a3539768999373662680960814dc1d10918d1e096d9e8192c51363fd6c15')
   assert.equal(manifest.releaseBinding.shadowV6V8RetirementMigration.path, 'supabase/migrations/20260802020000_retire_v105_shadow_v6_v8.sql')
 })
 
@@ -83,8 +88,15 @@ test('release manifest freezes current implementation, migration, proxy, and wor
   assert.match(manifest.releaseBinding.proxyBuildInput.sha256, /^[a-f0-9]{64}$/)
   assert.match(manifest.releaseBinding.workerBuildInput.sha256, /^[a-f0-9]{64}$/)
   assert.equal(result.shadowHydrationMigrationSha256, manifest.releaseBinding.shadowHydrationMigration.sha256)
+  assert.equal(result.captureOutboxHealthMigrationSha256, manifest.releaseBinding.captureOutboxHealthMigration.sha256)
   assert.equal(result.shadowV10MigrationSha256, manifest.releaseBinding.shadowV10Migration.sha256)
   assert.equal(result.shadowV6V8RetirementMigrationSha256, manifest.releaseBinding.shadowV6V8RetirementMigration.sha256)
+  const outboxHealthTampered = structuredClone(manifest)
+  outboxHealthTampered.releaseBinding.captureOutboxHealthMigration.sha256 = '0'.repeat(64)
+  await assert.rejects(
+    verifyManifestDigests({ manifest: outboxHealthTampered, repoRoot, candidateIndexTree }),
+    /capture_outbox_health_migration_digest_mismatch/,
+  )
   const v10Tampered = structuredClone(manifest)
   v10Tampered.releaseBinding.shadowV10Migration.sha256 = '0'.repeat(64)
   await assert.rejects(

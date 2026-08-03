@@ -1,20 +1,11 @@
-import {
-  analyzeFiveRoadCycles,
-  decodeBeadOutcomeSequence,
-} from './v105-road-cycle.js'
-
 export function analyzeV105ShadowV10UncommonRoadStructure(table = {}) {
   const fallbackFields = Array.isArray(table?.roadFallbackFields) ? table.roadFallbackFields : []
   if (table?.roadSource === 'real_round_fallback' || fallbackFields.includes('bigRoadRaw')) {
     return neutral('authoritative_big_road_required')
   }
 
-  const roadValidation = analyzeFiveRoadCycles(table)
-  if (roadValidation?.main?.source !== 'chronological_bead_reconstructed_big_road') {
-    return neutral(roadValidation?.main?.invalidReason ?? 'authoritative_road_input_invalid')
-  }
-
-  const runs = buildRuns(decodeBeadOutcomeSequence(table?.beadPlateRaw))
+  const runs = decodeAuthoritativeBigRoadRuns(table?.bigRoadRaw)
+  if (runs.length === 0) return neutral('big_road_missing_or_invalid')
   if (runs.length < 4) return neutral('insufficient_run_history', runs)
 
   const candidates = findMotifCandidates(runs.map((run) => run.length))
@@ -89,7 +80,7 @@ function diagnosticFromCandidate(candidateValue, runs) {
     eligible: true,
     direction: continuing ? current.side : opposite(current.side),
     reason: continuing ? 'current_run_below_motif_target' : 'completed_repeated_motif',
-    source: 'chronological_bead_reconstructed_big_road',
+    source: 'authoritative_big_road_only',
     motifRunLengths: [...candidateValue.motifRunLengths],
     repeats: candidateValue.repeats,
     phaseIndex: candidateValue.phaseIndex,
@@ -119,13 +110,58 @@ function neutral(reason, runs = [], candidateValue = null) {
   })
 }
 
-function buildRuns(outcomes) {
-  return outcomes.reduce((runs, side) => {
-    const previous = runs.at(-1)
-    if (previous?.side === side) previous.length += 1
-    else runs.push({ side, length: 1 })
-    return runs
-  }, [])
+function decodeAuthoritativeBigRoadRuns(raw = '') {
+  const layout = decodeBigRoadLayout(raw)
+  if (!layout) return []
+  const used = new Set()
+  const runs = []
+  let previousSide = null
+  for (let column = 0; column <= layout.maxColumn; column += 1) {
+    const startKey = `${column}:0`
+    const side = layout.cells.get(startKey)
+    if (!side || used.has(startKey)) continue
+    if (side === previousSide) return []
+    let currentColumn = column
+    let currentRow = 0
+    let length = 0
+    while (true) {
+      const key = `${currentColumn}:${currentRow}`
+      if (layout.cells.get(key) !== side || used.has(key)) break
+      used.add(key)
+      length += 1
+      const below = `${currentColumn}:${currentRow + 1}`
+      const right = `${currentColumn + 1}:${currentRow}`
+      if (currentRow < 5 && layout.cells.get(below) === side && !used.has(below)) currentRow += 1
+      else if (layout.cells.get(right) === side && !used.has(right)) currentColumn += 1
+      else break
+    }
+    runs.push({ side, length })
+    previousSide = side
+  }
+  return used.size === layout.cells.size ? runs : []
+}
+
+function decodeBigRoadLayout(raw = '') {
+  const text = String(raw ?? '')
+  if (!text) return null
+  const cells = new Map()
+  const columns = text.split('#')
+  for (const [columnIndex, column] of columns.entries()) {
+    const values = column.split(',')
+    if (values.length > 6) return null
+    for (const [rowIndex, cell] of values.entries()) {
+      const value = cell.trim()
+      if (!value) continue
+      const side = value === 'B' || (/^\d{2,6}$/.test(value) && value.endsWith('2'))
+        ? 'banker'
+        : value === 'P' || (/^\d{2,6}$/.test(value) && value.endsWith('1'))
+          ? 'player'
+          : null
+      if (!side) return null
+      cells.set(`${columnIndex}:${rowIndex}`, side)
+    }
+  }
+  return cells.size ? { cells, maxColumn: columns.length - 1 } : null
 }
 
 function isUncommonMotif(motif) {

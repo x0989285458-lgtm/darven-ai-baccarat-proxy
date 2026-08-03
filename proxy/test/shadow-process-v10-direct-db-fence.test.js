@@ -4,7 +4,7 @@ import { createSupabaseIngestionClient } from '../src/supabase-writer.js'
 import { DIRECT_DATABASE_ENV_KEYS } from '../src/shadow-process-env.js'
 import { createShadowProcessWriter } from '../src/shadow-process-writer.js'
 
-const VERSION = 'v105-shadow-v10-uncommon-road-structure'
+const VERSION = 'v105-shadow-v10-big-road-uncommon-structure'
 const candidate = {
   source: 'ofalive99', strategyVersion: VERSION, releaseCandidate: VERSION, formalStrategyVersion: 'v105',
   predictionTiming: 'pre_result_context', shadowOnly: true, activationEligible: false, memberVisible: false,
@@ -84,14 +84,14 @@ test('V10 scoped worker uses only PostgREST and RPC for issuance, read, Final, c
     fetchImpl: async (url) => {
       const path = new URL(url).pathname
       requests.push(path)
-      if (path.endsWith('/rpc/issue_v105_shadow_v10_prediction')) {
+      if (path.endsWith('/rpc/issue_v105_shadow_v10_big_road_prediction')) {
         return response({ prediction_id: 'v10-id', prediction_issued_at: '2026-08-02T01:00:00.000Z', prediction: candidate })
       }
-      if (path.endsWith('/v105_shadow_v10_issuances')) {
+      if (path.endsWith('/v105_shadow_v10_big_road_issuances')) {
         return response([{ id: 'v10-id', source: 'ofalive99', table_id: 'BAG01', shoe_no: '105', round_no: 21, strategy_version: VERSION, prediction_timing: 'pre_result_context', prediction_issued_at: '2026-08-02T01:00:00.000Z', prediction_payload: candidate }])
       }
-      if (path.endsWith('/rpc/settle_v105_shadow_v10_prediction')) return response({ prediction_id: 'v10-id', settlement_sequence: 1 })
-      if (path.endsWith('/v105_shadow_v10_sequence_counters')) return response([{ settlement_count: 1 }])
+      if (path.endsWith('/rpc/settle_v105_shadow_v10_big_road_prediction')) return response({ prediction_id: 'v10-id', settlement_sequence: 1 })
+      if (path.endsWith('/v105_shadow_v10_big_road_sequence_counters')) return response([{ settlement_count: 1 }])
       return response([])
     },
   })
@@ -102,10 +102,10 @@ test('V10 scoped worker uses only PostgREST and RPC for issuance, read, Final, c
   assert.equal((await writer.getV105ShadowV10Counters()).settlement_count, 1)
   assert.deepEqual(await writer.getV105ShadowV10History(), [])
   assert.deepEqual(requests, [
-    '/rest/v1/rpc/issue_v105_shadow_v10_prediction',
-    '/rest/v1/v105_shadow_v10_issuances',
-    '/rest/v1/rpc/settle_v105_shadow_v10_prediction',
-    '/rest/v1/v105_shadow_v10_sequence_counters',
-    '/rest/v1/rpc/get_v105_shadow_v10_compact_history',
+    '/rest/v1/rpc/issue_v105_shadow_v10_big_road_prediction',
+    '/rest/v1/v105_shadow_v10_big_road_issuances',
+    '/rest/v1/rpc/settle_v105_shadow_v10_big_road_prediction',
+    '/rest/v1/v105_shadow_v10_big_road_sequence_counters',
+    '/rest/v1/rpc/get_v105_shadow_v10_big_road_compact_history',
   ])
 })

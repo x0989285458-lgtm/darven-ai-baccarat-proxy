@@ -78,6 +78,12 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
   if (!binding) throw new Error('release_binding_missing')
   const implementation = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.implementationTree, 'implementation_tree')
   const migration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, { algorithm: binding.migration.algorithm, paths: [binding.migration.path], excludedPaths: [], sha256: binding.migration.sha256 }, 'migration')
+  const captureOutboxHealthMigration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, {
+    algorithm: binding.captureOutboxHealthMigration?.algorithm,
+    paths: [binding.captureOutboxHealthMigration?.path],
+    excludedPaths: [],
+    sha256: binding.captureOutboxHealthMigration?.sha256,
+  }, 'capture_outbox_health_migration')
   const shadowHydrationMigration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, {
     algorithm: binding.shadowHydrationMigration?.algorithm,
     paths: [binding.shadowHydrationMigration?.path],
@@ -102,6 +108,17 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
   for (const required of ['release/v105-mt-api-source-fence-release-manifest.json', 'release/attestations']) {
     if (!exclusions.includes(required)) throw new Error(`implementation_tree_self_reference_not_excluded:${required}`)
   }
+  const captureOutboxHealth = manifest?.database?.captureOutboxHealthMigration
+  const captureOutboxHealthIndex = manifest?.deploymentOrder?.indexOf('capture-outbox-health-active-only-migration') ?? -1
+  const proxyIndex = manifest?.deploymentOrder?.indexOf('proxy-compatible') ?? -1
+  if (captureOutboxHealth?.path !== binding.captureOutboxHealthMigration?.path
+    || captureOutboxHealth?.rpc !== 'public.get_v105_capture_outbox_health()'
+    || captureOutboxHealth?.completedHistoryExcluded !== true
+    || captureOutboxHealth?.serviceRoleOnly !== true
+    || captureOutboxHealthIndex < 0 || proxyIndex <= captureOutboxHealthIndex
+    || !binding.implementationTree.paths?.includes(captureOutboxHealth.path)) {
+    throw new Error('capture_outbox_health_migration_contract_invalid')
+  }
   verifyTrustedEvidenceContract(binding)
   verifyV9ShadowRollbackContract(manifest, binding)
   verifyV10ShadowRollbackContract(manifest, binding)
@@ -110,6 +127,7 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
     ok: true,
     implementationTreeSha256: implementation.sha256,
     migrationSha256: migration.sha256,
+    captureOutboxHealthMigrationSha256: captureOutboxHealthMigration.sha256,
     shadowHydrationMigrationSha256: shadowHydrationMigration.sha256,
     shadowV10MigrationSha256: shadowV10Migration.sha256,
     shadowV6V8RetirementMigrationSha256: shadowV6V8RetirementMigration.sha256,

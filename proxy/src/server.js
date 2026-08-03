@@ -1062,8 +1062,10 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       if (Buffer.byteLength(rawBody, 'utf8') > 1024 * 1024) return jsonResponse(413, { ok: false, error: 'payload_too_large' }, frontendOrigin)
       try {
         const envelope = parseJsonBody(rawBody)
-        const validatedRoundKeys = validateIngestEnvelope(envelope, now())
         const usesDurableOutbox = typeof supabaseClient?.persistCaptureEnvelope === 'function'
+        const validatedRoundKeys = validateIngestEnvelope(envelope, now(), {
+          allowAgedFencedEnvelope: usesDurableOutbox && (requireFencedIngest || envelope.source != null),
+        })
         let fencedSource = null
         if (requireFencedIngest || envelope.source != null) {
           try {
@@ -2417,7 +2419,7 @@ function createLeaseDeadline(timeoutMs, message = 'outbox work deadline exceeded
   }
 }
 
-function validateIngestEnvelope(envelope, currentTime) {
+function validateIngestEnvelope(envelope, currentTime, { allowAgedFencedEnvelope = false } = {}) {
   if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) throw new Error('invalid payload')
   if (envelope.protocolVersion !== WORKER_PROTOCOL_VERSION) {
     const error = new Error('version_mismatch')
@@ -2427,7 +2429,10 @@ function validateIngestEnvelope(envelope, currentTime) {
     throw error
   }
   const timestamp = Number(envelope.timestamp)
-  if (!Number.isFinite(timestamp) || Math.abs(Number(currentTime) - timestamp) > 5 * 60 * 1000) {
+  const timestampAgeMs = Number(currentTime) - timestamp
+  if (!Number.isFinite(timestamp)
+    || timestampAgeMs < -5 * 60 * 1000
+    || (!allowAgedFencedEnvelope && timestampAgeMs > 5 * 60 * 1000)) {
     const error = new Error('timestamp outside allowed window')
     error.statusCode = 409
     throw error

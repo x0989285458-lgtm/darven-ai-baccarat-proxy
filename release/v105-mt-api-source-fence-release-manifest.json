@@ -1,8 +1,8 @@
 {
-  "releaseName": "v105 影子V10非常見路型結構版",
-  "releaseVersion": "v105-shadow-v10.8",
-  "gitTag": "v105-shadow-v10.8",
-  "applicationVersion": "1.0.45",
+  "releaseName": "v105 影子V10大路非常見規律版",
+  "releaseVersion": "v105-shadow-v10.9",
+  "gitTag": "v105-shadow-v10.9",
+  "applicationVersion": "1.0.46",
   "formalStrategyVersion": "v105",
   "applicationVersionChanged": true,
   "releaseScope": {
@@ -54,6 +54,7 @@
     "v6-v8-retirement-catalog-acl-readback",
     "database-additive",
     "database-catalog-acl-readback",
+    "capture-outbox-health-active-only-migration",
     "proxy-compatible",
     "new-api-worker",
     "durable-source-readback",
@@ -72,9 +73,15 @@
       "catalogAclReadbackRequired": true
     },
     "shadowV10Migration": {
-      "path": "supabase/migrations/20260803093000_v105_shadow_v10_hydration_millisecond_order.sql",
+      "path": "supabase/migrations/20260803113000_v105_shadow_v10_big_road.sql",
       "serviceRoleOnly": true,
       "catalogAclReadbackRequired": true
+    },
+    "captureOutboxHealthMigration": {
+      "path": "supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql",
+      "rpc": "public.get_v105_capture_outbox_health()",
+      "completedHistoryExcluded": true,
+      "serviceRoleOnly": true
     },
     "shadowV6V8RetirementMigration": {
       "path": "supabase/migrations/20260802020000_retire_v105_shadow_v6_v8.sql",
@@ -120,6 +127,8 @@
         "supabase/migrations/20260802010000_v105_shadow_v10.sql",
         "supabase/migrations/20260802020000_retire_v105_shadow_v6_v8.sql",
         "supabase/migrations/20260803093000_v105_shadow_v10_hydration_millisecond_order.sql",
+        "supabase/migrations/20260803113000_v105_shadow_v10_big_road.sql",
+        "supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql",
         "scripts/verify-v105-mt-api-release.mjs",
         "scripts/trusted-registry-readback-adapter.mjs",
         "release/v105-mt-api-source-fence-release-manifest.json",
@@ -129,12 +138,17 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "fafe1cb2f1f612bce23be917c561d4915edfa487d56f873ceb28cb0e177397b0"
+      "sha256": "98b30586f30e0be7534c0fc10ea2832e765c02834b0ffcb9885f6a75a5d4917b"
     },
     "migration": {
       "algorithm": "sha256",
       "path": "supabase/migrations/20260731010000_v105_capture_source_fence.sql",
       "sha256": "aa4730458d093c08275eaa4c0d3e9b87b2088de3da9b302890615edf0b7dbc89"
+    },
+    "captureOutboxHealthMigration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql",
+      "sha256": "c539a3539768999373662680960814dc1d10918d1e096d9e8192c51363fd6c15"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -146,7 +160,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "48cf5e8ed0a4694330c3f4ed8cc12861edb20450cff697b81906882899169b1a"
+      "sha256": "88372cac7ece8ecf8670e5f1776f54b8ab2b5c698ff6a21311ef839912a7070a"
     },
     "workerBuildInput": {
       "algorithm": "sha256",
@@ -159,7 +173,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "af876754bf59c165fa7fb21820d90a5110966172bd907a4dd36b43927e0f8d8a"
+      "sha256": "e1440ab642b33a3835ceb2cb0cc1cce9aaa978259729a81e98f3e496911e8e2f"
     },
     "attestation": {
       "externalFileRequired": true,
@@ -179,8 +193,8 @@
     },
     "shadowV10Migration": {
       "algorithm": "sha256",
-      "path": "supabase/migrations/20260803093000_v105_shadow_v10_hydration_millisecond_order.sql",
-      "sha256": "98044e70dad6c6f82a42f5d003b1b7ee4bb0ea40a437627e1b9600e6008bd278"
+      "path": "supabase/migrations/20260803113000_v105_shadow_v10_big_road.sql",
+      "sha256": "c262f3be1fd824a42303ee957c9d4c9205cec9cca9c6de8de9a0bd24e052b5d2"
     },
     "shadowV6V8RetirementMigration": {
       "algorithm": "sha256",
@@ -318,7 +332,7 @@
     "versionChanged": true
   },
   "shadowV10": {
-    "strategyVersion": "v105-shadow-v10-uncommon-road-structure",
+    "strategyVersion": "v105-shadow-v10-big-road-uncommon-structure",
     "runtimeFlag": "V105_SHADOW_V10_ENABLED=true",
     "v9WeightShare": 0.9,
     "structureWeightShare": 0.1,
@@ -327,7 +341,10 @@
     "preservesSidePredictions": true,
     "memberVisible": false,
     "independentCounterStartsAt": 0,
-    "fixedFormalTableAllowlist": true
+    "fixedFormalTableAllowlist": true,
+    "inputSource": "authoritative-big-road-only",
+    "beadPlateUsed": false,
+    "oldV10EvidencePreserved": true
   },
   "shadowHydrationHotfix": {
     "strategyVersion": "v105-shadow-v9-weighted-v7-v8",

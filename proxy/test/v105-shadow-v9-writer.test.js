@@ -39,8 +39,8 @@ test('a stalled V9 writer does not block formal or V10 writer calls', async () =
         await gate
         return response({ prediction_id: 'v9', prediction_issued_at: '2026-07-29T01:00:00.000Z', prediction: candidate })
       }
-      if (path.endsWith('/rpc/issue_v105_shadow_v10_prediction')) {
-        const version = 'v105-shadow-v10-uncommon-road-structure'
+      if (path.endsWith('/rpc/issue_v105_shadow_v10_big_road_prediction')) {
+        const version = 'v105-shadow-v10-big-road-uncommon-structure'
         return response({ prediction_id: 'v10', prediction_issued_at: '2026-07-29T01:00:00.000Z', prediction: { ...candidate, strategyVersion: version, releaseCandidate: version, structureDiagnostics: {} } })
       }
       return response({ prediction_id: 'formal', prediction_issued_at: '2026-07-29T01:00:00.000Z', prediction: { ...candidate, predictionId: 'formal', issuedAt: '2026-07-29T01:00:00.000Z', strategyVersion: 'v105' } })
@@ -49,7 +49,7 @@ test('a stalled V9 writer does not block formal or V10 writer calls', async () =
   const pendingV9 = client.issueV105ShadowV9Prediction(candidate)
   try {
     const formal = await client.issuePrediction({ ...candidate, strategyVersion: 'v105' })
-    const version = 'v105-shadow-v10-uncommon-road-structure'
+    const version = 'v105-shadow-v10-big-road-uncommon-structure'
     const v10 = await client.issueV105ShadowV10Prediction({ ...candidate, strategyVersion: version, releaseCandidate: version, structureDiagnostics: {} })
     assert.equal(formal.predictionId, 'formal')
     assert.equal(v10.predictionId, 'v10')

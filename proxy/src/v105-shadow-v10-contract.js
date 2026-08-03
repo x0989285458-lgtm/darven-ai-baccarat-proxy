@@ -6,7 +6,7 @@ import {
 } from './v105-shadow-v9-contract.js'
 import { analyzeV105ShadowV10UncommonRoadStructure } from './v105-shadow-v10-structure.js'
 
-export const V105_SHADOW_V10_VERSION = 'v105-shadow-v10-uncommon-road-structure'
+export const V105_SHADOW_V10_VERSION = 'v105-shadow-v10-big-road-uncommon-structure'
 export const V105_SHADOW_V10_RELEASE = V105_SHADOW_V10_VERSION
 export const V105_SHADOW_V10_TABLE_IDS = V105_SHADOW_V9_TABLE_IDS
 export const V105_SHADOW_V10_WEIGHTS = Object.freeze({
@@ -18,8 +18,10 @@ export const V105_SHADOW_V10_WEIGHTS = Object.freeze({
 })
 
 export function buildV105ShadowV10Prediction(table = {}, historyRows = [], issuanceContext = {}) {
-  const v9 = buildV105ShadowV9Prediction(table, mapHistory(historyRows), issuanceContext)
-  const structureDiagnostics = analyzeV105ShadowV10UncommonRoadStructure(table)
+  const beadIndependentTable = buildV105ShadowV10MainTable(table)
+  const v9 = buildV105ShadowV9Prediction(beadIndependentTable, mapHistory(historyRows), issuanceContext)
+  const v9SideHeads = buildV105ShadowV9Prediction(table, mapHistory(historyRows), issuanceContext).heads
+  const structureDiagnostics = analyzeV105ShadowV10UncommonRoadStructure(beadIndependentTable)
   const signals = {
     ...structuredClone(v9.signals),
     uncommonRoadStructure: structuredClone(structureDiagnostics),
@@ -43,7 +45,7 @@ export function buildV105ShadowV10Prediction(table = {}, historyRows = [], issua
   const confidence = Math.max(30, Math.min(70, Math.round(30 + Math.abs(scoreTotals.banker - scoreTotals.player) * 100)))
   const main = {
     ...structuredClone(v9.heads.main),
-    sourceVersion: 'v10-uncommon-road-structure',
+    sourceVersion: 'v10-big-road-uncommon-structure',
     predictedResult,
     structureEligible: structureDiagnostics.eligible,
   }
@@ -55,13 +57,29 @@ export function buildV105ShadowV10Prediction(table = {}, historyRows = [], issua
     predictedResult,
     confidence,
     sameSideStreak,
-    heads: { ...structuredClone(v9.heads), main },
+    heads: { ...structuredClone(v9SideHeads), main },
     featureWeights: { ...V105_SHADOW_V10_WEIGHTS },
     scoreSources,
     scoreTotals,
     signals,
     structureDiagnostics: structuredClone(structureDiagnostics),
   })
+}
+
+export function buildV105ShadowV10MainTable(table = {}) {
+  return stripBeadPlateFields(structuredClone(table))
+}
+
+function stripBeadPlateFields(value) {
+  if (Array.isArray(value)) return value.map(stripBeadPlateFields)
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(Object.entries(value).flatMap(([key, nested]) => (
+    isBeadPlateKey(key) ? [] : [[key, stripBeadPlateFields(nested)]]
+  )))
+}
+
+function isBeadPlateKey(key) {
+  return ['bead', 'beadplate', 'beadplateraw', 'beadplate2'].includes(String(key).toLowerCase().replace(/[^a-z0-9]/g, ''))
 }
 
 export function buildV105ShadowV10Settlement(round = {}, issued = {}) {
