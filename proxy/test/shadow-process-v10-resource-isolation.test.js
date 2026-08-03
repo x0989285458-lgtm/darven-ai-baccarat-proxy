@@ -125,7 +125,7 @@ test('required and V10 lanes fork distinct PIDs with fail-closed scopes and V10 
   await disabled.stop()
 })
 
-test('real required and V10 workers run as two distinct OS processes without database access', async (t) => {
+test('real required and V10 workers stay process-isolated and V10 fails closed without database access', async (t) => {
   const client = createShadowProcessClient({
     env: enabledEnv({
       V105_SHADOW_V9_ENABLED: 'false',
@@ -139,7 +139,8 @@ test('real required and V10 workers run as two distinct OS processes without dat
   })
   t.after(() => client.stop().catch(() => {}))
 
-  await Promise.all([client.prepareRequired(), client.prepareV10()])
+  await client.prepareRequired()
+  await assert.rejects(client.prepareV10(), /shadow runtime batch failed/)
   const status = client.status()
   assert.equal(status.required.scope, 'required')
   assert.equal(status.v105V10.scope, 'v105-v10')
@@ -230,6 +231,45 @@ test('V10 stall keeps one IPC active, queues two, coalesces the fourth immediate
   await client.stop()
 })
 
+test('V10 capture stays queued until V10 preparation is fully ready', async () => {
+  const children = []
+  let prepareRequest = null
+  let captureRequest = null
+  const client = createShadowProcessClient({
+    env: enabledEnv(),
+    requestTimeoutMs: 5000,
+    forkImpl: scopedFork(children, {
+      required(child, message) {
+        child.respond(message, { result: { observed: 1, settled: 0, noops: 0 } })
+      },
+      'v105-v10'(child, message) {
+        if (message.kind === 'prepare') {
+          prepareRequest = { child, message }
+          return
+        }
+        captureRequest = { child, message }
+        child.respond(message, { result: { observed: 1, settled: 0, noops: 0 } })
+      },
+    }),
+  })
+
+  await client.processCapture({
+    tables: [{ source: 'ofalive99', tableId: 'BAG01', shoe: 105, round: 20 }],
+    rounds: [],
+  })
+  await waitFor(() => prepareRequest !== null, 'V10 preparation was not started')
+  assert.equal(captureRequest, null)
+  assert.equal(client.status().v105V10.lane.active, 1)
+
+  prepareRequest.child.respond(prepareRequest.message, {
+    result: { enabled: 1, prepared: 1, pending: 0, queued: 0, failed: 0, disabled: 0 },
+  })
+  await waitFor(() => captureRequest !== null, 'V10 capture did not start after preparation')
+  await waitFor(() => client.status().v105V10.lane.completed === 1, 'V10 capture did not complete')
+  assert.equal(client.status().v105V10.lane.failed, 0)
+  await client.stop()
+})
+
 test('V10 lane enforces a 2000-identity ceiling without growing IPC pending', async () => {
   const children = []
   const client = createShadowProcessClient({
@@ -263,6 +303,7 @@ test('V10 timeout, crash, and DB saturation never change required capture succes
       const client = createShadowProcessClient({
         env: enabledEnv(),
         requestTimeoutMs: 15,
+        startupTimeoutMs: 15,
         killGraceMs: 2,
         killConfirmMs: 100,
         forkImpl: scopedFork(children, {

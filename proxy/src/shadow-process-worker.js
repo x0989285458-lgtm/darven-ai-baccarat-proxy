@@ -5,7 +5,7 @@ import { createV104IterationShadowRuntime, resolveV104IterationShadowEnabled } f
 import { createV105ShadowV9Runtime, resolveV105ShadowV9Enabled } from './v105-shadow-v9-runtime.js'
 import { createV105ShadowV10Runtime, resolveV105ShadowV10Enabled } from './v105-shadow-v10-runtime.js'
 import { createShadowProcessWriter } from './shadow-process-writer.js'
-import { prepareShadowRuntimes, processShadowCapture } from './shadow-process-work.js'
+import { prepareShadowRuntimes, processShadowCapture, waitForShadowRuntimesReady } from './shadow-process-work.js'
 
 const RUNTIME_SCOPE = String(process.env.SHADOW_PROCESS_RUNTIME_SCOPE ?? '')
 const RUNTIME_SCOPE_ALLOWLIST = new Set(['required', 'v105-v10'])
@@ -58,7 +58,9 @@ process.on('message', async (message) => {
   try {
     let result = null
     if (message.kind === 'prepare') {
-      result = await prepareShadowRuntimes(runtimes, workOptions)
+      result = RUNTIME_SCOPE === 'v105-v10'
+        ? await waitForShadowRuntimesReady(runtimes, workOptions)
+        : await prepareShadowRuntimes(runtimes, workOptions)
     } else if (message.kind === 'capture') {
       result = await processShadowCapture(runtimes, structuredClone(message.payload), workOptions)
     } else {

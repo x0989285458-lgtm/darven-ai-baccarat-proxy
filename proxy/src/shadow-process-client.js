@@ -267,6 +267,8 @@ export function createShadowProcessClient({
   })
   let stopping = false
   let v10PreparePromise = null
+  let v10PreparedGeneration = 0
+  let v10Readiness = null
   const v10Queue = []
   let v10Active = null
   const v10LaneMetrics = {
@@ -284,10 +286,21 @@ export function createShadowProcessClient({
 
   function prepareV10(options = {}) {
     if (!v10Enabled) return Promise.resolve(structuredClone(DISABLED_READINESS))
+    const processStatus = v10ProcessLane.status()
+    if (v10Readiness && processStatus.running === true && processStatus.generation === v10PreparedGeneration) {
+      return Promise.resolve(structuredClone(v10Readiness))
+    }
     if (v10PreparePromise) return v10PreparePromise
-    v10PreparePromise = v10ProcessLane.prepare(options).finally(() => {
-      v10PreparePromise = null
-    })
+    v10PreparePromise = v10ProcessLane.prepare(options)
+      .then((readiness) => {
+        if (!isFullyPrepared(readiness)) throw new Error('V10 shadow process preparation is incomplete')
+        v10PreparedGeneration = v10ProcessLane.status().generation
+        v10Readiness = structuredClone(readiness)
+        return readiness
+      })
+      .finally(() => {
+        v10PreparePromise = null
+      })
     return v10PreparePromise
   }
 
@@ -344,7 +357,8 @@ export function createShadowProcessClient({
     if (stopping || v10Active || v10Queue.length === 0) return
     const job = v10Queue.shift()
     v10Active = job
-    void v10ProcessLane.processCapture(job.payload)
+    void prepareV10()
+      .then(() => v10ProcessLane.processCapture(job.payload))
       .then(() => { v10LaneMetrics.completed += 1 })
       .catch(() => { v10LaneMetrics.failed += 1 })
       .finally(() => {
@@ -427,6 +441,16 @@ export function createShadowProcessClient({
     stopV10,
     status,
   }
+}
+
+function isFullyPrepared(readiness) {
+  return readiness && typeof readiness === 'object' && !Array.isArray(readiness)
+    && ['enabled', 'prepared', 'pending', 'queued', 'failed']
+      .every((key) => Number.isSafeInteger(readiness[key]) && readiness[key] >= 0)
+    && readiness.prepared === readiness.enabled
+    && readiness.pending === 0
+    && readiness.queued === 0
+    && readiness.failed === 0
 }
 
 function mergeV10Payload(target, incoming, identities) {

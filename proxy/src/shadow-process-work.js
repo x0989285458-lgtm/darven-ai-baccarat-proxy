@@ -38,6 +38,22 @@ export function prepareShadowRuntimes(runtimes, { nonBlockingRuntimeKeys = NON_B
   }
 }
 
+export async function waitForShadowRuntimesReady(runtimes, options = {}) {
+  for (;;) {
+    const readiness = prepareShadowRuntimes(runtimes, options)
+    if (readiness.prepared === readiness.enabled
+      && readiness.pending === 0
+      && readiness.queued === 0
+      && readiness.failed === 0) return readiness
+
+    const pending = enabledRuntimeEntries(runtimes)
+      .map(([, runtime]) => hydrationStates.get(runtime)?.promise)
+      .filter(Boolean)
+    if (pending.length > 0) await Promise.allSettled(pending)
+    else await new Promise((resolve) => setImmediate(resolve))
+  }
+}
+
 export async function processShadowCapture(runtimes, payload = {}, { nonBlockingRuntimeKeys = NON_BLOCKING_RUNTIME_KEYS } = {}) {
   const entries = enabledRuntimeEntries(runtimes)
   const requiredEntries = entries.filter(([runtimeKey]) => !nonBlockingRuntimeKeys.has(runtimeKey))

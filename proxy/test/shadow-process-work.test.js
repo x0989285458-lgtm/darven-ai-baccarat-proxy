@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { processShadowCapture, prepareShadowRuntimes } from '../src/shadow-process-work.js'
+import { processShadowCapture, prepareShadowRuntimes, waitForShadowRuntimesReady } from '../src/shadow-process-work.js'
 import { createV105ShadowV9Runtime } from '../src/v105-shadow-v9-runtime.js'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -13,6 +13,30 @@ function runtime({ enabled = true, start, observeTable, settleRound } = {}) {
     settleRound: settleRound ?? (async () => null),
   }
 }
+
+test('wait-ready preparation does not return while hydration is pending', async () => {
+  let releaseHydration
+  let settled = false
+  const runtimes = new Map([['v105-v10', runtime({
+    async start() {
+      await new Promise((resolve) => { releaseHydration = resolve })
+    },
+  })]])
+
+  const preparation = waitForShadowRuntimesReady(runtimes, { nonBlockingRuntimeKeys: new Set() })
+    .then((value) => {
+      settled = true
+      return value
+    })
+  await delay(0)
+  assert.equal(settled, false)
+  assert.equal(typeof releaseHydration, 'function')
+
+  releaseHydration()
+  assert.deepEqual(await preparation, {
+    enabled: 1, prepared: 1, pending: 0, queued: 0, failed: 0, disabled: 0,
+  })
+})
 
 test('cold hydration is scheduled one runtime at a time in map order with queued readiness', async () => {
   const calls = []
