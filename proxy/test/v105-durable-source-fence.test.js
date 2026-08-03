@@ -154,6 +154,23 @@ test('unfenced compatibility writer keeps using the legacy RPC during DB-first t
   assert.deepEqual(paths, ['/rest/v1/rpc/persist_v105_capture_envelope'])
 })
 
+test('durable fenced ingest accepts an aged queue head because DB fence and sequence provide replay safety', async () => {
+  const durable = createDurableFenceFake()
+  const app = createApp({
+    autoConnect: false,
+    ingestKey: 'worker-key',
+    now: () => 1_000_000 + 10 * 60 * 1000,
+    requireFencedIngest: true,
+    supabaseClient: durable.writer,
+  })
+
+  const response = await app.inject(captureRequest(source(54), 54))
+
+  assert.equal(response.statusCode, 200)
+  assert.equal(durable.current.epoch, 54)
+  assert.equal(durable.persistCalls, 1)
+})
+
 test('durable DB fence rejects stale and split-brain sources across fresh app instances without local ACK/state writes', async () => {
   const durable = createDurableFenceFake()
   const createFreshApp = () => createApp({

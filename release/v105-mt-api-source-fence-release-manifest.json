@@ -1,7 +1,7 @@
 {
-  "releaseName": "v105 影子V10非常見路型結構版",
-  "releaseVersion": "v105-shadow-v10.8",
-  "gitTag": "v105-shadow-v10.8",
+  "releaseName": "v105 Outbox持久化與耐久補送修復版",
+  "releaseVersion": "v105-outbox-hotfix.1",
+  "gitTag": "v105-outbox-hotfix.1",
   "applicationVersion": "1.0.45",
   "formalStrategyVersion": "v105",
   "applicationVersionChanged": true,
@@ -54,6 +54,7 @@
     "v6-v8-retirement-catalog-acl-readback",
     "database-additive",
     "database-catalog-acl-readback",
+    "capture-outbox-health-active-only-migration",
     "proxy-compatible",
     "new-api-worker",
     "durable-source-readback",
@@ -81,6 +82,12 @@
       "dropsOnlyRetiredV6V8Objects": true,
       "preservesV9V10AndFormalV105": true,
       "catalogAclReadbackRequired": true
+    },
+    "captureOutboxHealthMigration": {
+      "path": "supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql",
+      "rpc": "public.get_v105_capture_outbox_health()",
+      "completedHistoryExcluded": true,
+      "serviceRoleOnly": true
     }
   },
   "proxy": {
@@ -120,6 +127,7 @@
         "supabase/migrations/20260802010000_v105_shadow_v10.sql",
         "supabase/migrations/20260802020000_retire_v105_shadow_v6_v8.sql",
         "supabase/migrations/20260803093000_v105_shadow_v10_hydration_millisecond_order.sql",
+        "supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql",
         "scripts/verify-v105-mt-api-release.mjs",
         "scripts/trusted-registry-readback-adapter.mjs",
         "release/v105-mt-api-source-fence-release-manifest.json",
@@ -129,7 +137,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "fafe1cb2f1f612bce23be917c561d4915edfa487d56f873ceb28cb0e177397b0"
+      "sha256": "16034bc0a25ca3b5a63effa37c233971920f15d379a085f5dc90af12964a19bc"
     },
     "migration": {
       "algorithm": "sha256",
@@ -146,7 +154,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "48cf5e8ed0a4694330c3f4ed8cc12861edb20450cff697b81906882899169b1a"
+      "sha256": "1e15051013e2e5c118f836c82b7d0322eeea147a74b2a99a17e712fcb045bf71"
     },
     "workerBuildInput": {
       "algorithm": "sha256",
