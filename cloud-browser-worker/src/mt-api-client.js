@@ -17,6 +17,7 @@ export function createMtApiClient({
   reconnectDelayMs = 3_000,
   reconnectMaxDelayMs = 30_000,
   connectTimeoutMs = 15_000,
+  authenticateTimeoutMs = connectTimeoutMs,
   tablesRefreshTimeoutMs = 10_000,
   heartbeatMs = 5_000,
   setTimeoutFn = setTimeout,
@@ -68,6 +69,7 @@ export function createMtApiClient({
       joinRequested: { game: false, chat: false },
       joined: { game: false, chat: false },
       openTimers: { game: null, chat: null },
+      authTimers: { game: null, chat: null },
       pendingTables: null,
       tablesRefreshRequestedAtMs: null,
       lastMessageAt: null,
@@ -100,6 +102,17 @@ export function createMtApiClient({
       current.openTimers[kind] = null
       current.opened[kind] = true
       send(socket, authenticatePacket(kind, current.sessionValue))
+      const authTimeout = Math.max(0, Number(authenticateTimeoutMs) || 0)
+      if (authTimeout > 0) {
+        current.authTimers[kind] = setTimeoutFn(() => {
+          current.authTimers[kind] = null
+          if (!isCurrent(current) || current.authenticated[kind]) return
+          const reason = `mt_authenticate_timeout:${kind}`
+          handleError(new Error(reason))
+          void refreshGeneration(current, { reason })
+        }, authTimeout)
+        current.authTimers[kind]?.unref?.()
+      }
     })
     socket.on('message', (raw) => {
       current.messageChain = current.messageChain
@@ -131,6 +144,8 @@ export function createMtApiClient({
         return
       }
       current.authenticated[kind] = true
+      clearTimeoutFn(current.authTimers[kind])
+      current.authTimers[kind] = null
       send(current[kind], memberPacket(kind))
       if (kind === 'game') requestTables(current)
       joinWhenReady(current)
@@ -315,6 +330,12 @@ export function createMtApiClient({
       clearTimeoutFn(current.openTimers.chat)
       current.openTimers.game = null
       current.openTimers.chat = null
+    }
+    if (current?.authTimers) {
+      clearTimeoutFn(current.authTimers.game)
+      clearTimeoutFn(current.authTimers.chat)
+      current.authTimers.game = null
+      current.authTimers.chat = null
     }
     current?.game?.close?.()
     current?.chat?.close?.()

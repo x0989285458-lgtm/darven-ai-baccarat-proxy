@@ -680,6 +680,34 @@ test('socket open timeout closes a hung generation and reconnects both sockets',
   client.stop()
 })
 
+test('socket authentication timeout closes both sockets, refreshes once, and starts one fresh generation', async () => {
+  const timers = createManualTimers()
+  const errors = []
+  let refreshes = 0
+  const harness = createHarness({
+    connectTimeoutMs: 15_000,
+    authenticateTimeoutMs: 15_000,
+    setTimeoutFn: timers.setTimeout,
+    clearTimeoutFn: timers.clearTimeout,
+    refresh: async () => { refreshes += 1 },
+    onError: (error) => errors.push(String(error)),
+  })
+  const client = createMtApiClient(harness.options)
+  await client.start()
+  harness.openAll()
+  assert.equal(timers.activeCount(), 2)
+
+  await timers.runNext()
+  await harness.flush(2)
+
+  assert.equal(refreshes, 1)
+  assert.equal(harness.socketAt(0).closed, true)
+  assert.equal(harness.socketAt(1).closed, true)
+  assert.equal(harness.sockets.length, 4)
+  assert.ok(errors.some((error) => error.includes('mt_authenticate_timeout:game')))
+  client.stop()
+})
+
 test('failed auth refresh remains stopped with no reconnect generation', async () => {
   const harness = createHarness({ refresh: async () => { throw new Error('refresh-failed') } })
   const client = createMtApiClient(harness.options)
@@ -698,7 +726,8 @@ test('failed auth refresh remains stopped with no reconnect generation', async (
 function createHarness({
   onFinal = async () => {}, onTables = async () => {}, onError = () => {}, refresh = async () => {},
   getSessionToken = async () => 'opaque-session-value', nextEventSource, now = Date.now,
-  reconnectDelayMs = 0, reconnectMaxDelayMs, connectTimeoutMs = 0, tablesRefreshTimeoutMs, setTimeoutFn, clearTimeoutFn,
+  reconnectDelayMs = 0, reconnectMaxDelayMs, connectTimeoutMs = 0, authenticateTimeoutMs = connectTimeoutMs,
+  tablesRefreshTimeoutMs, setTimeoutFn, clearTimeoutFn,
   socketFailureCalls = [], sourceOwner,
 } = {}) {
   const sockets = []
@@ -727,6 +756,7 @@ function createHarness({
     now,
     reconnectDelayMs,
     connectTimeoutMs,
+    authenticateTimeoutMs,
     ...(tablesRefreshTimeoutMs == null ? {} : { tablesRefreshTimeoutMs }),
     ...(reconnectMaxDelayMs == null ? {} : { reconnectMaxDelayMs }),
     setTimeoutFn: setTimeoutFn ?? ((fn) => { queueMicrotask(fn); return fn }),
