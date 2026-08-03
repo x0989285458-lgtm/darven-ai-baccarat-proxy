@@ -35,6 +35,47 @@ test('v105 runtime hydrates v104 predecessor history, keeps v105 identity, and e
   assert.equal(prediction.diagnostics.roadCycles.main.direction, 'banker')
 })
 
+test('v105 runtime accepts an identical current issuance after restart hydration without advancing its streak twice', async () => {
+  const hydrated = {
+    prediction_id: 'existing-current', strategy_version: 'v105', prediction_timing: 'pre_result_context',
+    prediction_issued_at: '2026-08-03T16:17:44.000Z', settlement_final: false,
+    table_id: 'BAG09', shoe_no: '4337', round_no: 12, predicted_result: 'banker', same_side_streak: 2,
+  }
+  const runtime = createV105FormalRuntime({
+    writer: { configured: true, async getV105FormalHistory() { return [hydrated] } },
+  })
+  await runtime.start()
+  assert.doesNotThrow(() => runtime.recordIssuance({
+    predictionId: 'existing-current', issuedAt: hydrated.prediction_issued_at,
+    strategyVersion: 'v105', predictionTiming: 'pre_result_context',
+    source: 'ofalive99', targetTableId: 'BAG09', targetShoe: '4337', targetRound: 12,
+    predictedResult: 'banker', sameSideStreak: 2,
+    baselineV104PredictedResult: 'banker', baselineV104SameSideStreak: 2,
+  }))
+  assert.deepEqual(runtime.snapshot().lastIssuanceByTable.BAG09, {
+    shoe: '4337', direction: 'banker', sameSideStreak: 2, round: 12,
+  })
+})
+
+test('v105 runtime rejects a conflicting duplicate current issuance after restart hydration', async () => {
+  const hydrated = {
+    prediction_id: 'existing-current', strategy_version: 'v105', prediction_timing: 'pre_result_context',
+    prediction_issued_at: '2026-08-03T16:17:44.000Z', settlement_final: false,
+    table_id: 'BAG09', shoe_no: '4337', round_no: 12, predicted_result: 'banker', same_side_streak: 2,
+  }
+  const runtime = createV105FormalRuntime({
+    writer: { configured: true, async getV105FormalHistory() { return [hydrated] } },
+  })
+  await runtime.start()
+  assert.throws(() => runtime.recordIssuance({
+    predictionId: 'different-id', issuedAt: hydrated.prediction_issued_at,
+    strategyVersion: 'v105', predictionTiming: 'pre_result_context',
+    source: 'ofalive99', targetTableId: 'BAG09', targetShoe: '4337', targetRound: 12,
+    predictedResult: 'banker', sameSideStreak: 3,
+    baselineV104PredictedResult: 'banker', baselineV104SameSideStreak: 3,
+  }), /streak acknowledgement mismatch/)
+})
+
 test('failed v105 hydration is circuit-broken instead of hammering the database on every worker retry', async () => {
   let calls = 0
   let nowMs = 1000

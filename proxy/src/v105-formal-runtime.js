@@ -70,12 +70,33 @@ export function createV105FormalRuntime({ writer = null, requestTimeoutMs = 6000
     const shoe = String(issued.targetShoe ?? '')
     const round = Number(issued.targetRound)
     const direction = String(issued.baselineV104PredictedResult ?? issued.predictedResult)
+    const issuedStreak = Number(issued.baselineV104SameSideStreak ?? issued.sameSideStreak)
+    const sameTarget = prior?.shoe === shoe
+      && Number.isSafeInteger(prior?.round)
+      && round === prior.round
+    if (sameTarget) {
+      const existing = historyRows.find((row) => String(row?.table_id ?? row?.tableId ?? '') === key
+        && String(row?.shoe_no ?? row?.targetShoe ?? row?.shoe ?? '') === shoe
+        && Number(row?.round_no ?? row?.targetRound ?? row?.round) === round
+        && (row?.strategy_version ?? row?.strategyVersion) === V105_FORMAL_STRATEGY_VERSION
+        && (row?.prediction_timing ?? row?.predictionTiming) === 'pre_result_context')
+      const existingPredictionId = existing?.prediction_id ?? existing?.predictionId
+      if (prior.direction !== direction
+        || issuedStreak !== prior.sameSideStreak
+        || (existingPredictionId && String(existingPredictionId) !== String(issued.predictionId))) {
+        throw new Error('v105 formal issuance streak acknowledgement mismatch')
+      }
+      appendIssuanceHistory(historyRows, issued)
+      status = 'ready'
+      error = null
+      return
+    }
     const contiguous = prior?.shoe === shoe
       && prior?.direction === direction
       && Number.isSafeInteger(prior?.round)
       && round === prior.round + 1
     const sameSideStreak = contiguous ? prior.sameSideStreak + 1 : 1
-    if (Number(issued.baselineV104SameSideStreak ?? issued.sameSideStreak) !== sameSideStreak) {
+    if (issuedStreak !== sameSideStreak) {
       throw new Error('v105 formal issuance streak acknowledgement mismatch')
     }
     issuanceStreaks.set(key, { shoe, direction, sameSideStreak, round })
