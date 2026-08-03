@@ -66,7 +66,7 @@ export async function openPortalMtPage({ context, portalPage, timeoutMs = 45000 
   const mtLocator = portalPage.getByText(mtText, { exact: true }).first()
   if (!await mtLocator.isVisible().catch(() => false)) {
     await clickExactTextAfterClosingAnnouncements(portalPage, '真人')
-    await portalPage.waitForTimeout?.(500)
+    await portalPage.waitForTimeout?.(3000)
   }
   return clickTextAndCapturePopup(context, portalPage, mtText, timeoutMs)
 }

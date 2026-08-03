@@ -110,6 +110,40 @@ test('portal MT popup listener starts only after a delayed MT control becomes vi
   assert.equal(await openPortalMtPage({ context, portalPage: portal, timeoutMs: 100 }), popup)
 })
 
+test('portal MT opening waits for the live-category animation to settle before clicking MT真人', async () => {
+  let liveOpened = false
+  let waitedMs = 0
+  let resolvePopup
+  const popup = fakePage('https://mt.example/game')
+  const hidden = () => ({ isVisible: async () => false })
+  const liveControl = {
+    isVisible: async () => true,
+    click: async () => { liveOpened = true },
+  }
+  const mtControl = {
+    waitFor: async () => {},
+    isVisible: async () => liveOpened,
+    click: async () => {
+      assert.ok(waitedMs >= 3000, 'MT真人 was clicked while the live-category animation was still active')
+      resolvePopup(popup)
+    },
+  }
+  const portal = {
+    waitForTimeout: async (milliseconds) => { waitedMs += milliseconds },
+    locator: () => ({ first: hidden, last: hidden }),
+    getByText(text) {
+      const control = text === 'MT真人' ? mtControl : liveControl
+      return { first: () => control, last: () => control, count: async () => 1, nth: () => control }
+    },
+  }
+  const context = {
+    waitForEvent() { return new Promise((resolve) => { resolvePopup = resolve }) },
+  }
+
+  assert.equal(await openPortalMtPage({ context, portalPage: portal, timeoutMs: 5000 }), popup)
+  assert.ok(waitedMs >= 3000)
+})
+
 test('portal MT opening accepts same-tab navigation', async () => {
   const portal = fakePage('https://ag001.3a1788.bet/', { sameTabUrl: 'https://mt.example/game' })
   const context = fakeContext([null])
