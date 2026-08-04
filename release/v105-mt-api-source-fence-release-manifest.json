@@ -1,8 +1,8 @@
 {
-  "releaseName": "v105 影子V10牌階同步DB驗證修正版",
-  "releaseVersion": "v105-shadow-v10.15",
-  "gitTag": "v105-shadow-v10.15",
-  "applicationVersion": "1.0.52",
+  "releaseName": "v105 影子V10牌階持久帳本復原修正版",
+  "releaseVersion": "v105-shadow-v10.16",
+  "gitTag": "v105-shadow-v10.16",
+  "applicationVersion": "1.0.53",
   "formalStrategyVersion": "v105",
   "applicationVersionChanged": true,
   "releaseScope": {
@@ -52,6 +52,8 @@
     "v10-shadow-catalog-acl-readback",
     "v10-shadow-db-validation-migration",
     "v10-shadow-db-validation-catalog-acl-readback",
+    "v100-rank-ledger-recovery-migration",
+    "v100-rank-ledger-recovery-catalog-acl-readback",
     "v6-v8-retirement-migration",
     "v6-v8-retirement-catalog-acl-readback",
     "database-additive",
@@ -95,6 +97,12 @@
       "dropsOnlyRetiredV6V8Objects": true,
       "preservesV9V10AndFormalV105": true,
       "catalogAclReadbackRequired": true
+    },
+    "rankLedgerRecoveryMigration": {
+      "path": "supabase/migrations/20260804100000_v100_rank_ledger_cloud_round_recovery.sql",
+      "rpc": "public.rebuild_v100_rank_ledger_from_cloud_rounds(text,text,text)",
+      "serviceRoleOnly": true,
+      "catalogAclReadbackRequired": true
     }
   },
   "proxy": {
@@ -136,6 +144,7 @@
         "supabase/migrations/20260803093000_v105_shadow_v10_hydration_millisecond_order.sql",
         "supabase/migrations/20260804013000_v105_shadow_v10_rank_sync.sql",
         "supabase/migrations/20260804090000_v105_shadow_v10_rank_sync_db_validation.sql",
+        "supabase/migrations/20260804100000_v100_rank_ledger_cloud_round_recovery.sql",
         "supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql",
         "scripts/verify-v105-mt-api-release.mjs",
         "scripts/trusted-registry-readback-adapter.mjs",
@@ -146,7 +155,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "6c9f172e63048124d85505cd9af02cabc41e266da9254a0c1a8e0fe751312bca"
+      "sha256": "175fee487c4c2f4be3935bd93ff5c4bd2d6ba0df4b1167077c88f9ce671ca82a"
     },
     "migration": {
       "algorithm": "sha256",
@@ -168,7 +177,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "866dc6f4a3e2bc1c21ef274023e1accb3b98552bdf10b8a58bdc876897f98c7f"
+      "sha256": "2f107dc85406157df2ec491acfe17d9f2dc91f5df98ceab6506c37a34506cc2c"
     },
     "workerBuildInput": {
       "algorithm": "sha256",
@@ -181,7 +190,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "0979aef1c709dd4132969b76a874f24fc7a950f61e1bca2c28428d25597d62db"
+      "sha256": "f6d08a3927d5420fd1689fafdc935e4a5ecdb2f10745fe52bf01aee5f31e9efd"
     },
     "attestation": {
       "externalFileRequired": true,
@@ -213,6 +222,11 @@
       "algorithm": "sha256",
       "path": "supabase/migrations/20260802020000_retire_v105_shadow_v6_v8.sql",
       "sha256": "875b881331e2fc9ab4baeea4e67eb67edcaf03131e786703e7f34a3dbbc74bee"
+    },
+    "rankLedgerRecoveryMigration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260804100000_v100_rank_ledger_cloud_round_recovery.sql",
+      "sha256": "b280dcd5942d221d9e2b30f36934c0009ed88c57ba95e6f8ea425f87b3a9c718"
     }
   },
   "rollback": {

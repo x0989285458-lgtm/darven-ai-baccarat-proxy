@@ -403,6 +403,8 @@ test('release manifest freezes DB-first cutover through fenced finalize and brow
     'v10-shadow-catalog-acl-readback',
     'v10-shadow-db-validation-migration',
     'v10-shadow-db-validation-catalog-acl-readback',
+    'v100-rank-ledger-recovery-migration',
+    'v100-rank-ledger-recovery-catalog-acl-readback',
     'v6-v8-retirement-migration',
     'v6-v8-retirement-catalog-acl-readback',
     'database-additive',

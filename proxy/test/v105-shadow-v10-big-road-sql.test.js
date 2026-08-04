@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 
 const migrationUrl = new URL('../../supabase/migrations/20260804013000_v105_shadow_v10_rank_sync.sql', import.meta.url)
 const dbValidationMigrationUrl = new URL('../../supabase/migrations/20260804090000_v105_shadow_v10_rank_sync_db_validation.sql', import.meta.url)
+const rankRecoveryMigrationUrl = new URL('../../supabase/migrations/20260804100000_v100_rank_ledger_cloud_round_recovery.sql', import.meta.url)
 const VERSION = 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized'
 const PREFIX = 'v105_shadow_v10_rank_sync'
 
@@ -48,4 +49,17 @@ test('V10 DB independently verifies synchronized rank evidence and every derived
   assert.match(sql, /card_position\s+between\s+9\s+and\s+10[\s\S]*0\s+and\s+9/i)
   assert.match(sql, /physical_limit[\s\S]*having\s+count\(\*\)>8/i)
   assert.match(sql, /revoke execute[\s\S]*issue_v105_shadow_v10_rank_sync_prediction[\s\S]*grant execute/i)
+})
+
+test('rank recovery rebuilds only a complete current authoritative shoe through the existing immutable ledger RPC', async () => {
+  const sql = await readFile(rankRecoveryMigrationUrl, 'utf8')
+  assert.match(sql, /rebuild_v100_rank_ledger_from_cloud_rounds/i)
+  assert.match(sql, /cloud_table_rounds/i)
+  assert.match(sql, /count\(distinct round_no\)/i)
+  assert.match(sql, /min_round\s+is\s+distinct\s+from\s+1/i)
+  assert.match(sql, /apply_v100_rank_ledger_event/i)
+  assert.match(sql, /order by round_no/i)
+  assert.match(sql, /pg_advisory_xact_lock/i)
+  assert.match(sql, /service_role/i)
+  assert.doesNotMatch(sql, /delete\s+from\s+public\.shoe_(?:rank_ledgers|round_card_events)/i)
 })
