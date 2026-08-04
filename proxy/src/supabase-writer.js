@@ -2857,6 +2857,11 @@ export function createSupabaseIngestionClient({
         || row.prediction_timing !== 'pre_result_context' || !row.id || !row.prediction_issued_at) {
         throw new Error('v105 shadow v10 issuance read failed')
       }
+      const settlements = await getRest('v105_shadow_v10_rank_sync_settlements', {
+        select: 'prediction_id', prediction_id: `eq.${row.id}`, limit: '2',
+      }, { requestTimeoutMs: shadowTimeoutMs })
+      if (!Array.isArray(settlements) || settlements.length > 1) throw new Error('v105 shadow v10 settlement read failed')
+      if (settlements.length === 1) return null
       return structuredClone({ ...prediction, predictionId: row.id, issuedAt: row.prediction_issued_at })
     },
     async settleV105ShadowV10Prediction(settlement = {}) {

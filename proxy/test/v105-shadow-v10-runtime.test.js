@@ -92,6 +92,61 @@ test('V10 restart hydrates only its own compact history and never rebuilds pendi
   assert.equal(runtime.snapshot().pendingIssuances, 1)
 })
 
+test('V10 restart restores the exact pending target before recomputing or rewriting it', async () => {
+  const { createV105ShadowV10Runtime } = await import('../src/v105-shadow-v10-runtime.js')
+  const pending = {
+    prediction_id: 'pending-21', source: 'ofalive99', table_id: 'BAG01', shoe_no: '105', round_no: 21,
+    strategy_version: VERSION, prediction_timing: 'pre_result_context', prediction_issued_at: '2026-08-02T01:00:00.000Z',
+    predicted_result: 'banker', same_side_streak: 3, actual_result: null, settlement_final: false,
+  }
+  const store = writer([pending])
+  const restored = {
+    ...(await import('../src/v105-shadow-v10-contract.js')).buildV105ShadowV10Prediction(table('BAG01', 20)),
+    predictionId: pending.prediction_id, issuedAt: pending.prediction_issued_at, immutableMarker: 'restored',
+  }
+  store.readV105ShadowV10Issuance = async (identity) => {
+    store.reads.push(structuredClone(identity))
+    return structuredClone(restored)
+  }
+  const runtime = createV105ShadowV10Runtime({ writer: store })
+
+  const issued = await runtime.observeTable(table('BAG01', 20))
+  const settled = await runtime.settleRound({
+    ...table('BAG01', 21), sourceAction: '/summary', winner: 'banker',
+    rawResult: [1, 9, 2, 10, 0, 0, -1, -1, 3, 9],
+  })
+
+  assert.equal(issued.predictionId, 'pending-21')
+  assert.equal(issued.immutableMarker, 'restored')
+  assert.equal(store.candidates.length, 0)
+  assert.deepEqual(store.reads, [{ source: 'ofalive99', tableId: 'BAG01', shoe: 105, round: 21 }])
+  assert.equal(store.settlements.length, 1)
+  assert.equal(store.settlements[0].headResults.main != null, true)
+  assert.equal(store.settlements[0].headResults.tie != null, true)
+  assert.equal(settled.predictionId, 'pending-21')
+  assert.equal(runtime.snapshot().pendingIssuances, 0)
+})
+
+test('V10 restart rejects an incomplete pending issuance before remembering or settling it', async () => {
+  const { createV105ShadowV10Runtime } = await import('../src/v105-shadow-v10-runtime.js')
+  const pending = {
+    prediction_id: 'incomplete-21', source: 'ofalive99', table_id: 'BAG01', shoe_no: '105', round_no: 21,
+    strategy_version: VERSION, prediction_timing: 'pre_result_context', prediction_issued_at: '2026-08-02T01:00:00.000Z',
+    predicted_result: 'banker', same_side_streak: 1, actual_result: null, settlement_final: false,
+  }
+  const store = writer([pending])
+  store.readV105ShadowV10Issuance = async () => ({
+    predictionId: pending.prediction_id, issuedAt: pending.prediction_issued_at, source: pending.source,
+    strategyVersion: VERSION, predictionTiming: pending.prediction_timing, targetTableId: 'BAG01', targetShoe: '105', targetRound: 21,
+    predictedResult: 'banker', sameSideStreak: 1, heads: { main: { action: true } },
+  })
+  const runtime = createV105ShadowV10Runtime({ writer: store })
+
+  await assert.rejects(runtime.observeTable(table('BAG01', 20)), /restored issuance is incomplete/i)
+  assert.equal(store.candidates.length, 0)
+  assert.equal(runtime.snapshot().pendingIssuances, 0)
+})
+
 test('V10 bounds each table observation queue without blocking other tables', async () => {
   const { createV105ShadowV10Runtime } = await import('../src/v105-shadow-v10-runtime.js')
   let release

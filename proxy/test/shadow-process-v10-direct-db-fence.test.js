@@ -104,6 +104,7 @@ test('V10 scoped worker uses only PostgREST and RPC for issuance, read, Final, c
   assert.deepEqual(requests, [
     '/rest/v1/rpc/issue_v105_shadow_v10_rank_sync_prediction',
     '/rest/v1/v105_shadow_v10_rank_sync_issuances',
+    '/rest/v1/v105_shadow_v10_rank_sync_settlements',
     '/rest/v1/rpc/settle_v105_shadow_v10_rank_sync_prediction',
     '/rest/v1/v105_shadow_v10_rank_sync_sequence_counters',
     '/rest/v1/rpc/get_v105_shadow_v10_rank_sync_compact_history',

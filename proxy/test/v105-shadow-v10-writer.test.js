@@ -38,10 +38,31 @@ test('V10 writer independently issues, reads, settles, reads compact history, an
   assert.deepEqual(requests, [
     '/rest/v1/rpc/issue_v105_shadow_v10_rank_sync_prediction',
     '/rest/v1/v105_shadow_v10_rank_sync_issuances',
+    '/rest/v1/v105_shadow_v10_rank_sync_settlements',
     '/rest/v1/rpc/settle_v105_shadow_v10_rank_sync_prediction',
     '/rest/v1/v105_shadow_v10_rank_sync_sequence_counters',
     '/rest/v1/rpc/get_v105_shadow_v10_rank_sync_compact_history',
   ])
+})
+
+test('V10 exact issuance reader refuses to restore an identity that is already settled', async () => {
+  const requests = []
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    fetchImpl: async (url) => {
+      const parsed = new URL(url)
+      requests.push(parsed)
+      if (parsed.pathname.endsWith('/v105_shadow_v10_rank_sync_issuances')) {
+        return response([{ id: 'settled-id', source: 'ofalive99', table_id: 'BAG01', shoe_no: '105', round_no: 21, strategy_version: VERSION, prediction_timing: 'pre_result_context', prediction_issued_at: '2026-08-02T01:00:00.000Z', prediction_payload: candidate }])
+      }
+      if (parsed.pathname.endsWith('/v105_shadow_v10_rank_sync_settlements')) return response([{ prediction_id: 'settled-id' }])
+      throw new Error(`unexpected ${parsed.pathname}`)
+    },
+  })
+
+  assert.equal(await client.readV105ShadowV10Issuance({ tableId: 'BAG01', shoe: '105', round: 21 }), null)
+  assert.equal(requests[1].searchParams.get('prediction_id'), 'eq.settled-id')
+  assert.equal(requests[1].searchParams.get('limit'), '2')
 })
 
 test('a stalled V10 writer queue does not block V9 or formal writer calls', async () => {

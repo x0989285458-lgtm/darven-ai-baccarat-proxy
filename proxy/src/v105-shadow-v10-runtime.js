@@ -78,6 +78,33 @@ export function createV105ShadowV10Runtime({
     const key = identityKey(table.tableId, table.shoe, targetRound)
     if (issuances.has(key)) return deepFreeze(structuredClone(issuances.get(key)))
     if (issuancePromises.has(key)) return issuancePromises.get(key)
+    const pendingHistory = historyRows.find((row) => row.settlement_final === false
+      && String(row.table_id) === String(table.tableId)
+      && String(row.shoe_no) === String(table.shoe)
+      && Number(row.round_no) === targetRound)
+    if (pendingHistory) {
+      if (typeof writer?.readV105ShadowV10Issuance !== 'function') throw new Error('v105 shadow v10 issuance reader is unavailable')
+      const restore = Promise.resolve().then(async () => {
+        const issued = await withTimeout(writer.readV105ShadowV10Issuance({
+          source: pendingHistory.source, tableId: table.tableId, shoe: table.shoe, round: targetRound,
+        }), requestTimeoutMs, 'v105 shadow v10 pending issuance read')
+        if (!issued) throw new Error('v105 shadow v10 pending issuance could not be restored')
+        assertIssued({ source: pendingHistory.source, targetTableId: table.tableId, targetShoe: table.shoe, targetRound }, issued)
+        assertRestorableIssued(issued)
+        const immutable = deepFreeze(structuredClone(issued))
+        rememberPendingIssuance(key, immutable)
+        recordStreak(immutable)
+        status = 'ready'
+        error = null
+        return deepFreeze(structuredClone(immutable))
+      }).catch((cause) => {
+        status = 'error'
+        error = cause?.message ?? String(cause)
+        throw cause
+      }).finally(() => issuancePromises.delete(key))
+      issuancePromises.set(key, restore)
+      return restore
+    }
     if (typeof writer?.issueV105ShadowV10Prediction !== 'function') throw new Error('v105 shadow v10 issuance writer is unavailable')
     const prior = issuanceStreaks.get(String(table.tableId))
     const candidate = buildV105ShadowV10Prediction(table, historyRows, {
@@ -235,6 +262,16 @@ function assertIssued(expected, issued) {
     || String(issued.targetShoe ?? '') !== String(expected.targetShoe ?? '')
     || Number(issued.targetRound) !== Number(expected.targetRound)) {
     throw new Error('v105 shadow v10 issuance acknowledgement failed')
+  }
+}
+
+function assertRestorableIssued(issued) {
+  const requiredHeads = ['main', 'tie', 'superSix', 'bankerDragon', 'playerDragon', 'bankerPair', 'playerPair']
+  const heads = issued?.heads
+  const keys = heads && typeof heads === 'object' && !Array.isArray(heads) ? Object.keys(heads).sort() : []
+  if (keys.length !== requiredHeads.length
+    || !requiredHeads.every((key) => heads?.[key] && typeof heads[key] === 'object' && !Array.isArray(heads[key]))) {
+    throw new Error('v105 shadow v10 restored issuance is incomplete')
   }
 }
 
