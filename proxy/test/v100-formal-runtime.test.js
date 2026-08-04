@@ -293,3 +293,28 @@ test('terminal invalid hydration stays fail-closed without polling the database 
   assert.equal(first.tables[0].v102RankLedger?.rankDataAvailable, false)
   assert.equal(second.tables[0].v102RankLedger?.rankDataAvailable, false)
 })
+
+test('a gap returned by Final apply is recovered again inside the same snapshot', async () => {
+  const calls = []
+  let batchReads = 0
+  const writer = {
+    configured: true,
+    async readV100RankLedgers() {
+      batchReads += 1
+      calls.push(`batch-${batchReads}`)
+      return batchReads === 1 ? [] : [durable()]
+    },
+    async readV100RankLedger() { throw new Error('batch path only') },
+    async applyV100RankLedgerEvent() {
+      calls.push('apply-gap')
+      return durable({ status: 'gap', rankDataAvailable: false, completeThroughRound: 0, complete_through_round: 0 })
+    },
+  }
+  const runtime = createV100FormalRuntime({ enabled: true, writer, source: 'mt-cloud' })
+
+  const result = await runtime.processSnapshot({ tables: [table()], rounds: [round()] })
+
+  assert.deepEqual(calls, ['batch-1', 'apply-gap', 'batch-2'])
+  assert.equal(result.tables[0].v102RankLedger?.status, 'contiguous')
+  assert.equal(result.tables[0].v102RankLedger?.rankDataAvailable, true)
+})

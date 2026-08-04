@@ -1,8 +1,8 @@
 {
-  "releaseName": "v105 影子V10牌階帳本自動復原修正版",
-  "releaseVersion": "v105-shadow-v10.17",
-  "gitTag": "v105-shadow-v10.17",
-  "applicationVersion": "1.0.54",
+  "releaseName": "v105 影子V10同局牌階自動收斂修正版",
+  "releaseVersion": "v105-shadow-v10.18",
+  "gitTag": "v105-shadow-v10.18",
+  "applicationVersion": "1.0.55",
   "formalStrategyVersion": "v105",
   "applicationVersionChanged": true,
   "releaseScope": {
@@ -155,7 +155,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "20c7dda892958f61d30ab90d9f8d70e3a918007b808d6637e64e4724b7803e39"
+      "sha256": "a87c094bd2de5a8b1c4e0bc2ed084b067144c6d230f3b5ab98f71b91b6147d6c"
     },
     "migration": {
       "algorithm": "sha256",
@@ -177,7 +177,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "ea05edd8b0eb96e1424235da5ca5c4ef99f461e1adfa5844da7bc0a5b0f8819d"
+      "sha256": "e7cd76e9caa19cb8a8cdb7024099e486fbacc9946a00316bdcb585405f79eb4e"
     },
     "workerBuildInput": {
       "algorithm": "sha256",
@@ -190,7 +190,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "676b2913e12a3164438372a929dcb2c79908ba38366c4d576364b9067ad22e0a"
+      "sha256": "60d6ebab02205d62d01e11d79f30666f2adb792dd1c677654da41391b31fc7e4"
     },
     "attestation": {
       "externalFileRequired": true,

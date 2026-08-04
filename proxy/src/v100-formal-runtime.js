@@ -132,7 +132,12 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
       const ledger = await writer.applyV100RankLedgerEvent(event)
       ledgers.set(key, structuredClone(ledger))
       if (ledger && ledger.status !== 'gap') loaded.add(key)
-      else loaded.delete(key)
+      else {
+        loaded.delete(key)
+        if (typeof writer?.readV100RankLedgers === 'function') {
+          await hydrateTables([{ tableId: event.tableId, shoe: event.shoe }])
+        }
+      }
     }
   }
 
