@@ -1,8 +1,8 @@
 {
-  "releaseName": "v105 影子V10牌階同步修正版",
-  "releaseVersion": "v105-shadow-v10.14",
-  "gitTag": "v105-shadow-v10.14",
-  "applicationVersion": "1.0.51",
+  "releaseName": "v105 影子V10牌階同步DB驗證修正版",
+  "releaseVersion": "v105-shadow-v10.15",
+  "gitTag": "v105-shadow-v10.15",
+  "applicationVersion": "1.0.52",
   "formalStrategyVersion": "v105",
   "applicationVersionChanged": true,
   "releaseScope": {
@@ -50,6 +50,8 @@
     "v9-shadow-hydration-catalog-acl-readback",
     "v10-shadow-migration",
     "v10-shadow-catalog-acl-readback",
+    "v10-shadow-db-validation-migration",
+    "v10-shadow-db-validation-catalog-acl-readback",
     "v6-v8-retirement-migration",
     "v6-v8-retirement-catalog-acl-readback",
     "database-additive",
@@ -74,6 +76,11 @@
     },
     "shadowV10Migration": {
       "path": "supabase/migrations/20260804013000_v105_shadow_v10_rank_sync.sql",
+      "serviceRoleOnly": true,
+      "catalogAclReadbackRequired": true
+    },
+    "shadowV10DbValidationMigration": {
+      "path": "supabase/migrations/20260804090000_v105_shadow_v10_rank_sync_db_validation.sql",
       "serviceRoleOnly": true,
       "catalogAclReadbackRequired": true
     },
@@ -128,6 +135,7 @@
         "supabase/migrations/20260802020000_retire_v105_shadow_v6_v8.sql",
         "supabase/migrations/20260803093000_v105_shadow_v10_hydration_millisecond_order.sql",
         "supabase/migrations/20260804013000_v105_shadow_v10_rank_sync.sql",
+        "supabase/migrations/20260804090000_v105_shadow_v10_rank_sync_db_validation.sql",
         "supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql",
         "scripts/verify-v105-mt-api-release.mjs",
         "scripts/trusted-registry-readback-adapter.mjs",
@@ -138,7 +146,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "2d9961f72056bdbb5f0793cd1b25db65d9941851effdc7e0be82709b346d2bd2"
+      "sha256": "6c9f172e63048124d85505cd9af02cabc41e266da9254a0c1a8e0fe751312bca"
     },
     "migration": {
       "algorithm": "sha256",
@@ -160,7 +168,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "5509c9b79d3dcd800dce90e9e363a54ac256913201872fe29ba6adb07f06e726"
+      "sha256": "866dc6f4a3e2bc1c21ef274023e1accb3b98552bdf10b8a58bdc876897f98c7f"
     },
     "workerBuildInput": {
       "algorithm": "sha256",
@@ -173,7 +181,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "14882bdf03b68f056b722fc3970cb4804adaacf7d61d356be85773b24020ded2"
+      "sha256": "0979aef1c709dd4132969b76a874f24fc7a950f61e1bca2c28428d25597d62db"
     },
     "attestation": {
       "externalFileRequired": true,
@@ -195,6 +203,11 @@
       "algorithm": "sha256",
       "path": "supabase/migrations/20260804013000_v105_shadow_v10_rank_sync.sql",
       "sha256": "3bf5de1d73086a22ff56d96a8a22c2e05f31ae6a18b1c4537d63440e4e5923d6"
+    },
+    "shadowV10DbValidationMigration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260804090000_v105_shadow_v10_rank_sync_db_validation.sql",
+      "sha256": "70e1d3a8a8c0f9329ef79e6339e2d49dc55bfcbbf5823847c5c0d55780639ebd"
     },
     "shadowV6V8RetirementMigration": {
       "algorithm": "sha256",

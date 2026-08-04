@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 const migrationUrl = new URL('../../supabase/migrations/20260804013000_v105_shadow_v10_rank_sync.sql', import.meta.url)
+const dbValidationMigrationUrl = new URL('../../supabase/migrations/20260804090000_v105_shadow_v10_rank_sync_db_validation.sql', import.meta.url)
 const VERSION = 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized'
 const PREFIX = 'v105_shadow_v10_rank_sync'
 
@@ -30,4 +31,21 @@ test('new V10 RPCs and tables are service-role-only and functions use a fixed ca
   assert.match(sql, /grant execute on function public\.issue_v105_shadow_v10_rank_sync_prediction\(jsonb\) to service_role/i)
   assert.match(sql, /grant execute on function public\.settle_v105_shadow_v10_rank_sync_prediction\(jsonb\) to service_role/i)
   assert.match(sql, /grant execute on function public\.get_v105_shadow_v10_rank_sync_compact_history\(integer\) to service_role/i)
+})
+
+test('V10 DB independently verifies synchronized rank evidence and every derived side-head field', async () => {
+  const sql = await readFile(dbValidationMigrationUrl, 'utf8')
+  for (const token of ['rankLedgerEvidence', 'rankDataAvailable', 'completeThroughRound', 'remainingRankCounts', 'cardsRemainingTotal']) assert.match(sql, new RegExp(token, 'i'))
+  assert.match(sql, /rankAvailable[\s\S]*true/i)
+  assert.match(sql, /jsonb_each\(side_head->'featureValues'\)[\s\S]*expected_side_weights/i)
+  assert.match(sql, /expected_side_confidence/i)
+  assert.match(sql, /expected_side_action/i)
+  assert.match(sql, /expected_side_units/i)
+  assert.match(sql, /remaining_rank_count_sum/i)
+  assert.match(sql, /authoritative_rounds\s+as\s+materialized/i)
+  assert.match(sql, /for\s+share/i)
+  assert.match(sql, /card_position\s+between\s+5\s+and\s+8[\s\S]*-1\s+and\s+52/i)
+  assert.match(sql, /card_position\s+between\s+9\s+and\s+10[\s\S]*0\s+and\s+9/i)
+  assert.match(sql, /physical_limit[\s\S]*having\s+count\(\*\)>8/i)
+  assert.match(sql, /revoke execute[\s\S]*issue_v105_shadow_v10_rank_sync_prediction[\s\S]*grant execute/i)
 })

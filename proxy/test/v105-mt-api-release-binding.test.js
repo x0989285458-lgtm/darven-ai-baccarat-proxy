@@ -13,9 +13,9 @@ import {
 import * as releaseVerifier from '../../scripts/verify-v105-mt-api-release.mjs'
 
 test('release scope freezes one existing session as API-only canonical capture', () => {
-  assert.equal(manifest.releaseVersion, 'v105-shadow-v10.14')
-    assert.equal(manifest.gitTag, 'v105-shadow-v10.14')
-    assert.equal(manifest.applicationVersion, '1.0.51')
+  assert.equal(manifest.releaseVersion, 'v105-shadow-v10.15')
+    assert.equal(manifest.gitTag, 'v105-shadow-v10.15')
+    assert.equal(manifest.applicationVersion, '1.0.52')
   assert.deepEqual(manifest.releaseScope, {
     mode: 'single-session-api-primary',
     canonicalSource: 'api',
@@ -73,6 +73,7 @@ test('release scope freezes one existing session as API-only canonical capture',
     oldV10EvidencePreserved: true,
   })
   assert.equal(manifest.releaseBinding.shadowV10Migration.path, 'supabase/migrations/20260804013000_v105_shadow_v10_rank_sync.sql')
+  assert.equal(manifest.releaseBinding.shadowV10DbValidationMigration.path, 'supabase/migrations/20260804090000_v105_shadow_v10_rank_sync_db_validation.sql')
   assert.equal(manifest.releaseBinding.captureOutboxHealthMigration.path, 'supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql')
   assert.equal(manifest.releaseBinding.captureOutboxHealthMigration.sha256, 'c539a3539768999373662680960814dc1d10918d1e096d9e8192c51363fd6c15')
   assert.equal(manifest.releaseBinding.shadowV6V8RetirementMigration.path, 'supabase/migrations/20260802020000_retire_v105_shadow_v6_v8.sql')
@@ -90,6 +91,7 @@ test('release manifest freezes current implementation, migration, proxy, and wor
   assert.equal(result.shadowHydrationMigrationSha256, manifest.releaseBinding.shadowHydrationMigration.sha256)
   assert.equal(result.captureOutboxHealthMigrationSha256, manifest.releaseBinding.captureOutboxHealthMigration.sha256)
   assert.equal(result.shadowV10MigrationSha256, manifest.releaseBinding.shadowV10Migration.sha256)
+  assert.equal(result.shadowV10DbValidationMigrationSha256, manifest.releaseBinding.shadowV10DbValidationMigration.sha256)
   assert.equal(result.shadowV6V8RetirementMigrationSha256, manifest.releaseBinding.shadowV6V8RetirementMigration.sha256)
   const outboxHealthTampered = structuredClone(manifest)
   outboxHealthTampered.releaseBinding.captureOutboxHealthMigration.sha256 = '0'.repeat(64)
@@ -102,6 +104,12 @@ test('release manifest freezes current implementation, migration, proxy, and wor
   await assert.rejects(
     verifyManifestDigests({ manifest: v10Tampered, repoRoot, candidateIndexTree }),
     /shadow_v10_migration_digest_mismatch/,
+  )
+  const v10DbValidationTampered = structuredClone(manifest)
+  v10DbValidationTampered.releaseBinding.shadowV10DbValidationMigration.sha256 = '0'.repeat(64)
+  await assert.rejects(
+    verifyManifestDigests({ manifest: v10DbValidationTampered, repoRoot, candidateIndexTree }),
+    /shadow_v10_db_validation_migration_digest_mismatch/,
   )
   const retirementTampered = structuredClone(manifest)
   retirementTampered.releaseBinding.shadowV6V8RetirementMigration.sha256 = '0'.repeat(64)
@@ -152,7 +160,7 @@ test('Reviewer P1 attestation exact binding rejects old tag and wrong tree while
     commit: '1'.repeat(40), tree: candidateIndexTree, tagObject: 'a'.repeat(40), tag: manifest.gitTag,
     implementationTreeSha256: '3'.repeat(64), migrationSha256: '4'.repeat(64),
     shadowHydrationMigrationSha256: 'd'.repeat(64),
-    shadowV10MigrationSha256: 'e'.repeat(64),
+    shadowV10MigrationSha256: 'e'.repeat(64), shadowV10DbValidationMigrationSha256: 'c'.repeat(64),
     shadowV6V8RetirementMigrationSha256: 'f'.repeat(64),
     proxyBuildInputSha256: '5'.repeat(64), workerBuildInputSha256: '6'.repeat(64),
     images: {
@@ -163,7 +171,7 @@ test('Reviewer P1 attestation exact binding rejects old tag and wrong tree while
   const expected = {
     implementationTreeSha256: '3'.repeat(64), migrationSha256: '4'.repeat(64),
     shadowHydrationMigrationSha256: 'd'.repeat(64),
-    shadowV10MigrationSha256: 'e'.repeat(64),
+    shadowV10MigrationSha256: 'e'.repeat(64), shadowV10DbValidationMigrationSha256: 'c'.repeat(64),
     shadowV6V8RetirementMigrationSha256: 'f'.repeat(64),
     proxyBuildInputSha256: '5'.repeat(64), workerBuildInputSha256: '6'.repeat(64),
     gitTag: manifest.gitTag, candidateIndexTree,
@@ -291,7 +299,7 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
     commit, tree, tagObject: '7'.repeat(40), tag: manifest.gitTag,
     implementationTreeSha256: '8'.repeat(64), migrationSha256: '9'.repeat(64),
     shadowHydrationMigrationSha256: 'd'.repeat(64),
-    shadowV10MigrationSha256: 'e'.repeat(64),
+    shadowV10MigrationSha256: 'e'.repeat(64), shadowV10DbValidationMigrationSha256: 'c'.repeat(64),
     shadowV6V8RetirementMigrationSha256: 'f'.repeat(64),
     proxyBuildInputSha256: proxyInput, workerBuildInputSha256: workerInput,
     images: {
@@ -304,6 +312,7 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
     implementationTreeSha256: external.implementationTreeSha256, migrationSha256: external.migrationSha256,
     shadowHydrationMigrationSha256: external.shadowHydrationMigrationSha256,
     shadowV10MigrationSha256: external.shadowV10MigrationSha256,
+    shadowV10DbValidationMigrationSha256: external.shadowV10DbValidationMigrationSha256,
     shadowV6V8RetirementMigrationSha256: external.shadowV6V8RetirementMigrationSha256,
     proxyBuildInputSha256: proxyInput, workerBuildInputSha256: workerInput,
   }).ok, true, 'external Git attestation no longer self-approves images')

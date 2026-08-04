@@ -96,6 +96,12 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
     excludedPaths: [],
     sha256: binding.shadowV10Migration?.sha256,
   }, 'shadow_v10_migration')
+  const shadowV10DbValidationMigration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, {
+    algorithm: binding.shadowV10DbValidationMigration?.algorithm,
+    paths: [binding.shadowV10DbValidationMigration?.path],
+    excludedPaths: [],
+    sha256: binding.shadowV10DbValidationMigration?.sha256,
+  }, 'shadow_v10_db_validation_migration')
   const shadowV6V8RetirementMigration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, {
     algorithm: binding.shadowV6V8RetirementMigration?.algorithm,
     paths: [binding.shadowV6V8RetirementMigration?.path],
@@ -130,6 +136,7 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
     captureOutboxHealthMigrationSha256: captureOutboxHealthMigration.sha256,
     shadowHydrationMigrationSha256: shadowHydrationMigration.sha256,
     shadowV10MigrationSha256: shadowV10Migration.sha256,
+    shadowV10DbValidationMigrationSha256: shadowV10DbValidationMigration.sha256,
     shadowV6V8RetirementMigrationSha256: shadowV6V8RetirementMigration.sha256,
     proxyBuildInputSha256: proxy.sha256,
     workerBuildInputSha256: worker.sha256,
@@ -167,17 +174,24 @@ export function verifyV9ShadowRollbackContract(manifest = {}, binding = manifest
 
 export function verifyV10ShadowRollbackContract(manifest = {}, binding = manifest?.releaseBinding ?? {}) {
   const migration = manifest?.database?.shadowV10Migration
+  const dbValidationMigration = manifest?.database?.shadowV10DbValidationMigration
   const deployment = Array.isArray(manifest?.deploymentOrder) ? manifest.deploymentOrder : []
   const order = Array.isArray(manifest?.rollback?.order) ? manifest.rollback.order : []
   const migrationIndex = deployment.indexOf('v10-shadow-migration')
   const readbackIndex = deployment.indexOf('v10-shadow-catalog-acl-readback')
+  const validationIndex = deployment.indexOf('v10-shadow-db-validation-migration')
+  const validationReadbackIndex = deployment.indexOf('v10-shadow-db-validation-catalog-acl-readback')
   const proxyIndex = deployment.indexOf('proxy-compatible')
   const disableIndex = order.findIndex((step) => step?.id === 'disable-v10-shadow-before-proxy-rollback')
   const rollbackProxyIndex = order.findIndex((step) => step?.id === 'rollback-proxy-compatible')
   const disable = order[disableIndex]
   if (migration?.path !== binding?.shadowV10Migration?.path
+    || dbValidationMigration?.path !== binding?.shadowV10DbValidationMigration?.path
     || migration?.serviceRoleOnly !== true || migration?.catalogAclReadbackRequired !== true
-    || migrationIndex < 0 || readbackIndex !== migrationIndex + 1 || proxyIndex <= readbackIndex
+    || dbValidationMigration?.serviceRoleOnly !== true || dbValidationMigration?.catalogAclReadbackRequired !== true
+    || migrationIndex < 0 || readbackIndex !== migrationIndex + 1
+    || validationIndex !== readbackIndex + 1 || validationReadbackIndex !== validationIndex + 1
+    || proxyIndex <= validationReadbackIndex
     || disableIndex < 0 || rollbackProxyIndex <= disableIndex
     || disable?.setEnvironment !== 'V105_SHADOW_V10_ENABLED=false'
     || disable?.requireEnvironmentReadback !== 'false'
@@ -235,7 +249,7 @@ export function verifyExternalReleaseAttestation(attestation = {}, expected = {}
   if (!String(expected.gitTag ?? '').trim() || attestation.tag !== expected.gitTag) throw new Error('attestation_tag_mismatch')
   if (!/^[a-f0-9]{40}$/.test(String(expected.candidateIndexTree ?? ''))
     || attestation.tree !== expected.candidateIndexTree) throw new Error('attestation_tree_mismatch')
-  const digestFields = ['implementationTreeSha256', 'migrationSha256', 'shadowHydrationMigrationSha256', 'shadowV10MigrationSha256', 'shadowV6V8RetirementMigrationSha256', 'proxyBuildInputSha256', 'workerBuildInputSha256']
+  const digestFields = ['implementationTreeSha256', 'migrationSha256', 'shadowHydrationMigrationSha256', 'shadowV10MigrationSha256', 'shadowV10DbValidationMigrationSha256', 'shadowV6V8RetirementMigrationSha256', 'proxyBuildInputSha256', 'workerBuildInputSha256']
   for (const field of digestFields) {
     if (!/^[a-f0-9]{64}$/.test(String(attestation[field] ?? '')) || attestation[field] !== expected[field]) {
       throw new Error(`attestation_${field}_mismatch`)

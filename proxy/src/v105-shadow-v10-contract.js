@@ -62,8 +62,23 @@ export function buildV105ShadowV10Prediction(table = {}, historyRows = [], issua
     scoreSources,
     scoreTotals,
     signals,
+    rankLedgerEvidence: buildRankLedgerEvidence(table),
     structureDiagnostics: structuredClone(structureDiagnostics),
   })
+}
+
+function buildRankLedgerEvidence(table = {}) {
+  const ledger = table?.v102RankLedger
+  if (!ledger || typeof ledger !== 'object') return null
+  const remainingRankCounts = structuredClone(ledger.remainingRankCounts ?? {})
+  return {
+    status: ledger.status,
+    rankDataAvailable: ledger.rankDataAvailable === true,
+    completeThroughRound: Number(ledger.completeThroughRound ?? ledger.complete_through_round),
+    targetRound: Number(ledger.targetRound ?? ledger.target_round),
+    remainingRankCounts,
+    cardsRemainingTotal: Object.values(remainingRankCounts).reduce((sum, value) => sum + Number(value ?? 0), 0),
+  }
 }
 
 export function buildV105ShadowV10MainTable(table = {}) {

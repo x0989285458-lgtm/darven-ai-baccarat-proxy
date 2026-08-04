@@ -116,6 +116,22 @@ test('V10 has an independent identity and preserves all V9 safety flags and six 
   for (const head of SIDE_HEADS) assert.deepEqual(v10.heads[head], v9.heads[head])
 })
 
+test('V10 persists exact synchronized rank-ledger evidence for independent DB verification', async () => {
+  const { buildV105ShadowV10Prediction } = await import('../src/v105-shadow-v10-contract.js')
+  const remainingRankCounts = Object.fromEntries(['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'].map((rank) => [rank, 32]))
+  const prediction = buildV105ShadowV10Prediction({
+    ...baseTable,
+    v102RankLedger: {
+      status: 'contiguous', rankDataAvailable: true, completeThroughRound: 20,
+      targetRound: 21, remainingRankCounts,
+    },
+  })
+  assert.deepEqual(prediction.rankLedgerEvidence, {
+    status: 'contiguous', rankDataAvailable: true, completeThroughRound: 20,
+    targetRound: 21, remainingRankCounts, cardsRemainingTotal: 416,
+  })
+})
+
 test('V10 settlement accepts verified Final only for the V10 identity', async () => {
   const { buildV105ShadowV10Prediction, buildV105ShadowV10Settlement } = await import('../src/v105-shadow-v10-contract.js')
   const prediction = buildV105ShadowV10Prediction(baseTable)
