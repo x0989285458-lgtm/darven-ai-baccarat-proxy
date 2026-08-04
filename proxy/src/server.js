@@ -792,6 +792,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               const shadowPayload = {
                 ...parsed,
                 tables: Array.isArray(applied?.tables) ? applied.tables : parsed.tables,
+                rounds: Array.isArray(applied?.rounds) ? applied.rounds : [],
               }
               await runLeasePhase('shadow', () => isolatedShadowProcess.processCapture(shadowPayload, {
                 signal: leaseDeadline.signal,

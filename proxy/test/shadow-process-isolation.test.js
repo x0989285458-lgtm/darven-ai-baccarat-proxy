@@ -825,7 +825,7 @@ test('server isolated mode sends one complete durable outbox payload to the chil
   assert.deepEqual(result, { processed: 1, failed: 0 })
   assert.equal(captures.length, 1)
   assert.equal(captures[0].tables[0].tableId, work.tables[0].tableId)
-  assert.deepEqual(captures[0].rounds, work.rounds)
+  assert.deepEqual(captures[0].rounds, work.rounds.map((round) => ({ ...round, source: 'ofalive99' })))
   assert.deepEqual(captures[0].tables[0].v102RankLedger, { completeThrough: 0, targetRound: 1, rankDataAvailable: true })
   assert.deepEqual(completed, [{ sessionId: 'isolated-outbox', sequence: 1, claimToken: 'lease-1', attempt: 1 }])
   const status = JSON.parse((await app.inject({ url: '/api/status' })).body)

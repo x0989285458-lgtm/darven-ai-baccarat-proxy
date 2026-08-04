@@ -150,6 +150,7 @@ async function runDurableStage(stage, operation) {
 }
 
 export async function applyCloudCapturePayload({ parsed, state, writer, v100Formal = null, persistAncillary = true }) {
+  parsed = canonicalizeFormalRoundSources(parsed)
   const durableTimings = {}
   let v100Result = null
   if (v100Formal?.enabled === true) {
@@ -192,7 +193,12 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
     }
   }))
   durableTimings.formalSettlementMs = Date.now() - settlementStartedAt
-  if (!writer?.configured || !persistAncillary) return { v100Formal: v100Result, tables: structuredClone(formalTables), durableTimings }
+  if (!writer?.configured || !persistAncillary) return {
+    v100Formal: v100Result,
+    tables: structuredClone(formalTables),
+    rounds: structuredClone(parsed.rounds),
+    durableTimings,
+  }
   const sessionId = parsed.sessionId ?? 'cloud-browser'
   const ancillaryStartedAt = Date.now()
   const ancillaryWrites = [
@@ -213,7 +219,21 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
   await Promise.all(ancillaryWrites)
   durableTimings.ancillaryMs = Date.now() - ancillaryStartedAt
   durableTimings.totalMs = Number(durableTimings.rankLedgerMs ?? 0) + Number(durableTimings.formalSettlementMs ?? 0) + Number(durableTimings.ancillaryMs ?? 0)
-  return { v100Formal: v100Result, tables: structuredClone(formalTables), durableTimings }
+  return {
+    v100Formal: v100Result,
+    tables: structuredClone(formalTables),
+    rounds: structuredClone(parsed.rounds),
+    durableTimings,
+  }
+}
+
+function canonicalizeFormalRoundSources(parsed = {}) {
+  return {
+    ...parsed,
+    rounds: Array.isArray(parsed.rounds)
+      ? parsed.rounds.map((round) => ({ ...structuredClone(round), source: 'ofalive99' }))
+      : [],
+  }
 }
 
 export function canonicalProductionTableId(value) {

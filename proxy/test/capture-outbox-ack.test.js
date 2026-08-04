@@ -696,3 +696,56 @@ test('shutdown stops new wakeups and waits for in-flight work', async () => {
   await Promise.all([drain, stopping])
   assert.equal(completed, 1)
 })
+
+test('outbox consumer preserves raw source fence but canonicalizes formal round source', async () => {
+  const fence = { mode: 'api', ownerId: 'owner-a', epoch: 2, fence: 'fence-a' }
+  const work = structuredClone(envelope().snapshot)
+  work.rounds[0].source = structuredClone(fence)
+  const rawBefore = structuredClone(work)
+  let claimed = false
+  let formalRounds = null
+  let shadowRounds = null
+  const shadowProcessClient = {
+    runtime(_key, { enabled }) {
+      return {
+        enabled,
+        async observeTable() {},
+        async settleRound() {},
+        snapshot() { return { status: 'ready' } },
+      }
+    },
+    async processCapture(payload) { shadowRounds = structuredClone(payload.rounds) },
+    status() { return { running: true, generation: 1, pending: 0, stopping: false } },
+    beginStop() {},
+    async stop() {},
+  }
+  const app = createApp({
+    autoConnect: false,
+    isolateShadowProcess: true,
+    shadowProcessClient,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(7, { payload: { work } })]
+      },
+      async completeCaptureOutbox() { return { completed: true } },
+      async failCaptureOutbox() { assert.fail('canonical source work must not fail') },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables, rounds }) {
+        formalRounds = structuredClone(rounds)
+        return { tables }
+      },
+    },
+  })
+
+  const result = await app.drainCaptureOutbox()
+
+  assert.deepEqual(result, { processed: 1, failed: 0 })
+  assert.equal(formalRounds[0].source, 'ofalive99')
+  assert.equal(shadowRounds[0].source, 'ofalive99')
+  assert.deepEqual(work, rawBefore, 'durable raw fence evidence must stay immutable')
+})
