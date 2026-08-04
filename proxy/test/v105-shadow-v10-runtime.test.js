@@ -1,11 +1,16 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-const VERSION = 'v105-shadow-v10-big-road-uncommon-structure'
+const VERSION = 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized'
 const TABLE_IDS = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
+const remainingRankCounts = Object.freeze(Object.fromEntries(['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'].map((rank) => [rank, 32])))
 const table = (tableId = 'BAG01', round = 20) => ({
   tableId, shoe: 105, round, bankerCount: 12, playerCount: 8,
   beadPlateRaw: '020102010201', bigRoadRaw: 'B#P#B#P#B#P',
+  v102RankLedger: {
+    status: 'contiguous', rankDataAvailable: true, completeThroughRound: round,
+    targetRound: round + 1, remainingRankCounts: { ...remainingRankCounts },
+  },
 })
 
 function writer(history = []) {
@@ -41,7 +46,29 @@ test('V10 independently issues only the fixed ten tables', async () => {
   await Promise.all(TABLE_IDS.map((tableId) => runtime.observeTable(table(tableId))))
   assert.deepEqual(store.candidates.map((candidate) => candidate.targetTableId), TABLE_IDS)
   assert.equal(await runtime.observeTable(table('BAG04')), null)
-  assert.equal(runtime.snapshot().historySource, 'v105_shadow_v10_big_road_only')
+  assert.equal(runtime.snapshot().historySource, 'v105_shadow_v10_rank_sync_only')
+})
+
+test('V10 defers immutable issuance until the target round rank ledger is synchronized and then retries', async () => {
+  const { createV105ShadowV10Runtime } = await import('../src/v105-shadow-v10-runtime.js')
+  const store = writer()
+  const runtime = createV105ShadowV10Runtime({ writer: store })
+  const premature = table('BAG01', 20)
+  premature.v102RankLedger = {
+    ...premature.v102RankLedger,
+    rankDataAvailable: false,
+    completeThroughRound: 19,
+  }
+
+  assert.equal(await runtime.observeTable(premature), null)
+  assert.equal(store.candidates.length, 0)
+
+  const issued = await runtime.observeTable(table('BAG01', 20))
+  assert.equal(issued.targetRound, 21)
+  assert.equal(store.candidates.length, 1)
+  for (const key of ['tie', 'superSix', 'bankerDragon', 'playerDragon', 'bankerPair', 'playerPair']) {
+    assert.equal(store.candidates[0].heads[key].rankAvailable, true, `${key} rank gate`)
+  }
 })
 
 test('V10 restart hydrates only its own compact history and never rebuilds pending issuance', async () => {

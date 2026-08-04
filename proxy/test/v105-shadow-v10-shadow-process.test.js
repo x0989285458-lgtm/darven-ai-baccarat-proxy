@@ -6,6 +6,7 @@ import { prepareShadowRuntimes, processShadowCapture } from '../src/shadow-proce
 import { createV105ShadowV10Runtime } from '../src/v105-shadow-v10-runtime.js'
 
 const immediate = () => new Promise((resolve) => setImmediate(resolve))
+const remainingRankCounts = Object.freeze(Object.fromEntries(['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'].map((rank) => [rank, 32])))
 
 test('shadow process client exposes the independent V10 runtime without enabling frontend access', () => {
   const client = createShadowProcessClient()
@@ -110,6 +111,10 @@ test('bounded V10 backlog coalesces after capacity without blocking parent ACK a
     tables: [{
       tableId: 'BAG01', shoe: 105, round, bankerCount: 12, playerCount: 8,
       beadPlateRaw: '020102010201', bigRoadRaw: 'B#P#B#P#B#P',
+      v102RankLedger: {
+        status: 'contiguous', rankDataAvailable: true, completeThroughRound: round,
+        targetRound: round + 1, remainingRankCounts: { ...remainingRankCounts },
+      },
     }],
     rounds: [],
   }))

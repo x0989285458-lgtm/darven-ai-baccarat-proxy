@@ -74,6 +74,7 @@ export function createV105ShadowV10Runtime({
     if (!enabled || !TABLE_ALLOWLIST.has(String(table?.tableId ?? ''))) return null
     await start()
     const targetRound = Number(table.round) + 1
+    if (!hasSynchronizedRankLedger(table, targetRound)) return null
     const key = identityKey(table.tableId, table.shoe, targetRound)
     if (issuances.has(key)) return deepFreeze(structuredClone(issuances.get(key)))
     if (issuancePromises.has(key)) return issuancePromises.get(key)
@@ -205,7 +206,7 @@ export function createV105ShadowV10Runtime({
       strategyVersion: V105_SHADOW_V10_VERSION,
       status,
       error,
-      historySource: 'v105_shadow_v10_big_road_only',
+      historySource: 'v105_shadow_v10_rank_sync_only',
       historyRows: historyRows.length,
       pendingIssuances: issuances.size,
       queuedObservations: [...tableQueueDepths.values()].reduce((sum, depth) => sum + depth, 0),
@@ -350,6 +351,15 @@ function compareStableText(left, right) {
   const a = String(left ?? '')
   const b = String(right ?? '')
   return a === b ? 0 : a < b ? -1 : 1
+}
+
+function hasSynchronizedRankLedger(table = {}, targetRound = null) {
+  const ledger = table?.v102RankLedger
+  const completeThrough = Number(ledger?.completeThroughRound ?? ledger?.complete_through_round)
+  return ledger?.status === 'contiguous'
+    && ledger?.rankDataAvailable === true
+    && Number.isSafeInteger(Number(targetRound))
+    && completeThrough === Number(targetRound) - 1
 }
 
 function withTimeout(operation, timeoutMs, label) {

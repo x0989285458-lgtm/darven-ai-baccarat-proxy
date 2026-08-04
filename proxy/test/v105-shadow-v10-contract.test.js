@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildV105ShadowV9Prediction, V105_SHADOW_V9_WEIGHTS } from '../src/v105-shadow-v9-contract.js'
 
-const VERSION = 'v105-shadow-v10-big-road-uncommon-structure'
+const VERSION = 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized'
 const SIDE_HEADS = ['tie', 'superSix', 'bankerDragon', 'playerDragon', 'bankerPair', 'playerPair']
 const baseTable = {
   tableId: 'BAG01', shoe: 105, round: 20,

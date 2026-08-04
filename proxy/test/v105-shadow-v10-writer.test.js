@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createSupabaseIngestionClient } from '../src/supabase-writer.js'
 
-const VERSION = 'v105-shadow-v10-big-road-uncommon-structure'
+const VERSION = 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized'
 const candidate = {
   source: 'ofalive99', strategyVersion: VERSION, releaseCandidate: VERSION, formalStrategyVersion: 'v105',
   predictionTiming: 'pre_result_context', shadowOnly: true, activationEligible: false, memberVisible: false,
@@ -18,14 +18,14 @@ test('V10 writer independently issues, reads, settles, reads compact history, an
     fetchImpl: async (url) => {
       const parsed = new URL(url)
       requests.push(parsed.pathname)
-      if (parsed.pathname.endsWith('/rpc/issue_v105_shadow_v10_big_road_prediction')) {
+      if (parsed.pathname.endsWith('/rpc/issue_v105_shadow_v10_rank_sync_prediction')) {
         return response({ prediction_id: 'v10-id', prediction_issued_at: '2026-08-02T01:00:00.000Z', prediction: candidate })
       }
-      if (parsed.pathname.endsWith('/v105_shadow_v10_big_road_issuances')) {
+      if (parsed.pathname.endsWith('/v105_shadow_v10_rank_sync_issuances')) {
         return response([{ id: 'v10-id', source: 'ofalive99', table_id: 'BAG01', shoe_no: '105', round_no: 21, strategy_version: VERSION, prediction_timing: 'pre_result_context', prediction_issued_at: '2026-08-02T01:00:00.000Z', prediction_payload: candidate }])
       }
-      if (parsed.pathname.endsWith('/rpc/settle_v105_shadow_v10_big_road_prediction')) return response({ prediction_id: 'v10-id', settlement_sequence: 1 })
-      if (parsed.pathname.endsWith('/v105_shadow_v10_big_road_sequence_counters')) return response([{ settlement_count: 0 }])
+      if (parsed.pathname.endsWith('/rpc/settle_v105_shadow_v10_rank_sync_prediction')) return response({ prediction_id: 'v10-id', settlement_sequence: 1 })
+      if (parsed.pathname.endsWith('/v105_shadow_v10_rank_sync_sequence_counters')) return response([{ settlement_count: 0 }])
       return response([])
     },
   })
@@ -36,11 +36,11 @@ test('V10 writer independently issues, reads, settles, reads compact history, an
   assert.equal((await client.getV105ShadowV10Counters()).settlement_count, 0)
   assert.deepEqual(await client.getV105ShadowV10History(), [])
   assert.deepEqual(requests, [
-    '/rest/v1/rpc/issue_v105_shadow_v10_big_road_prediction',
-    '/rest/v1/v105_shadow_v10_big_road_issuances',
-    '/rest/v1/rpc/settle_v105_shadow_v10_big_road_prediction',
-    '/rest/v1/v105_shadow_v10_big_road_sequence_counters',
-    '/rest/v1/rpc/get_v105_shadow_v10_big_road_compact_history',
+    '/rest/v1/rpc/issue_v105_shadow_v10_rank_sync_prediction',
+    '/rest/v1/v105_shadow_v10_rank_sync_issuances',
+    '/rest/v1/rpc/settle_v105_shadow_v10_rank_sync_prediction',
+    '/rest/v1/v105_shadow_v10_rank_sync_sequence_counters',
+    '/rest/v1/rpc/get_v105_shadow_v10_rank_sync_compact_history',
   ])
 })
 
@@ -51,7 +51,7 @@ test('a stalled V10 writer queue does not block V9 or formal writer calls', asyn
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
     fetchImpl: async (url) => {
       const path = new URL(url).pathname
-      if (path.endsWith('/rpc/issue_v105_shadow_v10_big_road_prediction')) {
+      if (path.endsWith('/rpc/issue_v105_shadow_v10_rank_sync_prediction')) {
         await gate
         return response({ prediction_id: 'v10', prediction_issued_at: '2026-08-02T01:00:00.000Z', prediction: candidate })
       }

@@ -1,8 +1,8 @@
 {
-  "releaseName": "v105 影子V10大路非常見規律版",
-  "releaseVersion": "v105-shadow-v10.13",
-  "gitTag": "v105-shadow-v10.13",
-  "applicationVersion": "1.0.50",
+  "releaseName": "v105 影子V10牌階同步修正版",
+  "releaseVersion": "v105-shadow-v10.14",
+  "gitTag": "v105-shadow-v10.14",
+  "applicationVersion": "1.0.51",
   "formalStrategyVersion": "v105",
   "applicationVersionChanged": true,
   "releaseScope": {
@@ -73,7 +73,7 @@
       "catalogAclReadbackRequired": true
     },
     "shadowV10Migration": {
-      "path": "supabase/migrations/20260803113000_v105_shadow_v10_big_road.sql",
+      "path": "supabase/migrations/20260804013000_v105_shadow_v10_rank_sync.sql",
       "serviceRoleOnly": true,
       "catalogAclReadbackRequired": true
     },
@@ -127,7 +127,7 @@
         "supabase/migrations/20260802010000_v105_shadow_v10.sql",
         "supabase/migrations/20260802020000_retire_v105_shadow_v6_v8.sql",
         "supabase/migrations/20260803093000_v105_shadow_v10_hydration_millisecond_order.sql",
-        "supabase/migrations/20260803113000_v105_shadow_v10_big_road.sql",
+        "supabase/migrations/20260804013000_v105_shadow_v10_rank_sync.sql",
         "supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql",
         "scripts/verify-v105-mt-api-release.mjs",
         "scripts/trusted-registry-readback-adapter.mjs",
@@ -138,7 +138,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "bf73b646d1961b92117dbb590fd6d40bea793e9f4c2b0eb256803c597533921a"
+      "sha256": "2d9961f72056bdbb5f0793cd1b25db65d9941851effdc7e0be82709b346d2bd2"
     },
     "migration": {
       "algorithm": "sha256",
@@ -160,7 +160,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "d4d960aa00bdaf1b49ebd71d02dbf6931fc3ee5ce51ce76faa09b21acfc9fcb0"
+      "sha256": "5509c9b79d3dcd800dce90e9e363a54ac256913201872fe29ba6adb07f06e726"
     },
     "workerBuildInput": {
       "algorithm": "sha256",
@@ -173,7 +173,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "5a0789e3f0020cde913551223fda31cc5ea3fc75630a56958cbfe11582f8e488"
+      "sha256": "14882bdf03b68f056b722fc3970cb4804adaacf7d61d356be85773b24020ded2"
     },
     "attestation": {
       "externalFileRequired": true,
@@ -193,8 +193,8 @@
     },
     "shadowV10Migration": {
       "algorithm": "sha256",
-      "path": "supabase/migrations/20260803113000_v105_shadow_v10_big_road.sql",
-      "sha256": "c262f3be1fd824a42303ee957c9d4c9205cec9cca9c6de8de9a0bd24e052b5d2"
+      "path": "supabase/migrations/20260804013000_v105_shadow_v10_rank_sync.sql",
+      "sha256": "3bf5de1d73086a22ff56d96a8a22c2e05f31ae6a18b1c4537d63440e4e5923d6"
     },
     "shadowV6V8RetirementMigration": {
       "algorithm": "sha256",
@@ -332,7 +332,7 @@
     "versionChanged": true
   },
   "shadowV10": {
-    "strategyVersion": "v105-shadow-v10-big-road-uncommon-structure",
+    "strategyVersion": "v105-shadow-v10-big-road-uncommon-structure-rank-synchronized",
     "runtimeFlag": "V105_SHADOW_V10_ENABLED=true",
     "v9WeightShare": 0.9,
     "structureWeightShare": 0.1,

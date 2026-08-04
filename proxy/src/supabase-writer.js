@@ -2783,7 +2783,7 @@ export function createSupabaseIngestionClient({
     },
     async issueV105ShadowV10Prediction(candidate = {}) {
       const row = buildV104IterationShadowIssuanceRpcRow(candidate)
-      const acknowledgement = await enqueueV105ShadowV10Write(row.table_id, () => postRest('rpc/issue_v105_shadow_v10_big_road_prediction', { p_prediction: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
+      const acknowledgement = await enqueueV105ShadowV10Write(row.table_id, () => postRest('rpc/issue_v105_shadow_v10_rank_sync_prediction', { p_prediction: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
       const prediction = acknowledgement?.prediction
       if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
         || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at
@@ -2791,8 +2791,8 @@ export function createSupabaseIngestionClient({
         || String(prediction.targetTableId ?? '') !== String(candidate.targetTableId ?? '')
         || String(prediction.targetShoe ?? '') !== String(candidate.targetShoe ?? '')
         || Number(prediction.targetRound) !== Number(candidate.targetRound)
-        || prediction.strategyVersion !== 'v105-shadow-v10-big-road-uncommon-structure'
-        || prediction.releaseCandidate !== 'v105-shadow-v10-big-road-uncommon-structure'
+        || prediction.strategyVersion !== 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized'
+        || prediction.releaseCandidate !== 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized'
         || prediction.formalStrategyVersion !== 'v105' || prediction.predictionTiming !== 'pre_result_context'
         || prediction.shadowOnly !== true || prediction.activationEligible !== false
         || prediction.memberVisible !== false || prediction.writesSideActions !== false) {
@@ -2803,10 +2803,10 @@ export function createSupabaseIngestionClient({
     async readV105ShadowV10Issuance({ source = SOURCE, tableId, shoe, round } = {}) {
       const targetRound = Number(round)
       if (!source || !tableId || shoe == null || !Number.isSafeInteger(targetRound) || targetRound < 1) return null
-      const rows = await getRest('v105_shadow_v10_big_road_issuances', {
+      const rows = await getRest('v105_shadow_v10_rank_sync_issuances', {
         select: 'id,source,table_id,shoe_no,round_no,strategy_version,prediction_timing,prediction_issued_at,prediction_payload',
         source: `eq.${source}`, table_id: `eq.${tableId}`, shoe_no: `eq.${shoe}`, round_no: `eq.${targetRound}`,
-        strategy_version: 'eq.v105-shadow-v10-big-road-uncommon-structure', prediction_timing: 'eq.pre_result_context', prediction_issued_at: 'not.is.null', limit: '2',
+        strategy_version: 'eq.v105-shadow-v10-big-road-uncommon-structure-rank-synchronized', prediction_timing: 'eq.pre_result_context', prediction_issued_at: 'not.is.null', limit: '2',
       }, { requestTimeoutMs: shadowTimeoutMs })
       if (!Array.isArray(rows) || rows.length === 0) return null
       if (rows.length !== 1) throw new Error('conflicting v105 shadow v10 issuance identity')
@@ -2815,7 +2815,7 @@ export function createSupabaseIngestionClient({
       if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
         || String(row.source) !== String(source) || String(row.table_id) !== String(tableId)
         || String(row.shoe_no) !== String(shoe) || Number(row.round_no) !== targetRound
-        || row.strategy_version !== 'v105-shadow-v10-big-road-uncommon-structure' || prediction.strategyVersion !== 'v105-shadow-v10-big-road-uncommon-structure'
+        || row.strategy_version !== 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized' || prediction.strategyVersion !== 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized'
         || row.prediction_timing !== 'pre_result_context' || !row.id || !row.prediction_issued_at) {
         throw new Error('v105 shadow v10 issuance read failed')
       }
@@ -2823,20 +2823,20 @@ export function createSupabaseIngestionClient({
     },
     async settleV105ShadowV10Prediction(settlement = {}) {
       const row = buildV104IterationShadowSettlementRpcRow(settlement)
-      const acknowledgement = await enqueueV105ShadowV10Write(row.table_id, () => postRest('rpc/settle_v105_shadow_v10_big_road_prediction', { p_settlement: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
+      const acknowledgement = await enqueueV105ShadowV10Write(row.table_id, () => postRest('rpc/settle_v105_shadow_v10_rank_sync_prediction', { p_settlement: row }, undefined, { requireObject: true, requestTimeoutMs: shadowTimeoutMs }))
       if (String(acknowledgement?.prediction_id ?? '') !== String(settlement.predictionId ?? '')) throw new Error('v105 shadow v10 settlement acknowledgement failed')
       return { ...acknowledgement, predictionId: acknowledgement.prediction_id }
     },
     async getV105ShadowV10Counters() {
-      const rows = await getRest('v105_shadow_v10_big_road_sequence_counters', {
+      const rows = await getRest('v105_shadow_v10_rank_sync_sequence_counters', {
         select: 'settlement_count,main_action_count,tie_action_count,super_six_action_count,banker_dragon_action_count,player_dragon_action_count,banker_pair_action_count,player_pair_action_count,updated_at',
-        release_candidate: 'eq.v105-shadow-v10-big-road-uncommon-structure', limit: '1',
+        release_candidate: 'eq.v105-shadow-v10-big-road-uncommon-structure-rank-synchronized', limit: '1',
       }, { requestTimeoutMs: shadowTimeoutMs })
       return Array.isArray(rows) && rows.length === 1 ? rows[0] : null
     },
     async getV105ShadowV10History({ perTableLimit = 60, requestTimeoutMs = shadowTimeoutMs } = {}) {
       return readV105ShadowCompactHistory(
-        'v105-shadow-v10-big-road-uncommon-structure', 'get_v105_shadow_v10_big_road_compact_history', perTableLimit, { requestTimeoutMs },
+        'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized', 'get_v105_shadow_v10_rank_sync_compact_history', perTableLimit, { requestTimeoutMs },
       )
     },
     async issueV104IterationShadowPrediction(candidate = {}) {

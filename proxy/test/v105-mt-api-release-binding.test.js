@@ -13,9 +13,9 @@ import {
 import * as releaseVerifier from '../../scripts/verify-v105-mt-api-release.mjs'
 
 test('release scope freezes one existing session as API-only canonical capture', () => {
-  assert.equal(manifest.releaseVersion, 'v105-shadow-v10.13')
-    assert.equal(manifest.gitTag, 'v105-shadow-v10.13')
-    assert.equal(manifest.applicationVersion, '1.0.50')
+  assert.equal(manifest.releaseVersion, 'v105-shadow-v10.14')
+    assert.equal(manifest.gitTag, 'v105-shadow-v10.14')
+    assert.equal(manifest.applicationVersion, '1.0.51')
   assert.deepEqual(manifest.releaseScope, {
     mode: 'single-session-api-primary',
     canonicalSource: 'api',
@@ -58,7 +58,7 @@ test('release scope freezes one existing session as API-only canonical capture',
   assert.equal(manifest.releaseBinding.shadowHydrationMigration.path, 'supabase/migrations/20260801162200_v105_shadow_v9_hydration_millisecond_order.sql')
   assert.equal(manifest.releaseBinding.shadowHydrationMigration.sha256, '1532547446c46a94373f1b4758f1b464798b3d5583f4a73492c83000a662a974')
   assert.deepEqual(manifest.shadowV10, {
-    strategyVersion: 'v105-shadow-v10-big-road-uncommon-structure',
+    strategyVersion: 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized',
     runtimeFlag: 'V105_SHADOW_V10_ENABLED=true',
     v9WeightShare: 0.9,
     structureWeightShare: 0.1,
@@ -72,7 +72,7 @@ test('release scope freezes one existing session as API-only canonical capture',
     beadPlateUsed: false,
     oldV10EvidencePreserved: true,
   })
-  assert.equal(manifest.releaseBinding.shadowV10Migration.path, 'supabase/migrations/20260803113000_v105_shadow_v10_big_road.sql')
+  assert.equal(manifest.releaseBinding.shadowV10Migration.path, 'supabase/migrations/20260804013000_v105_shadow_v10_rank_sync.sql')
   assert.equal(manifest.releaseBinding.captureOutboxHealthMigration.path, 'supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql')
   assert.equal(manifest.releaseBinding.captureOutboxHealthMigration.sha256, 'c539a3539768999373662680960814dc1d10918d1e096d9e8192c51363fd6c15')
   assert.equal(manifest.releaseBinding.shadowV6V8RetirementMigration.path, 'supabase/migrations/20260802020000_retire_v105_shadow_v6_v8.sql')

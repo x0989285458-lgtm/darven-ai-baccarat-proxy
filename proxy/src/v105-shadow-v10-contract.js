@@ -6,7 +6,7 @@ import {
 } from './v105-shadow-v9-contract.js'
 import { analyzeV105ShadowV10UncommonRoadStructure } from './v105-shadow-v10-structure.js'
 
-export const V105_SHADOW_V10_VERSION = 'v105-shadow-v10-big-road-uncommon-structure'
+export const V105_SHADOW_V10_VERSION = 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized'
 export const V105_SHADOW_V10_RELEASE = V105_SHADOW_V10_VERSION
 export const V105_SHADOW_V10_TABLE_IDS = V105_SHADOW_V9_TABLE_IDS
 export const V105_SHADOW_V10_WEIGHTS = Object.freeze({
