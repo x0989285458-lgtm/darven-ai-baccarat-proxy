@@ -2465,22 +2465,22 @@ export function createSupabaseIngestionClient({
       }
       if (exact.length === 0) return []
       if (exact.length > 128) throw new Error('v100 durable rank ledger batch exceeds maximum identities')
-      let rows
-      if (priorityStrategyDb && typeof priorityStrategyDb.query === 'function') {
-        rows = (await priorityStrategyDb.query({
-          text: `with requested(source, table_id, shoe_no) as (
-                   select * from unnest($1::text[], $2::text[], $3::text[])
-                 )
-                 select ledger.source, ledger.table_id, ledger.shoe_no, ledger.complete_through_round,
-                        ledger.seen_dealt_rank_counts, ledger.seen_dealt_code_counts,
-                        ledger.undealt_after_observed_deals, ledger.cards_seen_dealt, ledger.status,
-                        ledger.ledger_checksum, ledger.revision, ledger.physical_remaining_exact,
-                        ledger.burn_observation_status
-                   from public.shoe_rank_ledgers as ledger
-                   join requested using (source, table_id, shoe_no)`,
-          values: [exact.map((item) => item.source), exact.map((item) => item.tableId), exact.map((item) => item.shoe)],
-        })).rows
-      } else {
+      const readRows = async () => {
+        if (priorityStrategyDb && typeof priorityStrategyDb.query === 'function') {
+          return (await priorityStrategyDb.query({
+            text: `with requested(source, table_id, shoe_no) as (
+                     select * from unnest($1::text[], $2::text[], $3::text[])
+                   )
+                   select ledger.source, ledger.table_id, ledger.shoe_no, ledger.complete_through_round,
+                          ledger.seen_dealt_rank_counts, ledger.seen_dealt_code_counts,
+                          ledger.undealt_after_observed_deals, ledger.cards_seen_dealt, ledger.status,
+                          ledger.ledger_checksum, ledger.revision, ledger.physical_remaining_exact,
+                          ledger.burn_observation_status
+                     from public.shoe_rank_ledgers as ledger
+                     join requested using (source, table_id, shoe_no)`,
+            values: [exact.map((item) => item.source), exact.map((item) => item.tableId), exact.map((item) => item.shoe)],
+          })).rows
+        }
         const groups = await Promise.all(exact.map((identity) => getRest('shoe_rank_ledgers', {
           select: 'source,table_id,shoe_no,complete_through_round,seen_dealt_rank_counts,seen_dealt_code_counts,undealt_after_observed_deals,cards_seen_dealt,status,ledger_checksum,revision,physical_remaining_exact,burn_observation_status',
           source: `eq.${identity.source}`,
@@ -2491,8 +2491,35 @@ export function createSupabaseIngestionClient({
         if (groups.some((group) => !Array.isArray(group) || group.length > 1)) {
           throw new Error('conflicting v100 durable rank ledger batch identity')
         }
-        rows = groups.flat()
+        return groups.flat()
       }
+      let rows = await readRows()
+      if (!Array.isArray(rows)) throw new Error('v100 durable rank ledger batch returned invalid rows')
+      const initial = new Map(rows.map((row) => [
+        JSON.stringify([String(row?.source ?? ''), String(row?.table_id ?? ''), String(row?.shoe_no ?? '')]), row,
+      ]))
+      let recovered = false
+      for (const identity of exact) {
+        const key = JSON.stringify([identity.source, identity.tableId, identity.shoe])
+        const current = initial.get(key)
+        if (current && current.status !== 'gap') continue
+        try {
+          const acknowledgement = priorityStrategyDb && typeof priorityStrategyDb.query === 'function'
+            ? (await priorityStrategyDb.query({
+                text: 'select public.rebuild_v100_rank_ledger_from_cloud_rounds($1,$2,$3) as recovery',
+                values: [identity.source, identity.tableId, identity.shoe],
+              })).rows?.[0]?.recovery
+            : await postDurableRest('rpc/rebuild_v100_rank_ledger_from_cloud_rounds', {
+                p_source: identity.source,
+                p_table_id: identity.tableId,
+                p_shoe_no: identity.shoe,
+              }, undefined, { requireObject: true })
+          if (acknowledgement?.accepted === true && acknowledgement?.status === 'contiguous') recovered = true
+        } catch {
+          // Fail closed with the existing gap/missing ledger; the runtime retries this identity.
+        }
+      }
+      if (recovered) rows = await readRows()
       if (!Array.isArray(rows)) throw new Error('v100 durable rank ledger batch returned invalid rows')
       const expected = new Set(exact.map((item) => JSON.stringify([item.source, item.tableId, item.shoe])))
       const returned = new Set()

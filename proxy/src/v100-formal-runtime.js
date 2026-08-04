@@ -89,8 +89,8 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
     const key = identityKey(source, tableId, shoe)
     if (loaded.has(key)) return
     const ledger = await writer.readV100RankLedger({ source, tableId, shoe })
-    loaded.add(key)
     if (ledger) ledgers.set(key, structuredClone(ledger))
+    if (ledger && ledger.status !== 'gap') loaded.add(key)
   }
 
   async function hydrateTables(tables = []) {
@@ -115,8 +115,8 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
       const key = identityKey(rowSource, tableId, shoe)
       if (!requestedKeys.has(key)) throw new Error('v100 durable rank ledger batch returned an unexpected identity')
       ledgers.set(key, structuredClone(row))
+      if (row && row.status !== 'gap') loaded.add(key)
     }
-    for (const key of requestedKeys) loaded.add(key)
   }
 
   async function applyIdentityRounds(key, events = []) {
@@ -130,8 +130,9 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
         && durableCompleteThrough >= Number(event.round)
       if (canSkipVerifiedFinal) continue
       const ledger = await writer.applyV100RankLedgerEvent(event)
-      loaded.add(key)
       ledgers.set(key, structuredClone(ledger))
+      if (ledger && ledger.status !== 'gap') loaded.add(key)
+      else loaded.delete(key)
     }
   }
 
@@ -199,11 +200,12 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
           workFor(identityKey(event.source, event.tableId, event.shoe)).events.push(event)
         }
 
-        await withIdentityPermit(() => hydrateTables(tables))
+        const hasBatchHydration = typeof writer.readV100RankLedgers === 'function'
+        if (hasBatchHydration) await withIdentityPermit(() => hydrateTables(tables))
 
         const results = await settleWithConcurrency([...workByIdentity.entries()], ([key, work]) => (
           withIdentityTail(key, () => withIdentityPermit(async () => {
-            for (const table of work.tables) await hydrateTable(table)
+            if (!hasBatchHydration) for (const table of work.tables) await hydrateTable(table)
             await applyIdentityRounds(key, work.events)
             return work.tables.map(scoreTable).filter(Boolean)
           }))

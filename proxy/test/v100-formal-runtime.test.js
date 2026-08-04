@@ -240,3 +240,56 @@ test('partial batch hydration treats missing requested identities as absent rows
   assert.equal(result.tables[0].v102RankLedger?.identity?.table_id, 'BAG01')
   assert.equal(result.tables[1].v102RankLedger, undefined)
 })
+
+test('gap hydration is not cached and retries until the durable ledger becomes contiguous', async () => {
+  let reads = 0
+  const writer = {
+    configured: true,
+    async readV100RankLedgers() {
+      reads += 1
+      return [durable({
+        identity: { source: 'mt-cloud', table_id: 'BAG01', shoe: 'S1' },
+        status: reads === 1 ? 'gap' : 'contiguous',
+        rankDataAvailable: reads > 1,
+        completeThroughRound: reads === 1 ? 0 : 20,
+        complete_through_round: reads === 1 ? 0 : 20,
+      })]
+    },
+    async readV100RankLedger() { throw new Error('batch path only') },
+    async applyV100RankLedgerEvent() { throw new Error('no rounds expected') },
+  }
+  const runtime = createV100FormalRuntime({ enabled: true, writer, source: 'mt-cloud' })
+  const current = { ...table(), tableId: 'BAG01', shoe: 'S1', round: 20 }
+
+  const first = await runtime.processSnapshot({ tables: [current], rounds: [] })
+  const second = await runtime.processSnapshot({ tables: [current], rounds: [] })
+
+  assert.equal(reads, 2)
+  assert.equal(first.tables[0].v102RankLedger?.rankDataAvailable, false)
+  assert.equal(second.tables[0].v102RankLedger?.rankDataAvailable, true)
+})
+
+test('terminal invalid hydration stays fail-closed without polling the database every snapshot', async () => {
+  let reads = 0
+  const writer = {
+    configured: true,
+    async readV100RankLedgers() {
+      reads += 1
+      return [durable({
+        identity: { source: 'mt-cloud', table_id: 'BAG01', shoe: 'S1' },
+        status: 'invalid', rankDataAvailable: false,
+      })]
+    },
+    async readV100RankLedger() { throw new Error('batch path only') },
+    async applyV100RankLedgerEvent() { throw new Error('no rounds expected') },
+  }
+  const runtime = createV100FormalRuntime({ enabled: true, writer, source: 'mt-cloud' })
+  const current = { ...table(), tableId: 'BAG01', shoe: 'S1', round: 20 }
+
+  const first = await runtime.processSnapshot({ tables: [current], rounds: [] })
+  const second = await runtime.processSnapshot({ tables: [current], rounds: [] })
+
+  assert.equal(reads, 1)
+  assert.equal(first.tables[0].v102RankLedger?.rankDataAvailable, false)
+  assert.equal(second.tables[0].v102RankLedger?.rankDataAvailable, false)
+})

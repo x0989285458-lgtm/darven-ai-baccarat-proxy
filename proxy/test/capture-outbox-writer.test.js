@@ -97,11 +97,15 @@ test('claim, complete, and fail use the direct DB RPC path with unforgeable leas
   assert.deepEqual(queries[2].values, ['s', 2, 'token-2', 3, 'safe error'])
 })
 
-test('batch rank-ledger hydration uses one parameterized exact-identity Direct DB query', async () => {
+test('batch rank-ledger hydration recovers missing current shoes before one exact reread', async () => {
   const queries = []
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
-    strategyPool: { async query(query) { queries.push(query); return { rows: [] } } },
+    strategyPool: { async query(query) {
+      queries.push(query)
+      if (/rebuild_v100_rank_ledger_from_cloud_rounds/i.test(query.text)) return { rows: [{ recovery: { accepted: true, status: 'contiguous' } }] }
+      return { rows: [] }
+    } },
     fetchImpl: async () => assert.fail('Direct DB batch hydration must not use REST'),
   })
   const identities = [
@@ -110,9 +114,38 @@ test('batch rank-ledger hydration uses one parameterized exact-identity Direct D
   ]
 
   assert.deepEqual(await client.readV100RankLedgers(identities), [])
-  assert.equal(queries.length, 1)
+  assert.equal(queries.length, 4)
   assert.match(queries[0].text, /unnest\(\$1::text\[\], \$2::text\[\], \$3::text\[\]\)/i)
-  assert.deepEqual(queries[0].values, [['mt-cloud', 'mt-cloud'], ['BAG01', 'BAG10'], ['S1', 'S9']])
+  assert.match(queries[1].text, /rebuild_v100_rank_ledger_from_cloud_rounds\(\$1,\$2,\$3\)/i)
+  assert.deepEqual(queries[1].values, ['mt-cloud', 'BAG01', 'S1'])
+  assert.deepEqual(queries[2].values, ['mt-cloud', 'BAG10', 'S9'])
+  assert.deepEqual(queries[3].values, [['mt-cloud', 'mt-cloud'], ['BAG01', 'BAG10'], ['S1', 'S9']])
+})
+
+test('batch rank-ledger hydration never rebuilds a terminal invalid ledger', async () => {
+  const queries = []
+  const ranks = Object.fromEntries(['A','2','3','4','5','6','7','8','9','10','J','Q','K'].map((rank) => [rank, 0]))
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    strategyPool: { async query(query) {
+      queries.push(query)
+      return { rows: [{
+        source: 'mt-cloud', table_id: 'BAG01', shoe_no: 'S1', complete_through_round: 0,
+        seen_dealt_rank_counts: ranks,
+        seen_dealt_code_counts: Object.fromEntries(Array.from({ length: 52 }, (_, index) => [String(index + 1), 0])),
+        undealt_after_observed_deals: Object.fromEntries(Object.keys(ranks).map((rank) => [rank, 32])),
+        cards_seen_dealt: 0, status: 'invalid', ledger_checksum: '0'.repeat(64), revision: 1,
+        physical_remaining_exact: false, burn_observation_status: 'unavailable',
+      }] }
+    } },
+    fetchImpl: async () => assert.fail('Direct DB hydration must not use REST'),
+  })
+
+  const rows = await client.readV100RankLedgers([{ source: 'mt-cloud', tableId: 'BAG01', shoe: 'S1' }])
+
+  assert.equal(rows[0].status, 'invalid')
+  assert.equal(queries.length, 1)
+  assert.doesNotMatch(queries[0].text, /rebuild_v100_rank_ledger_from_cloud_rounds/i)
 })
 
 test('outbox health is available through direct DB and REST fallback', async () => {
