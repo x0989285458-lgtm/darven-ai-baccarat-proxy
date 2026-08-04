@@ -2457,11 +2457,17 @@ export function createSupabaseIngestionClient({
         const source = String(identity?.source ?? '')
         const tableId = String(identity?.tableId ?? identity?.table_id ?? '')
         const shoe = String(identity?.shoe ?? identity?.shoe_no ?? '')
+        const expectedCompleteThrough = Number(identity?.expectedCompleteThrough)
         if (!source || !tableId || !shoe) throw new Error('v100 durable rank ledger batch identity is incomplete')
         const key = JSON.stringify([source, tableId, shoe])
         if (seen.has(key)) continue
         seen.add(key)
-        exact.push({ source, tableId, shoe })
+        exact.push({
+          source, tableId, shoe,
+          expectedCompleteThrough: Number.isSafeInteger(expectedCompleteThrough) && expectedCompleteThrough >= 0
+            ? expectedCompleteThrough
+            : null,
+        })
       }
       if (exact.length === 0) return []
       if (exact.length > 128) throw new Error('v100 durable rank ledger batch exceeds maximum identities')
@@ -2502,7 +2508,12 @@ export function createSupabaseIngestionClient({
       for (const identity of exact) {
         const key = JSON.stringify([identity.source, identity.tableId, identity.shoe])
         const current = initial.get(key)
-        if (current && current.status !== 'gap') continue
+        const completeThrough = Number(current?.complete_through_round)
+        const terminal = current?.status === 'invalid' || current?.status === 'conflicted'
+        const currentEnough = current?.status === 'contiguous'
+          && (identity.expectedCompleteThrough == null
+            || (Number.isSafeInteger(completeThrough) && completeThrough >= identity.expectedCompleteThrough))
+        if (terminal || currentEnough) continue
         try {
           const acknowledgement = priorityStrategyDb && typeof priorityStrategyDb.query === 'function'
             ? (await priorityStrategyDb.query({

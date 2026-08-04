@@ -97,6 +97,7 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
     if (typeof writer?.readV100RankLedgers !== 'function') return
     const identities = []
     const requestedKeys = new Set()
+    const expectedByKey = new Map()
     for (const table of tables) {
       const tableId = String(table?.tableId ?? '')
       const shoe = String(table?.shoe ?? '')
@@ -104,7 +105,9 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
       const key = identityKey(source, tableId, shoe)
       if (loaded.has(key) || requestedKeys.has(key)) continue
       requestedKeys.add(key)
-      identities.push({ source, tableId, shoe })
+      const expectedCompleteThrough = Number(table?.round)
+      if (Number.isSafeInteger(expectedCompleteThrough) && expectedCompleteThrough >= 0) expectedByKey.set(key, expectedCompleteThrough)
+      identities.push({ source, tableId, shoe, expectedCompleteThrough })
     }
     if (identities.length === 0) return
     const rows = await writer.readV100RankLedgers(identities)
@@ -115,7 +118,14 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
       const key = identityKey(rowSource, tableId, shoe)
       if (!requestedKeys.has(key)) throw new Error('v100 durable rank ledger batch returned an unexpected identity')
       ledgers.set(key, structuredClone(row))
-      if (row && row.status !== 'gap') loaded.add(key)
+      const completeThrough = Number(row?.completeThroughRound ?? row?.complete_through_round)
+      const expected = expectedByKey.get(key)
+      const terminal = row?.status === 'invalid' || row?.status === 'conflicted'
+      const current = row?.status === 'contiguous'
+        && Number.isSafeInteger(completeThrough)
+        && (!Number.isSafeInteger(expected) || completeThrough >= expected)
+      if (terminal || current) loaded.add(key)
+      else loaded.delete(key)
     }
   }
 
@@ -131,11 +141,16 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
       if (canSkipVerifiedFinal) continue
       const ledger = await writer.applyV100RankLedgerEvent(event)
       ledgers.set(key, structuredClone(ledger))
-      if (ledger && ledger.status !== 'gap') loaded.add(key)
+      const appliedCompleteThrough = Number(ledger?.completeThroughRound ?? ledger?.complete_through_round)
+      const terminal = ledger?.status === 'invalid' || ledger?.status === 'conflicted'
+      const current = ledger?.status === 'contiguous'
+        && Number.isSafeInteger(appliedCompleteThrough)
+        && appliedCompleteThrough >= Number(event.round)
+      if (terminal || current) loaded.add(key)
       else {
         loaded.delete(key)
         if (typeof writer?.readV100RankLedgers === 'function') {
-          await hydrateTables([{ tableId: event.tableId, shoe: event.shoe }])
+          await hydrateTables([{ tableId: event.tableId, shoe: event.shoe, round: event.round }])
         }
       }
     }
@@ -152,6 +167,7 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
       && durable?.rankDataAvailable === true
       && Number.isSafeInteger(targetRound)
       && completeThrough === targetRound - 1
+    if (durable?.status === 'contiguous' && !rankDataAvailable) loaded.delete(key)
     const v102RankLedger = durable ? { ...structuredClone(durable), rankDataAvailable, targetRound } : null
     const scoringTable = v102RankLedger ? { ...structuredClone(table), v102RankLedger } : structuredClone(table)
     const roundContext = { round: targetRound, v102RankLedger }

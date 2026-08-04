@@ -173,7 +173,9 @@ test('cold ten-table capture hydrates exact rank-ledger identities with one boun
   const result = await runtime.processSnapshot({ tables, rounds: [] })
 
   assert.equal(batchCalls.length, 1)
-  assert.deepEqual(batchCalls[0], tables.map((item) => ({ source: 'mt-cloud', tableId: item.tableId, shoe: item.shoe })))
+  assert.deepEqual(batchCalls[0], tables.map((item) => ({
+    source: 'mt-cloud', tableId: item.tableId, shoe: item.shoe, expectedCompleteThrough: item.round,
+  })))
   assert.equal(result.tables.length, 10)
 })
 
@@ -317,4 +319,32 @@ test('a gap returned by Final apply is recovered again inside the same snapshot'
   assert.deepEqual(calls, ['batch-1', 'apply-gap', 'batch-2'])
   assert.equal(result.tables[0].v102RankLedger?.status, 'contiguous')
   assert.equal(result.tables[0].v102RankLedger?.rankDataAvailable, true)
+})
+
+test('a stale contiguous hydration is retried until it reaches the visible table round', async () => {
+  let reads = 0
+  const identities = []
+  const writer = {
+    configured: true,
+    async readV100RankLedgers(batch) {
+      reads += 1
+      identities.push(structuredClone(batch))
+      return [durable({
+        completeThroughRound: reads === 1 ? 18 : 20,
+        complete_through_round: reads === 1 ? 18 : 20,
+      })]
+    },
+    async readV100RankLedger() { throw new Error('batch path only') },
+    async applyV100RankLedgerEvent() { throw new Error('no rounds expected') },
+  }
+  const runtime = createV100FormalRuntime({ enabled: true, writer, source: 'mt-cloud' })
+  const current = { ...table(), tableId: 'BAG01', shoe: 'S100', round: 20 }
+
+  const first = await runtime.processSnapshot({ tables: [current], rounds: [] })
+  const second = await runtime.processSnapshot({ tables: [current], rounds: [] })
+
+  assert.equal(reads, 2)
+  assert.equal(identities[0][0].expectedCompleteThrough, 20)
+  assert.equal(first.tables[0].v102RankLedger?.rankDataAvailable, false)
+  assert.equal(second.tables[0].v102RankLedger?.rankDataAvailable, true)
 })
