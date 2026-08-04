@@ -1,8 +1,8 @@
 {
-  "releaseName": "v105 影子V10正式來源正規化修正版",
-  "releaseVersion": "v105-shadow-v10.20",
-  "gitTag": "v105-shadow-v10.20",
-  "applicationVersion": "1.0.57",
+  "releaseName": "v105 影子V10 Rank-sync歷史毫秒排序修正版",
+  "releaseVersion": "v105-shadow-v10.21",
+  "gitTag": "v105-shadow-v10.21",
+  "applicationVersion": "1.0.58",
   "formalStrategyVersion": "v105",
   "applicationVersionChanged": true,
   "releaseScope": {
@@ -54,6 +54,8 @@
     "v10-shadow-db-validation-catalog-acl-readback",
     "v100-rank-ledger-recovery-migration",
     "v100-rank-ledger-recovery-catalog-acl-readback",
+    "v10-rank-sync-hydration-migration",
+    "v10-rank-sync-hydration-catalog-acl-readback",
     "v6-v8-retirement-migration",
     "v6-v8-retirement-catalog-acl-readback",
     "database-additive",
@@ -103,6 +105,13 @@
       "rpc": "public.rebuild_v100_rank_ledger_from_cloud_rounds(text,text,text)",
       "serviceRoleOnly": true,
       "catalogAclReadbackRequired": true
+    },
+    "rankSyncHydrationMigration": {
+      "path": "supabase/migrations/20260804110000_v105_shadow_v10_rank_sync_hydration_millisecond_order.sql",
+      "rpc": "public.get_v105_shadow_v10_rank_sync_compact_history(integer)",
+      "serviceRoleOnly": true,
+      "catalogAclReadbackRequired": true,
+      "nodeDateMillisecondOrdering": true
     }
   },
   "proxy": {
@@ -145,6 +154,7 @@
         "supabase/migrations/20260804013000_v105_shadow_v10_rank_sync.sql",
         "supabase/migrations/20260804090000_v105_shadow_v10_rank_sync_db_validation.sql",
         "supabase/migrations/20260804100000_v100_rank_ledger_cloud_round_recovery.sql",
+        "supabase/migrations/20260804110000_v105_shadow_v10_rank_sync_hydration_millisecond_order.sql",
         "supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql",
         "scripts/verify-v105-mt-api-release.mjs",
         "scripts/trusted-registry-readback-adapter.mjs",
@@ -155,7 +165,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "0507bc19c104f2b9ebf76a14380216b08c1e3d2c4bb7fa703337421de9888fd2"
+      "sha256": "1b6c609f1a840c70b10d8c27a87fa8f8fd393687555e182c3e96a591e1224deb"
     },
     "migration": {
       "algorithm": "sha256",
@@ -177,7 +187,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "5febb428e509019193314b0ed29f8f774d5fb36df3f31c59608a07f6799945b6"
+      "sha256": "7e407f7420924a3e9b595ee91f305730179365e7eb4a2c7d683b020525719d51"
     },
     "workerBuildInput": {
       "algorithm": "sha256",
@@ -190,7 +200,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "1b8d440e67d4b144b395e5ee376bd2683cfb826a02c0c4dfaa5d7c3ee4f206f6"
+      "sha256": "66d9b91591a6893bc28e6f11a118706a83e32e335f07d9451526fc58eeeed6a2"
     },
     "attestation": {
       "externalFileRequired": true,
@@ -227,6 +237,11 @@
       "algorithm": "sha256",
       "path": "supabase/migrations/20260804100000_v100_rank_ledger_cloud_round_recovery.sql",
       "sha256": "b280dcd5942d221d9e2b30f36934c0009ed88c57ba95e6f8ea425f87b3a9c718"
+    },
+    "rankSyncHydrationMigration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260804110000_v105_shadow_v10_rank_sync_hydration_millisecond_order.sql",
+      "sha256": "a6ffcbf369b17615a28f173d3edbefa5646d9903aaead8e2bd34a45e53ec1d61"
     }
   },
   "rollback": {

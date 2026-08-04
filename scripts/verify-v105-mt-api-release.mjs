@@ -108,6 +108,12 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
     excludedPaths: [],
     sha256: binding.rankLedgerRecoveryMigration?.sha256,
   }, 'rank_ledger_recovery_migration')
+  const rankSyncHydrationMigration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, {
+    algorithm: binding.rankSyncHydrationMigration?.algorithm,
+    paths: [binding.rankSyncHydrationMigration?.path],
+    excludedPaths: [],
+    sha256: binding.rankSyncHydrationMigration?.sha256,
+  }, 'rank_sync_hydration_migration')
   const shadowV6V8RetirementMigration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, {
     algorithm: binding.shadowV6V8RetirementMigration?.algorithm,
     paths: [binding.shadowV6V8RetirementMigration?.path],
@@ -135,6 +141,7 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
   verifyV9ShadowRollbackContract(manifest, binding)
   verifyV10ShadowRollbackContract(manifest, binding)
   verifyRankLedgerRecoveryContract(manifest, binding)
+  verifyRankSyncHydrationContract(manifest, binding)
   verifyV6V8RetirementContract(manifest, binding)
   return {
     ok: true,
@@ -145,6 +152,7 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
     shadowV10MigrationSha256: shadowV10Migration.sha256,
     shadowV10DbValidationMigrationSha256: shadowV10DbValidationMigration.sha256,
     rankLedgerRecoveryMigrationSha256: rankLedgerRecoveryMigration.sha256,
+    rankSyncHydrationMigrationSha256: rankSyncHydrationMigration.sha256,
     shadowV6V8RetirementMigrationSha256: shadowV6V8RetirementMigration.sha256,
     proxyBuildInputSha256: proxy.sha256,
     workerBuildInputSha256: worker.sha256,
@@ -231,6 +239,23 @@ export function verifyRankLedgerRecoveryContract(manifest = {}, binding = manife
   return { ok: true }
 }
 
+export function verifyRankSyncHydrationContract(manifest = {}, binding = manifest?.releaseBinding ?? {}) {
+  const migration = manifest?.database?.rankSyncHydrationMigration
+  const deployment = Array.isArray(manifest?.deploymentOrder) ? manifest.deploymentOrder : []
+  const migrationIndex = deployment.indexOf('v10-rank-sync-hydration-migration')
+  const readbackIndex = deployment.indexOf('v10-rank-sync-hydration-catalog-acl-readback')
+  const proxyIndex = deployment.indexOf('proxy-compatible')
+  if (migration?.path !== binding?.rankSyncHydrationMigration?.path
+    || migration?.rpc !== 'public.get_v105_shadow_v10_rank_sync_compact_history(integer)'
+    || migration?.serviceRoleOnly !== true || migration?.catalogAclReadbackRequired !== true
+    || migration?.nodeDateMillisecondOrdering !== true
+    || migrationIndex < 0 || readbackIndex !== migrationIndex + 1 || proxyIndex <= readbackIndex
+    || !binding.implementationTree.paths?.includes(migration.path)) {
+    throw new Error('rank_sync_hydration_contract_invalid')
+  }
+  return { ok: true }
+}
+
 export function verifyV6V8RetirementContract(manifest = {}, binding = manifest?.releaseBinding ?? {}) {
   const migration = manifest?.database?.shadowV6V8RetirementMigration
   const deployment = Array.isArray(manifest?.deploymentOrder) ? manifest.deploymentOrder : []
@@ -275,7 +300,7 @@ export function verifyExternalReleaseAttestation(attestation = {}, expected = {}
   if (!String(expected.gitTag ?? '').trim() || attestation.tag !== expected.gitTag) throw new Error('attestation_tag_mismatch')
   if (!/^[a-f0-9]{40}$/.test(String(expected.candidateIndexTree ?? ''))
     || attestation.tree !== expected.candidateIndexTree) throw new Error('attestation_tree_mismatch')
-  const digestFields = ['implementationTreeSha256', 'migrationSha256', 'shadowHydrationMigrationSha256', 'shadowV10MigrationSha256', 'shadowV10DbValidationMigrationSha256', 'rankLedgerRecoveryMigrationSha256', 'shadowV6V8RetirementMigrationSha256', 'proxyBuildInputSha256', 'workerBuildInputSha256']
+  const digestFields = ['implementationTreeSha256', 'migrationSha256', 'shadowHydrationMigrationSha256', 'shadowV10MigrationSha256', 'shadowV10DbValidationMigrationSha256', 'rankLedgerRecoveryMigrationSha256', 'rankSyncHydrationMigrationSha256', 'shadowV6V8RetirementMigrationSha256', 'proxyBuildInputSha256', 'workerBuildInputSha256']
   for (const field of digestFields) {
     if (!/^[a-f0-9]{64}$/.test(String(attestation[field] ?? '')) || attestation[field] !== expected[field]) {
       throw new Error(`attestation_${field}_mismatch`)
