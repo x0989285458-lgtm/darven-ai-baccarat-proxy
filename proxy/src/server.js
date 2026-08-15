@@ -385,10 +385,14 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const shadowWorkScheduler = createServiceWorkScheduler()
   const shadowServiceWork = createTrackedServiceWorkController()
   const isolatedShadowProcess = isolateShadowProcess === true
-    ? (shadowProcessClient ?? createShadowProcessClient())
+    ? (shadowProcessClient ?? createShadowProcessClient({ v9Writer: supabaseClient }))
     : null
   const prepareRequiredShadowProcess = () => {
     const prepare = isolatedShadowProcess?.prepareRequired ?? isolatedShadowProcess?.prepare
+    return typeof prepare === 'function' ? prepare.call(isolatedShadowProcess) : null
+  }
+  const prepareV9ShadowProcess = () => {
+    const prepare = isolatedShadowProcess?.prepareV9
     return typeof prepare === 'function' ? prepare.call(isolatedShadowProcess) : null
   }
   const prepareV10ShadowProcess = () => {
@@ -2182,6 +2186,21 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         } catch {
           state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
         }
+        let v9Preparation = null
+        try {
+          v9Preparation = prepareV9ShadowProcess()
+        } catch {
+          state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
+        }
+        if (v9Preparation) {
+          void Promise.resolve(v9Preparation)
+            .then((readiness) => {
+              state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status(), shadowProcessV9Readiness: readiness ?? null })
+            })
+            .catch(() => {
+              state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
+            })
+        }
         let v10Preparation = null
         try {
           v10Preparation = prepareV10ShadowProcess()
@@ -2244,14 +2263,19 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       } catch {}
       isolatedShadowProcess?.beginStop?.()
       const hasScopedShadowStops = typeof isolatedShadowProcess?.stopRequired === 'function'
+        && typeof isolatedShadowProcess?.stopV9 === 'function'
         && typeof isolatedShadowProcess?.stopV10 === 'function'
       const isolatedRequiredShadowStop = Promise.resolve().then(() => (
         hasScopedShadowStops ? isolatedShadowProcess?.stopRequired?.() : isolatedShadowProcess?.stop?.()
+      ))
+      const isolatedV9ShadowStop = Promise.resolve().then(() => (
+        hasScopedShadowStops ? isolatedShadowProcess?.stopV9?.() : null
       ))
       const isolatedV10ShadowStop = Promise.resolve().then(() => (
         hasScopedShadowStops ? isolatedShadowProcess?.stopV10?.() : null
       ))
       void isolatedRequiredShadowStop.catch(() => {})
+      void isolatedV9ShadowStop.catch(() => {})
       void isolatedV10ShadowStop.catch(() => {})
       try {
         await withDeadline(
@@ -2265,6 +2289,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         await withDeadline(
           Promise.all([
             isolatedRequiredShadowStop,
+            isolatedV9ShadowStop,
             isolatedV10ShadowStop,
             shadowServiceWork.closeAndWait(),
             shadowWorkScheduler.closeAndWait(),

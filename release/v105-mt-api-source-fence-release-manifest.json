@@ -1,8 +1,8 @@
 {
-  "releaseName": "v105 影子V10 Pending重啟恢復修正版",
-  "releaseVersion": "v105-shadow-v10.22",
-  "gitTag": "v105-shadow-v10.22",
-  "applicationVersion": "1.0.59",
+  "releaseName": "v105 V9影子獨立恢復版1",
+  "releaseVersion": "v105-shadow-v9-resume-isolated.1",
+  "gitTag": "v105-shadow-v9-resume-isolated.1",
+  "applicationVersion": "1.0.60",
   "formalStrategyVersion": "v105",
   "applicationVersionChanged": true,
   "releaseScope": {
@@ -45,6 +45,33 @@
     "frontendChanged": false,
     "historyQueryChanged": true
   },
+  "shadowV9Isolation": {
+    "strategyVersion": "v105-shadow-v9-weighted-v7-v8",
+    "runtimeFlag": "V105_SHADOW_V9_ENABLED=true",
+    "childScope": "v105-v9",
+    "separateFromRequired": true,
+    "separateFromV10": true,
+    "childDatabaseCredentials": false,
+    "writerTransport": "parent-ipc",
+    "writerRequestValidation": "method-schema-identity-size",
+    "writerMaxConcurrency": 4,
+    "writerPayloadMaxBytes": 262144,
+    "writerResultMaxBytes": 2097152,
+    "writerRequestIdLimitPerGeneration": 2000,
+    "writerRequestIdsReusableWithinGeneration": false,
+    "ipcErrorRedaction": "both-boundaries-uri-jwt-key",
+    "writerResponseDropObservable": true,
+    "shutdownWaitsForParentWrites": true,
+    "captureLane": "bounded-best-effort",
+    "deliveryGuarantee": "live-best-effort-no-retroactive-replay",
+    "failureAndDropCountsObservable": true,
+    "retroactiveReplayAllowed": false,
+    "maxQueuedCaptures": 2,
+    "maxQueuedIdentities": 2000,
+    "blocksFormalOutboxAck": false,
+    "counterMode": "resume-existing",
+    "memberVisible": false
+  },
   "deploymentOrder": [
     "v9-shadow-hydration-migration",
     "v9-shadow-hydration-catalog-acl-readback",
@@ -62,6 +89,9 @@
     "database-catalog-acl-readback",
     "capture-outbox-health-active-only-migration",
     "proxy-compatible",
+    "v9-isolated-child-credential-fence-readback",
+    "v9-shadow-enable-after-proxy-readback",
+    "v9-new-issuance-settlement-readback",
     "new-api-worker",
     "durable-source-readback",
     "require-fenced-ingest-finalize"
@@ -158,6 +188,7 @@
         "supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql",
         "scripts/verify-v105-mt-api-release.mjs",
         "scripts/trusted-registry-readback-adapter.mjs",
+        "release/v105-shadow-v9-resume-isolated-release-manifest.json",
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
@@ -165,7 +196,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "4d64888b92cdbb92b331a16bf405b6cb23449f6a0356f29b5630f415758fd913"
+      "sha256": "3f491e7f3defca8bd6c079a22f33d335e7a6daedf3df91fbc3d1de85a9e2251b"
     },
     "migration": {
       "algorithm": "sha256",
@@ -187,7 +218,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "6457ec5b249892a730e95a0b00a3fa8f652ce7aba0ad23ff2689a9965d8afe92"
+      "sha256": "2a7e66d3299eaddbd7dec16ff9801317bd8d8e88be3295de40c1eae44918c58f"
     },
     "workerBuildInput": {
       "algorithm": "sha256",
@@ -200,7 +231,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "88f683324aeb07cfe70c22aa7c65fe6e4d331d13536b0a52fd8a6a90e505d2d0"
+      "sha256": "270f63981133401a39717139b80d692fa381b6a81258f1af9b2e62ed86061bc8"
     },
     "attestation": {
       "externalFileRequired": true,
@@ -246,8 +277,8 @@
   },
   "rollback": {
     "target": {
-      "commit": "dc36e903d008e5f9dfec09d5f47fd454b822c91a",
-      "tree": "8158a0b61095fcf723f574be5acb8993aeba5b19",
+      "commit": "0b17afa2d1ec28aa27e91be6c2bda58ca301a860",
+      "tree": "9e992c409c7e162a6af0d64d973533cfea695f7f",
       "proxyArtifact": "proxy-from-exact-target",
       "browserWorkerArtifact": "cloud-browser-worker-from-exact-target"
     },

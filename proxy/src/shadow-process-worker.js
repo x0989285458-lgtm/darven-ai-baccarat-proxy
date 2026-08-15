@@ -5,23 +5,29 @@ import { createV104IterationShadowRuntime, resolveV104IterationShadowEnabled } f
 import { createV105ShadowV9Runtime, resolveV105ShadowV9Enabled } from './v105-shadow-v9-runtime.js'
 import { createV105ShadowV10Runtime, resolveV105ShadowV10Enabled } from './v105-shadow-v10-runtime.js'
 import { createShadowProcessWriter } from './shadow-process-writer.js'
+import { createParentIpcV9Writer } from './shadow-process-ipc-writer.js'
+import { redactShadowErrorMessage as safeError } from './shadow-process-error-redaction.js'
 import { prepareShadowRuntimes, processShadowCapture, waitForShadowRuntimesReady } from './shadow-process-work.js'
 
 const RUNTIME_SCOPE = String(process.env.SHADOW_PROCESS_RUNTIME_SCOPE ?? '')
-const RUNTIME_SCOPE_ALLOWLIST = new Set(['required', 'v105-v10'])
+const RUNTIME_SCOPE_ALLOWLIST = new Set(['required', 'v105-v9', 'v105-v10'])
 if (!RUNTIME_SCOPE_ALLOWLIST.has(RUNTIME_SCOPE)) {
   const error = new Error('shadow process runtime scope is missing or invalid')
   error.code = 'SHADOW_PROCESS_SCOPE_INVALID'
   throw error
 }
 
-const writer = createShadowProcessWriter({ scope: RUNTIME_SCOPE, env: process.env })
+const writer = RUNTIME_SCOPE === 'v105-v9'
+  ? createParentIpcV9Writer()
+  : createShadowProcessWriter({ scope: RUNTIME_SCOPE, env: process.env })
 
 const has = (name) => typeof writer?.[name] === 'function'
 const requiredRuntimes = () => new Map([
   ['v103', createV103ShadowRuntime({ enabled: resolveV103ShadowEnabled(), writer })],
   ['v104', createV104ShadowRuntime({ enabled: ALL_MT_EQUAL_STRATEGY_VERSION !== 'v104' && resolveV104ShadowEnabled(), writer })],
   ['v104-iteration', createV104IterationShadowRuntime({ enabled: resolveV104IterationShadowEnabled(), writer })],
+])
+const v9Runtimes = () => new Map([
   ['v105-v9', createV105ShadowV9Runtime({
     enabled: resolveV105ShadowV9Enabled() && has('getV105ShadowV9History') && has('issueV105ShadowV9Prediction') && has('readV105ShadowV9Issuance') && has('settleV105ShadowV9Prediction'),
     writer,
@@ -33,17 +39,15 @@ const v10Runtimes = () => new Map([
     writer,
   })],
 ])
-const runtimes = RUNTIME_SCOPE === 'required' ? requiredRuntimes() : v10Runtimes()
-const workOptions = RUNTIME_SCOPE === 'v105-v10'
-  ? { nonBlockingRuntimeKeys: new Set() }
-  : undefined
+const runtimes = RUNTIME_SCOPE === 'required'
+  ? requiredRuntimes()
+  : RUNTIME_SCOPE === 'v105-v9'
+    ? v9Runtimes()
+    : v10Runtimes()
+const workOptions = RUNTIME_SCOPE === 'required'
+  ? undefined
+  : { nonBlockingRuntimeKeys: new Set() }
 
-function safeError(error) {
-  return String(error?.message ?? error ?? 'shadow process work failed')
-    .replace(/Bearer\s+\S+/gi, 'Bearer [REDACTED]')
-    .replace(/(?:password|token|secret|api[_-]?key)\s*[:=]\s*\S+/gi, '[REDACTED]')
-    .slice(0, 500)
-}
 
 function snapshots() {
   return Object.fromEntries([...runtimes.entries()].map(([key, runtime]) => {
@@ -58,9 +62,9 @@ process.on('message', async (message) => {
   try {
     let result = null
     if (message.kind === 'prepare') {
-      result = RUNTIME_SCOPE === 'v105-v10'
-        ? await waitForShadowRuntimesReady(runtimes, workOptions)
-        : await prepareShadowRuntimes(runtimes, workOptions)
+      result = RUNTIME_SCOPE === 'required'
+        ? await prepareShadowRuntimes(runtimes, workOptions)
+        : await waitForShadowRuntimesReady(runtimes, workOptions)
     } else if (message.kind === 'capture') {
       result = await processShadowCapture(runtimes, structuredClone(message.payload), workOptions)
     } else {

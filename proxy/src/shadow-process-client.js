@@ -1,11 +1,15 @@
 import { fork } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { scrubDirectDatabaseEnv } from './shadow-process-env.js'
+import { V9_WRITER_METHODS } from './shadow-process-ipc-writer.js'
+import { V105_SHADOW_V9_TABLE_IDS, V105_SHADOW_V9_VERSION } from './v105-shadow-v9-contract.js'
+import { redactShadowErrorMessage as safeErrorMessage } from './shadow-process-error-redaction.js'
 
-const REQUIRED_RUNTIME_KEYS = new Set(['v103', 'v104', 'v104-iteration', 'v105-v9'])
+const REQUIRED_RUNTIME_KEYS = new Set(['v103', 'v104', 'v104-iteration'])
+const V9_RUNTIME_KEY = 'v105-v9'
 const V10_RUNTIME_KEY = 'v105-v10'
-const RUNTIME_KEYS = new Set([...REQUIRED_RUNTIME_KEYS, V10_RUNTIME_KEY])
-const RUNTIME_SCOPES = new Set(['required', V10_RUNTIME_KEY])
+const RUNTIME_KEYS = new Set([...REQUIRED_RUNTIME_KEYS, V9_RUNTIME_KEY, V10_RUNTIME_KEY])
+const RUNTIME_SCOPES = new Set(['required', V9_RUNTIME_KEY, V10_RUNTIME_KEY])
 const CHILD_ENV_ALLOWLIST = [
   'NODE_ENV', 'TZ',
   'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SUPABASE_DB_CONNECTION_STRING',
@@ -13,8 +17,12 @@ const CHILD_ENV_ALLOWLIST = [
   'V103_SHADOW_ENABLED', 'V104_SHADOW_ENABLED', 'V104_ITERATION_SHADOW_ENABLED',
   'V105_SHADOW_V9_ENABLED', 'V105_SHADOW_V10_ENABLED',
 ]
-const V10_MAX_QUEUED_CAPTURES = 2
-const V10_MAX_IDENTITIES = 2000
+const BEST_EFFORT_MAX_QUEUED_CAPTURES = 2
+const BEST_EFFORT_MAX_IDENTITIES = 2000
+const V9_PARENT_WRITER_MAX_CONCURRENCY = 4
+const V9_PARENT_WRITER_MAX_PAYLOAD_BYTES = 262144
+const V9_PARENT_WRITER_MAX_RESULT_BYTES = 2097152
+const V9_TABLE_IDS = new Set(V105_SHADOW_V9_TABLE_IDS)
 const DISABLED_READINESS = Object.freeze({ enabled: 0, prepared: 0, pending: 0, queued: 0, failed: 0, disabled: 1 })
 
 function buildChildEnv(source = {}, scope) {
@@ -24,15 +32,64 @@ function buildChildEnv(source = {}, scope) {
     if (source[key] != null) target[key] = String(source[key])
   }
   if (scope === V10_RUNTIME_KEY) scrubDirectDatabaseEnv(target)
+  if (scope === V9_RUNTIME_KEY) {
+    scrubDirectDatabaseEnv(target)
+    delete target.SUPABASE_URL
+    delete target.SUPABASE_SERVICE_ROLE_KEY
+    delete target.SUPABASE_SECRET_KEY
+  }
   return target
 }
 
-function safeErrorMessage(value) {
-  const text = String(value ?? 'shadow process request failed')
-  return text
-    .replace(/Bearer\s+\S+/gi, 'Bearer [REDACTED]')
-    .replace(/(?:password|token|secret|api[_-]?key)\s*[:=]\s*\S+/gi, '[REDACTED]')
-    .slice(0, 500)
+
+function isRecord(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isBoundedIdentity(value, max = 128) {
+  const text = String(value ?? '')
+  return text.length > 0 && text.length <= max && !/[\u0000-\u001f]/.test(text)
+}
+
+function isPositiveRound(value) {
+  return Number.isSafeInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 1000
+}
+
+function assertV9WriterArgs(method, rawArgs) {
+  const args = structuredClone(Array.isArray(rawArgs) ? rawArgs : [])
+  const encoded = JSON.stringify(args)
+  if (Buffer.byteLength(encoded ?? '', 'utf8') > V9_PARENT_WRITER_MAX_PAYLOAD_BYTES) throw Object.assign(new Error('V9 writer payload is too large'), { code: 'V9_WRITER_PAYLOAD_TOO_LARGE' })
+  if (method === 'getV105ShadowV9Counters') {
+    if (args.length !== 0) throw Object.assign(new Error('V9 counters arguments are invalid'), { code: 'V9_WRITER_ARGUMENT_INVALID' })
+    return args
+  }
+  if (args.length !== 1 || !isRecord(args[0])) throw Object.assign(new Error('V9 writer arguments are invalid'), { code: 'V9_WRITER_ARGUMENT_INVALID' })
+  const value = args[0]
+  const tableId = value.targetTableId ?? value.tableId
+  const shoe = value.targetShoe ?? value.shoe
+  const round = value.targetRound ?? value.round
+  if (method === 'getV105ShadowV9History') {
+    if (!Number.isInteger(value.perTableLimit) || value.perTableLimit < 1 || value.perTableLimit > 60) throw Object.assign(new Error('V9 history arguments are invalid'), { code: 'V9_WRITER_ARGUMENT_INVALID' })
+    if (value.requestTimeoutMs != null && (!Number.isFinite(Number(value.requestTimeoutMs)) || Number(value.requestTimeoutMs) < 1 || Number(value.requestTimeoutMs) > 60000)) throw Object.assign(new Error('V9 history timeout is invalid'), { code: 'V9_WRITER_ARGUMENT_INVALID' })
+    return args
+  }
+  if (!V9_TABLE_IDS.has(String(tableId ?? '')) || !isBoundedIdentity(shoe, 64) || !isPositiveRound(round)) throw Object.assign(new Error('V9 writer identity is invalid'), { code: 'V9_WRITER_IDENTITY_INVALID' })
+  if (value.source != null && !isBoundedIdentity(value.source, 64)) throw Object.assign(new Error('V9 writer source is invalid'), { code: 'V9_WRITER_IDENTITY_INVALID' })
+  if (method === 'issueV105ShadowV9Prediction') {
+    if (value.strategyVersion !== V105_SHADOW_V9_VERSION || value.predictionTiming !== 'pre_result_context' || !['banker', 'player'].includes(String(value.predictedResult ?? '').toLowerCase())) throw Object.assign(new Error('V9 issuance contract is invalid'), { code: 'V9_WRITER_CONTRACT_INVALID' })
+  } else if (method === 'settleV105ShadowV9Prediction') {
+    if (!isBoundedIdentity(value.predictionId, 128) || value.strategyVersion !== V105_SHADOW_V9_VERSION || value.settlementFinal !== true || !['banker', 'player', 'tie'].includes(String(value.actualResult ?? '').toLowerCase())) throw Object.assign(new Error('V9 settlement contract is invalid'), { code: 'V9_WRITER_CONTRACT_INVALID' })
+  } else if (method !== 'readV105ShadowV9Issuance') {
+    throw Object.assign(new Error('V9 writer method is unavailable'), { code: 'V9_WRITER_METHOD_UNAVAILABLE' })
+  }
+  return args
+}
+
+function boundedV9WriterResult(value) {
+  const result = structuredClone(value ?? null)
+  const encoded = JSON.stringify(result)
+  if (Buffer.byteLength(encoded ?? '', 'utf8') > V9_PARENT_WRITER_MAX_RESULT_BYTES) throw Object.assign(new Error('V9 writer result is too large'), { code: 'V9_WRITER_RESULT_TOO_LARGE' })
+  return result
 }
 
 function createScopedProcessLane({
@@ -46,6 +103,7 @@ function createScopedProcessLane({
   startupTimeoutMs,
   killGraceMs,
   killConfirmMs,
+  writer = null,
 }) {
   let child = null
   let generation = 0
@@ -57,6 +115,8 @@ function createScopedProcessLane({
   let lastSuccess = null
   const pending = new Map()
   const snapshots = new Map()
+  const writerPending = new Set()
+  const writerRequestIds = new Set()
 
   function rejectGeneration(targetGeneration, reason) {
     for (const [id, request] of pending) {
@@ -66,6 +126,46 @@ function createScopedProcessLane({
       request.signal?.removeEventListener?.('abort', request.onAbort)
       request.reject(reason)
     }
+  }
+
+  function sendWriterResponse(target, payload) {
+    if (!target.connected || target.__terminating === true) {
+      lastFailure = { at: new Date().toISOString(), kind: 'writer_response', code: 'V9_WRITER_RESPONSE_DROPPED', diagnostics: [] }
+      return
+    }
+    try {
+      target.send(payload, (error) => {
+        if (!error) return
+        lastFailure = { at: new Date().toISOString(), kind: 'writer_response', code: 'V9_WRITER_RESPONSE_SEND_FAILED', diagnostics: [] }
+      })
+    } catch {
+      lastFailure = { at: new Date().toISOString(), kind: 'writer_response', code: 'V9_WRITER_RESPONSE_SEND_FAILED', diagnostics: [] }
+    }
+  }
+
+  function handleWriterRequest(target, message) {
+    const method = String(message?.method ?? '')
+    const id = Number(message?.id)
+    const requestKey = `${target.__shadowGeneration}:${id}`
+    const operation = (async () => {
+      try {
+        if (scope !== V9_RUNTIME_KEY || !V9_WRITER_METHODS.includes(method) || !writer || typeof writer[method] !== 'function') throw Object.assign(new Error('V9 parent writer method is unavailable'), { code: 'V9_WRITER_METHOD_UNAVAILABLE' })
+        if (!Number.isSafeInteger(id) || id < 1 || writerRequestIds.has(requestKey)) throw Object.assign(new Error('V9 writer request identity is invalid'), { code: 'V9_WRITER_REQUEST_ID_INVALID' })
+        if (stopping || writerPending.size >= V9_PARENT_WRITER_MAX_CONCURRENCY) throw Object.assign(new Error('V9 parent writer is busy'), { code: 'V9_WRITER_BUSY' })
+        if (writerRequestIds.size >= 2000) throw Object.assign(new Error('V9 writer request limit reached'), { code: 'V9_WRITER_REQUEST_LIMIT' })
+        writerRequestIds.add(requestKey)
+        const args = assertV9WriterArgs(method, message.args)
+        const result = boundedV9WriterResult(await writer[method](...args))
+        sendWriterResponse(target, { type: 'writer_response', id, ok: true, result })
+      } catch (error) {
+        sendWriterResponse(target, {
+          type: 'writer_response', id: message?.id, ok: false,
+          error: { message: safeErrorMessage(error?.message), code: String(error?.code ?? 'V9_WRITER_REQUEST_FAILED') },
+        })
+      }
+    })()
+    writerPending.add(operation)
+    void operation.finally(() => writerPending.delete(operation))
   }
 
   function terminate(target, reason = new Error('shadow process terminated')) {
@@ -128,6 +228,7 @@ function createScopedProcessLane({
     if (terminationFailure) throw terminationFailure
     if (child?.connected && child.exitCode == null && child.signalCode == null && child.__terminating !== true) return child
     const targetGeneration = ++generation
+    writerRequestIds.clear()
     const resolvedWorkerPath = workerPath ?? fileURLToPath(new URL('./shadow-process-worker.js', import.meta.url))
     const spawned = forkImpl(resolvedWorkerPath, [], {
       env: buildChildEnv(env, scope),
@@ -136,7 +237,12 @@ function createScopedProcessLane({
     })
     spawned.__shadowGeneration = targetGeneration
     spawned.on('message', (message) => {
-      if (spawned.__terminating === true || !message || message.type !== 'response') return
+      if (spawned.__terminating === true || !message) return
+      if (message.type === 'writer_request') {
+        void handleWriterRequest(spawned, message)
+        return
+      }
+      if (message.type !== 'response') return
       const request = pending.get(message.id)
       if (!request || request.generation !== targetGeneration) return
       pending.delete(message.id)
@@ -212,6 +318,7 @@ function createScopedProcessLane({
     stopping = true
     if (terminating) await terminating
     if (child) await terminate(child, new Error('shadow process client stopped'))
+    if (writerPending.size > 0) await Promise.allSettled([...writerPending])
     if (terminationFailure) throw terminationFailure
   }
 
@@ -223,10 +330,11 @@ function createScopedProcessLane({
       pid: Number.isSafeInteger(child?.pid) && child.pid > 0 ? child.pid : null,
       generation,
       pending: pending.size,
+      writerPending: writerPending.size,
       stopping,
       terminating: Boolean(terminating),
       terminationFailed: Boolean(terminationFailure),
-      phase: terminationFailure ? 'fatal' : terminating ? 'terminating' : stopping ? 'stopped' : 'ready',
+      phase: terminationFailure ? 'fatal' : terminating ? 'terminating' : stopping && writerPending.size > 0 ? 'draining_writer' : stopping ? 'stopped' : 'ready',
       code: terminationFailure ? 'SHADOW_PROCESS_TERMINATION_UNCONFIRMED' : null,
       lastFailure: structuredClone(lastFailure),
       lastSuccess: structuredClone(lastSuccess),
@@ -251,13 +359,22 @@ export function createShadowProcessClient({
   startupTimeoutMs = Number(process.env.SHADOW_PROCESS_STARTUP_TIMEOUT_MS ?? 60000),
   killGraceMs = Number(process.env.SHADOW_PROCESS_KILL_GRACE_MS ?? 1000),
   killConfirmMs = Number(process.env.SHADOW_PROCESS_KILL_CONFIRM_MS ?? 3000),
+  v9Writer = null,
 } = {}) {
+  const v9Enabled = env?.V105_SHADOW_V9_ENABLED !== 'false'
   const v10Enabled = env?.V105_SHADOW_V10_ENABLED !== 'false'
   const laneOptions = { forkImpl, workerPath, env, requestTimeoutMs, startupTimeoutMs, killGraceMs, killConfirmMs }
   const requiredLane = createScopedProcessLane({
     ...laneOptions,
     scope: 'required',
     runtimeKeys: REQUIRED_RUNTIME_KEYS,
+  })
+  const v9ProcessLane = createScopedProcessLane({
+    ...laneOptions,
+    scope: V9_RUNTIME_KEY,
+    runtimeKeys: new Set([V9_RUNTIME_KEY]),
+    enabled: v9Enabled,
+    writer: v9Writer,
   })
   const v10ProcessLane = createScopedProcessLane({
     ...laneOptions,
@@ -266,123 +383,186 @@ export function createShadowProcessClient({
     enabled: v10Enabled,
   })
   let stopping = false
-  let v10PreparePromise = null
-  let v10PreparedGeneration = 0
-  let v10Readiness = null
-  const v10Queue = []
-  let v10Active = null
-  const v10LaneMetrics = {
-    accepted: 0,
-    completed: 0,
-    coalesced: 0,
-    rejected: 0,
-    failed: 0,
-    droppedOnStop: 0,
+
+  function createBestEffortCaptureLane({ runtimeKey, processLane, enabled }) {
+    let preparePromise = null
+    let preparedGeneration = 0
+    let readiness = null
+    const queue = []
+    let active = null
+    const metrics = {
+      accepted: 0,
+      completed: 0,
+      coalesced: 0,
+      rejected: 0,
+      failed: 0,
+      interruptedIdentities: 0,
+      droppedOnStop: 0,
+    }
+
+    function prepare(options = {}) {
+      if (!enabled) return Promise.resolve(structuredClone(DISABLED_READINESS))
+      const processStatus = processLane.status()
+      if (readiness && processStatus.running === true && processStatus.generation === preparedGeneration) {
+        return Promise.resolve(structuredClone(readiness))
+      }
+      if (preparePromise) return preparePromise
+      preparePromise = processLane.prepare(options)
+        .then((result) => {
+          if (!isFullyPrepared(result)) throw new Error(`${runtimeKey} shadow process preparation is incomplete`)
+          preparedGeneration = processLane.status().generation
+          readiness = structuredClone(result)
+          return result
+        })
+        .finally(() => { preparePromise = null })
+      return preparePromise
+    }
+
+    function currentIdentitySet() {
+      const identities = new Set()
+      for (const job of [active, ...queue].filter(Boolean)) {
+        for (const table of job.payload.tables ?? []) identities.add(`table:${tableObservationIdentity(table)}`)
+        for (const round of job.payload.rounds ?? []) identities.add(`settlement:${settlementIdentity(round)}`)
+      }
+      return identities
+    }
+
+    function enqueueCapture(payload = {}) {
+      const tables = Array.isArray(payload?.tables) ? payload.tables : []
+      const rounds = Array.isArray(payload?.rounds) ? payload.rounds : []
+      if (!enabled || stopping || (tables.length === 0 && rounds.length === 0)) return { coalesced: 0, rejected: 0 }
+      const coalesced = queue.length >= BEST_EFFORT_MAX_QUEUED_CAPTURES ? 1 : 0
+      const job = coalesced === 1
+        ? queue[queue.length - 1]
+        : { payload: { ...structuredClone(payload), tables: [], rounds: [] } }
+      const rejected = mergeBestEffortPayload(job.payload, payload, currentIdentitySet())
+      if (coalesced === 0 && (job.payload.tables.length > 0 || job.payload.rounds.length > 0)) queue.push(job)
+      metrics.accepted += 1
+      metrics.coalesced += coalesced
+      metrics.rejected += rejected
+      pump()
+      return { coalesced, rejected }
+    }
+
+    function pump() {
+      if (stopping || active || queue.length === 0) return
+      const job = queue.shift()
+      active = job
+      void prepare()
+        .then(() => processLane.processCapture(job.payload))
+        .then(() => { metrics.completed += 1 })
+        .catch(() => {
+          metrics.failed += 1
+          metrics.interruptedIdentities += (job.payload.tables?.length ?? 0) + (job.payload.rounds?.length ?? 0)
+        })
+        .finally(() => {
+          if (active === job) active = null
+          pump()
+        })
+    }
+
+    function runtime({ enabled: requestedEnabled = true } = {}) {
+      const runtimeEnabled = requestedEnabled === true && enabled
+      return {
+        enabled: runtimeEnabled,
+        observeTable(table, options = {}) {
+          if (!runtimeEnabled) return Promise.resolve(null)
+          return processLane.request(runtimeKey, 'observeTable', table, options)
+        },
+        settleRound(round, options = {}) {
+          if (!runtimeEnabled) return Promise.resolve(null)
+          return processLane.request(runtimeKey, 'settleRound', round, options)
+        },
+        snapshot() {
+          return processLane.snapshot(runtimeKey) ?? { status: runtimeEnabled ? 'remote' : 'disabled', enabled: runtimeEnabled }
+        },
+      }
+    }
+
+    async function stop() {
+      const droppedIdentities = queue
+        .reduce((sum, job) => sum + (job.payload.tables?.length ?? 0) + (job.payload.rounds?.length ?? 0), 0)
+      metrics.droppedOnStop += droppedIdentities
+      queue.length = 0
+      return processLane.stop()
+    }
+
+    function recordEnqueueFailure(payload) {
+      metrics.failed += 1
+      metrics.interruptedIdentities += (payload?.tables?.length ?? 0) + (payload?.rounds?.length ?? 0)
+    }
+
+    function status() {
+      return {
+        ...processLane.status(),
+        lane: {
+          active: active ? 1 : 0,
+          queued: queue.length,
+          identities: currentIdentitySet().size,
+          ...structuredClone(metrics),
+        },
+      }
+    }
+
+    return { prepare, enqueueCapture, recordEnqueueFailure, runtime, stop, status }
   }
+
+  const v9BestEffort = createBestEffortCaptureLane({ runtimeKey: V9_RUNTIME_KEY, processLane: v9ProcessLane, enabled: v9Enabled })
+  const v10BestEffort = createBestEffortCaptureLane({ runtimeKey: V10_RUNTIME_KEY, processLane: v10ProcessLane, enabled: v10Enabled })
 
   function prepareRequired(options = {}) {
     return requiredLane.prepare(options)
   }
 
+  function prepareV9(options = {}) {
+    return v9BestEffort.prepare(options)
+  }
+
   function prepareV10(options = {}) {
-    if (!v10Enabled) return Promise.resolve(structuredClone(DISABLED_READINESS))
-    const processStatus = v10ProcessLane.status()
-    if (v10Readiness && processStatus.running === true && processStatus.generation === v10PreparedGeneration) {
-      return Promise.resolve(structuredClone(v10Readiness))
-    }
-    if (v10PreparePromise) return v10PreparePromise
-    v10PreparePromise = v10ProcessLane.prepare(options)
-      .then((readiness) => {
-        if (!isFullyPrepared(readiness)) throw new Error('V10 shadow process preparation is incomplete')
-        v10PreparedGeneration = v10ProcessLane.status().generation
-        v10Readiness = structuredClone(readiness)
-        return readiness
-      })
-      .finally(() => {
-        v10PreparePromise = null
-      })
-    return v10PreparePromise
+    return v10BestEffort.prepare(options)
   }
 
   function request(runtime, method, payload, options = {}) {
     if (!RUNTIME_KEYS.has(runtime)) return Promise.reject(new Error('unknown shadow runtime'))
-    return (runtime === V10_RUNTIME_KEY ? v10ProcessLane : requiredLane).request(runtime, method, payload, options)
+    if (runtime === V9_RUNTIME_KEY) return v9ProcessLane.request(runtime, method, payload, options)
+    if (runtime === V10_RUNTIME_KEY) return v10ProcessLane.request(runtime, method, payload, options)
+    return requiredLane.request(runtime, method, payload, options)
   }
 
   async function processCapture(payload, options = {}) {
     const requiredResult = await requiredLane.processCapture(payload, options)
-    let bestEffort = { coalesced: 0, rejected: 0 }
-    try {
-      if (options.signal?.aborted) return requiredResult
-      bestEffort = enqueueV10Capture(payload)
-    } catch {
-      v10LaneMetrics.failed += 1
-    }
+    if (options.signal?.aborted) return requiredResult
+    let v9Result = { coalesced: 0, rejected: 0 }
+    let v10Result = { coalesced: 0, rejected: 0 }
+    try { v9Result = v9BestEffort.enqueueCapture(payload) } catch { v9BestEffort.recordEnqueueFailure(payload) }
+    try { v10Result = v10BestEffort.enqueueCapture(payload) } catch { v10BestEffort.recordEnqueueFailure(payload) }
     const result = requiredResult && typeof requiredResult === 'object' && !Array.isArray(requiredResult)
       ? { ...requiredResult }
       : {}
-    if (bestEffort.coalesced > 0) result.bestEffortCoalesced = bestEffort.coalesced
-    if (bestEffort.rejected > 0) result.bestEffortRejected = bestEffort.rejected
+    if (v9Result.coalesced > 0) result.bestEffortV9Coalesced = v9Result.coalesced
+    if (v9Result.rejected > 0) result.bestEffortV9Rejected = v9Result.rejected
+    if (v10Result.coalesced > 0) result.bestEffortCoalesced = v10Result.coalesced
+    if (v10Result.rejected > 0) result.bestEffortRejected = v10Result.rejected
     return result
   }
 
-  function enqueueV10Capture(payload = {}) {
-    const tables = Array.isArray(payload?.tables) ? payload.tables : []
-    const rounds = Array.isArray(payload?.rounds) ? payload.rounds : []
-    if (!v10Enabled || stopping || (tables.length === 0 && rounds.length === 0)) return { coalesced: 0, rejected: 0 }
-    const coalesced = v10Queue.length >= V10_MAX_QUEUED_CAPTURES ? 1 : 0
-    const job = coalesced === 1
-      ? v10Queue[v10Queue.length - 1]
-      : { payload: { ...structuredClone(payload), tables: [], rounds: [] } }
-    const rejected = mergeV10Payload(job.payload, payload, currentV10IdentitySet())
-    if (coalesced === 0 && (job.payload.tables.length > 0 || job.payload.rounds.length > 0)) v10Queue.push(job)
-    v10LaneMetrics.accepted += 1
-    v10LaneMetrics.coalesced += coalesced
-    v10LaneMetrics.rejected += rejected
-    pumpV10Queue()
-    return { coalesced, rejected }
-  }
-
-  function currentV10IdentitySet() {
-    const identities = new Set()
-    const jobs = [v10Active, ...v10Queue].filter(Boolean)
-    for (const job of jobs) {
-      for (const table of job.payload.tables ?? []) identities.add(`table:${tableObservationIdentity(table)}`)
-      for (const round of job.payload.rounds ?? []) identities.add(`settlement:${settlementIdentity(round)}`)
-    }
-    return identities
-  }
-
-  function pumpV10Queue() {
-    if (stopping || v10Active || v10Queue.length === 0) return
-    const job = v10Queue.shift()
-    v10Active = job
-    void prepareV10()
-      .then(() => v10ProcessLane.processCapture(job.payload))
-      .then(() => { v10LaneMetrics.completed += 1 })
-      .catch(() => { v10LaneMetrics.failed += 1 })
-      .finally(() => {
-        if (v10Active === job) v10Active = null
-        pumpV10Queue()
-      })
-  }
-
-  function runtime(key, { enabled = true } = {}) {
+  function runtime(key, options = {}) {
     if (!RUNTIME_KEYS.has(key)) throw new Error('unknown shadow runtime')
-    const lane = key === V10_RUNTIME_KEY ? v10ProcessLane : requiredLane
-    const runtimeEnabled = enabled === true && (key !== V10_RUNTIME_KEY || v10Enabled)
+    if (key === V9_RUNTIME_KEY) return v9BestEffort.runtime(options)
+    if (key === V10_RUNTIME_KEY) return v10BestEffort.runtime(options)
+    const runtimeEnabled = options.enabled !== false
     return {
       enabled: runtimeEnabled,
-      observeTable(table, options = {}) {
+      observeTable(table, requestOptions = {}) {
         if (!runtimeEnabled) return Promise.resolve(null)
-        return request(key, 'observeTable', table, options)
+        return requiredLane.request(key, 'observeTable', table, requestOptions)
       },
-      settleRound(round, options = {}) {
+      settleRound(round, requestOptions = {}) {
         if (!runtimeEnabled) return Promise.resolve(null)
-        return request(key, 'settleRound', round, options)
+        return requiredLane.request(key, 'settleRound', round, requestOptions)
       },
       snapshot() {
-        return lane.snapshot(key) ?? { status: runtimeEnabled ? 'remote' : 'disabled', enabled: runtimeEnabled }
+        return requiredLane.snapshot(key) ?? { status: runtimeEnabled ? 'remote' : 'disabled', enabled: runtimeEnabled }
       },
     }
   }
@@ -391,18 +571,19 @@ export function createShadowProcessClient({
     return requiredLane.stop()
   }
 
+  async function stopV9() {
+    return v9BestEffort.stop()
+  }
+
   async function stopV10() {
-    const queuedIdentities = v10Queue.reduce((sum, job) => sum + (job.payload.tables?.length ?? 0) + (job.payload.rounds?.length ?? 0), 0)
-    v10LaneMetrics.droppedOnStop += queuedIdentities
-    v10Queue.length = 0
-    return v10ProcessLane.stop()
+    return v10BestEffort.stop()
   }
 
   async function stop() {
     beginStop()
-    const [requiredResult, v10Result] = await Promise.allSettled([stopRequired(), stopV10()])
-    if (requiredResult.status === 'rejected') throw requiredResult.reason
-    if (v10Result.status === 'rejected') throw v10Result.reason
+    const results = await Promise.allSettled([stopRequired(), stopV9(), stopV10()])
+    const failure = results.find((result) => result.status === 'rejected')
+    if (failure) throw failure.reason
   }
 
   function beginStop() {
@@ -411,19 +592,13 @@ export function createShadowProcessClient({
 
   function status() {
     const required = requiredLane.status()
-    const v105V10 = {
-      ...v10ProcessLane.status(),
-      lane: {
-        active: v10Active ? 1 : 0,
-        queued: v10Queue.length,
-        identities: currentV10IdentitySet().size,
-        ...structuredClone(v10LaneMetrics),
-      },
-    }
+    const v105V9 = v9BestEffort.status()
+    const v105V10 = v10BestEffort.status()
     return {
       ...required,
-      anyRunning: required.running || v105V10.running,
+      anyRunning: required.running || v105V9.running || v105V10.running,
       required,
+      v105V9,
       v105V10,
     }
   }
@@ -432,12 +607,14 @@ export function createShadowProcessClient({
     request,
     prepare: prepareRequired,
     prepareRequired,
+    prepareV9,
     prepareV10,
     processCapture,
     runtime,
     stop,
     beginStop,
     stopRequired,
+    stopV9,
     stopV10,
     status,
   }
@@ -453,7 +630,7 @@ function isFullyPrepared(readiness) {
     && readiness.failed === 0
 }
 
-function mergeV10Payload(target, incoming, identities) {
+function mergeBestEffortPayload(target, incoming, identities) {
   const targetTables = new Map((target.tables ?? []).map((item) => [tableObservationIdentity(item), structuredClone(item)]))
   const targetRounds = new Map((target.rounds ?? []).map((item) => [settlementIdentity(item), structuredClone(item)]))
   let rejected = 0
@@ -461,7 +638,7 @@ function mergeV10Payload(target, incoming, identities) {
   for (const table of Array.isArray(incoming?.tables) ? incoming.tables : []) {
     const identity = tableObservationIdentity(table)
     const globalIdentity = `table:${identity}`
-    if (!targetTables.has(identity) && !identities.has(globalIdentity) && identities.size >= V10_MAX_IDENTITIES) {
+    if (!targetTables.has(identity) && !identities.has(globalIdentity) && identities.size >= BEST_EFFORT_MAX_IDENTITIES) {
       rejected += 1
       continue
     }
@@ -471,7 +648,7 @@ function mergeV10Payload(target, incoming, identities) {
   for (const round of Array.isArray(incoming?.rounds) ? incoming.rounds : []) {
     const identity = settlementIdentity(round)
     const globalIdentity = `settlement:${identity}`
-    if (!targetRounds.has(identity) && !identities.has(globalIdentity) && identities.size >= V10_MAX_IDENTITIES) {
+    if (!targetRounds.has(identity) && !identities.has(globalIdentity) && identities.size >= BEST_EFFORT_MAX_IDENTITIES) {
       rejected += 1
       continue
     }
@@ -515,7 +692,10 @@ function createRemoteError(value) {
 function safeResult(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const allowed = {}
-  for (const key of ['enabled', 'prepared', 'pending', 'queued', 'failed', 'disabled', 'observed', 'settled', 'noops', 'bestEffortCoalesced', 'bestEffortRejected']) {
+  for (const key of [
+    'enabled', 'prepared', 'pending', 'queued', 'failed', 'disabled', 'observed', 'settled', 'noops',
+    'bestEffortCoalesced', 'bestEffortRejected', 'bestEffortV9Coalesced', 'bestEffortV9Rejected',
+  ]) {
     if (Number.isSafeInteger(value[key]) && value[key] >= 0) allowed[key] = value[key]
   }
   return allowed

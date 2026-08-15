@@ -1,0 +1,58 @@
+{
+  "releaseName": "v105 V9影子獨立恢復版1",
+  "releaseVersion": "v105-shadow-v9-resume-isolated.1",
+  "gitTag": "v105-shadow-v9-resume-isolated.1",
+  "applicationVersion": "1.0.60",
+  "baseCommit": "0b17afa2d1ec28aa27e91be6c2bda58ca301a860",
+  "formalStrategyVersion": "v105",
+  "shadowStrategyVersion": "v105-shadow-v9-weighted-v7-v8",
+  "shadowOnly": true,
+  "databaseMigrationRequired": false,
+  "counterMode": "resume-existing",
+  "runtimeIsolation": {
+    "childScope": "v105-v9",
+    "separateFromRequired": true,
+    "separateFromV10": true,
+    "childDatabaseCredentials": false,
+    "writerTransport": "parent-ipc",
+    "writerRequestValidation": "method-schema-identity-size",
+    "writerMaxConcurrency": 4,
+    "writerPayloadMaxBytes": 262144,
+    "writerResultMaxBytes": 2097152,
+    "writerRequestIdLimitPerGeneration": 2000,
+    "writerRequestIdsReusableWithinGeneration": false,
+    "ipcErrorRedaction": "both-boundaries-uri-jwt-key",
+    "writerResponseDropObservable": true,
+    "shutdownWaitsForParentWrites": true,
+    "captureLane": "bounded-best-effort",
+    "deliveryGuarantee": "live-best-effort-no-retroactive-replay",
+    "failureAndDropCountsObservable": true,
+    "retroactiveReplayAllowed": false,
+    "maxQueuedCaptures": 2,
+    "maxQueuedIdentities": 2000,
+    "canBlockFormalOutboxAck": false
+  },
+  "unchanged": {
+    "formalPrediction": true,
+    "formalSettlement": true,
+    "v10Prediction": true,
+    "frontend": true,
+    "databaseSchema": true,
+    "workerProtocol": true
+  },
+  "deploymentOrder": [
+    "proxy-render-exact-commit-with-v9-disabled",
+    "formal-v105-v10-outbox-baseline-readback",
+    "render-v105-shadow-v9-enabled-true",
+    "v9-new-issuance-and-final-settlement",
+    "formal-v105-v10-outbox-regression-gate",
+    "authenticated-production-e2e"
+  ],
+  "rollback": {
+    "setV105ShadowV9EnabledFalse": true,
+    "preserveV9History": true,
+    "preserveV9Counters": true,
+    "preserveFormalAndV10": true,
+    "databaseRollbackRequired": false
+  }
+}

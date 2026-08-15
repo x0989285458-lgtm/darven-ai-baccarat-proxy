@@ -13,9 +13,9 @@ import {
 import * as releaseVerifier from '../../scripts/verify-v105-mt-api-release.mjs'
 
 test('release scope freezes one existing session as API-only canonical capture', () => {
-  assert.equal(manifest.releaseVersion, 'v105-shadow-v10.22')
-    assert.equal(manifest.gitTag, 'v105-shadow-v10.22')
-    assert.equal(manifest.applicationVersion, '1.0.59')
+  assert.equal(manifest.releaseVersion, 'v105-shadow-v9-resume-isolated.1')
+  assert.equal(manifest.gitTag, 'v105-shadow-v9-resume-isolated.1')
+  assert.equal(manifest.applicationVersion, '1.0.60')
   assert.deepEqual(manifest.releaseScope, {
     mode: 'single-session-api-primary',
     canonicalSource: 'api',
@@ -46,6 +46,33 @@ test('release scope freezes one existing session as API-only canonical capture',
     blocksCaptureOutboxAck: false,
     frontendChanged: false,
     historyQueryChanged: true,
+  })
+  assert.deepEqual(manifest.shadowV9Isolation, {
+    strategyVersion: 'v105-shadow-v9-weighted-v7-v8',
+    runtimeFlag: 'V105_SHADOW_V9_ENABLED=true',
+    childScope: 'v105-v9',
+    separateFromRequired: true,
+    separateFromV10: true,
+    childDatabaseCredentials: false,
+    writerTransport: 'parent-ipc',
+    writerRequestValidation: 'method-schema-identity-size',
+    writerMaxConcurrency: 4,
+    writerPayloadMaxBytes: 262144,
+    writerResultMaxBytes: 2097152,
+    writerRequestIdLimitPerGeneration: 2000,
+    writerRequestIdsReusableWithinGeneration: false,
+    ipcErrorRedaction: 'both-boundaries-uri-jwt-key',
+    writerResponseDropObservable: true,
+    shutdownWaitsForParentWrites: true,
+    captureLane: 'bounded-best-effort',
+    deliveryGuarantee: 'live-best-effort-no-retroactive-replay',
+    failureAndDropCountsObservable: true,
+    retroactiveReplayAllowed: false,
+    maxQueuedCaptures: 2,
+    maxQueuedIdentities: 2000,
+    blocksFormalOutboxAck: false,
+    counterMode: 'resume-existing',
+    memberVisible: false,
   })
   assert.deepEqual(manifest.shadowHydrationHotfix, {
     strategyVersion: 'v105-shadow-v9-weighted-v7-v8',

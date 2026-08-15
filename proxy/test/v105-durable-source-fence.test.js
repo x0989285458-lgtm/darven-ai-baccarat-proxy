@@ -413,6 +413,9 @@ test('release manifest freezes DB-first cutover through fenced finalize and brow
     'database-catalog-acl-readback',
     'capture-outbox-health-active-only-migration',
     'proxy-compatible',
+    'v9-isolated-child-credential-fence-readback',
+    'v9-shadow-enable-after-proxy-readback',
+    'v9-new-issuance-settlement-readback',
     'new-api-worker',
     'durable-source-readback',
     'require-fenced-ingest-finalize',
@@ -426,8 +429,8 @@ test('release manifest freezes DB-first cutover through fenced finalize and brow
 test('Reviewer P1 Rollback Gate drains, checkpoints, and reads back zero unfinished work before proxy or worker rollback', () => {
   const manifest = JSON.parse(readFileSync(manifestUrl, 'utf8'))
   assert.deepEqual(manifest.rollback.target, {
-    commit: 'dc36e903d008e5f9dfec09d5f47fd454b822c91a',
-    tree: '8158a0b61095fcf723f574be5acb8993aeba5b19',
+    commit: '0b17afa2d1ec28aa27e91be6c2bda58ca301a860',
+    tree: '9e992c409c7e162a6af0d64d973533cfea695f7f',
     proxyArtifact: 'proxy-from-exact-target',
     browserWorkerArtifact: 'cloud-browser-worker-from-exact-target',
   })

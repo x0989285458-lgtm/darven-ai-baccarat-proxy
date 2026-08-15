@@ -1,7 +1,7 @@
 import { createSupabaseIngestionClient } from './supabase-writer.js'
 import { scrubDirectDatabaseEnv } from './shadow-process-env.js'
 
-const RUNTIME_SCOPES = new Set(['required', 'v105-v10'])
+const RUNTIME_SCOPES = new Set(['required', 'v105-v9', 'v105-v10'])
 
 export function createShadowProcessWriter({
   scope,
@@ -12,6 +12,7 @@ export function createShadowProcessWriter({
   createClient = createSupabaseIngestionClient,
 } = {}) {
   if (!RUNTIME_SCOPES.has(scope)) throw new Error('shadow process runtime scope is missing or invalid')
+  if (scope === 'v105-v9') throw new Error('V9 child writer must use parent IPC')
   if (scope === 'v105-v10') scrubDirectDatabaseEnv(env)
   const options = {
     url: env.SUPABASE_URL,

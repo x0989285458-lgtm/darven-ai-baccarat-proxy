@@ -29,7 +29,7 @@ function fakeChild({ respond = true, respondTo = null, responseResult = null, ex
   return child
 }
 
-test('shadow process IPC sends only runtime work and inherits the exact database env allowlist', async () => {
+test('V9 shadow IPC sends only runtime work and never inherits database credentials', async () => {
   const children = []
   const client = createShadowProcessClient({
     env: {
@@ -55,22 +55,28 @@ test('shadow process IPC sends only runtime work and inherits the exact database
   await client.runtime('v105-v9', { enabled: true }).observeTable({ tableId: 'BAG01', shoe: 1, round: 2 })
   await client.processCapture({ tables: [{ tableId: 'BAG01' }], rounds: [{ tableId: 'BAG01', round: 3 }] })
 
-  assert.equal(children.length, 1)
-  assert.equal(children[0].options.env.SUPABASE_SERVICE_ROLE_KEY, 'fake')
-  assert.equal(children[0].options.env.SUPABASE_DB_CONNECTION_STRING, 'postgresql://example.invalid/db')
-  assert.equal(children[0].options.env.SUPABASE_REQUEST_TIMEOUT_MS, '1234')
-  assert.equal(children[0].options.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS, '5678')
-  assert.equal(children[0].options.env.V103_SHADOW_ENABLED, 'false')
-  assert.equal(children[0].options.env.V105_SHADOW_V9_ENABLED, 'true')
-  assert.equal(children[0].options.env.V105_SHADOW_V10_ENABLED, 'false')
+  assert.equal(children.length, 2)
+  const v9Child = children.find((child) => child.options.env.SHADOW_PROCESS_RUNTIME_SCOPE === 'v105-v9')
+  const requiredChild = children.find((child) => child.options.env.SHADOW_PROCESS_RUNTIME_SCOPE === 'required')
+  assert.ok(v9Child)
+  assert.ok(requiredChild)
+  assert.equal('SUPABASE_URL' in v9Child.options.env, false)
+  assert.equal('SUPABASE_SERVICE_ROLE_KEY' in v9Child.options.env, false)
+  assert.equal('SUPABASE_SECRET_KEY' in v9Child.options.env, false)
+  assert.equal('SUPABASE_DB_CONNECTION_STRING' in v9Child.options.env, false)
+  assert.equal(v9Child.options.env.SUPABASE_REQUEST_TIMEOUT_MS, '1234')
+  assert.equal(v9Child.options.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS, '5678')
+  assert.equal(v9Child.options.env.V103_SHADOW_ENABLED, 'false')
+  assert.equal(v9Child.options.env.V105_SHADOW_V9_ENABLED, 'true')
+  assert.equal(v9Child.options.env.V105_SHADOW_V10_ENABLED, 'false')
   for (const key of ['V105_SHADOW_V6_ENABLED', 'V105_SHADOW_V7_ENABLED', 'V105_SHADOW_V8_ENABLED']) {
-    assert.equal(key in children[0].options.env, false)
+    assert.equal(key in v9Child.options.env, false)
   }
-  assert.equal('UNRELATED_PRIVATE_SECRET' in children[0].options.env, false)
-  assert.doesNotMatch(JSON.stringify(children[0].sent), /SUPABASE_SERVICE_ROLE_KEY|UNRELATED_PRIVATE_SECRET/)
-  assert.deepEqual(children[0].sent[0].payload, { tableId: 'BAG01', shoe: 1, round: 2 })
-  assert.equal(children[0].sent[1].kind, 'capture')
-  assert.equal(children[0].sent[1].payload.rounds[0].round, 3)
+  assert.equal('UNRELATED_PRIVATE_SECRET' in v9Child.options.env, false)
+  assert.doesNotMatch(JSON.stringify(v9Child.sent), /SUPABASE_SERVICE_ROLE_KEY|UNRELATED_PRIVATE_SECRET/)
+  assert.deepEqual(v9Child.sent[0].payload, { tableId: 'BAG01', shoe: 1, round: 2 })
+  assert.equal(requiredChild.sent[0].kind, 'capture')
+  assert.equal(requiredChild.sent[0].payload.rounds[0].round, 3)
   await client.stop()
 })
 
@@ -94,14 +100,14 @@ test('AbortSignal terminates the entire shadow child and the next durable retry 
 
   await runtime.settleRound({ tableId: 'BAG01', shoe: 1, round: 2 })
   assert.equal(children.length, 2)
-  assert.equal(client.status().generation, 2)
+  assert.equal(client.status().v105V9.generation, 2)
   await client.stop()
 })
 
 test('a capture batch timeout kills the child and the next durable retry uses a fresh process', async () => {
   const children = []
   const client = createShadowProcessClient({
-    env: { ...process.env, V105_SHADOW_V10_ENABLED: 'false' },
+    env: { ...process.env, V105_SHADOW_V9_ENABLED: 'false', V105_SHADOW_V10_ENABLED: 'false' },
     requestTimeoutMs: 10,
     killGraceMs: 5,
     forkImpl() {
@@ -152,7 +158,7 @@ test('a stalled runtime hydration returns pending readiness without killing the 
 test('a timed-out request is not released and no new generation starts before the old child exit is confirmed', async () => {
   const children = []
   const client = createShadowProcessClient({
-    env: { ...process.env, V105_SHADOW_V10_ENABLED: 'false' },
+    env: { ...process.env, V105_SHADOW_V9_ENABLED: 'false', V105_SHADOW_V10_ENABLED: 'false' },
     requestTimeoutMs: 5,
     killGraceMs: 10,
     killConfirmMs: 100,
@@ -281,7 +287,7 @@ test('real shadow child boots, replies over IPC, and exits without any database 
     requestTimeoutMs: 5000,
   })
   await assert.rejects(
-    client.runtime('v105-v9', { enabled: true }).observeTable({ tableId: 'BAG01', shoe: 1, round: 1 }),
+    client.runtime('v103', { enabled: true }).observeTable({ tableId: 'BAG01', shoe: 1, round: 1 }),
     /disabled/i,
   )
   assert.equal(client.status().generation, 1)

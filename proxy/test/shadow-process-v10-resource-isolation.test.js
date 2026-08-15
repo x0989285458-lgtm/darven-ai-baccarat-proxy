@@ -332,6 +332,7 @@ test('V10 timeout, crash, and DB saturation never change required capture succes
       assert.equal(result.observed, 1)
       assert.equal(client.status().required.generation, 1)
       await waitFor(() => client.status().v105V10.lane.failed === 1, `${scenario} was not observed`)
+      assert.equal(client.status().v105V10.lane.interruptedIdentities, 1)
       assert.equal(client.status().required.lastSuccess.kind, 'capture')
       assert.equal(client.status().required.terminationFailed, false)
       assert.equal(client.status().required.generation, 1)
@@ -517,7 +518,7 @@ test('V10 REST saturation cannot prevent required V9 capture or parent Outbox ac
   assert.equal(client.status().required.terminationFailed, false)
 })
 
-test('startup and shutdown prepare and stop required and V10 lanes independently', async () => {
+test('startup and shutdown prepare and stop required, V9, and V10 lanes independently', async () => {
   const calls = []
   const processClient = {
     runtime(_key, { enabled }) {
@@ -526,6 +527,10 @@ test('startup and shutdown prepare and stop required and V10 lanes independently
     async prepareRequired() {
       calls.push('prepare-required')
       return { enabled: 1, prepared: 1, pending: 0, queued: 0, failed: 0, disabled: 6 }
+    },
+    async prepareV9() {
+      calls.push('prepare-v9')
+      return { enabled: 1, prepared: 1, pending: 0, queued: 0, failed: 0, disabled: 0 }
     },
     async prepareV10() {
       calls.push('prepare-v10')
@@ -541,6 +546,7 @@ test('startup and shutdown prepare and stop required and V10 lanes independently
       }
     },
     async stopRequired() { calls.push('stop-required') },
+    async stopV9() { calls.push('stop-v9') },
     async stopV10() { calls.push('stop-v10') },
   }
   const app = createApp({
@@ -558,11 +564,14 @@ test('startup and shutdown prepare and stop required and V10 lanes independently
   await app.start()
   try {
     await waitFor(() => calls.includes('prepare-v10'), 'V10 startup prepare was not called')
+    await waitFor(() => calls.includes('prepare-v9'), 'V9 startup prepare was not called')
   } finally {
     await app.stop()
   }
   assert.equal(calls.includes('prepare-required'), true)
+  assert.equal(calls.includes('prepare-v9'), true)
   assert.equal(calls.includes('prepare-v10'), true)
   assert.equal(calls.includes('stop-required'), true)
+  assert.equal(calls.includes('stop-v9'), true)
   assert.equal(calls.includes('stop-v10'), true)
 })
