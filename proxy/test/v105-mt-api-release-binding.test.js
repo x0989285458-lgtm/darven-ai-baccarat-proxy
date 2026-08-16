@@ -13,9 +13,9 @@ import {
 import * as releaseVerifier from '../../scripts/verify-v105-mt-api-release.mjs'
 
 test('release scope freezes one existing session as API-only canonical capture', () => {
-  assert.equal(manifest.releaseVersion, 'v105-shadow-v9-resume-isolated.1')
-  assert.equal(manifest.gitTag, 'v105-shadow-v9-resume-isolated.1')
-  assert.equal(manifest.applicationVersion, '1.0.60')
+  assert.equal(manifest.releaseVersion, 'v105-shadow-v9-request-id-lifetime.1')
+  assert.equal(manifest.gitTag, 'v105-shadow-v9-request-id-lifetime.1')
+  assert.equal(manifest.applicationVersion, '1.0.61')
   assert.deepEqual(manifest.releaseScope, {
     mode: 'single-session-api-primary',
     canonicalSource: 'api',
@@ -59,7 +59,8 @@ test('release scope freezes one existing session as API-only canonical capture',
     writerMaxConcurrency: 4,
     writerPayloadMaxBytes: 262144,
     writerResultMaxBytes: 2097152,
-    writerRequestIdLimitPerGeneration: 2000,
+    writerRequestIdValidation: 'strict-monotonic-high-water-per-generation',
+    writerRequestIdStorage: 'constant-space-high-water',
     writerRequestIdsReusableWithinGeneration: false,
     ipcErrorRedaction: 'both-boundaries-uri-jwt-key',
     writerResponseDropObservable: true,

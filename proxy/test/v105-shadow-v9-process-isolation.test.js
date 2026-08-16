@@ -169,6 +169,10 @@ test('V9 parent writer validates identities, rejects duplicate IDs, bounds concu
   assert.equal(child.sent.find((message) => message.type === 'writer_response' && message.id === 105)?.error?.code, 'V9_WRITER_BUSY')
   releases.shift()([])
   await delay(10)
+  request(105)
+  await delay(10)
+  assert.equal(calls, 4)
+  assert.equal(child.sent.filter((message) => message.type === 'writer_response' && message.id === 105).at(-1)?.error?.code, 'V9_WRITER_REQUEST_ID_INVALID')
   request(106, [{ perTableLimit: 999 }])
   await delay(10)
   assert.equal(child.sent.find((message) => message.type === 'writer_response' && message.id === 106)?.error?.code, 'V9_WRITER_ARGUMENT_INVALID')
@@ -178,6 +182,19 @@ test('V9 parent writer validates identities, rejects duplicate IDs, bounds concu
   })
   await delay(10)
   assert.equal(child.sent.find((message) => message.type === 'writer_response' && message.id === 107)?.error?.code, 'V9_WRITER_IDENTITY_INVALID')
+  child.emit('message', { type: 'writer_request', id: 108, method: 'unsupportedMethod', args: [] })
+  await delay(10)
+  request(108)
+  await delay(10)
+  assert.equal(calls, 4)
+  assert.equal(child.sent.filter((message) => message.type === 'writer_response' && message.id === 108).at(-1)?.error?.code, 'V9_WRITER_REQUEST_ID_INVALID')
+  child.emit('message', { type: 'writer_request', id: '109', method: 'getV105ShadowV9History', args: [{ perTableLimit: 60 }] })
+  await delay(10)
+  assert.equal(calls, 4)
+  assert.equal(child.sent.find((message) => message.type === 'writer_response' && message.id === '109')?.error?.code, 'V9_WRITER_REQUEST_ID_INVALID')
+  request(109)
+  await delay(10)
+  assert.equal(calls, 5)
   const stopping = client.stop()
   assert.equal(await Promise.race([stopping.then(() => true), delay(20).then(() => false)]), false)
   for (const release of releases) release([])
@@ -186,7 +203,7 @@ test('V9 parent writer validates identities, rejects duplicate IDs, bounds concu
   assert.equal(client.status().v105V9.lastFailure.code, 'V9_WRITER_RESPONSE_DROPPED')
 })
 
-test('V9 parent writer never reuses request IDs within one child generation', async () => {
+test('V9 parent writer accepts monotonically increasing request IDs beyond 2000 and rejects stale duplicates', async () => {
   const children = []
   let calls = 0
   const client = createShadowProcessClient({
@@ -209,8 +226,8 @@ test('V9 parent writer never reuses request IDs within one child generation', as
   child.emit('message', { type: 'writer_request', id: 2001, method: 'getV105ShadowV9History', args: [{ perTableLimit: 60 }] })
   child.emit('message', { type: 'writer_request', id: 1, method: 'getV105ShadowV9History', args: [{ perTableLimit: 60 }] })
   await delay(10)
-  assert.equal(calls, 2000)
-  assert.equal(child.sent.find((message) => message.type === 'writer_response' && message.id === 2001)?.error?.code, 'V9_WRITER_REQUEST_LIMIT')
+  assert.equal(calls, 2001)
+  assert.equal(child.sent.find((message) => message.type === 'writer_response' && message.id === 2001)?.ok, true)
   assert.equal(child.sent.filter((message) => message.type === 'writer_response' && message.id === 1).at(-1)?.error?.code, 'V9_WRITER_REQUEST_ID_INVALID')
   await client.stop()
 })
@@ -316,10 +333,10 @@ test('V9 child cannot create a local writer or receive a database pool', () => {
 })
 
 test('V9 resume release is shadow-only, resumes the existing counter, and rolls back by switch only', () => {
-  const manifest = JSON.parse(readFileSync(new URL('../../release/v105-shadow-v9-resume-isolated-release-manifest.json', import.meta.url), 'utf8'))
-  assert.equal(manifest.releaseVersion, 'v105-shadow-v9-resume-isolated.1')
+  const manifest = JSON.parse(readFileSync(new URL('../../release/v105-shadow-v9-request-id-lifetime-release-manifest.json', import.meta.url), 'utf8'))
+  assert.equal(manifest.releaseVersion, 'v105-shadow-v9-request-id-lifetime.1')
   assert.equal(manifest.gitTag, manifest.releaseVersion)
-  assert.equal(manifest.applicationVersion, '1.0.60')
+  assert.equal(manifest.applicationVersion, '1.0.61')
   assert.equal(manifest.formalStrategyVersion, 'v105')
   assert.equal(manifest.shadowStrategyVersion, 'v105-shadow-v9-weighted-v7-v8')
   assert.equal(manifest.shadowOnly, true)
@@ -335,7 +352,8 @@ test('V9 resume release is shadow-only, resumes the existing counter, and rolls 
     writerMaxConcurrency: 4,
     writerPayloadMaxBytes: 262144,
     writerResultMaxBytes: 2097152,
-    writerRequestIdLimitPerGeneration: 2000,
+    writerRequestIdValidation: 'strict-monotonic-high-water-per-generation',
+    writerRequestIdStorage: 'constant-space-high-water',
     writerRequestIdsReusableWithinGeneration: false,
     ipcErrorRedaction: 'both-boundaries-uri-jwt-key',
     writerResponseDropObservable: true,

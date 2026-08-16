@@ -1,8 +1,8 @@
 {
-  "releaseName": "v105 V9影子獨立恢復版1",
-  "releaseVersion": "v105-shadow-v9-resume-isolated.1",
-  "gitTag": "v105-shadow-v9-resume-isolated.1",
-  "applicationVersion": "1.0.60",
+  "releaseName": "v105 V9影子Request ID壽命修復版1",
+  "releaseVersion": "v105-shadow-v9-request-id-lifetime.1",
+  "gitTag": "v105-shadow-v9-request-id-lifetime.1",
+  "applicationVersion": "1.0.61",
   "formalStrategyVersion": "v105",
   "applicationVersionChanged": true,
   "releaseScope": {
@@ -57,7 +57,8 @@
     "writerMaxConcurrency": 4,
     "writerPayloadMaxBytes": 262144,
     "writerResultMaxBytes": 2097152,
-    "writerRequestIdLimitPerGeneration": 2000,
+    "writerRequestIdValidation": "strict-monotonic-high-water-per-generation",
+    "writerRequestIdStorage": "constant-space-high-water",
     "writerRequestIdsReusableWithinGeneration": false,
     "ipcErrorRedaction": "both-boundaries-uri-jwt-key",
     "writerResponseDropObservable": true,
@@ -189,6 +190,7 @@
         "scripts/verify-v105-mt-api-release.mjs",
         "scripts/trusted-registry-readback-adapter.mjs",
         "release/v105-shadow-v9-resume-isolated-release-manifest.json",
+        "release/v105-shadow-v9-request-id-lifetime-release-manifest.json",
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
@@ -196,7 +198,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "3f491e7f3defca8bd6c079a22f33d335e7a6daedf3df91fbc3d1de85a9e2251b"
+      "sha256": "a24d154977f298b74fe4b59338fb81373a96ce2f2cf8122f2b6358e756b8b4df"
     },
     "migration": {
       "algorithm": "sha256",
@@ -218,7 +220,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "2a7e66d3299eaddbd7dec16ff9801317bd8d8e88be3295de40c1eae44918c58f"
+      "sha256": "b2a007373ff9f8f4673a80792082df047c4bd851dba2700ff38fc182c4ccfefd"
     },
     "workerBuildInput": {
       "algorithm": "sha256",
@@ -231,7 +233,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "270f63981133401a39717139b80d692fa381b6a81258f1af9b2e62ed86061bc8"
+      "sha256": "142cbf5f02051a4c102c2ea3c00997c531b381933a5e34d1ceaf614ddf09642a"
     },
     "attestation": {
       "externalFileRequired": true,

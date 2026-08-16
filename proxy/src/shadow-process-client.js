@@ -116,7 +116,7 @@ function createScopedProcessLane({
   const pending = new Map()
   const snapshots = new Map()
   const writerPending = new Set()
-  const writerRequestIds = new Set()
+  let highestWriterRequestId = 0
 
   function rejectGeneration(targetGeneration, reason) {
     for (const [id, request] of pending) {
@@ -145,15 +145,13 @@ function createScopedProcessLane({
 
   function handleWriterRequest(target, message) {
     const method = String(message?.method ?? '')
-    const id = Number(message?.id)
-    const requestKey = `${target.__shadowGeneration}:${id}`
+    const id = message?.id
     const operation = (async () => {
       try {
+        if (!Number.isSafeInteger(id) || id <= highestWriterRequestId) throw Object.assign(new Error('V9 writer request identity is invalid'), { code: 'V9_WRITER_REQUEST_ID_INVALID' })
+        highestWriterRequestId = id
         if (scope !== V9_RUNTIME_KEY || !V9_WRITER_METHODS.includes(method) || !writer || typeof writer[method] !== 'function') throw Object.assign(new Error('V9 parent writer method is unavailable'), { code: 'V9_WRITER_METHOD_UNAVAILABLE' })
-        if (!Number.isSafeInteger(id) || id < 1 || writerRequestIds.has(requestKey)) throw Object.assign(new Error('V9 writer request identity is invalid'), { code: 'V9_WRITER_REQUEST_ID_INVALID' })
         if (stopping || writerPending.size >= V9_PARENT_WRITER_MAX_CONCURRENCY) throw Object.assign(new Error('V9 parent writer is busy'), { code: 'V9_WRITER_BUSY' })
-        if (writerRequestIds.size >= 2000) throw Object.assign(new Error('V9 writer request limit reached'), { code: 'V9_WRITER_REQUEST_LIMIT' })
-        writerRequestIds.add(requestKey)
         const args = assertV9WriterArgs(method, message.args)
         const result = boundedV9WriterResult(await writer[method](...args))
         sendWriterResponse(target, { type: 'writer_response', id, ok: true, result })
@@ -228,7 +226,7 @@ function createScopedProcessLane({
     if (terminationFailure) throw terminationFailure
     if (child?.connected && child.exitCode == null && child.signalCode == null && child.__terminating !== true) return child
     const targetGeneration = ++generation
-    writerRequestIds.clear()
+    highestWriterRequestId = 0
     const resolvedWorkerPath = workerPath ?? fileURLToPath(new URL('./shadow-process-worker.js', import.meta.url))
     const spawned = forkImpl(resolvedWorkerPath, [], {
       env: buildChildEnv(env, scope),
