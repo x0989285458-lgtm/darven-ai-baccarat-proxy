@@ -433,6 +433,204 @@ test('candidate session validates formal ten tables, persists, then atomically a
   assert.deepEqual(events, ['login', 'wait-url', 'validate', 'activate'])
 })
 
+test('candidate session polls a bounded URL fallback after popup waitForURL is aborted', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-candidate-aborted-navigation-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const sessionPath = path.join(dir, 'mt-session.json')
+  const events = []
+  let urlReads = 0
+  const candidatePage = fakePage('about:blank')
+  candidatePage.waitForURL = async () => {
+    events.push('wait-url')
+    const error = new Error('page.waitForURL: net::ERR_ABORTED; maybe frame was detached?')
+    error.code = 'ERR_ABORTED'
+    throw error
+  }
+  candidatePage.url = () => {
+    urlReads += 1
+    return urlReads < 2 ? 'about:blank' : 'https://mt.example/game'
+  }
+  const context = {
+    newPage: async () => fakePage('https://ag001.3a1788.bet/'),
+    storageState: async () => ({ cookies: [{ name: 'sid', value: 'candidate' }], origins: [] }),
+    close: async () => { throw new Error('validated context must remain open') },
+  }
+
+  await refreshMtSession({
+    browser: { newContext: async () => context },
+    credentials: { username: 'agent-user', password: 'agent-pass' },
+    configuredMtUrl: 'https://mt.example/login',
+    sessionPath,
+    timeoutMs: 100,
+    now: () => 0,
+    sleep: async () => { events.push('poll') },
+    login: async () => { events.push('login') },
+    openMt: async () => candidatePage,
+    validate: async () => { events.push('validate'); return healthy },
+    activate: async () => { events.push('activate') },
+  })
+
+  assert.deepEqual(events, ['login', 'wait-url', 'poll', 'validate', 'activate'])
+  assert.equal(JSON.parse(await readFile(sessionPath, 'utf8')).url, 'https://mt.example/game')
+})
+
+test('aborted popup URL fallback remains bounded and fail-closed before validation', async () => {
+  let now = 0
+  let closed = 0
+  let sleeps = 0
+  const candidatePage = fakePage('http://mt.example/game')
+  candidatePage.waitForURL = async () => {
+    const error = new Error('page.waitForURL: net::ERR_ABORTED')
+    error.code = 'ERR_ABORTED'
+    throw error
+  }
+  const context = {
+    newPage: async () => fakePage('https://ag001.3a1788.bet/'),
+    close: async () => { closed += 1 },
+  }
+
+  await assert.rejects(
+    refreshMtSession({
+      browser: { newContext: async () => context },
+      credentials: { username: 'agent-user', password: 'agent-pass' },
+      configuredMtUrl: 'https://mt.example/login',
+      sessionPath: 'unused.json',
+      timeoutMs: 25,
+      now: () => now,
+      sleep: async (ms) => { sleeps += 1; now += ms },
+      login: async () => {},
+      openMt: async () => candidatePage,
+      validate: async () => assert.fail('non-HTTPS candidate must not validate'),
+      activate: async () => assert.fail('non-HTTPS candidate must not activate'),
+    }),
+    /portal_auth_refresh_failed/,
+  )
+
+  assert.equal(now, 25)
+  assert.ok(sleeps > 0)
+  assert.equal(closed, 1)
+})
+
+test('aborted popup URL fallback still rejects an HTTPS host outside the allowlist', async () => {
+  let closed = 0
+  const candidatePage = fakePage('https://evil.example/game')
+  candidatePage.waitForURL = async () => {
+    const error = new Error('frame was detached during navigation')
+    throw error
+  }
+  const context = {
+    newPage: async () => fakePage('https://ag001.3a1788.bet/'),
+    close: async () => { closed += 1 },
+  }
+
+  await assert.rejects(
+    refreshMtSession({
+      browser: { newContext: async () => context },
+      credentials: { username: 'agent-user', password: 'agent-pass' },
+      configuredMtUrl: 'https://mt.example/login',
+      sessionPath: 'unused.json',
+      login: async () => {},
+      openMt: async () => candidatePage,
+      validate: async () => assert.fail('disallowed host must not validate'),
+      activate: async () => assert.fail('disallowed host must not activate'),
+    }),
+    /portal_auth_refresh_failed/,
+  )
+
+  assert.equal(closed, 1)
+})
+
+test('popup URL fallback does not swallow unrelated waitForURL errors', async () => {
+  let urlReads = 0
+  let closed = 0
+  const candidatePage = fakePage('https://mt.example/game')
+  candidatePage.url = () => { urlReads += 1; return 'https://mt.example/game' }
+  candidatePage.waitForURL = async () => { throw new Error('certificate validation rejected') }
+  const context = {
+    newPage: async () => fakePage('https://ag001.3a1788.bet/'),
+    close: async () => { closed += 1 },
+  }
+
+  await assert.rejects(
+    refreshMtSession({
+      browser: { newContext: async () => context },
+      credentials: { username: 'agent-user', password: 'agent-pass' },
+      configuredMtUrl: 'https://mt.example/login',
+      sessionPath: 'unused.json',
+      login: async () => {},
+      openMt: async () => candidatePage,
+      validate: async () => assert.fail('unrelated navigation error must not validate'),
+      activate: async () => assert.fail('unrelated navigation error must not activate'),
+    }),
+    /portal_auth_refresh_failed/,
+  )
+
+  assert.equal(urlReads, 0)
+  assert.equal(closed, 1)
+})
+
+test('candidate redirect outside the allowlist during load is rejected before validation', async () => {
+  let currentUrl = 'https://mt.example/game'
+  let closed = 0
+  let validationCalls = 0
+  const candidatePage = {
+    url: () => currentUrl,
+    waitForLoadState: async () => { currentUrl = 'https://evil.example/phish' },
+  }
+  const context = {
+    newPage: async () => ({}),
+    storageState: async () => ({ cookies: [], origins: [] }),
+    close: async () => { closed += 1 },
+  }
+
+  await assert.rejects(
+    refreshMtSession({
+      browser: { newContext: async () => context },
+      credentials: { username: 'safe-user', password: 'safe-pass' },
+      configuredMtUrl: 'https://mt.example/login',
+      sessionPath: 'unused.json',
+      login: async () => {},
+      openMt: async () => candidatePage,
+      validate: async () => { validationCalls += 1; return healthy },
+      activate: async () => assert.fail('disallowed redirect must not activate'),
+    }),
+    /portal_auth_refresh_failed/,
+  )
+
+  assert.equal(validationCalls, 0)
+  assert.equal(closed, 1)
+})
+
+test('candidate redirect outside the allowlist during validation is rejected before persist and activation', async () => {
+  let currentUrl = 'https://mt.example/game'
+  let closed = 0
+  const candidatePage = {
+    url: () => currentUrl,
+    waitForLoadState: async () => {},
+  }
+  const context = {
+    newPage: async () => ({}),
+    storageState: async () => assert.fail('disallowed redirect must not persist storage state'),
+    close: async () => { closed += 1 },
+  }
+
+  await assert.rejects(
+    refreshMtSession({
+      browser: { newContext: async () => context },
+      credentials: { username: 'safe-user', password: 'safe-pass' },
+      configuredMtUrl: 'https://mt.example/login',
+      sessionPath: 'unused.json',
+      login: async () => {},
+      openMt: async () => candidatePage,
+      validate: async () => { currentUrl = 'https://evil.example/phish'; return healthy },
+      activate: async () => assert.fail('disallowed redirect must not activate'),
+    }),
+    /portal_auth_refresh_failed/,
+  )
+
+  assert.equal(closed, 1)
+})
+
 test('invalid candidate is closed and exposes only portal_auth_refresh_failed', async () => {
   let closed = 0
   const context = {

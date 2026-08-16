@@ -28,6 +28,7 @@ export function createMtApiClient({
 } = {}) {
   if (!sourceOwner || !sessionManager || typeof createSocket !== 'function') throw new Error('mt_api_dependencies_required')
   let generation = 0
+  let lifecycleEpoch = 0
   let sockets = null
   let stopped = true
   let reconnectTimer = null
@@ -35,19 +36,23 @@ export function createMtApiClient({
   let eventSequence = 0
   let reconnecting = false
   let refreshPromise = null
+  let refreshCycle = null
   let latestTables = null
   const latestFinalScreenByTable = new Map()
   const resolvedTablesRefreshTimeoutMs = Math.max(1_000, Number(tablesRefreshTimeoutMs) || 10_000)
 
   async function start() {
     stopped = false
-    await connectGeneration()
+    lifecycleEpoch += 1
+    await connectGeneration(lifecycleEpoch)
   }
 
-  async function connectGeneration() {
+  async function connectGeneration(expectedLifecycleEpoch = lifecycleEpoch) {
     const lease = sourceOwner.lease?.()
     sourceOwner.assertCurrent(lease)
     const sessionValue = await sessionManager.getSessionToken()
+    if (stopped || expectedLifecycleEpoch !== lifecycleEpoch) return
+    sourceOwner.assertCurrent(lease)
     if (!String(sessionValue ?? '')) throw new Error('mt_session_token_unavailable')
     let game = null
     let chat = null
@@ -297,15 +302,24 @@ export function createMtApiClient({
     generation += 1
     sockets = null
     closeGeneration(current)
+    refreshCycle = { reason, retryAttempt: 0 }
+    return runRefreshAttempt(refreshCycle)
+  }
+
+  function runRefreshAttempt(cycle) {
+    if (stopped || refreshCycle !== cycle) return Promise.resolve()
     refreshPromise = (async () => {
       try {
         if (typeof sessionManager.refresh !== 'function') throw new Error('mt_session_refresh_unavailable')
-        await sessionManager.refresh(reason)
-        if (!stopped) await connectGeneration()
+        await sessionManager.refresh(cycle.reason)
+        if (stopped || refreshCycle !== cycle) return
+        await connectGeneration()
+        if (stopped || refreshCycle !== cycle) return
+        refreshCycle = null
+        reconnecting = false
       } catch (error) {
-        stopped = true
-        sockets = null
         handleError(error)
+        scheduleRefreshRetry(cycle)
       } finally {
         refreshPromise = null
       }
@@ -313,8 +327,26 @@ export function createMtApiClient({
     return refreshPromise
   }
 
+  function scheduleRefreshRetry(cycle) {
+    if (stopped || refreshCycle !== cycle) return
+    reconnecting = true
+    clearTimeoutFn(reconnectTimer)
+    const baseDelay = Math.max(0, Number(reconnectDelayMs) || 0)
+    const maxDelay = Math.max(baseDelay, Number(reconnectMaxDelayMs) || baseDelay)
+    const delay = Math.min(maxDelay, baseDelay * (2 ** Math.min(cycle.retryAttempt, 30)))
+    cycle.retryAttempt += 1
+    reconnectTimer = setTimeoutFn(async () => {
+      reconnectTimer = null
+      if (stopped || refreshCycle !== cycle) return
+      await runRefreshAttempt(cycle)
+    }, delay)
+    reconnectTimer?.unref?.()
+  }
+
   function stop() {
     stopped = true
+    lifecycleEpoch += 1
+    refreshCycle = null
     clearTimeoutFn(reconnectTimer)
     clearIntervalFn(heartbeatTimer)
     reconnectTimer = null

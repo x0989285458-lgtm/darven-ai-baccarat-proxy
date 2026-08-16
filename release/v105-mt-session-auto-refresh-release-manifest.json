@@ -1,0 +1,87 @@
+{
+  "releaseName": "v105 MT Session自動續期修復版1",
+  "releaseVersion": "v105-mt-session-auto-refresh.1",
+  "gitTag": "v105-mt-session-auto-refresh.1",
+  "applicationVersion": "1.0.62",
+  "baseCommit": "fad9bd839eb272d8e9ab3db00852c1261aa620dd",
+  "formalStrategyVersion": "v105",
+  "releaseScope": {
+    "workerOnlyBehaviorChange": true,
+    "canonicalSource": "api",
+    "singleWriterRequired": true,
+    "databaseMigrationRequired": false,
+    "predictionRulesChanged": false,
+    "predictionWeightsChanged": false,
+    "frontendBehaviorChanged": false,
+    "proxyBehaviorChanged": false
+  },
+  "behavior": {
+    "sessionRefreshFailureStopsWorker": false,
+    "sessionRefreshRetries": true,
+    "refreshRetryBackoff": "bounded-exponential-capped",
+    "singleRefreshCycle": true,
+    "singleSocketGeneration": true,
+    "stopCancelsRefreshRetry": true,
+    "transientPopupNavigationFallback": "bounded-https-url-poll",
+    "fallbackOnlyForExplicitAbortOrDetachedFrame": true,
+    "httpsRequired": true,
+    "mtHostAllowlistRequired": true,
+    "formalTenTableValidationRequired": true,
+    "atomicSessionPersistBeforeActivation": true,
+    "secretRedactionRequired": true
+  },
+  "durability": {
+    "preserveQueue": true,
+    "preserveCursor": true,
+    "preserveFinalJournal": true,
+    "exactAckRequired": true,
+    "gapPolicyChanged": false
+  },
+  "deploymentOrder": [
+    "independent-code-review",
+    "worker-image-build",
+    "vm-single-writer-cutover",
+    "worker-dual-auth-join-ten-tables",
+    "new-final-exact-ack-db-readback",
+    "v105-v9-v10-settlement-readback",
+    "session-expiry-auto-refresh-soak",
+    "member-session-frontend-e2e"
+  ],
+  "rollback": {
+    "targetTag": "v105-shadow-v9-request-id-lifetime.1",
+    "preserveQueueCursorJournal": true,
+    "preserveCurrentSessionFile": true
+  },
+  "releaseBinding": {
+    "implementationTree": {
+      "algorithm": "sha256",
+      "paths": [
+        "cloud-browser-worker/.dockerignore",
+        "cloud-browser-worker/Dockerfile",
+        "cloud-browser-worker/package.json",
+        "cloud-browser-worker/package-lock.json",
+        "cloud-browser-worker/src",
+        "frontend/package.json",
+        "frontend/package-lock.json",
+        "proxy/package.json",
+        "proxy/package-lock.json",
+        "shared"
+      ],
+      "excludedPaths": [],
+      "sha256": "3808fd09e858555d571454a01bed66cf9452806ecb02737f7e068efe9bf05d2a"
+    },
+    "workerBuildInput": {
+      "algorithm": "sha256",
+      "paths": [
+        "cloud-browser-worker/.dockerignore",
+        "cloud-browser-worker/Dockerfile",
+        "cloud-browser-worker/package.json",
+        "cloud-browser-worker/package-lock.json",
+        "cloud-browser-worker/src",
+        "shared"
+      ],
+      "excludedPaths": [],
+      "sha256": "8f4cc91f281dcdc1a881d8f67eec90befc17f8fd14c313fbcd2ff08786fd440e"
+    }
+  }
+}

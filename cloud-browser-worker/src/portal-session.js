@@ -81,6 +81,43 @@ export function assertAllowedMtUrl(candidateUrl, configuredMtUrl, allowedHosts =
   return candidate.href
 }
 
+async function waitForHttpsCandidateUrl(candidatePage, {
+  timeoutMs,
+  now,
+  sleep,
+  pollIntervalMs = 100,
+}) {
+  const deadline = now() + timeoutMs
+  if (typeof candidatePage.waitForURL !== 'function') return candidatePage.url()
+  try {
+    await candidatePage.waitForURL((url) => url.protocol === 'https:', { waitUntil: 'domcontentloaded', timeout: timeoutMs })
+    return candidatePage.url()
+  } catch (error) {
+    if (!isTransientPopupNavigationError(error)) throw error
+  }
+
+  while (true) {
+    const candidateUrl = candidatePage.url()
+    if (hasHttpsProtocol(candidateUrl)) return candidateUrl
+    const remainingMs = deadline - now()
+    if (remainingMs <= 0) throw new Error('Candidate MT URL did not become HTTPS before timeout')
+    await sleep(Math.min(pollIntervalMs, remainingMs))
+  }
+}
+
+function isTransientPopupNavigationError(error) {
+  if (String(error?.code ?? '').toUpperCase() === 'ERR_ABORTED') return true
+  return /(?:net::)?ERR_ABORTED|frame (?:was )?detached|detached frame/i.test(String(error?.message ?? ''))
+}
+
+function hasHttpsProtocol(candidateUrl) {
+  try {
+    return new URL(String(candidateUrl)).protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 export function parseMtHostAllowlist(value) {
   return normalizeAllowedHosts(String(value ?? '').split(','))
 }
@@ -142,6 +179,8 @@ export async function refreshMtSession({
   openMt = openPortalMtPage,
   validate,
   activate,
+  now = Date.now,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 } = {}) {
   let context = null
   try {
@@ -150,13 +189,16 @@ export async function refreshMtSession({
     const portalPage = await context.newPage()
     await login(portalPage, credentials, { portalUrl: PORTAL_URL, timeoutMs })
     const candidatePage = await openMt({ context, portalPage, timeoutMs })
-    if (typeof candidatePage.waitForURL === 'function') {
-      await candidatePage.waitForURL((url) => url.protocol === 'https:', { waitUntil: 'domcontentloaded', timeout: timeoutMs })
-    }
+    assertAllowedMtUrl(
+      await waitForHttpsCandidateUrl(candidatePage, { timeoutMs, now, sleep }),
+      configuredMtUrl,
+      allowedHosts,
+    )
     await candidatePage.waitForLoadState?.('domcontentloaded', { timeout: timeoutMs }).catch(() => {})
-    const candidateUrl = assertAllowedMtUrl(candidatePage.url(), configuredMtUrl, allowedHosts)
+    assertAllowedMtUrl(candidatePage.url(), configuredMtUrl, allowedHosts)
     const snapshot = await validate(candidatePage, prepared)
     if (!isFormalTenTableSnapshot(snapshot)) throw new Error('candidate MT session did not expose the formal tables')
+    const candidateUrl = assertAllowedMtUrl(candidatePage.url(), configuredMtUrl, allowedHosts)
     const storageState = await context.storageState()
     await persistCandidateSession(sessionPath, { url: candidateUrl, storageState })
     await activate({ page: candidatePage, context, snapshot, prepared })

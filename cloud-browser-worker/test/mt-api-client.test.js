@@ -708,19 +708,128 @@ test('socket authentication timeout closes both sockets, refreshes once, and sta
   client.stop()
 })
 
-test('failed auth refresh remains stopped with no reconnect generation', async () => {
-  const harness = createHarness({ refresh: async () => { throw new Error('refresh-failed') } })
+test('failed auth refresh retries with bounded single-generation backoff, recovers, and stop cancels detached retry', async () => {
+  {
+    const clock = createManualTimers()
+    let refreshCalls = 0
+    const harness = createHarness({
+      refresh: async () => {
+        refreshCalls += 1
+        if (refreshCalls === 1) throw new Error('temporary-refresh-failure')
+      },
+      reconnectDelayMs: 10,
+      reconnectMaxDelayMs: 40,
+      setTimeoutFn: clock.setTimeout,
+      clearTimeoutFn: clock.clearTimeout,
+    })
+    const client = createMtApiClient(harness.options)
+    await client.start()
+    harness.openAll()
+    harness.receive('game', { action: '/api/v1/authenticate', err: 21 })
+    await harness.flush(2)
+
+    assert.equal(refreshCalls, 1)
+    assert.equal(clock.activeCount(), 1, 'one failed refresh must leave exactly one detached retry')
+    assert.equal(clock.nextDelay(), 10)
+    assert.equal(harness.sockets.length, 2, 'no replacement generation starts before refresh succeeds')
+    assert.equal(harness.sockets.every((socket) => socket.closed), true)
+    assert.equal(client.snapshot().reconnecting, true)
+
+    await clock.runNext()
+    await harness.flush(2)
+    assert.equal(refreshCalls, 2)
+    assert.equal(harness.sockets.length, 4, 'recovery must create exactly one fresh socket generation')
+    assert.equal(harness.sockets.filter((socket) => !socket.closed).length, 2)
+    assert.equal(clock.activeCount(), 0, 'successful recovery must not leak a retry timer')
+
+    harness.openGeneration(2)
+    harness.receiveGeneration(2, 'game', { action: '/api/v1/authenticate', err: 0 })
+    harness.receiveGeneration(2, 'chat', { action: '/api/v1/chat/authenticate', err: 0 })
+    harness.acknowledgeJoins(2)
+    await harness.flush(4)
+    assert.deepEqual(
+      (({ connected, authenticated, joined }) => ({ connected, authenticated, joined }))(client.snapshot()),
+      { connected: true, authenticated: true, joined: true },
+    )
+    client.stop()
+    assert.equal(clock.activeCount(), 0)
+  }
+
+  {
+    const clock = createManualTimers()
+    let refreshCalls = 0
+    const harness = createHarness({
+      refresh: async () => {
+        refreshCalls += 1
+        throw new Error('persistent-refresh-failure')
+      },
+      reconnectDelayMs: 10,
+      reconnectMaxDelayMs: 40,
+      setTimeoutFn: clock.setTimeout,
+      clearTimeoutFn: clock.clearTimeout,
+    })
+    const client = createMtApiClient(harness.options)
+    await client.start()
+    harness.openAll()
+    harness.receive('game', { action: '/api/v1/authenticate', err: 21 })
+    await harness.flush(2)
+    assert.equal(refreshCalls, 1)
+    assert.equal(clock.activeCount(), 1)
+
+    for (const expectedDelay of [10, 20, 40]) {
+      assert.equal(clock.nextDelay(), expectedDelay)
+      await clock.runNext()
+      await harness.flush(2)
+      assert.equal(clock.activeCount(), 1, 'each failed refresh must leave exactly one retry timer')
+    }
+    assert.equal(refreshCalls, 4)
+    assert.equal(clock.nextDelay(), 40, 'refresh retry backoff must stay capped')
+
+    client.stop()
+    assert.equal(clock.activeCount(), 0, 'stop must cancel the detached refresh retry')
+    await harness.flush(2)
+    assert.equal(refreshCalls, 4)
+    assert.equal(harness.sockets.length, 2)
+  }
+})
+
+test('stop during a pending session token read cannot create a late socket generation', async () => {
+  let releaseToken
+  const tokenGate = new Promise((resolve) => { releaseToken = resolve })
+  const harness = createHarness({ getSessionToken: async () => tokenGate })
   const client = createMtApiClient(harness.options)
-  await client.start()
-  harness.openAll()
-  harness.receive('game', { action: '/api/v1/authenticate', err: 21 })
-  await harness.flush()
-  await harness.flush()
+
+  const startPromise = client.start()
+  await harness.flush(2)
+  client.stop()
+  releaseToken('opaque-late-session')
+  await startPromise
+  await harness.flush(2)
+
+  assert.equal(harness.sockets.length, 0)
+  assert.equal(client.snapshot().connected, false)
+  assert.equal(client.snapshot().reconnecting, false)
+})
+
+test('stop then restart while the first token read is pending keeps only the newest lifecycle sockets', async () => {
+  let releaseToken
+  const tokenGate = new Promise((resolve) => { releaseToken = resolve })
+  const harness = createHarness({ getSessionToken: async () => tokenGate })
+  const client = createMtApiClient(harness.options)
+
+  const firstStart = client.start()
+  await harness.flush(2)
+  client.stop()
+  const secondStart = client.start()
+  await harness.flush(2)
+  releaseToken('opaque-restart-session')
+  await Promise.all([firstStart, secondStart])
+  await harness.flush(2)
+
   assert.equal(harness.sockets.length, 2)
-  assert.deepEqual(client.snapshot(), {
-    generation: 2, connected: false, authenticated: false, joined: false,
-    lastMessageAt: null, reconnecting: false, refreshing: false,
-  })
+  assert.equal(harness.sockets.filter((socket) => !socket.closed).length, 2)
+  assert.equal(client.snapshot().generation, 1)
+  client.stop()
 })
 
 function createHarness({
