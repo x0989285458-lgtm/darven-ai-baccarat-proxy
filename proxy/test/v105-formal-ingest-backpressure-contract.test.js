@@ -226,8 +226,8 @@ test('table updates coalesce to the latest snapshot and run all shadow observati
     requireVerifiedStrategy: false,
     supabaseClient: { configured: false },
     v100FormalRuntime: { enabled: false },
+    v103ShadowRuntime: runtime(),
     v105ShadowV9Runtime: runtime(),
-    v105ShadowV10Runtime: runtime(),
   })
   const tables = Array.from({ length: 10 }, (_, index) => ({
     tableId: `BAG${String(index + 1).padStart(2, '0')}`,
@@ -252,14 +252,14 @@ test('one table observer failure does not skip later shadow observers', async ()
     requireVerifiedStrategy: false,
     supabaseClient: { configured: false },
     v100FormalRuntime: { enabled: false },
-    v105ShadowV9Runtime: { enabled: true, async observeTable() { throw new Error('expected V9 observer failure') } },
-    v105ShadowV10Runtime: { enabled: true, async observeTable() { observed.push('v10') } },
+    v103ShadowRuntime: { enabled: true, async observeTable() { throw new Error('expected early observer failure') } },
+    v105ShadowV9Runtime: { enabled: true, async observeTable() { observed.push('v9') } },
   })
 
   app.state.setTables([{ tableId: 'BAG01', shoe: 'S1', round: 1, bankerCount: 1, playerCount: 1 }])
   await app.waitForServiceWorkIdle()
 
-  assert.deepEqual(observed, ['v10'])
+  assert.deepEqual(observed, ['v9'])
   await app.stop()
 })
 
@@ -332,8 +332,8 @@ test('round shadow settlements use the priority service slot without detached fa
     requireVerifiedStrategy: false,
     supabaseClient: { configured: true, async readIssuedPrediction() { return null } },
     v100FormalRuntime: { enabled: false },
+    v103ShadowRuntime: runtime(),
     v105ShadowV9Runtime: runtime(),
-    v105ShadowV10Runtime: runtime(),
   })
 
   await applyCloudCapturePayload({
@@ -365,7 +365,7 @@ test('a hung shadow settlement times out and cannot block later shadows or forma
     shadowServiceWorkTimeoutMs: 20,
     supabaseClient: { configured: true, async readIssuedPrediction() { return null } },
     v100FormalRuntime: { enabled: false },
-    v105ShadowV9Runtime: {
+    v103ShadowRuntime: {
       enabled: true,
       async settleRound(_round, { signal } = {}) {
         await new Promise((_, reject) => {
@@ -378,7 +378,7 @@ test('a hung shadow settlement times out and cannot block later shadows or forma
         })
       },
     },
-    v105ShadowV10Runtime: { enabled: true, async settleRound() { laterShadowSettlements += 1 } },
+    v105ShadowV9Runtime: { enabled: true, async settleRound() { laterShadowSettlements += 1 } },
   })
   const round = {
     ...finalRound('BAG01', 1),

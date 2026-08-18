@@ -76,7 +76,7 @@ test('startup verifies the active strategy before accepting live tables', async 
       ensureCalls += 1
       ready = true
     },
-    getV105FormalHistory: async () => [],
+    getV106FormalHistory: async () => [],
     reconcilePredictionLifecycle: async () => {},
     issuePrediction: async (candidate) => {
       futureCandidate = candidate
@@ -185,8 +185,8 @@ test('prediction readiness pushes the advanced road and exact prediction before 
   const issued = []
   const supabaseClient = {
     configured: true,
-    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' }),
-    getV105FormalHistory: async () => [],
+    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v106' }),
+    getV106FormalHistory: async () => [],
     reconcilePredictionLifecycle: async () => {},
     issuePrediction: async (candidate) => {
       issued.push(candidate.targetRound)
@@ -218,7 +218,7 @@ test('prediction readiness pushes the advanced road and exact prediction before 
     assert.equal(advanced.data.tables[0].round, 21)
     assert.equal(advanced.data.tables[0].bigRoadRaw, '0102#0202')
     assert.equal(advanced.data.tables[0].prediction.targetRound, 21)
-    assert.equal(advanced.data.tables[0].prediction.strategyVersion, 'v105')
+    assert.equal(advanced.data.tables[0].prediction.strategyVersion, 'v106')
     assert.ok(issued.includes(22), 'next prediction preparation must complete before the immediate push')
   } finally {
     controller.abort()

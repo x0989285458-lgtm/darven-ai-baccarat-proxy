@@ -46,11 +46,13 @@ test('v103 migration is additive idempotent service-role-only and never changes 
   assert.match(rollback, /enabled\s*=\s*false/i)
 })
 
-test('formal readers remain pinned to daily_prediction_results v104 and never read shadow tables', () => {
+test('formal v106 stable readers and legacy v105 calibration readers remain isolated from shadow tables', () => {
   const writer = read('proxy/src/supabase-writer.js')
   const admin = read('proxy/src/license-admin.js')
   assert.match(writer, /ALL_MT_EQUAL_STRATEGY_VERSION\s*=\s*'v105'/)
-  assert.match(writer, /getStablePredictionRows[\s\S]*getRest\('daily_prediction_results'[\s\S]*strategy_version:\s*`eq\.\$\{ALL_MT_EQUAL_STRATEGY_VERSION\}`/)
-  assert.match(writer, /getRecentPredictionRows[\s\S]*getRest\('daily_prediction_results'[\s\S]*strategy_version:\s*`eq\.\$\{ALL_MT_EQUAL_STRATEGY_VERSION\}`/)
+  assert.match(writer, /FORMAL_STRATEGY_VERSION\s*=\s*'v106'/)
+  assert.match(writer, /getStablePredictionRows[\s\S]*getRest\('daily_prediction_results'[\s\S]*strategy_version:\s*`eq\.\$\{FORMAL_STRATEGY_VERSION\}`/)
+  assert.match(writer, /getRecentPredictionRows[\s\S]*readV105RecentPerformanceRows/)
+  assert.match(writer, /readV105RecentPerformanceRows[\s\S]*postRpcRows\('get_v105_recent_performance_rows'/)
   assert.doesNotMatch(admin, /v103_shadow_/i)
 })

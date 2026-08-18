@@ -47,13 +47,13 @@ test('MT session auto-refresh release freezes the two production incident fixes'
   ])
 })
 
-test('all deployable packages and worker build inputs are bound to release 1.0.62', async () => {
-  for (const path of ['../package.json', '../../frontend/package.json', '../../cloud-browser-worker/package.json']) {
-    assert.equal(readJson(path).version, '1.0.62')
-  }
-  const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
+test('current v106 frontend and proxy preserve the historical v105 worker release binding', async () => {
+  assert.equal(readJson('../package.json').version, '1.0.63')
+  assert.equal(readJson('../../frontend/package.json').version, '1.0.63')
+  assert.equal(readJson('../../cloud-browser-worker/package.json').version, '1.0.62')
+  const historicalTree = execFileSync('git', ['rev-parse', `${manifest.gitTag}^{tree}`], { cwd: repoRoot, encoding: 'utf8' }).trim()
   for (const key of ['implementationTree', 'workerBuildInput']) {
-    const result = await computeGitTreePathSetDigest(repoRoot, candidateIndexTree, manifest.releaseBinding[key])
+    const result = await computeGitTreePathSetDigest(repoRoot, historicalTree, manifest.releaseBinding[key])
     assert.equal(result.sha256, manifest.releaseBinding[key].sha256)
   }
 })

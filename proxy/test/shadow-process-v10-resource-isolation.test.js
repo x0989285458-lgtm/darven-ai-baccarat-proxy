@@ -125,6 +125,29 @@ test('required and V10 lanes fork distinct PIDs with fail-closed scopes and V10 
   await disabled.stop()
 })
 
+test('v106-safe isolated capture executes required and V9 work without preparing or enqueueing V10', async () => {
+  const children = []
+  const captures = []
+  const handler = (child, message) => {
+    if (message.kind === 'capture') captures.push(child.scope)
+    child.respond(message, {
+      result: message.kind === 'prepare'
+        ? { enabled: 1, prepared: 1, pending: 0, queued: 0, failed: 0, disabled: 0 }
+        : { observed: 1, settled: 0, noops: 0 },
+    })
+  }
+  const client = createShadowProcessClient({
+    env: enabledEnv(),
+    forkImpl: scopedFork(children, { required: handler, 'v105-v9': handler, 'v105-v10': handler }),
+  })
+  await client.processCaptureWithoutV10({ tables: [{ tableId: 'BAG01', shoe: 1, round: 1 }], rounds: [] })
+  await waitFor(() => captures.includes('v105-v9'), 'V9 capture did not complete')
+  assert.deepEqual(captures.sort(), ['required', 'v105-v9'])
+  assert.equal(children.some((child) => child.scope === 'v105-v10'), false)
+  assert.equal(client.status().v105V10.running, false)
+  await client.stop()
+})
+
 test('real required and V10 workers stay process-isolated and V10 fails closed without database access', async (t) => {
   const client = createShadowProcessClient({
     env: enabledEnv({
@@ -377,7 +400,7 @@ test('V10 startup hydration timeout cannot block required V9 capture or restart 
   await client.stop()
 })
 
-test('Outbox completion waits for required capture but never waits for a stalled V10 child', async (t) => {
+test('v106 Outbox completion waits for required capture and never starts the promoted V10 child', async (t) => {
   const children = []
   let releaseRequired
   const requiredGate = new Promise((resolve) => { releaseRequired = resolve })
@@ -436,18 +459,18 @@ test('Outbox completion waits for required capture but never waits for a stalled
   assert.deepEqual(await drain, { processed: 1, failed: 0 })
   assert.equal(completed, 1)
   assert.equal(failed, 0)
-  assert.equal(client.status().v105V10.lane.active, 1)
-  await waitFor(() => client.status().v105V10.lane.failed === 1, 'V10 timeout was not observed', 300)
+  assert.equal(client.status().v105V10.lane.active, 0)
+  assert.equal(client.status().v105V10.running, false)
   assert.equal(completed, 1)
   assert.equal(failed, 0)
   const status = JSON.parse((await app.inject({ url: '/api/status' })).body)
   assert.equal(status.shadowProcessStatus.required.lastFailure, null)
   assert.equal(status.shadowProcessStatus.required.generation, 1)
   assert.equal(status.shadowProcessStatus.required.terminationFailed, false)
-  assert.equal(status.shadowProcessStatus.v105V10.lane.failed, 1)
+  assert.equal(status.shadowProcessStatus.v105V10.lane.failed, 0)
 })
 
-test('V10 REST saturation cannot prevent required V9 capture or parent Outbox acknowledgement', async (t) => {
+test('v106 safe Outbox path never sends capture work to a pre-existing V10 REST lane', async (t) => {
   const children = []
   let claimed = false
   let completed = 0
@@ -510,7 +533,7 @@ test('V10 REST saturation cannot prevent required V9 capture or parent Outbox ac
   t.after(() => app.stop())
 
   assert.deepEqual(await app.drainCaptureOutbox(), { processed: 1, failed: 0 })
-  await waitFor(() => client.status().v105V10.lane.failed === 1, 'V10 REST saturation was not observed')
+  assert.equal(client.status().v105V10.lane.failed, 0)
   assert.equal(completed, 1)
   assert.equal(failed, 0)
   assert.equal(client.status().required.lastSuccess.kind, 'capture')
@@ -518,7 +541,7 @@ test('V10 REST saturation cannot prevent required V9 capture or parent Outbox ac
   assert.equal(client.status().required.terminationFailed, false)
 })
 
-test('startup and shutdown prepare and stop required, V9, and V10 lanes independently', async () => {
+test('v106 startup prepares required and V9 lanes, stops V10, and never prepares V10', async () => {
   const calls = []
   const processClient = {
     runtime(_key, { enabled }) {
@@ -537,6 +560,7 @@ test('startup and shutdown prepare and stop required, V9, and V10 lanes independ
       return { enabled: 1, prepared: 1, pending: 0, queued: 0, failed: 0, disabled: 0 }
     },
     async processCapture() {},
+    async processCaptureWithoutV10() {},
     status() {
       return {
         running: true,
@@ -563,14 +587,13 @@ test('startup and shutdown prepare and stop required, V9, and V10 lanes independ
 
   await app.start()
   try {
-    await waitFor(() => calls.includes('prepare-v10'), 'V10 startup prepare was not called')
     await waitFor(() => calls.includes('prepare-v9'), 'V9 startup prepare was not called')
   } finally {
     await app.stop()
   }
   assert.equal(calls.includes('prepare-required'), true)
   assert.equal(calls.includes('prepare-v9'), true)
-  assert.equal(calls.includes('prepare-v10'), true)
+  assert.equal(calls.includes('prepare-v10'), false)
   assert.equal(calls.includes('stop-required'), true)
   assert.equal(calls.includes('stop-v9'), true)
   assert.equal(calls.includes('stop-v10'), true)

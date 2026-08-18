@@ -148,7 +148,7 @@ function decodeBigRoadLayout(raw = '') {
   const columns = text.split('#')
   for (const [columnIndex, column] of columns.entries()) {
     const values = column.split(',')
-    if (values.length > 6) return null
+    if (values.length > 6 || values.every((cell) => !cell.trim())) return null
     for (const [rowIndex, cell] of values.entries()) {
       const value = cell.trim()
       if (!value) continue

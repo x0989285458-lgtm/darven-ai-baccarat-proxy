@@ -525,6 +525,10 @@ test('shutdown kills an isolated child before waiting on its unsettled capture w
       captureStarted()
       await new Promise((_, reject) => { rejectCapture = reject })
     },
+    async processCaptureWithoutV10() {
+      captureStarted()
+      await new Promise((_, reject) => { rejectCapture = reject })
+    },
     status() {
       return { running: true, generation: 1, pending: 1, stopping: stopCalls > 0, terminationFailed: false }
     },
@@ -783,6 +787,7 @@ test('server isolated mode sends one complete durable outbox payload to the chil
       }
     },
     async processCapture(payload) { captures.push(structuredClone(payload)) },
+    async processCaptureWithoutV10(payload) { captures.push(structuredClone(payload)) },
     status() { return { running: true, generation: 1, pending: 0, stopping: false } },
     async stop() { stopped += 1 },
   }

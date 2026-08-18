@@ -6,12 +6,12 @@ import { createMtClient } from './mt-client.js'
 import { createChromeCaptureClient } from './chrome-capture.js'
 import { applyCloudCapturePayload, canonicalProductionTableId, createCloudCaptureClient, parseCloudCapturePayload, PRODUCTION_TABLE_IDS } from './cloud-capture.js'
 import { loadLocalEnv, maskToken, resolveDeployConfig } from './config.js'
-import { ALL_MT_EQUAL_STRATEGY_VERSION, buildLivePrediction, createSupabaseIngestionClient } from './supabase-writer.js'
+import { FORMAL_STRATEGY_VERSION, buildLivePrediction, createSupabaseIngestionClient } from './supabase-writer.js'
 import { createRecentTablePerformanceStore } from './recent-table-performance.js'
 import { createV100FormalRuntime, resolveV100FormalEnabled } from './v100-formal-runtime.js'
 import { createV103ShadowRuntime, resolveV103ShadowEnabled } from './v103-shadow-runtime.js'
 import { createV104FormalRuntime } from './v104-formal-runtime.js'
-import { createV105FormalRuntime } from './v105-formal-runtime.js'
+import { createV106FormalRuntime } from './v106-formal-runtime.js'
 import { createV104ShadowRuntime, resolveV104ShadowEnabled } from './v104-shadow-runtime.js'
 import { createV104IterationShadowRuntime, resolveV104IterationShadowEnabled } from './v104-iteration-shadow-runtime.js'
 import { createV105ShadowV9Runtime, resolveV105ShadowV9Enabled } from './v105-shadow-v9-runtime.js'
@@ -31,6 +31,9 @@ const VERSION = BUILD_VERSION
 const SERVICE = 'Draven MT資料代理伺服器'
 const WORKER_PROTOCOL_BUILD_VERSION = '105'
 const WORKER_PROTOCOL_VERSION = 'v105'
+const SETTLEMENT_STRATEGY_VERSIONS = FORMAL_STRATEGY_VERSION === 'v106'
+  ? Object.freeze(['v106', 'v105'])
+  : Object.freeze([FORMAL_STRATEGY_VERSION])
 const LIFECYCLE_IDENTITIES_PER_TABLE = 256
 const LIFECYCLE_SHOES_PER_TABLE = 64
 const MEMBER_SESSION_TOKEN_VERSION = 1
@@ -385,7 +388,12 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const shadowWorkScheduler = createServiceWorkScheduler()
   const shadowServiceWork = createTrackedServiceWorkController()
   const isolatedShadowProcess = isolateShadowProcess === true
-    ? (shadowProcessClient ?? createShadowProcessClient({ v9Writer: supabaseClient }))
+    ? (shadowProcessClient ?? createShadowProcessClient({
+        v9Writer: supabaseClient,
+        env: FORMAL_STRATEGY_VERSION === 'v106'
+          ? { ...process.env, V105_SHADOW_V10_ENABLED: 'false' }
+          : process.env,
+      }))
     : null
   const prepareRequiredShadowProcess = () => {
     const prepare = isolatedShadowProcess?.prepareRequired ?? isolatedShadowProcess?.prepare
@@ -396,8 +404,17 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     return typeof prepare === 'function' ? prepare.call(isolatedShadowProcess) : null
   }
   const prepareV10ShadowProcess = () => {
+    if (FORMAL_STRATEGY_VERSION === 'v106') return null
     const prepare = isolatedShadowProcess?.prepareV10
     return typeof prepare === 'function' ? prepare.call(isolatedShadowProcess) : null
+  }
+  const processIsolatedShadowCapture = (payload, options) => {
+    const processCapture = FORMAL_STRATEGY_VERSION === 'v106'
+      ? isolatedShadowProcess?.processCaptureWithoutV10
+      : isolatedShadowProcess?.processCapture
+    return typeof processCapture === 'function'
+      ? processCapture.call(isolatedShadowProcess, payload, options)
+      : null
   }
   let v103Shadow = null
   let v104Shadow = null
@@ -405,9 +422,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   let v105ShadowV9 = null
   let v105ShadowV10 = null
   let v104IterationShadowAdminCache = { expiresAtMs: 0, state: null }
-  const v104Formal = v104FormalRuntime ?? (ALL_MT_EQUAL_STRATEGY_VERSION === 'v105'
-    ? createV105FormalRuntime({ writer: supabaseClient, requestTimeoutMs: Math.max(1000, Number(v105FormalHydrationTimeoutMs) || 60000), allowUnconfigured: !requireVerifiedStrategy })
-    : ALL_MT_EQUAL_STRATEGY_VERSION === 'v104'
+  const v104Formal = v104FormalRuntime ?? (FORMAL_STRATEGY_VERSION === 'v106'
+    ? createV106FormalRuntime({ writer: supabaseClient, requestTimeoutMs: Math.max(1000, Number(v105FormalHydrationTimeoutMs) || 60000), allowUnconfigured: !requireVerifiedStrategy })
+    : FORMAL_STRATEGY_VERSION === 'v104'
       ? createV104FormalRuntime({ writer: supabaseClient, requestTimeoutMs: Math.max(1000, Number(v104FormalRequestTimeoutMs) || 10000), allowUnconfigured: !requireVerifiedStrategy })
       : null)
   const actionablePredictionTtlMs = Math.max(1000, Number(predictionTtlMs) || 120000)
@@ -496,12 +513,15 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         issuedCandidate = pendingPredictions.get(pendingKey)
         if (!issuedCandidate && issuingPredictionPromises.has(pendingKey)) issuedCandidate = await issuingPredictionPromises.get(pendingKey)
         if (!issuedCandidate && typeof supabaseClient?.readIssuedPrediction === 'function') {
-          issuedCandidate = await supabaseClient.readIssuedPrediction({
-            tableId: round.tableId ?? table.tableId,
-            shoe: round.shoe,
-            round: round.round,
-            strategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION,
-          }, { priority: 'settlement' })
+          for (const strategyVersion of SETTLEMENT_STRATEGY_VERSIONS) {
+            issuedCandidate = await supabaseClient.readIssuedPrediction({
+              tableId: round.tableId ?? table.tableId,
+              shoe: round.shoe,
+              round: round.round,
+              strategyVersion,
+            }, { priority: 'settlement' })
+            if (issuedCandidate) break
+          }
         }
       } catch (error) {
         state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
@@ -509,7 +529,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       }
       const precomputedPrediction = issuedCandidate
         && predictionTargetKey(issuedCandidate.targetTableId, issuedCandidate.targetShoe, issuedCandidate.targetRound) === pendingKey
-        && issuedCandidate.strategyVersion === ALL_MT_EQUAL_STRATEGY_VERSION
+        && SETTLEMENT_STRATEGY_VERSIONS.includes(issuedCandidate.strategyVersion)
         ? issuedCandidate
         : null
       if (!precomputedPrediction) return
@@ -590,8 +610,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     ?? isolatedShadowProcess?.runtime('v103', { enabled: resolveV103ShadowEnabled() })
     ?? createV103ShadowRuntime({ enabled: resolveV103ShadowEnabled(), writer: supabaseClient })
   v104Shadow = v104ShadowRuntime
-    ?? isolatedShadowProcess?.runtime('v104', { enabled: ALL_MT_EQUAL_STRATEGY_VERSION !== 'v104' && resolveV104ShadowEnabled() })
-    ?? createV104ShadowRuntime({ enabled: ALL_MT_EQUAL_STRATEGY_VERSION !== 'v104' && resolveV104ShadowEnabled(), writer: supabaseClient })
+    ?? isolatedShadowProcess?.runtime('v104', { enabled: FORMAL_STRATEGY_VERSION !== 'v104' && resolveV104ShadowEnabled() })
+    ?? createV104ShadowRuntime({ enabled: FORMAL_STRATEGY_VERSION !== 'v104' && resolveV104ShadowEnabled(), writer: supabaseClient })
   v104IterationShadow = v104IterationShadowRuntime
     ?? isolatedShadowProcess?.runtime('v104-iteration', { enabled: resolveV104IterationShadowEnabled() })
     ?? createV104IterationShadowRuntime({ enabled: resolveV104IterationShadowEnabled(), writer: supabaseClient })
@@ -605,16 +625,18 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         && typeof supabaseClient?.settleV105ShadowV9Prediction === 'function',
       writer: supabaseClient,
     })
-  v105ShadowV10 = v105ShadowV10Runtime
-    ?? isolatedShadowProcess?.runtime('v105-v10', { enabled: resolveV105ShadowV10Enabled() })
-    ?? createV105ShadowV10Runtime({
-      enabled: resolveV105ShadowV10Enabled()
-        && typeof supabaseClient?.getV105ShadowV10History === 'function'
-        && typeof supabaseClient?.issueV105ShadowV10Prediction === 'function'
-        && typeof supabaseClient?.readV105ShadowV10Issuance === 'function'
-        && typeof supabaseClient?.settleV105ShadowV10Prediction === 'function',
-      writer: supabaseClient,
-    })
+  v105ShadowV10 = FORMAL_STRATEGY_VERSION === 'v106'
+    ? null
+    : v105ShadowV10Runtime
+      ?? isolatedShadowProcess?.runtime('v105-v10', { enabled: resolveV105ShadowV10Enabled() })
+      ?? createV105ShadowV10Runtime({
+        enabled: resolveV105ShadowV10Enabled()
+          && typeof supabaseClient?.getV105ShadowV10History === 'function'
+          && typeof supabaseClient?.issueV105ShadowV10Prediction === 'function'
+          && typeof supabaseClient?.readV105ShadowV10Issuance === 'function'
+          && typeof supabaseClient?.settleV105ShadowV10Prediction === 'function',
+        writer: supabaseClient,
+      })
   const cloudCaptureClient = createCloudCaptureClient({ url: cloudBrowserUrl, state, writer: supabaseClient, v100Formal, fetchImpl, pollMs: deployConfig.cloudCapturePollMs, adminKey: process.env.WORKER_ADMIN_KEY })
   state.setStatus({
     shadowProcessMode: isolatedShadowProcess ? 'isolated_child_process' : 'in_process',
@@ -798,7 +820,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                 tables: Array.isArray(applied?.tables) ? applied.tables : parsed.tables,
                 rounds: Array.isArray(applied?.rounds) ? applied.rounds : [],
               }
-              await runLeasePhase('shadow', () => isolatedShadowProcess.processCapture(shadowPayload, {
+              await runLeasePhase('shadow', () => processIsolatedShadowCapture(shadowPayload, {
                 signal: leaseDeadline.signal,
                 timeoutMs: leaseDeadline.remainingMs(),
               }))
@@ -834,11 +856,16 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             if (!attemptedFailureAcks.has(failureAckKey)) {
               attemptedFailureAcks.add(failureAckKey)
               if (attemptedFailureAcks.size > 10000) attemptedFailureAcks.delete(attemptedFailureAcks.values().next().value)
-              await withDeadline(
-                supabaseClient.failCaptureOutbox?.({ sessionId, sequence, claimToken, attempt, error: error?.message ?? String(error) }),
-                resolvedOutboxWorkDeadlineMs,
-                `capture outbox failure acknowledgement deadline exceeded for ${sessionId}:${sequence}`,
-              )
+              try {
+                await withDeadline(
+                  supabaseClient.failCaptureOutbox?.({ sessionId, sequence, claimToken, attempt, error: error?.message ?? String(error) }),
+                  resolvedOutboxWorkDeadlineMs,
+                  `capture outbox failure acknowledgement deadline exceeded for ${sessionId}:${sequence}`,
+                )
+              } catch (failureAckError) {
+                setCaptureOutboxPhase('failure_ack_error', attempt)
+                state.setStatus({ persistenceStatus: 'error', persistenceError: failureAckError?.message ?? String(failureAckError) })
+              }
             }
             // The durable row owns its retry schedule. Continue immediately so another
             // session is never held behind this row's backoff.
@@ -932,19 +959,19 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     if (pathname === '/api/v103-shadow/status') {
       const controlError = requireControlAccess(headers)
       if (controlError) return controlError
-      return jsonResponse(200, { ok: true, activeStrategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION, v103Shadow: v103Shadow?.snapshot?.() ?? { status: 'unavailable' } }, frontendOrigin)
+      return jsonResponse(200, { ok: true, activeStrategyVersion: FORMAL_STRATEGY_VERSION, v103Shadow: v103Shadow?.snapshot?.() ?? { status: 'unavailable' } }, frontendOrigin)
     }
     if (pathname === '/api/v104-shadow/status') {
       const controlError = requireControlAccess(headers)
       if (controlError) return controlError
-      return jsonResponse(200, { ok: true, activeStrategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION, v104Shadow: v104Shadow?.snapshot?.() ?? { status: 'unavailable' } }, frontendOrigin)
+      return jsonResponse(200, { ok: true, activeStrategyVersion: FORMAL_STRATEGY_VERSION, v104Shadow: v104Shadow?.snapshot?.() ?? { status: 'unavailable' } }, frontendOrigin)
     }
     if (pathname === '/api/v104-iteration-shadow/control/status') {
       const controlError = requireControlAccess(headers)
       if (controlError) return controlError
       return jsonResponse(200, {
         ok: true,
-        formalStrategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION,
+        formalStrategyVersion: FORMAL_STRATEGY_VERSION,
         runtime: v104IterationShadow?.snapshot?.() ?? { status: 'unavailable' },
       }, frontendOrigin)
     }
@@ -1643,6 +1670,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       tableId,
       currentShoe: latest.shoe,
       currentVisibleRound: latest.visibleRound,
+      strategyVersion: FORMAL_STRATEGY_VERSION,
     })
   }
 
@@ -1669,6 +1697,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             tableId,
             currentShoe: shoe,
             currentVisibleRound: visibleRound,
+            strategyVersion: FORMAL_STRATEGY_VERSION,
           })
         } catch (error) {
           reconciliationError = error
@@ -1796,7 +1825,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         tableId: table.tableId,
         shoe: table.shoe,
         round: targetRound,
-        strategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION,
+        strategyVersion: FORMAL_STRATEGY_VERSION,
       }))
       .then((candidate) => {
         if (!isExactScreenPrediction(candidate, table, targetRound, durableIssuanceRequired)) {
@@ -1877,7 +1906,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     return Boolean(prediction)
       && isValidPendingPrediction(prediction)
       && (!durableRequired || (Boolean(prediction.predictionId) && Boolean(prediction.issuedAt)))
-      && prediction.strategyVersion === ALL_MT_EQUAL_STRATEGY_VERSION
+      && prediction.strategyVersion === FORMAL_STRATEGY_VERSION
       && predictionTargetKey(prediction.targetTableId, prediction.targetShoe, prediction.targetRound)
         === predictionTargetKey(table.tableId, table.shoe, targetRound)
   }
@@ -2180,6 +2209,17 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         }
       }
       if (isolatedShadowProcess) {
+        if (FORMAL_STRATEGY_VERSION === 'v106' && typeof isolatedShadowProcess.stopV10 === 'function') {
+          try {
+            await isolatedShadowProcess.stopV10()
+            state.setStatus({
+              shadowProcessStatus: isolatedShadowProcess.status(),
+              shadowProcessV10Readiness: { enabled: 0, prepared: 0, pending: 0, queued: 0, failed: 0, disabled: 1 },
+            })
+          } catch {
+            state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
+          }
+        }
         try {
           const requiredReadiness = await prepareRequiredShadowProcess()
           if (requiredReadiness) state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status(), shadowProcessReadiness: requiredReadiness })

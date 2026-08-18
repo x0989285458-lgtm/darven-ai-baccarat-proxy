@@ -105,6 +105,17 @@ test('V10 structure rejects a malformed big-road layout without consulting bead 
   assert.equal(result.reason, 'big_road_missing_or_invalid')
 })
 
+test('V10 structure rejects empty leading, interior, or trailing columns that could otherwise preserve an eligible motif', async () => {
+  const { analyzeV105ShadowV10UncommonRoadStructure } = await import('../src/v105-shadow-v10-structure.js')
+  const valid = runTable([1, 1, 2, 1, 1, 2]).bigRoadRaw
+  for (const bigRoadRaw of [`#${valid}`, valid.replace('B,B#P', 'B,B##P'), `${valid}#`]) {
+    const result = analyzeV105ShadowV10UncommonRoadStructure({ ...runTable([1, 1, 2, 1, 1, 2]), bigRoadRaw })
+    assert.equal(result.eligible, false)
+    assert.equal(result.direction, null)
+    assert.equal(result.reason, 'big_road_missing_or_invalid')
+  }
+})
+
 test('V10 structure ignores all bead-plate content including inserted ties', async () => {
   const { analyzeV105ShadowV10UncommonRoadStructure } = await import('../src/v105-shadow-v10-structure.js')
   const withTies = analyzeV105ShadowV10UncommonRoadStructure(runTable([1, 1, 2, 1, 1, 2], { ties: true }))

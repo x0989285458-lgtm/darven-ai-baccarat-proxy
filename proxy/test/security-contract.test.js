@@ -60,7 +60,7 @@ test('ingest rejects a missing or mismatched protocol version and marks status d
   assert.equal(JSON.parse(mismatch.body).error, 'version_mismatch')
 
   const status = JSON.parse((await app.inject({ url: '/api/status', headers: { 'x-forwarded-proto': 'https' } })).body)
-  assert.equal(status.buildVersion, 'v105')
+  assert.equal(status.buildVersion, 'v106')
   assert.equal(status.health, 'degraded')
   assert.equal(status.reason, 'version_mismatch')
   assert.equal(status.expectedProtocolVersion, 'v105')
@@ -266,19 +266,19 @@ test('pending prediction is deeply frozen before settlement and has exact six-si
   assert.equal(Object.values(settledPending.sideActions).every((value) => typeof value === 'boolean'), true)
 })
 
-test('internal state and public endpoints share build version 098.23', async () => {
+test('internal state and public endpoints share build version v106', async () => {
   const app = createApp({ autoConnect: false })
   const health = JSON.parse((await app.inject({ url: '/health' })).body)
   const status = JSON.parse((await app.inject({ url: '/api/status' })).body)
   const snapshot = JSON.parse((await app.inject({ url: '/api/snapshot' })).body)
 
-  assert.equal(health.buildVersion, 'v105')
-  assert.equal(status.buildVersion, 'v105')
-  assert.equal(snapshot.status.version, 'v105')
+  assert.equal(health.buildVersion, 'v106')
+  assert.equal(status.buildVersion, 'v106')
+  assert.equal(snapshot.status.version, 'v106')
 })
 
-test('every public table and durable prediction carries buildVersion 098.23 and targets the exact screen round', async () => {
-  const exact = { ...buildLivePrediction({ tableId: 'BAG01', shoe: 88, round: 19 }), predictionId: 'pid-round-20', issuedAt: new Date(NOW).toISOString() }
+test('every public table and durable prediction carries buildVersion v106 and targets the exact screen round', async () => {
+  const exact = { ...buildLivePrediction({ tableId: 'BAG01', shoe: 88, round: 19 }), strategyVersion: 'v106', predictionId: 'pid-round-20', issuedAt: new Date(NOW).toISOString() }
   const app = createApp({ autoConnect: false, supabaseClient: {
     configured: true,
     issuePrediction: async (candidate) => ({ ...candidate, predictionId: `pid-${candidate.targetRound}`, issuedAt: new Date(NOW).toISOString() }),
@@ -288,13 +288,13 @@ test('every public table and durable prediction carries buildVersion 098.23 and 
 
   const tables = JSON.parse((await app.inject({ url: '/api/tables' })).body)
 
-  assert.equal(tables[0].buildVersion, 'v105')
-  assert.equal(tables[0].prediction.buildVersion, 'v105')
+  assert.equal(tables[0].buildVersion, 'v106')
+  assert.equal(tables[0].prediction.buildVersion, 'v106')
   assert.equal(tables[0].prediction.targetRound, 20)
 
   const snapshot = JSON.parse((await app.inject({ url: '/api/snapshot' })).body)
-  assert.equal(snapshot.tables[0].buildVersion, 'v105')
-  assert.equal(snapshot.tables[0].prediction.buildVersion, 'v105')
+  assert.equal(snapshot.tables[0].buildVersion, 'v106')
+  assert.equal(snapshot.tables[0].prediction.buildVersion, 'v106')
 })
 
 test('production and cloud ingest without a key returns 503 and reports degraded health', async () => {

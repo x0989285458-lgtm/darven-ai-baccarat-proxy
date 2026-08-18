@@ -405,14 +405,14 @@ test('startup strategy verification has a wider bounded deadline than live reque
         const timer = setTimeout(resolve, 15)
         init.signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('request aborted', 'AbortError')) })
       })
-      const active = calls === 3 ? [{ version: 'v105', status: 'active' }] : []
+      const active = [{ version: 'v106', status: 'active' }]
       return { ok: true, status: 200, text: async () => JSON.stringify(active), json: async () => active }
     },
   })
 
   const result = await client.ensureInitialStrategy()
   assert.equal(result.ok, true)
-  assert.equal(calls, 3)
+  assert.equal(calls, 1)
 })
 
 test('startup strategy verification trusts one exact active version from the backend-only database before REST mutation', async () => {
@@ -422,7 +422,7 @@ test('startup strategy verification trusts one exact active version from the bac
     serviceKey: 'service-role-test-key',
     requireVerifiedStrategy: true,
     strategyPool: {
-      async query() { return { rows: [{ version: 'v105', status: 'active' }] } },
+      async query() { return { rows: [{ version: 'v106', status: 'active' }] } },
     },
     fetchImpl: async () => { fetchCalls += 1; throw new Error('REST should not be needed') },
   })

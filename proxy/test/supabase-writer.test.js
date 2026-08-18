@@ -80,7 +80,7 @@ test('builds Supabase roadmap and prediction rows for short-retention learning d
   assert.equal(Object.keys(prediction.prediction_features.side_weights.tie).includes('tie_risk'), true)
 })
 
-test('Supabase client posts strategy, roadmap event and prediction result with service key headers', async () => {
+test('Supabase client verifies strategy read-only then posts the legacy settled result with service key headers', async () => {
   const requests = []
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co',
@@ -88,7 +88,7 @@ test('Supabase client posts strategy, roadmap event and prediction result with s
     fetchImpl: async (url, init) => {
       requests.push({ url: String(url), init })
       if (init.method === 'GET') {
-        return { ok: true, json: async () => [{ version: buildLivePrediction(table).strategyVersion, status: 'active' }], text: async () => '' }
+        return { ok: true, json: async () => [{ version: 'v106', status: 'active' }], text: async () => '' }
       }
       return String(url).includes('/rpc/persist_v105_settled_round')
         ? { ok: true, status: 200, text: async () => JSON.stringify({ persisted: true, roadmapDurable: true, predictionDurable: true }) }
@@ -99,13 +99,9 @@ test('Supabase client posts strategy, roadmap event and prediction result with s
   await client.ensureInitialStrategy()
   await client.persistRound(round, table, buildLivePrediction(table))
 
-  assert.equal(requests.length, 4)
+  assert.equal(requests.length, 2)
   assert.equal(requests[0].url.includes('/rest/v1/ai_strategy_versions'), true)
-  assert.equal(requests[0].init.method, 'PATCH')
-  assert.equal(requests[1].url.includes('/rest/v1/ai_strategy_versions'), true)
-  assert.equal(requests[1].init.method, 'POST')
-  assert.equal(requests[2].url.includes('/rest/v1/ai_strategy_versions'), true)
-  assert.equal(requests[2].init.method, 'GET')
-  assert.equal(requests[3].url.includes('/rest/v1/rpc/persist_v105_settled_round'), true)
-  assert.equal(requests[3].init.headers.Authorization, 'Bearer sb_secret_test_key')
+  assert.equal(requests[0].init.method, 'GET')
+  assert.equal(requests[1].url.includes('/rest/v1/rpc/persist_v105_settled_round'), true)
+  assert.equal(requests[1].init.headers.Authorization, 'Bearer sb_secret_test_key')
 })

@@ -21,18 +21,19 @@ test('adding v103 shadow leaves the member v102 table prediction bit-for-bit unc
   const active = JSON.parse((await withoutShadow.inject({ url: '/api/tables' })).body)
   const shadowed = JSON.parse((await withShadow.inject({ url: '/api/tables' })).body)
   assert.deepEqual(shadowed, active)
-  assert.equal(shadowed[0].prediction.strategyVersion, 'v105')
+  assert.equal(shadowed[0].prediction.strategyVersion, 'v106')
 })
 
 test('shadow failure is backend-observable but never blocks active settlement, ACK, queue, or formal health', async () => {
   let activeSettlements = 0
-  const issued = { ...buildLivePrediction(table), predictionId: 'v102-pid', issuedAt: '2026-07-20T10:00:00Z' }
+  const issued = { ...buildLivePrediction(table), strategyVersion: 'v106', predictionId: 'v106-pid', issuedAt: '2026-07-20T10:00:00Z' }
   const activeWriter = {
     configured: true,
+    getV106FormalHistory: async () => [],
     async issuePrediction() { return issued },
     async readIssuedPrediction() { return issued },
-    async persistRound() { activeSettlements += 1; return { prediction: { strategy_version: 'v105' } } },
-    getRuntimeStatus() { return { ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' } },
+    async persistRound() { activeSettlements += 1; return { prediction: { strategy_version: 'v106' } } },
+    getRuntimeStatus() { return { ready: true, degraded: false, reason: null, activeStrategyVersion: 'v106' } },
   }
   const shadow = {
     enabled: true,
@@ -55,5 +56,5 @@ test('shadow failure is backend-observable but never blocks active settlement, A
   assert.equal(unauthorized.statusCode, 401)
   assert.equal(status.v103Shadow.status, 'error')
   assert.equal(health.degraded, false)
-  assert.equal(health.runtimeStatus.activeStrategyVersion, 'v105')
+  assert.equal(health.runtimeStatus.activeStrategyVersion, 'v106')
 })

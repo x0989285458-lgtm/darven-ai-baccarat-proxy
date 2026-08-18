@@ -40,7 +40,8 @@ test('v2 threshold-only shadow release manifest is isolated and exact', () => {
   assert.equal(manifest.deployment.rollbackBeforeProxy, true)
   assert.deepEqual(manifest.thresholds, { tie: 30, superSix: 50, bankerDragon: 40, playerDragon: 40, bankerPair: 50, playerPair: 41 })
   assert.equal(proxy.version, frontend.version)
-  assert.equal(frontend.version, worker.version)
+  assert.equal(frontend.version, '1.0.63')
+  assert.equal(worker.version, '1.0.62')
 })
 
 test('v3 reweight shadow manifest is isolated and exact', () => {

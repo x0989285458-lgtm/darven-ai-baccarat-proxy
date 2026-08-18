@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createApp } from '../src/server.js'
-import { buildV105FormalPrediction } from '../src/v105-formal-strategy.js'
+import { buildV106FormalPrediction } from '../src/v106-formal-strategy.js'
 
 const TABLE_IDS = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
 const table = (tableId = 'BAG01') => ({
@@ -9,7 +9,7 @@ const table = (tableId = 'BAG01') => ({
   bankerCount: 12, playerCount: 8, tieCount: 1, beadPlateRaw: '020102010201', bigRoadRaw: 'B#P#B#P#B#P',
 })
 
-test('the same ten-table snapshot and verified Final fan out to V10 while V10 failure cannot block formal or V9', async () => {
+test('v106 formal keeps V9 isolated while the promoted V10 shadow lane is stopped', async () => {
   const seen = { v9: [], v10: [] }
   const finals = { v9: 0, v10: 0 }
   const issued = []
@@ -22,14 +22,14 @@ test('the same ten-table snapshot and verified Final fan out to V10 while V10 fa
   })
   const formalRuntime = {
     async start() {},
-    async buildPrediction(input) { return buildV105FormalPrediction(input) },
-    recordIssuance() {}, recordSettlement() {}, snapshot: () => ({ strategyVersion: 'v105', status: 'ready' }),
+    async buildPrediction(input) { return buildV106FormalPrediction(input) },
+    recordIssuance() {}, recordSettlement() {}, snapshot: () => ({ strategyVersion: 'v106', status: 'ready' }),
   }
   const writer = {
     configured: true,
     async issuePrediction(candidate) { issued.push(candidate.targetTableId); return { ...candidate, predictionId: `formal-${candidate.targetTableId}`, issuedAt: '2026-08-02T01:00:01.000Z' } },
     async readIssuedPrediction() { return null },
-    async persistRound() { persisted += 1; return { prediction: { strategy_version: 'v105', predicted_result: 'banker', settlement_final: true, resolved_at: '2026-08-02T01:00:02.000Z' } } },
+    async persistRound() { persisted += 1; return { prediction: { strategy_version: 'v106', predicted_result: 'banker', settlement_final: true, resolved_at: '2026-08-02T01:00:02.000Z' } } },
   }
   const app = createApp({
     autoConnect: false, requireVerifiedStrategy: false, memberAuthRequired: false,
@@ -42,8 +42,40 @@ test('the same ten-table snapshot and verified Final fan out to V10 while V10 fa
   await app.waitForServiceWorkIdle()
   assert.deepEqual(seen.v9, TABLE_IDS)
   assert.equal(finals.v9, 1)
-  assert.deepEqual(seen.v10, TABLE_IDS)
-  assert.equal(finals.v10, 1)
+  assert.deepEqual(seen.v10, [])
+  assert.equal(finals.v10, 0)
   assert.deepEqual(issued, TABLE_IDS)
   assert.equal(persisted, 1)
+})
+
+test('v106 formal stops an injected isolated V10 lane and never prepares it', async (t) => {
+  let v10PrepareCalls = 0
+  let v10StopCalls = 0
+  const disabled = { enabled: 0, prepared: 0, pending: 0, queued: 0, failed: 0, disabled: 1 }
+  const shadowProcessClient = {
+    async prepareRequired() { return disabled },
+    async prepareV9() { return disabled },
+    async prepareV10() { v10PrepareCalls += 1; return disabled },
+    async stopV10() { v10StopCalls += 1 },
+    runtime: () => ({ enabled: false, snapshot: () => ({ status: 'disabled' }) }),
+    async processCapture() {},
+    status: () => ({ running: false, v105V10: { enabled: false, running: false } }),
+    beginStop() {},
+    async stop() {},
+  }
+  const app = createApp({
+    autoConnect: false,
+    port: 0,
+    host: '127.0.0.1',
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    isolateShadowProcess: true,
+    shadowProcessClient,
+    supabaseClient: { configured: false },
+  })
+  t.after(() => app.stop())
+  await app.start()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(v10StopCalls, 1)
+  assert.equal(v10PrepareCalls, 0)
 })

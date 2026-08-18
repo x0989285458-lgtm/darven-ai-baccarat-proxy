@@ -97,6 +97,7 @@ const streamStaleMs = Number(import.meta.env.VITE_DRAVEN_STREAM_STALE_MS ?? 1500
 const liveTableMaxAgeMs = Number(import.meta.env.VITE_DRAVEN_TABLE_MAX_AGE_MS ?? 120000)
 const CURRENT_STRATEGY_VERSION = frontendBuildMetadata.strategyVersion
 const CURRENT_BUILD_VERSION = frontendBuildMetadata.buildVersion
+const REQUIRED_FORMAL_STRATEGY_VERSION = 'v106'
 const sidePredictionKeys: SidePredictionKey[] = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
 
 export async function fetchTableUiHistory(tableId: string, memberSessionToken: string, signal?: AbortSignal): Promise<TableUiHistory> {
@@ -349,7 +350,7 @@ export function backendPredictionReasonsFromTable(table?: Pick<LiveTable, 'predi
 export function getBackendPredictionIssue(table?: LiveTable | null, now = Date.now()): string | null {
   const prediction = table?.prediction
   if (!prediction || prediction.source !== 'backend') return '後端預測暫不可用'
-  if (prediction.strategyVersion !== CURRENT_STRATEGY_VERSION) return '策略版本不符'
+  if (CURRENT_STRATEGY_VERSION !== REQUIRED_FORMAL_STRATEGY_VERSION || prediction.strategyVersion !== CURRENT_STRATEGY_VERSION) return '策略版本不符 version_mismatch'
   if (String(table?.buildVersion ?? prediction.buildVersion ?? '') !== CURRENT_BUILD_VERSION) return '建置版本不符'
   if (isLiveTableStale(table ?? {}, now)) return '資料過期'
   if (String(prediction.targetTableId ?? '') !== String(table?.table_id ?? table?.id ?? '')

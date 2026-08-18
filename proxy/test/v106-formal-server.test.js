@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createApp } from '../src/server.js'
-import { buildV105FormalPrediction } from '../src/v105-formal-strategy.js'
+import { buildV106FormalPrediction } from '../src/v106-formal-strategy.js'
 
 const table = {
   tableId: 'BAG01', shoe: '88', round: 19,
@@ -10,7 +10,7 @@ const table = {
   beadPlateRaw: '02#01#02#01#02', bigRoadRaw: 'B#P#B#P#B',
 }
 
-test('server routes formal issuance through v104 runtime and records only durable acknowledgements', async () => {
+test('server routes formal issuance through v106 runtime and records only durable acknowledgements', async () => {
   const built = []
   const acknowledgements = []
   const issued = []
@@ -18,17 +18,17 @@ test('server routes formal issuance through v104 runtime and records only durabl
     async start() {},
     async buildPrediction(input) {
       built.push(structuredClone(input))
-      return buildV105FormalPrediction(input, [], {})
+      return buildV106FormalPrediction(input, [], {})
     },
     recordIssuance(prediction) { acknowledgements.push(structuredClone(prediction)) },
     recordSettlement() {},
-    snapshot() { return { strategyVersion: 'v105', status: 'ready' } },
+    snapshot() { return { strategyVersion: 'v106', status: 'ready' } },
   }
   const writer = {
     configured: true,
     async issuePrediction(candidate) {
       issued.push(structuredClone(candidate))
-      return { ...candidate, predictionId: 'formal-v105-20', issuedAt: '2026-07-21T01:00:01.000Z' }
+      return { ...candidate, predictionId: 'formal-v106-20', issuedAt: '2026-07-21T01:00:01.000Z' }
     },
     async readIssuedPrediction() { return null },
   }
@@ -46,13 +46,13 @@ test('server routes formal issuance through v104 runtime and records only durabl
 
   assert.equal(built.length, 1)
   assert.equal(issued.length, 1)
-  assert.equal(issued[0].strategyVersion, 'v105')
+  assert.equal(issued[0].strategyVersion, 'v106')
   assert.equal(issued[0].targetRound, 20)
   assert.equal(acknowledgements.length, 1)
-  assert.equal(acknowledgements[0].predictionId, 'formal-v105-20')
+  assert.equal(acknowledgements[0].predictionId, 'formal-v106-20')
 })
 
-test('server hydrates the v104 formal runtime before opening the listener', async () => {
+test('server hydrates the v106 formal runtime before opening the listener', async () => {
   let started = 0
   const app = createApp({
     autoConnect: false,
@@ -62,10 +62,10 @@ test('server hydrates the v104 formal runtime before opening the listener', asyn
     supabaseClient: { configured: false },
     v104FormalRuntime: {
       async start() { started += 1 },
-      async buildPrediction(input) { return buildV105FormalPrediction(input, [], {}) },
+      async buildPrediction(input) { return buildV106FormalPrediction(input, [], {}) },
       recordIssuance() {},
       recordSettlement() {},
-      snapshot() { return { strategyVersion: 'v105', status: started ? 'ready' : 'initializing' } },
+      snapshot() { return { strategyVersion: 'v106', status: started ? 'ready' : 'initializing' } },
     },
   })
   await app.start()
@@ -76,11 +76,11 @@ test('server hydrates the v104 formal runtime before opening the listener', asyn
   }
 })
 
-test('server passes the dedicated configured v105 hydration timeout to the formal history reader', async () => {
+test('server passes the dedicated configured hydration timeout to the v106 formal history reader', async () => {
   let observedTimeout
   const writer = {
     configured: true,
-    async getV105FormalHistory(options) { observedTimeout = options.requestTimeoutMs; return [] },
+    async getV106FormalHistory(options) { observedTimeout = options.requestTimeoutMs; return [] },
     async getRecentPredictionRows() { return [] },
   }
   const app = createApp({
@@ -106,8 +106,8 @@ test('failed recent performance startup hydration retries on a later table updat
   let issuanceCalls = 0
   const writer = {
     configured: true,
-    getRuntimeStatus() { return { ready: true, degraded: false, activeStrategyVersion: 'v105' } },
-    async ensureInitialStrategy() { return { ok: true, activeStrategyVersion: 'v105' } },
+    getRuntimeStatus() { return { ready: true, degraded: false, activeStrategyVersion: 'v106' } },
+    async ensureInitialStrategy() { return { ok: true, activeStrategyVersion: 'v106' } },
     async getRecentPredictionRows() {
       recentCalls += 1
       if (recentCalls === 1) throw new Error('temporary recent history read failure')
@@ -121,9 +121,9 @@ test('failed recent performance startup hydration retries on a later table updat
   }
   const formalRuntime = {
     async start() {},
-    async buildPrediction(input) { return buildV105FormalPrediction(input, [], {}) },
+    async buildPrediction(input) { return buildV106FormalPrediction(input, [], {}) },
     recordIssuance() {}, recordSettlement() {},
-    snapshot() { return { strategyVersion: 'v105', status: 'ready' } },
+    snapshot() { return { strategyVersion: 'v106', status: 'ready' } },
   }
   const app = createApp({
     autoConnect: false, port: 0, production: true, requireVerifiedStrategy: true,
@@ -153,8 +153,8 @@ test('same-screen snapshot retries formal issuance after the first durable write
   let buildCalls = 0
   const writer = {
     configured: true,
-    getRuntimeStatus() { return { ready: true, degraded: false, activeStrategyVersion: 'v105' } },
-    async ensureInitialStrategy() { return { ok: true, activeStrategyVersion: 'v105' } },
+    getRuntimeStatus() { return { ready: true, degraded: false, activeStrategyVersion: 'v106' } },
+    async ensureInitialStrategy() { return { ok: true, activeStrategyVersion: 'v106' } },
     async getRecentPredictionRows() { return [] },
     async reconcilePredictionLifecycle() { reconcileCalls += 1 },
     async issuePrediction(candidate) {
@@ -165,9 +165,9 @@ test('same-screen snapshot retries formal issuance after the first durable write
   }
   const formalRuntime = {
     async start() {},
-    async buildPrediction(input) { buildCalls += 1; return buildV105FormalPrediction(input, [], {}) },
+    async buildPrediction(input) { buildCalls += 1; return buildV106FormalPrediction(input, [], {}) },
     recordIssuance() {}, recordSettlement() {},
-    snapshot() { return { strategyVersion: 'v105', status: 'ready' } },
+    snapshot() { return { strategyVersion: 'v106', status: 'ready' } },
   }
   const app = createApp({
     autoConnect: false, port: 0, production: true, requireVerifiedStrategy: true,
@@ -206,8 +206,8 @@ test('regressed round and old-shoe snapshots never retry formal issuance', async
   let issuanceCalls = 0
   const writer = {
     configured: true,
-    getRuntimeStatus() { return { ready: true, degraded: false, activeStrategyVersion: 'v105' } },
-    async ensureInitialStrategy() { return { ok: true, activeStrategyVersion: 'v105' } },
+    getRuntimeStatus() { return { ready: true, degraded: false, activeStrategyVersion: 'v106' } },
+    async ensureInitialStrategy() { return { ok: true, activeStrategyVersion: 'v106' } },
     async getRecentPredictionRows() { return [] },
     async reconcilePredictionLifecycle() {},
     async issuePrediction() {
@@ -217,9 +217,9 @@ test('regressed round and old-shoe snapshots never retry formal issuance', async
   }
   const formalRuntime = {
     async start() {},
-    async buildPrediction(input) { return buildV105FormalPrediction(input, [], {}) },
+    async buildPrediction(input) { return buildV106FormalPrediction(input, [], {}) },
     recordIssuance() {}, recordSettlement() {},
-    snapshot() { return { strategyVersion: 'v105', status: 'ready' } },
+    snapshot() { return { strategyVersion: 'v106', status: 'ready' } },
   }
   const app = createApp({
     autoConnect: false, port: 0, production: true, requireVerifiedStrategy: true,
@@ -255,8 +255,8 @@ test('delayed stale reconciliation cannot issue after a newer shoe becomes curre
   const issued = []
   const writer = {
     configured: true,
-    getRuntimeStatus() { return { ready: true, degraded: false, activeStrategyVersion: 'v105' } },
-    async ensureInitialStrategy() { return { ok: true, activeStrategyVersion: 'v105' } },
+    getRuntimeStatus() { return { ready: true, degraded: false, activeStrategyVersion: 'v106' } },
+    async ensureInitialStrategy() { return { ok: true, activeStrategyVersion: 'v106' } },
     async getRecentPredictionRows() { return [] },
     async reconcilePredictionLifecycle({ currentShoe }) {
       if (String(currentShoe) === '88') { signalOldStarted(); await oldGate }
@@ -268,9 +268,9 @@ test('delayed stale reconciliation cannot issue after a newer shoe becomes curre
   }
   const formalRuntime = {
     async start() {},
-    async buildPrediction(input) { return buildV105FormalPrediction(input, [], {}) },
+    async buildPrediction(input) { return buildV106FormalPrediction(input, [], {}) },
     recordIssuance() {}, recordSettlement() {},
-    snapshot() { return { strategyVersion: 'v105', status: 'ready' } },
+    snapshot() { return { strategyVersion: 'v106', status: 'ready' } },
   }
   const app = createApp({ autoConnect: false, port: 0, production: true, requireVerifiedStrategy: true,
     memberAuthRequired: false, supabaseClient: writer, v104FormalRuntime: formalRuntime })
@@ -289,20 +289,20 @@ test('delayed stale reconciliation cannot issue after a newer shoe becomes curre
   }
 })
 
-test('cloud ingest withholds ACK until v104 Final settlement is durable and returns 503 on failure', async () => {
+test('cloud ingest withholds ACK until v106 Final settlement is durable and returns 503 on failure', async () => {
   let releaseSettlement
   let settlementStarted
   const started = new Promise((resolve) => { settlementStarted = resolve })
   const gate = new Promise((resolve) => { releaseSettlement = resolve })
   const formalRuntime = {
     async start() {},
-    async buildPrediction(input) { return buildV105FormalPrediction(input, [], {}) },
+    async buildPrediction(input) { return buildV106FormalPrediction(input, [], {}) },
     recordIssuance() {}, recordSettlement() {},
-    snapshot() { return { strategyVersion: 'v105', status: 'ready' } },
+    snapshot() { return { strategyVersion: 'v106', status: 'ready' } },
   }
   const writer = {
     configured: true,
-    async issuePrediction(candidate) { return { ...candidate, predictionId: 'formal-v105-20', issuedAt: '2026-07-21T01:00:01.000Z' } },
+    async issuePrediction(candidate) { return { ...candidate, predictionId: 'formal-v106-20', issuedAt: '2026-07-21T01:00:01.000Z' } },
     async readIssuedPrediction() { return null },
     async persistRound() {
       settlementStarted()
@@ -336,20 +336,20 @@ test('cloud ingest withholds ACK until v104 Final settlement is durable and retu
   assert.equal(JSON.parse(response.body).accepted, false)
 })
 
-test('server links a durable Final settlement back to the original v105 prediction identity', async () => {
+test('server links a durable Final settlement back to the original v106 prediction identity', async () => {
   const settlements = []
   const formalRuntime = {
     async start() {},
-    async buildPrediction(input) { return buildV105FormalPrediction(input, [], {}) },
+    async buildPrediction(input) { return buildV106FormalPrediction(input, [], {}) },
     recordIssuance() {},
     recordSettlement(row) { settlements.push(structuredClone(row)) },
-    snapshot() { return { strategyVersion: 'v105', status: 'ready' } },
+    snapshot() { return { strategyVersion: 'v106', status: 'ready' } },
   }
   const writer = {
     configured: true,
-    async issuePrediction(candidate) { return { ...candidate, predictionId: 'formal-v105-20', issuedAt: '2026-07-21T01:00:01.000Z' } },
+    async issuePrediction(candidate) { return { ...candidate, predictionId: 'formal-v106-20', issuedAt: '2026-07-21T01:00:01.000Z' } },
     async readIssuedPrediction() { return null },
-    async persistRound() { return { prediction: { strategy_version: 'v105', predicted_result: 'banker', settlement_final: true } } },
+    async persistRound() { return { prediction: { strategy_version: 'v106', predicted_result: 'banker', settlement_final: true } } },
     async writeCloudCaptureStatus() {}, async writeCloudTableSnapshot() {}, async writeCloudRoundEvent() {},
   }
   const app = createApp({ autoConnect: false, ingestKey: 'worker-key', now: () => 1_000_000,
@@ -365,5 +365,5 @@ test('server links a durable Final settlement back to the original v105 predicti
   const response = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': 'worker-key', 'x-forwarded-proto': 'https' }, body: JSON.stringify(envelope) })
   assert.equal(response.statusCode, 200)
   assert.equal(settlements.length, 1)
-  assert.equal(settlements[0].predictionId, 'formal-v105-20')
+  assert.equal(settlements[0].predictionId, 'formal-v106-20')
 })

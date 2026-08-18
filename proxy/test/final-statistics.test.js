@@ -7,9 +7,9 @@ function response(rows) {
   return { ok: true, status: 200, json: async () => rows, text: async () => JSON.stringify(rows) }
 }
 
-test('v102 today prediction count queries and accepts only v102 final settlements', async () => {
+test('v106 today prediction count queries and accepts only v106 final settlements', async () => {
   let requestedUrl
-  const v102Row = { id: 'v102-final', strategy_version: 'v105', settlement_final: true, prediction_features: { settlement_final: true } }
+  const v102Row = { id: 'v106-final', strategy_version: 'v106', settlement_final: true, prediction_features: { settlement_final: true } }
   const oldRow = { id: 'v98-final', strategy_version: 'v98', settlement_final: true, prediction_features: { settlement_final: true } }
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-service-key',
@@ -18,14 +18,14 @@ test('v102 today prediction count queries and accepts only v102 final settlement
 
   assert.equal(await client.countTodayPredictionRounds(), 1)
   assert.match(requestedUrl.searchParams.get('select') ?? '', /settlement_final/)
-  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v105')
+  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v106')
   assert.equal(requestedUrl.searchParams.get('settlement_final'), 'eq.true')
   assert.equal(requestedUrl.searchParams.has('or'), false)
 })
 
-test('v102 stable report reads and accepts only complete v102 final settlements', async () => {
+test('v106 stable report reads and accepts only complete v106 final settlements', async () => {
   let requestedUrl
-  const finalRow = { table_id: 'BAG01', strategy_version: 'v105', settlement_final: true, prediction_features: { settlement_final: true }, created_at: '2026-07-15T08:03:00Z' }
+  const finalRow = { table_id: 'BAG01', strategy_version: 'v106', settlement_final: true, prediction_features: { settlement_final: true }, created_at: '2026-07-15T08:03:00Z' }
   const oldVersionRow = { ...finalRow, strategy_version: 'v98', created_at: '2026-07-15T08:02:00Z' }
   const compatibilityRow = { ...finalRow, settlement_final: null, prediction_features: { settlement_final: true }, created_at: '2026-07-15T08:01:00Z' }
   const client = createSupabaseIngestionClient({
@@ -35,7 +35,7 @@ test('v102 stable report reads and accepts only complete v102 final settlements'
 
   assert.deepEqual(await client.getStablePredictionRows({ limit: 100 }), [finalRow])
   assert.match(requestedUrl.searchParams.get('select') ?? '', /settlement_final/)
-  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v105')
+  assert.equal(requestedUrl.searchParams.get('strategy_version'), 'eq.v106')
   assert.equal(requestedUrl.searchParams.get('settlement_final'), 'eq.true')
   assert.equal(requestedUrl.searchParams.has('or'), false)
 })

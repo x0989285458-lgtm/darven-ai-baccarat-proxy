@@ -1,6 +1,6 @@
 export const frontendBuildMetadata = Object.freeze({
-  buildVersion: 'v105',
-  strategyVersion: 'v105',
+  buildVersion: 'v106',
+  strategyVersion: 'v106',
 })
 
 export function installFrontendBuildMetadata(root: HTMLElement = document.documentElement) {

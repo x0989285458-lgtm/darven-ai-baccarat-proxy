@@ -1,0 +1,68 @@
+{
+  "releaseVersion": "v106.0.0-formal.1",
+  "strategyVersion": "v106",
+  "applicationVersion": "1.0.63",
+  "status": "candidate-tested-under-independent-review",
+  "productionE2E": "not-run",
+  "deployment": "authorized-not-started",
+  "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
+  "versionMatrix": {
+    "proxy": { "packageVersion": "1.0.63", "buildVersion": "v106", "strategyVersion": "v106", "workerProtocol": "v105" },
+    "frontend": { "packageVersion": "1.0.63", "buildVersion": "v106", "strategyVersion": "v106", "workerProtocol": "v105" },
+    "worker": { "packageVersion": "1.0.62", "buildVersion": "105", "strategyVersion": "v105", "workerProtocol": "v105" }
+  },
+  "releaseBindingDigests": {
+    "implementationTree": "62a5d394fbcf56e19916894c2500269314015b7e1ffbccdf544c19ee1327ff9f",
+    "proxyBuildInput": "1204d9438161d72f091b0e2facc9f5ae64fb4ce7e693124630414852d9ccf161",
+    "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
+    "workerBuildInput": "994ec6c53388b940afe9d57b8fa328a3c336dc41e71461f2219917a1ebf48006",
+    "databaseCutoverInput": "1a96e7f98d604a10880d3f8c4ed12bddbe779ce101343784b19c33fc56b4df79"
+  },
+  "rollbackComponents": {
+    "proxy": { "commit": "fad9bd839eb272d8e9ab3db00852c1261aa620dd", "package": "draven-mt-data-proxy-v105", "packageVersion": "1.0.61", "buildVersion": "v105", "strategyVersion": "v105", "workerProtocol": "v105" },
+    "frontend": { "commit": "4a6b4bc8b4ab8357dfefdf738f73d41adc520bf0", "package": "darven-ai-baccarat-frontend", "packageVersion": "1.0.60", "buildVersion": "v105", "strategyVersion": "v105", "workerProtocol": "v105" },
+    "worker": { "commit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58", "package": "darven-cloud-browser-worker", "packageVersion": "1.0.62", "buildVersion": "105", "strategyVersion": "v105", "workerProtocol": "v105" },
+    "ancestryVerified": true,
+    "releaseBaseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58"
+  },
+  "testRunners": {
+    "proxy": "proxy/scripts/run-tests.mjs",
+    "worker": "scripts/run-worker-tests-scrubbed.mjs",
+    "credentialScrubber": "scripts/test-env-scrub.mjs"
+  },
+  "productionReplay": {
+    "transactionIsolation": "repeatable-read overlap by source/table/shoe/round",
+    "overlapRows": 36856,
+    "eligibleRows": 2955,
+    "changedRows": 1619,
+    "pushRows": 3499,
+    "baselineHits": 16717,
+    "baselineMisses": 16640,
+    "candidateHits": 16746,
+    "candidateMisses": 16611,
+    "netHitDelta": 29,
+    "baselineDirectionalHitRate": 0.501153,
+    "candidateDirectionalHitRate": 0.502022,
+    "note": "Tie/PUSH excluded from directional hit-rate denominator. Full-output V10 candidate was rejected after producing net -15 hits; eligible-only promotion is the reviewed candidate."
+  },
+  "verified": {
+    "proxy": "215 isolated files; 991/991 pass with canonical scrubbed test runner; exit 0",
+    "releaseBinding": "all five mandatory bindings (implementation, proxy, frontend, unchanged worker, database cutover) verified against the frozen staged Git tree; release CLI requires external attestation unless explicit pre-commit --digests-only is selected",
+    "testEnvironmentFence": "shared proxy/worker scrubber removes DB, service-role, proxy-control, member/admin session, MT token/session/portal path, worker, ingest, Render and Cloudflare authority before child tests; focused 2/2 pass",
+    "focusedTests": "34/34 strategy, malformed-road, hydration and isolated V10-fence tests pass; 15/15 registry, DB cutover, annotated-tag and rollback contract tests pass",
+    "predecessorRegression": "8/8 v105 predecessor regressions derived from release base 6bdd39e8 pass against the candidate server; the base source SHA-256 is verifier-bound and 9/9 dedicated v106 server tests pass separately",
+    "outboxFailureAckIsolation": "24/24 outbox tests pass; paired claim/failure-ACK outage tests repeated 12/12 without holding another claimable Final",
+    "frontend": "156/156 pass and production build pass",
+    "worker": "209/209 pass through scripts/run-worker-tests-scrubbed.mjs; worker build and protocol intentionally remain unchanged at 105/v105",
+    "databaseMigration": "compiled against live schema inside transaction and fully rolled back; terminal lifecycle evidence cannot reopen; activation retains v105 immutable settlement but revokes legacy unbound persistence",
+    "diffCheck": "git diff --check pass; only existing line-ending conversion warnings",
+    "secretScan": "gitleaks 8.30.1 staged-diff scan; zero findings; exit 0"
+  },
+  "pending": [
+    "three-way independent review P0/P1 closure",
+    "final staged gitleaks scan",
+    "commit/tag/push",
+    "controlled DB-first deployment",
+    "authenticated ten-table production E2E and first new v106 Final"
+  ]
+}

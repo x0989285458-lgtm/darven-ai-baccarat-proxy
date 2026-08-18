@@ -6,6 +6,6 @@ test('proxy health and status expose the same build version', async () => {
   const app = createApp({ autoConnect: false })
   const health = JSON.parse((await app.inject({ url: '/health' })).body)
   const status = JSON.parse((await app.inject({ url: '/api/status' })).body)
-  assert.equal(health.buildVersion, 'v105')
-  assert.equal(status.buildVersion, 'v105')
+  assert.equal(health.buildVersion, 'v106')
+  assert.equal(status.buildVersion, 'v106')
 })

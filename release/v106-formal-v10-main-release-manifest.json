@@ -1,0 +1,181 @@
+{
+  "releaseVersion": "v106.0.0-formal.1",
+  "gitTag": "v106.0.0-formal.1",
+  "applicationVersion": "1.0.63",
+  "strategyVersion": "v106",
+  "frontendBuildVersion": "v106",
+  "proxyBuildVersion": "v106",
+  "workerPackageVersion": "1.0.62",
+  "workerBuildVersion": "105",
+  "protocolVersion": "v105",
+  "candidateMode": "formal",
+  "scope": "MAIN only",
+  "releaseScope": {
+    "databaseMigrationRequired": true,
+    "predictionRulesChanged": true,
+    "predictionWeightsChanged": true,
+    "frontendBehaviorChanged": true,
+    "proxyBehaviorChanged": true,
+    "workerBehaviorChanged": false,
+    "workerProtocolChanged": false,
+    "canonicalSource": "api",
+    "singleWriterRequired": true
+  },
+  "inheritedProductionSafety": {
+    "preserveQueue": true,
+    "preserveAckCursor": true,
+    "preserveFinalJournal": true,
+    "exactAckRequired": true,
+    "tenCanonicalTablesRequired": true,
+    "sessionRefreshRetries": true,
+    "singleSocketGeneration": true,
+    "secretRedactionRequired": true,
+    "unchangedWorkerNotRestartedDuringStrategyCutover": true
+  },
+  "predecessorRegression": {
+    "baseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
+    "sourcePath": "proxy/test/v104-formal-server.test.js",
+    "sourceSha256": "5efa22fc2ddd00600819d775ed973bef201788a1d377531e3f389b4e72ba1e04",
+    "executablePath": "proxy/test/v105-predecessor-server.test.js",
+    "excludedSupersededCase": "v105-only hydration route"
+  },
+  "mainStrategy": {
+    "source": "v105-shadow-v10-big-road-uncommon-structure-rank-synchronized",
+    "beadPlateIndependent": true,
+    "activationGate": "structureDiagnostics.eligible === true",
+    "fallback": "exact formal v105 main projection",
+    "eligibleWeights": {
+      "v7RoadCycle": 0.315,
+      "v8AskRoad": 0.315,
+      "recentPracticalCalibration": 0.18,
+      "shoeBankerPlayerBias": 0.09,
+      "uncommonRoadStructure": 0.1
+    }
+  },
+  "sideStrategy": {
+    "source": "v105",
+    "outputs": ["tie", "superSix", "bankerPair", "playerPair", "bankerDragon", "playerDragon"],
+    "parityRequired": "bit-for-bit",
+    "shadowSideHeadsForbidden": true
+  },
+  "productionReplay": {
+    "source": "Supabase repeatable-read overlap on source/table/shoe/round",
+    "overlapRows": 36856,
+    "eligibleRows": 2955,
+    "changedRows": 1619,
+    "pushRows": 3499,
+    "baselineHits": 16717,
+    "baselineMisses": 16640,
+    "candidateHits": 16746,
+    "candidateMisses": 16611,
+    "netHitDelta": 29,
+    "pushExcludedFromHitRate": true
+  },
+  "database": "supabase/migrations/20260818010000_v106_formal_v10_main.sql",
+  "activation": "supabase/operations/activate_v106_promotion.sql",
+  "settlementCompatibility": {
+    "predecessorNewIssuanceFenced": true,
+    "predecessorImmutableSettlementRetainedAfterFinalize": true,
+    "successorImmutableSettlementRetainedAfterRollback": true,
+    "terminalEvidenceStatuses": ["expired_no_final", "abandoned_shoe_change"],
+    "unknownOrPendingNonFinalBlocksCutover": true
+  },
+  "deploymentOrder": [
+    "database-additive",
+    "fence-v105-new-issuance",
+    "producer-stop",
+    "drain-v105-and-queue",
+    "activate-v106",
+    "proxy",
+    "verify-unchanged-worker",
+    "frontend",
+    "live-e2e",
+    "finalize"
+  ],
+  "liveE2E": {
+    "required": true,
+    "productionCredentialsForbiddenInTests": true,
+    "checks": [
+      "exactly one active v106",
+      "v106 immutable issuance",
+      "v106 Final-only atomic prediction and roadmap settlement",
+      "ten canonical tables continue",
+      "Queue and ACK remain coherent",
+      "frontend accepts v106",
+      "promoted V10 shadow stays disabled"
+    ]
+  },
+  "testRunners": {
+    "proxy": "proxy/scripts/run-tests.mjs",
+    "worker": "scripts/run-worker-tests-scrubbed.mjs",
+    "credentialScrubber": "scripts/test-env-scrub.mjs"
+  },
+  "finalize": "supabase/operations/finalize_v106_promotion.sql",
+  "rollback": {
+    "script": "supabase/operations/rollback_v106_to_v105.sql",
+    "targetSoleActive": "v105",
+    "componentCommits": {
+      "proxy": "fad9bd839eb272d8e9ab3db00852c1261aa620dd",
+      "frontend": "4a6b4bc8b4ab8357dfefdf738f73d41adc520bf0",
+      "worker": "6bdd39e8c241c6d9341229d20bb5e281022c7d58"
+    },
+    "componentPackages": {
+      "proxy": { "name": "draven-mt-data-proxy-v105", "version": "1.0.61" },
+      "frontend": { "name": "darven-ai-baccarat-frontend", "version": "1.0.60" },
+      "worker": { "name": "darven-cloud-browser-worker", "version": "1.0.62" }
+    },
+    "componentBuilds": {
+      "proxy": { "buildVersion": "v105", "strategyVersion": "v105", "workerProtocol": "v105" },
+      "frontend": { "buildVersion": "v105", "strategyVersion": "v105", "workerProtocol": "v105" },
+      "worker": { "buildVersion": "105", "strategyVersion": "v105", "workerProtocol": "v105" }
+    },
+    "componentVerification": {
+      "releaseBaseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
+      "allCommitsAreAncestorsOfReleaseBase": true,
+      "packageAndBuildIdentityReadFromExactCommit": true,
+      "compatibility": "v105 proxy and frontend consume unchanged worker build 105 over protocol v105"
+    },
+    "componentMatrixNote": "Exact heterogeneous production predecessor artifacts; do not infer one shared application package version.",
+    "order": [
+      "stop producer admission",
+      "drain all non-terminal unsettled v106 issuances",
+      "run rollback SQL",
+      "deploy exact v105 proxy and frontend; retain verified unchanged worker",
+      "verify sole Active v105 and new v105 Final"
+    ],
+    "retains": ["v105 formal evidence", "V10 shadow evidence", "v106 evidence"]
+  },
+  "releaseBinding": {
+    "implementationTree": {
+      "algorithm": "sha256",
+      "paths": ["proxy/package.json", "proxy/package-lock.json", "proxy/scripts/run-tests.mjs", "proxy/src", "frontend/package.json", "frontend/package-lock.json", "frontend/src", "cloud-browser-worker/Dockerfile", "cloud-browser-worker/package.json", "cloud-browser-worker/package-lock.json", "cloud-browser-worker/src", "shared", "scripts/verify-v106-formal-release.mjs", "scripts/run-worker-tests-scrubbed.mjs", "scripts/test-env-scrub.mjs", "supabase/migrations/20260818010000_v106_formal_v10_main.sql", "supabase/operations/fence_v105_new_issuance.sql", "supabase/operations/activate_v106_promotion.sql", "supabase/operations/finalize_v106_promotion.sql", "supabase/operations/rollback_v106_to_v105.sql"],
+      "excludedPaths": [],
+      "sha256": "62a5d394fbcf56e19916894c2500269314015b7e1ffbccdf544c19ee1327ff9f"
+    },
+    "proxyBuildInput": {
+      "algorithm": "sha256",
+      "paths": ["proxy/package.json", "proxy/package-lock.json", "proxy/src", "shared"],
+      "excludedPaths": [],
+      "sha256": "1204d9438161d72f091b0e2facc9f5ae64fb4ce7e693124630414852d9ccf161"
+    },
+    "frontendBuildInput": {
+      "algorithm": "sha256",
+      "paths": ["frontend/package.json", "frontend/package-lock.json", "frontend/src"],
+      "excludedPaths": [],
+      "sha256": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8"
+    },
+    "workerBuildInput": {
+      "algorithm": "sha256",
+      "paths": ["cloud-browser-worker/Dockerfile", "cloud-browser-worker/package.json", "cloud-browser-worker/package-lock.json", "cloud-browser-worker/src", "shared"],
+      "excludedPaths": [],
+      "sha256": "994ec6c53388b940afe9d57b8fa328a3c336dc41e71461f2219917a1ebf48006"
+    },
+    "databaseCutoverInput": {
+      "algorithm": "sha256",
+      "paths": ["supabase/migrations/20260818010000_v106_formal_v10_main.sql", "supabase/operations/fence_v105_new_issuance.sql", "supabase/operations/activate_v106_promotion.sql", "supabase/operations/finalize_v106_promotion.sql", "supabase/operations/rollback_v106_to_v105.sql"],
+      "excludedPaths": [],
+      "sha256": "1a96e7f98d604a10880d3f8c4ed12bddbe779ce101343784b19c33fc56b4df79"
+    }
+  },
+  "historicalArtifactsPreserved": true
+}

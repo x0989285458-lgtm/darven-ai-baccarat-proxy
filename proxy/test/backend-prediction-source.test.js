@@ -9,6 +9,7 @@ test('tables expose only a complete backend prediction for the exact screen roun
   const tableState = { tableId: 'BAG01', shoe: 88, round: 20, sourceUpdatedAt: issuedAt }
   const exact = {
     ...buildLivePrediction({ ...tableState, round: 19 }),
+    strategyVersion: 'v106',
     predictionId: 'pid-screen-round-20',
     issuedAt,
   }

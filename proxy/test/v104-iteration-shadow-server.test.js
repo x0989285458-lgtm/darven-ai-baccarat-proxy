@@ -43,7 +43,7 @@ test('iteration shadow remains a non-blocking backend-only sibling of formal v10
   const formal = JSON.parse((await withoutShadow.inject({ url: '/api/tables' })).body)
   const shadowed = JSON.parse((await withShadow.inject({ url: '/api/tables' })).body)
   assert.deepEqual(shadowed, formal)
-  assert.equal(shadowed[0].prediction.strategyVersion, 'v105')
+  assert.equal(shadowed[0].prediction.strategyVersion, 'v106')
   assert.equal(JSON.stringify(shadowed).includes('v104-seven-head-shadow-v1'), false)
 })
 
@@ -53,7 +53,7 @@ test('control status requires control token and reports formal v104 without expo
   const response = await app.inject({ url: '/api/v104-iteration-shadow/control/status', headers: { 'x-control-token': 'control-test' } })
   const body = JSON.parse(response.body)
   assert.equal(response.statusCode, 200)
-  assert.equal(body.formalStrategyVersion, 'v105')
+  assert.equal(body.formalStrategyVersion, 'v106')
   assert.equal(body.runtime.status, 'ok')
 })
 

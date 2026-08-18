@@ -12,7 +12,7 @@ const workerRuntimeUrl = new URL('cloud-browser-worker/src/runtime-config.js', r
 const workerPusherUrl = new URL('cloud-browser-worker/src/snapshot-pusher.js', root)
 const workerDockerUrl = new URL('cloud-browser-worker/Dockerfile', root)
 
-test('v104 formal release manifest and every live component expose one coherent identity', async () => {
+test('historical v105 manifest stays frozen while current v106 frontend and proxy keep the v105 worker protocol', async () => {
   assert.equal(existsSync(manifestUrl), true, 'formal release manifest must exist')
   const manifest = JSON.parse(readFileSync(manifestUrl, 'utf8'))
   assert.deepEqual({
@@ -31,17 +31,17 @@ test('v104 formal release manifest and every live component expose one coherent 
     monitorVersion: 'v105', candidateMode: 'formal', formalActionsEnabled: true,
   })
 
-  assert.equal(BUILD_VERSION, 'v105')
+  assert.equal(BUILD_VERSION, 'v106')
   assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v105')
-  assert.equal(buildFormalActiveStrategy().version, 'v105')
+  assert.equal(buildFormalActiveStrategy().version, 'v106')
   assert.equal(buildFormalActiveStrategy().status, 'active')
   const app = createApp({ autoConnect: false })
   const health = JSON.parse((await app.inject({ url: '/health' })).body)
-  assert.equal(health.buildVersion, 'v105')
+  assert.equal(health.buildVersion, 'v106')
 
   const frontend = readFileSync(frontendVersionUrl, 'utf8')
-  assert.match(frontend, /buildVersion:\s*'v105'/)
-  assert.match(frontend, /strategyVersion:\s*'v105'/)
+  assert.match(frontend, /buildVersion:\s*'v106'/)
+  assert.match(frontend, /strategyVersion:\s*'v106'/)
   const workerRuntime = readFileSync(workerRuntimeUrl, 'utf8')
   assert.match(workerRuntime, /BUILD_VERSION\s*=\s*'105'/)
   const pusher = readFileSync(workerPusherUrl, 'utf8')

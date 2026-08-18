@@ -109,9 +109,9 @@ test('release scope freezes one existing session as API-only canonical capture',
   assert.equal(manifest.releaseBinding.shadowV6V8RetirementMigration.path, 'supabase/migrations/20260802020000_retire_v105_shadow_v6_v8.sql')
 })
 
-test('release manifest freezes current implementation, migration, proxy, and worker build inputs', async () => {
+test('historical release manifest freezes its tagged implementation, migration, proxy, and worker build inputs', async () => {
   const repoRoot = new URL('../../', import.meta.url)
-  const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
+  const candidateIndexTree = execFileSync('git', ['rev-parse', `${manifest.gitTag}^{tree}`], { cwd: repoRoot, encoding: 'utf8' }).trim()
   const result = await verifyManifestDigests({ manifest, repoRoot, candidateIndexTree })
   assert.equal(result.ok, true)
   assert.match(manifest.releaseBinding.implementationTree.sha256, /^[a-f0-9]{64}$/)

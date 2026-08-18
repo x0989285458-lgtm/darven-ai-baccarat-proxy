@@ -1,13 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
-import { BUILD_VERSION as PROXY_BUILD_VERSION } from '../src/build-version.js'
 import { ALL_MT_EQUAL_STRATEGY_VERSION, SIDE_PREDICTION_THRESHOLDS } from '../src/supabase-writer.js'
 
 const repo = new URL('../../', import.meta.url)
 const read = (relative) => readFileSync(new URL(relative, repo), 'utf8')
 
-test('v104 release manifest and runtime share one formal identity', () => {
+test('historical v105 release manifest remains internally coherent and preserves its frozen strategy contract', () => {
   const path = new URL('release/v105-formal-release-manifest.json', repo)
   assert.equal(existsSync(path), true)
   const manifest = JSON.parse(readFileSync(path, 'utf8'))
@@ -17,7 +16,6 @@ test('v104 release manifest and runtime share one formal identity', () => {
   assert.equal(manifest.workerBuildVersion, '105')
   assert.equal(manifest.protocolVersion, 'v105')
   assert.equal(manifest.strategyVersion, 'v105')
-  assert.equal(PROXY_BUILD_VERSION, 'v105')
   assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, 'v105')
   assert.deepEqual(SIDE_PREDICTION_THRESHOLDS, {
     tie: 30, superSix: 50, bankerPair: 50, playerPair: 50, bankerDragon: 40, playerDragon: 40,
@@ -27,10 +25,10 @@ test('v104 release manifest and runtime share one formal identity', () => {
   assert.deepEqual(manifest.rollbackRequires, ['v105-issuance-fenced', 'v105-active-pending-zero'])
 })
 
-test('v105 active frontend proxy worker protocol and deployment surfaces match', () => {
-  assert.match(read('frontend/src/lib/buildVersion.ts'), /buildVersion:\s*'v105'[\s\S]*strategyVersion:\s*'v105'/)
-  assert.match(read('frontend/package.json'), /"version":\s*"1\.0\.62"/)
-  assert.match(read('proxy/package.json'), /"name":\s*"draven-mt-data-proxy-v105"[\s\S]*"version":\s*"1\.0\.62"/)
+test('v106 frontend and proxy remain coherent while the unchanged worker protocol stays v105', () => {
+  assert.match(read('frontend/src/lib/buildVersion.ts'), /buildVersion:\s*'v106'[\s\S]*strategyVersion:\s*'v106'/)
+  assert.match(read('frontend/package.json'), /"version":\s*"1\.0\.63"/)
+  assert.match(read('proxy/package.json'), /"name":\s*"draven-mt-data-proxy-v106"[\s\S]*"version":\s*"1\.0\.63"/)
   assert.match(read('proxy/src/server.js'), /WORKER_PROTOCOL_BUILD_VERSION\s*=\s*'105'[\s\S]*WORKER_PROTOCOL_VERSION\s*=\s*'v105'/)
   assert.match(read('proxy/src/cloud-capture.js'), /buildVersion\s*!==\s*'105'/)
   assert.match(read('cloud-browser-worker/src/runtime-config.js'), /BUILD_VERSION\s*=\s*'105'/)

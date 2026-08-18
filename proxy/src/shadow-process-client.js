@@ -527,13 +527,15 @@ export function createShadowProcessClient({
     return requiredLane.request(runtime, method, payload, options)
   }
 
-  async function processCapture(payload, options = {}) {
+  async function processCaptureWithOptionalV10(payload, options = {}, includeV10 = true) {
     const requiredResult = await requiredLane.processCapture(payload, options)
     if (options.signal?.aborted) return requiredResult
     let v9Result = { coalesced: 0, rejected: 0 }
     let v10Result = { coalesced: 0, rejected: 0 }
     try { v9Result = v9BestEffort.enqueueCapture(payload) } catch { v9BestEffort.recordEnqueueFailure(payload) }
-    try { v10Result = v10BestEffort.enqueueCapture(payload) } catch { v10BestEffort.recordEnqueueFailure(payload) }
+    if (includeV10) {
+      try { v10Result = v10BestEffort.enqueueCapture(payload) } catch { v10BestEffort.recordEnqueueFailure(payload) }
+    }
     const result = requiredResult && typeof requiredResult === 'object' && !Array.isArray(requiredResult)
       ? { ...requiredResult }
       : {}
@@ -542,6 +544,14 @@ export function createShadowProcessClient({
     if (v10Result.coalesced > 0) result.bestEffortCoalesced = v10Result.coalesced
     if (v10Result.rejected > 0) result.bestEffortRejected = v10Result.rejected
     return result
+  }
+
+  function processCapture(payload, options = {}) {
+    return processCaptureWithOptionalV10(payload, options, true)
+  }
+
+  function processCaptureWithoutV10(payload, options = {}) {
+    return processCaptureWithOptionalV10(payload, options, false)
   }
 
   function runtime(key, options = {}) {
@@ -608,6 +618,7 @@ export function createShadowProcessClient({
     prepareV9,
     prepareV10,
     processCapture,
+    processCaptureWithoutV10,
     runtime,
     stop,
     beginStop,

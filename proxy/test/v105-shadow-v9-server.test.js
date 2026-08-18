@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createApp } from '../src/server.js'
-import { buildV105FormalPrediction } from '../src/v105-formal-strategy.js'
+import { buildV106FormalPrediction } from '../src/v106-formal-strategy.js'
 
 const TABLE_IDS = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
 const table = (tableId = 'BAG01') => ({ tableId, shoe: 105, round: 20, sourceUpdatedAt: '2026-07-29T01:00:00.000Z', bankerCount: 12, playerCount: 8, tieCount: 1, beadPlateRaw: '020102010201', bigRoadRaw: 'B#P' })
@@ -19,14 +19,14 @@ test('the same ten-table snapshot and verified Final use bounded V9 fan-out with
   })
   const formalRuntime = {
     async start() {},
-    async buildPrediction(input) { return buildV105FormalPrediction(input) },
-    recordIssuance() {}, recordSettlement() {}, snapshot: () => ({ strategyVersion: 'v105', status: 'ready' }),
+    async buildPrediction(input) { return buildV106FormalPrediction(input) },
+    recordIssuance() {}, recordSettlement() {}, snapshot: () => ({ strategyVersion: 'v106', status: 'ready' }),
   }
   const writer = {
     configured: true,
     async issuePrediction(candidate) { issued.push(candidate.targetTableId); return { ...candidate, predictionId: `formal-${candidate.targetTableId}`, issuedAt: '2026-07-29T01:00:01.000Z' } },
     async readIssuedPrediction() { return null },
-    async persistRound() { persisted += 1; return { prediction: { strategy_version: 'v105', predicted_result: 'banker', settlement_final: true, resolved_at: '2026-07-29T01:00:02.000Z' } } },
+    async persistRound() { persisted += 1; return { prediction: { strategy_version: 'v106', predicted_result: 'banker', settlement_final: true, resolved_at: '2026-07-29T01:00:02.000Z' } } },
   }
   const app = createApp({
     autoConnect: false, requireVerifiedStrategy: false, memberAuthRequired: false,

@@ -40,8 +40,8 @@ test('prediction readiness does not broadcast before durable issuance completes'
   const round22Issuance = new Promise((resolve) => { releaseRound22 = resolve })
   const supabaseClient = {
     configured: true,
-    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' }),
-    getV105FormalHistory: async () => [],
+    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v106' }),
+    getV106FormalHistory: async () => [],
     reconcilePredictionLifecycle: async () => {},
     issuePrediction: async (candidate) => {
       if (candidate.targetRound !== 22) return issued(candidate)
@@ -85,8 +85,8 @@ test('prediction readiness does not broadcast before durable issuance completes'
 test('failed durable prediction issuance does not trigger an immediate tables broadcast', async () => {
   const supabaseClient = {
     configured: true,
-    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' }),
-    getV105FormalHistory: async () => [],
+    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v106' }),
+    getV106FormalHistory: async () => [],
     reconcilePredictionLifecycle: async () => {},
     issuePrediction: async (candidate) => candidate.targetRound === 22 ? null : issued(candidate),
   }
@@ -117,8 +117,8 @@ test('failed durable prediction issuance does not trigger an immediate tables br
 test('database reconciliation failure suppresses immediate broadcast even when durable issuance succeeds', async () => {
   const supabaseClient = {
     configured: true,
-    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' }),
-    getV105FormalHistory: async () => [],
+    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v106' }),
+    getV106FormalHistory: async () => [],
     reconcilePredictionLifecycle: async () => { throw new Error('database final reconciliation failed') },
     issuePrediction: async (candidate) => issued(candidate),
   }
@@ -163,8 +163,8 @@ test('simultaneous table prediction readiness keeps immediate broadcasts single-
   }
   const supabaseClient = {
     configured: true,
-    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' }),
-    getV105FormalHistory: async () => [],
+    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v106' }),
+    getV106FormalHistory: async () => [],
     reconcilePredictionLifecycle: async () => {},
     issuePrediction: async (candidate) => issued(candidate),
   }
@@ -199,8 +199,8 @@ test('simultaneous table prediction readiness keeps immediate broadcasts single-
 test('duplicate same-screen updates wait for the heartbeat instead of triggering immediate SSE', async () => {
   const supabaseClient = {
     configured: true,
-    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' }),
-    getV105FormalHistory: async () => [],
+    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v106' }),
+    getV106FormalHistory: async () => [],
     reconcilePredictionLifecycle: async () => {},
     issuePrediction: async (candidate) => issued(candidate),
   }
@@ -280,8 +280,8 @@ test('shutdown bounds an in-flight immediate broadcast authorization check', asy
   }
   const supabaseClient = {
     configured: true,
-    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' }),
-    getV105FormalHistory: async () => [],
+    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v106' }),
+    getV106FormalHistory: async () => [],
     reconcilePredictionLifecycle: async () => {},
     issuePrediction: async (candidate) => issued(candidate),
   }

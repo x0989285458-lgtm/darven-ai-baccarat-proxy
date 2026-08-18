@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { createApp } from '../src/server.js'
 import { buildLivePrediction } from '../src/supabase-writer.js'
 
-const strategyVersion = 'v105'
+const strategyVersion = 'v106'
 const issuedAt = '2026-07-17T01:00:00.000Z'
 
 function table(round) {
@@ -17,6 +17,7 @@ function table(round) {
 function durablePrediction(sourceTable, predictedResult, predictionId) {
   return {
     ...buildLivePrediction(sourceTable),
+    strategyVersion,
     predictedResult,
     predictionId,
     issuedAt,
@@ -28,6 +29,7 @@ test('decorates visible round with its exact durable issuance while pre-issuing 
   const issued = new Map([[35, exact35]])
   const writer = {
     configured: true,
+    getV106FormalHistory: async () => [],
     async issuePrediction(candidate) {
       const durable = {
         ...candidate,
@@ -64,6 +66,7 @@ test('decorates visible round with its exact durable issuance while pre-issuing 
 test('returns null when no exact durable issuance exists instead of exposing a generated future candidate', async () => {
   const writer = {
     configured: true,
+    getV106FormalHistory: async () => [],
     async issuePrediction(candidate) {
       return { ...candidate, predictionId: `pid-round-${candidate.targetRound}`, issuedAt }
     },

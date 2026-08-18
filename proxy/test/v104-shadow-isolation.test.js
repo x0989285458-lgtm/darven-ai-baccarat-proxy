@@ -25,7 +25,7 @@ test('promoted v104 formal output ignores attempted same-version shadow injectio
   const baseline = JSON.parse((await withoutV104.inject({ url: '/api/tables' })).body)
   const candidate = JSON.parse((await withV104.inject({ url: '/api/tables' })).body)
   assert.deepEqual(candidate, baseline)
-  assert.equal(candidate[0].prediction.strategyVersion, 'v105')
+  assert.equal(candidate[0].prediction.strategyVersion, 'v106')
   assert.equal(withoutV104Calls, 1)
   assert.equal(withV104Calls, 1)
 })
@@ -33,13 +33,14 @@ test('promoted v104 formal output ignores attempted same-version shadow injectio
 test('attempted v104 shadow failure is disabled and cannot block formal v104 or v103', async () => {
   let activeSettlements = 0
   let v103Settlements = 0
-  const issued = { ...buildLivePrediction(table), predictionId: 'v105-pid', issuedAt: '2026-07-21T10:00:00Z' }
+  const issued = { ...buildLivePrediction(table), strategyVersion: 'v106', predictionId: 'v106-pid', issuedAt: '2026-07-21T10:00:00Z' }
   const activeWriter = {
     configured: true,
+    getV106FormalHistory: async () => [],
     async issuePrediction() { return issued },
     async readIssuedPrediction() { return issued },
-    async persistRound() { activeSettlements += 1; return { prediction: { strategy_version: 'v105' } } },
-    getRuntimeStatus() { return { ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' } },
+    async persistRound() { activeSettlements += 1; return { prediction: { strategy_version: 'v106' } } },
+    getRuntimeStatus() { return { ready: true, degraded: false, reason: null, activeStrategyVersion: 'v106' } },
   }
   const v103 = {
     enabled: true, async observeTable() {}, async settleRound() { v103Settlements += 1 },
@@ -67,8 +68,8 @@ test('attempted v104 shadow failure is disabled and cannot block formal v104 or 
   assert.equal('v103Shadow' in publicStatus, false)
   assert.equal('v104Shadow' in health, false)
   assert.equal(health.degraded, false)
-  assert.equal(health.runtimeStatus.activeStrategyVersion, 'v105')
+  assert.equal(health.runtimeStatus.activeStrategyVersion, 'v106')
   assert.equal(unauthorized.statusCode, 401)
-  assert.equal(controlled.activeStrategyVersion, 'v105')
+  assert.equal(controlled.activeStrategyVersion, 'v106')
   assert.equal(controlled.v104Shadow.status, 'error')
 })

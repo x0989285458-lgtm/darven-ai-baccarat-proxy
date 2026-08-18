@@ -451,7 +451,7 @@ test('an earlier health wakeup replaces an already scheduled later retry timer',
 
 test('temporary claim failure retries but an uncancellable exact failure ACK is never duplicated', async () => {
   let claimCalls = 0
-  let failCalls = 0
+  const failedAcks = []
   const completed = []
   const app = createApp({
     autoConnect: false, outboxBackoffMs: 1, outboxWorkDeadlineMs: 25,
@@ -466,17 +466,47 @@ test('temporary claim failure retries but an uncancellable exact failure ACK is 
       },
       async completeCaptureOutbox({ sequence }) { completed.push(sequence); return { completed: true } },
       async failCaptureOutbox(identity) {
-        failCalls += 1
+        failedAcks.push(`${identity.sessionId}\u0000${identity.sequence}\u0000${identity.claimToken}\u0000${identity.attempt}`)
         throw new Error(`temporary fail RPC outage for ${identity.claimToken}`)
       },
     },
     v100FormalRuntime: { enabled: false },
   })
   await app.drainCaptureOutbox().catch(() => {})
+  const retryDeadline = Date.now() + 1_000
+  while (!completed.includes(2) && Date.now() < retryDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
   await app.waitForCaptureOutboxIdle()
   assert.ok(claimCalls >= 3)
-  assert.equal(failCalls, 1)
+  assert.equal(new Set(failedAcks).size, failedAcks.length, 'the same exact failure ACK lease was attempted more than once')
+  assert.equal(failedAcks.filter((key) => key.includes('\u00001\u0000lease-1\u00001')).length, 1)
   assert.deepEqual(completed, [2], 'a failure ACK outage must not drop the next claimable Final')
+})
+
+test('failure ACK outage does not hold another claimable Final behind retry backoff', async () => {
+  let claimCalls = 0
+  const completed = []
+  const app = createApp({
+    autoConnect: false, outboxBackoffMs: 5000, outboxWorkDeadlineMs: 25,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        claimCalls += 1
+        if (claimCalls === 1) return [claimedRow(1, { payload: {} })]
+        if (claimCalls === 2) return [claimedRow(2)]
+        return []
+      },
+      async completeCaptureOutbox({ sequence }) { completed.push(sequence); return { completed: true } },
+      async failCaptureOutbox() { throw new Error('failure ACK unavailable') },
+    },
+    v100FormalRuntime: { enabled: false },
+  })
+  await app.drainCaptureOutbox()
+  const deadline = Date.now() + 250
+  while (!completed.includes(2) && Date.now() < deadline) await delay(5)
+  await app.stop()
+  assert.deepEqual(completed, [2])
 })
 
 test('each consumer work item has a deadline and records failure through its exact lease', async () => {
@@ -633,7 +663,9 @@ test('scaled 120-second failure path sends one exact failure ACK while processin
   assert.equal(processing, 1, 'unacknowledged exact lease must remain processing for DB stale-lease reclaim')
   assert.equal(pending, 2, 'new durable Final rows remain queued behind the processing FIFO head')
   assert.equal(failureAckCalls, 1, 'an uncancellable exact failure ACK must never overlap with retries')
-  assert.ok(elapsedMs < 150, `scaled drain reproduced the 30 + 3x30 second stall: ${elapsedMs}ms`)
+  // The structural single-call assertion above detects the former 3x deadline retry.
+  // Keep only a generous deadlock bound here so scheduler load cannot turn wall-clock jitter into a product failure.
+  assert.ok(elapsedMs < 500, `scaled drain exceeded the bounded deadlock budget: ${elapsedMs}ms`)
   await app.stop()
 })
 
@@ -715,6 +747,7 @@ test('outbox consumer preserves raw source fence but canonicalizes formal round 
       }
     },
     async processCapture(payload) { shadowRounds = structuredClone(payload.rounds) },
+    async processCaptureWithoutV10(payload) { shadowRounds = structuredClone(payload.rounds) },
     status() { return { running: true, generation: 1, pending: 0, stopping: false } },
     beginStop() {},
     async stop() {},

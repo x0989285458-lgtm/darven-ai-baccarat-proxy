@@ -12,8 +12,23 @@ const V105_SHADOW_COMPACT_HISTORY_KEYS = Object.freeze([
 ])
 const V105_SHADOW_TABLE_ID_SET = new Set(PRODUCTION_TABLE_IDS)
 export const ALL_MT_EQUAL_STRATEGY_VERSION = 'v105'
+export const FORMAL_STRATEGY_VERSION = 'v106'
+const SUPPORTED_FORMAL_STRATEGY_VERSIONS = new Set([ALL_MT_EQUAL_STRATEGY_VERSION, FORMAL_STRATEGY_VERSION])
+function assertSupportedFormalStrategyVersion(value) {
+  if (!SUPPORTED_FORMAL_STRATEGY_VERSIONS.has(value)) throw new Error(`unsupported strategy version: ${String(value ?? '')}`)
+  return value
+}
 export const V100_MAIN_SIGNAL_DEDUP_VERSION = 'v105_五路通用週期正式版'
 export const V100_SIDE_DEDUP_VERSION = 'v105_副預測沿用v104正式規則'
+export const V106_FORMAL_MAIN_VERSION = 'v106_V10大路罕見結構正式版'
+export const V106_FORMAL_SIDE_VERSION = 'v106_副預測逐位元沿用v105正式規則'
+export const V106_FORMAL_MAIN_WEIGHTS = Object.freeze({
+  v7RoadCycle: 0.315,
+  v8AskRoad: 0.315,
+  recentPracticalCalibration: 0.18,
+  shoeBankerPlayerBias: 0.09,
+  uncommonRoadStructure: 0.10,
+})
 export const V100_SIDE_SCORE_CALIBRATION_OFFSETS = Object.freeze({
   tie: -13.867936925098554,
   superSix: -1.8125,
@@ -113,24 +128,24 @@ export const SIDE_PREDICTION_THRESHOLDS = {
 
 export function buildFormalActiveStrategy() {
   return {
-    version: ALL_MT_EQUAL_STRATEGY_VERSION,
+    version: FORMAL_STRATEGY_VERSION,
     status: 'active',
     sample_count: 0,
-    weights: { ...V104_DIRECTION_WEIGHTS },
+    weights: { ...V106_FORMAL_MAIN_WEIGHTS },
     metrics: {
       mode: 'formal_live_prediction',
       auto_adjust: false,
-      main_strategy: V100_MAIN_SIGNAL_DEDUP_VERSION,
-      side_strategy: V100_SIDE_DEDUP_VERSION,
-      main_weights: { ...V104_DIRECTION_WEIGHTS },
+      main_strategy: V106_FORMAL_MAIN_VERSION,
+      side_strategy: V106_FORMAL_SIDE_VERSION,
+      main_weights: { ...V106_FORMAL_MAIN_WEIGHTS },
       side_weights: Object.fromEntries(Object.entries(SIDE_PREDICTION_WEIGHT_PROFILES).map(([key, profile]) => [key, { ...profile }])),
       side_thresholds: { ...SIDE_PREDICTION_THRESHOLDS },
       rank_ledger: 'durable_eight_deck_exact_rank_ledger',
       recent_calibration: 'confidence_only_direction_contribution_zero',
       shoe_bias: { ...V104_SHOE_BIAS, priorCenter: 0.5 },
-      description: 'v104正式策略；主預測採方向／信心分離、當靴收縮與第五次同邊防鎖Gate，副預測完整沿用v102正式規則。',
+      description: 'v106正式策略；主預測採V10 90% V9訊號加10%大路罕見結構，副預測完整沿用v105正式規則。',
     },
-    notes: 'Only active runtime strategy and history source for formal release v104.',
+    notes: 'Only active runtime strategy for formal release v106.',
   }
 }
 
@@ -1757,7 +1772,7 @@ export function buildCloudTableSnapshotRow({ sessionId = null, tables = [], stat
 
 function enrichTableWithLivePrediction(table = {}) {
   if (table.prediction?.source === 'backend'
-    && table.prediction?.strategyVersion === ALL_MT_EQUAL_STRATEGY_VERSION
+    && table.prediction?.strategyVersion === FORMAL_STRATEGY_VERSION
     && Number.isFinite(Number(table.prediction.confidence))) {
     return { ...table, buildVersion: BUILD_VERSION, prediction: { ...table.prediction, buildVersion: BUILD_VERSION } }
   }
@@ -2079,7 +2094,7 @@ export function createSupabaseIngestionClient({
       )
       const rows = Array.isArray(result?.rows) ? result.rows : []
       return rows.length === 1
-        && rows[0]?.version === ALL_MT_EQUAL_STRATEGY_VERSION
+        && rows[0]?.version === FORMAL_STRATEGY_VERSION
         && rows[0]?.status === 'active'
     } catch {
       return false
@@ -2170,6 +2185,18 @@ export function createSupabaseIngestionClient({
         return []
       }
       const directRpc = {
+        'rpc/settle_v106_prediction': {
+          text: 'select public.settle_v106_prediction($1::jsonb, $2::jsonb) as settle_v106_prediction',
+          values: [body?.p_roadmap, body?.p_settlement],
+        },
+        'rpc/issue_v106_prediction': {
+          text: 'select public.issue_v106_prediction($1::jsonb) as issue_v106_prediction',
+          values: [body?.p_prediction],
+        },
+        'rpc/reconcile_v106_prediction_lifecycle': {
+          text: 'select public.reconcile_v106_prediction_lifecycle($1::text, $2::text, $3::text, $4::integer) as reconcile_v106_prediction_lifecycle',
+          values: [body?.p_source, body?.p_table_id, body?.p_current_shoe, body?.p_current_visible_round],
+        },
         'rpc/settle_v105_prediction': {
           text: 'select public.settle_v105_prediction($1::jsonb, $2::jsonb) as settle_v105_prediction',
           values: [body?.p_roadmap, body?.p_settlement],
@@ -2543,13 +2570,17 @@ export function createSupabaseIngestionClient({
         })
       })
     },
-    async reconcilePredictionLifecycle({ source = SOURCE, tableId, currentShoe, currentVisibleRound } = {}) {
+    async reconcilePredictionLifecycle({ source = SOURCE, tableId, currentShoe, currentVisibleRound, strategyVersion = ALL_MT_EQUAL_STRATEGY_VERSION } = {}) {
+      assertSupportedFormalStrategyVersion(strategyVersion)
       const visibleRound = Number(currentVisibleRound)
       const normalizedShoe = currentShoe == null ? '' : String(currentShoe)
       if (!source || !tableId || !normalizedShoe || !Number.isSafeInteger(visibleRound) || visibleRound < 1) {
         throw new Error('prediction lifecycle reconciliation identity is incomplete')
       }
-      const acknowledgement = await enqueueWrite(() => postDurableRest('rpc/reconcile_v105_prediction_lifecycle', {
+      const lifecycleRpc = strategyVersion === FORMAL_STRATEGY_VERSION
+        ? 'rpc/reconcile_v106_prediction_lifecycle'
+        : 'rpc/reconcile_v105_prediction_lifecycle'
+      const acknowledgement = await enqueueWrite(() => postDurableRest(lifecycleRpc, {
         p_source: String(source),
         p_table_id: String(tableId),
         p_current_shoe: normalizedShoe,
@@ -2579,7 +2610,11 @@ export function createSupabaseIngestionClient({
         || !row.strategy_version || !['banker', 'player'].includes(row.predicted_result)) {
         throw new Error('prediction issuance payload is incomplete')
       }
-      const acknowledgement = await enqueueWrite(() => postDurableRest('rpc/issue_v105_prediction', { p_prediction: row }, undefined, { requireObject: true, priority: true }))
+      assertSupportedFormalStrategyVersion(row.strategy_version)
+      const issueRpc = row.strategy_version === FORMAL_STRATEGY_VERSION
+        ? 'rpc/issue_v106_prediction'
+        : 'rpc/issue_v105_prediction'
+      const acknowledgement = await enqueueWrite(() => postDurableRest(issueRpc, { p_prediction: row }, undefined, { requireObject: true, priority: true }))
       const prediction = acknowledgement?.prediction
       if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
         || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at
@@ -3046,18 +3081,24 @@ export function createSupabaseIngestionClient({
     },
     async ensureInitialStrategy() {
       try {
-        if (await verifyActiveStrategyFromDatabase()) {
-          runtimeStatus = { ready: true, degraded: false, reason: null, activeStrategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION }
-          return { ok: true, activeStrategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION }
+        let verified = false
+        if (strategyDb && typeof strategyDb.query === 'function') {
+          verified = await verifyActiveStrategyFromDatabase()
+        } else {
+          const activeRows = await getRest('ai_strategy_versions', {
+            select: 'version,status',
+            status: 'eq.active',
+            order: 'created_at.desc',
+            limit: '2',
+          }, { requestTimeoutMs: startupTimeoutMs })
+          verified = Array.isArray(activeRows)
+            && activeRows.length === 1
+            && activeRows[0]?.version === FORMAL_STRATEGY_VERSION
+            && activeRows[0]?.status === 'active'
         }
-        await patchRest('ai_strategy_versions', { status: 'archived' }, { status: 'eq.active', version: `neq.${ALL_MT_EQUAL_STRATEGY_VERSION}` }, { requestTimeoutMs: startupTimeoutMs })
-        await postRest('ai_strategy_versions', buildFormalActiveStrategy(), 'version', { requestTimeoutMs: startupTimeoutMs })
-        const activeRows = await getRest('ai_strategy_versions', { select: 'version,status', status: 'eq.active' }, { requestTimeoutMs: startupTimeoutMs })
-        if (!Array.isArray(activeRows) || activeRows.length !== 1 || activeRows[0]?.version !== ALL_MT_EQUAL_STRATEGY_VERSION) {
-          throw new Error('active strategy verification failed')
-        }
-        runtimeStatus = { ready: true, degraded: false, reason: null, activeStrategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION }
-        return { ok: true, activeStrategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION }
+        if (!verified) throw new Error('active strategy verification failed')
+        runtimeStatus = { ready: true, degraded: false, reason: null, activeStrategyVersion: FORMAL_STRATEGY_VERSION }
+        return { ok: true, activeStrategyVersion: FORMAL_STRATEGY_VERSION }
       } catch (error) {
         runtimeStatus = { ready: false, degraded: true, reason: 'active strategy verification failed', activeStrategyVersion: null }
         throw new Error('active strategy verification failed', { cause: error })
@@ -3069,7 +3110,7 @@ export function createSupabaseIngestionClient({
     async getStablePredictionRows({ since = null, limit = 10000 } = {}) {
       const query = {
         select: 'id,source,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,side_hits,prediction_features,created_at',
-        strategy_version: `eq.${ALL_MT_EQUAL_STRATEGY_VERSION}`,
+        strategy_version: `eq.${FORMAL_STRATEGY_VERSION}`,
         settlement_final: 'eq.true',
         order: 'created_at.asc',
         limit: String(Math.min(10000, Math.max(1, Number(limit) || 10000))),
@@ -3077,7 +3118,7 @@ export function createSupabaseIngestionClient({
       if (since) query.created_at = `gte.${since}`
       const rows = await getRest('daily_prediction_results', query)
       return (Array.isArray(rows) ? rows : [])
-        .filter((row) => row?.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION)
+        .filter((row) => row?.strategy_version === FORMAL_STRATEGY_VERSION)
         .filter(isFinalPredictionSettlement)
     },
     async getV104FormalHistory({ limit = 10000, requestTimeoutMs = 0 } = {}) {
@@ -3097,6 +3138,20 @@ export function createSupabaseIngestionClient({
           prediction_id: row.id,
           prediction_timing: row.prediction_features.prediction_timing,
         }))
+    },
+    async getV106FormalHistory({ limit = 1000, requestTimeoutMs = 0 } = {}) {
+      const cappedLimit = Math.min(1000, Math.max(1, Number(limit) || 1000))
+      const rows = await getRest('daily_prediction_results', {
+        select: 'id,source,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,prediction_issued_at,issued_prediction_payload,prediction_features',
+        strategy_version: 'in.(v105,v106)',
+        prediction_issued_at: 'not.is.null',
+        order: 'prediction_issued_at.desc,id.desc',
+        limit: String(cappedLimit),
+      }, { requestTimeoutMs })
+      return (Array.isArray(rows) ? rows : []).filter((row) => ['v105', 'v106'].includes(row?.strategy_version)
+        && row?.prediction_features?.prediction_timing === 'pre_result_context'
+        && Boolean(row?.prediction_issued_at))
+        .map((row) => ({ ...row, prediction_id: row.id, prediction_timing: 'pre_result_context' }))
     },
     async getV105FormalHistory({ limit = 10000, requestTimeoutMs = 0 } = {}) {
       const projectedSelect = 'id,source,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,prediction_issued_at,created_at,prediction_timing:prediction_features->>prediction_timing,baseline_v104_predicted_result:issued_prediction_payload->>baselineV104PredictedResult,baseline_v104_same_side_streak:issued_prediction_payload->>baselineV104SameSideStreak,issued_same_side_streak:issued_prediction_payload->>sameSideStreak'
@@ -3214,7 +3269,7 @@ export function createSupabaseIngestionClient({
         select: 'id,table_id,shoe_no,round_no,strategy_version,predicted_result,actual_result,is_hit,settlement_final,side_hits,prediction_features,created_at',
         table_id: `eq.${tableId}`,
         shoe_no: `eq.${shoe}`,
-        strategy_version: `eq.${ALL_MT_EQUAL_STRATEGY_VERSION}`,
+        strategy_version: `eq.${FORMAL_STRATEGY_VERSION}`,
         settlement_final: 'eq.true',
         order: 'created_at.desc',
         limit: String(fetchLimit),
@@ -3223,7 +3278,7 @@ export function createSupabaseIngestionClient({
         .filter((row) => (
           String(row?.table_id ?? '') === String(tableId)
           && String(row?.shoe_no ?? '') === String(shoe)
-          && row?.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION
+          && row?.strategy_version === FORMAL_STRATEGY_VERSION
           && row?.prediction_features?.prediction_timing === 'pre_result_context'
           && isFinalPredictionSettlement(row)
           && Number.isSafeInteger(Number(row?.round_no))
@@ -3260,7 +3315,7 @@ export function createSupabaseIngestionClient({
           }
           continue
         }
-        if (row.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION) {
+        if (row.strategy_version === FORMAL_STRATEGY_VERSION) {
           byRound.set(next.round, { strategyVersion: row.strategy_version, prediction: next })
         }
       }
@@ -3337,8 +3392,12 @@ export function createSupabaseIngestionClient({
         if (!hasPredictionIdentity && configured && requireVerifiedStrategy) {
           throw new Error('prediction identity is required for production settlement')
         }
+        const settlementStrategyVersion = assertSupportedFormalStrategyVersion(precomputedPrediction.strategyVersion)
+        const settlementRpc = settlementStrategyVersion === FORMAL_STRATEGY_VERSION
+          ? 'rpc/settle_v106_prediction'
+          : 'rpc/settle_v105_prediction'
         const acknowledgement = hasPredictionIdentity
-          ? await postDurableRest('rpc/settle_v105_prediction', {
+          ? await postDurableRest(settlementRpc, {
               p_roadmap: compactEvent,
               p_settlement: {
                 prediction_id: precomputedPrediction.predictionId,
@@ -3527,15 +3586,19 @@ export function createSupabaseIngestionClient({
       const rows = await getRest('daily_prediction_results', {
         select: 'id,strategy_version,settlement_final',
         created_at: `gte.${since.toISOString()}`,
-        strategy_version: `eq.${ALL_MT_EQUAL_STRATEGY_VERSION}`,
+        strategy_version: `eq.${FORMAL_STRATEGY_VERSION}`,
         settlement_final: 'eq.true',
       })
       return (Array.isArray(rows) ? rows : [])
-        .filter((row) => row?.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION)
+        .filter((row) => row?.strategy_version === FORMAL_STRATEGY_VERSION)
         .filter(isFinalPredictionSettlement).length
     },
-    async getPredictionLifecycleStats() {
-      const acknowledgement = await postRest('rpc/get_v105_prediction_lifecycle_stats', {}, undefined, { requireObject: true })
+    async getPredictionLifecycleStats({ strategyVersion = FORMAL_STRATEGY_VERSION } = {}) {
+      assertSupportedFormalStrategyVersion(strategyVersion)
+      const statsRpc = strategyVersion === FORMAL_STRATEGY_VERSION
+        ? 'rpc/get_v106_prediction_lifecycle_stats'
+        : 'rpc/get_v105_prediction_lifecycle_stats'
+      const acknowledgement = await postRest(statsRpc, {}, undefined, { requireObject: true })
       const stats = {
         activePending: Number(acknowledgement?.active_pending),
         settled: Number(acknowledgement?.settled),

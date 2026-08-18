@@ -38,10 +38,10 @@ function sumWeights(profile) {
   return Object.values(profile).reduce((sum, weight) => sum + Number(weight), 0)
 }
 
-test('formal strategy identity is the only live strategy version', () => {
+test('legacy v105 predictor remains frozen while v106 is the sole formal Active identity', () => {
   assert.equal(ALL_MT_EQUAL_STRATEGY_VERSION, approvedStrategyVersion)
   assert.equal(buildLivePrediction({ tableId: 'BAG97', shoe: 97, round: 0 }).strategyVersion, approvedStrategyVersion)
-  assert.equal(buildFormalActiveStrategy().version, approvedStrategyVersion)
+  assert.equal(buildFormalActiveStrategy().version, 'v106')
   assert.equal(buildFormalActiveStrategy().status, 'active')
 })
 

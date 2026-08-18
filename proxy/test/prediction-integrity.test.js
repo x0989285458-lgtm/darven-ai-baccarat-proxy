@@ -34,6 +34,23 @@ test('writer issuance returns the first durable immutable payload and prediction
   assert.equal(requests[0].body.p_prediction.resolved_at, null)
 })
 
+test('writer rejects every unknown strategy version before selecting an issuance, lifecycle, or settlement RPC', async () => {
+  let fetchCalls = 0
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    fetchImpl: async () => { fetchCalls += 1; throw new Error('unknown strategy must fail before REST') },
+  })
+  const unknown = { ...buildLivePrediction(table()), strategyVersion: 'v999' }
+  await assert.rejects(client.issuePrediction(unknown), /unsupported strategy version/i)
+  await assert.rejects(client.reconcilePredictionLifecycle({ tableId: 'BAG01', currentShoe: 88, currentVisibleRound: 20, strategyVersion: 'v999' }), /unsupported strategy version/i)
+  await assert.rejects(client.persistRound(
+    { tableId: 'BAG01', shoe: 88, round: 21, rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 3, 9], sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary' },
+    table(),
+    { ...unknown, predictionId: '11111111-1111-1111-1111-111111111111', issuedAt: '2026-07-16T01:00:01.000Z' },
+  ), /unsupported strategy version/i)
+  assert.equal(fetchCalls, 0)
+})
+
 test('direct issuance uses the transaction connection and preserves the exact RPC acknowledgement', async () => {
   const candidate = buildLivePrediction(table())
   const issued = { ...candidate, predictionId: '11111111-1111-1111-1111-111111111111', issuedAt: '2026-07-16T01:00:01.000Z' }
@@ -193,7 +210,7 @@ test('proxy exposes only the exact DB-issued screen-round payload, survives reco
     },
   }
   for (const exactTable of [table({ round: 19 }), table({ tableId: 'BAG02', round: 19 }), table({ shoe: 89, round: 19 })]) {
-    const candidate = buildLivePrediction(exactTable)
+    const candidate = { ...buildLivePrediction(exactTable), strategyVersion: 'v106' }
     const key = [candidate.targetTableId, candidate.targetShoe, candidate.targetRound, candidate.strategyVersion].join(':')
     firstByIdentity.set(key, { ...candidate, predictionId: `pid-${key}`, issuedAt: '2026-07-16T01:00:01.000Z' })
   }
@@ -249,14 +266,15 @@ test('admin main denominators exclude tie PUSH in SQL and fallback reports', asy
   assert.equal(buildDailyReports(rows)[0].player_hit_rate, '50.0%')
 })
 
-test('v102 readers require complete current final columns and exclude compatibility and pending rows', async () => {
+test('formal readers require complete v106 finals while legacy recent calibration remains v105', async () => {
   const requests = []
-  const compatibility = { id: 'compatibility', table_id: 'BAG01', shoe_no: '88', round_no: 3, strategy_version: 'v105', predicted_result: 'banker', actual_result: 'banker', is_hit: true, settlement_final: null, side_hits: null, prediction_issued_at: '2026-07-16T00:59:00Z', prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true, side_hits: { tie: false } }, created_at: '2026-07-16T01:00:00Z' }
+  const compatibility = { id: 'compatibility', table_id: 'BAG01', shoe_no: '88', round_no: 3, strategy_version: 'v106', predicted_result: 'banker', actual_result: 'banker', is_hit: true, settlement_final: null, side_hits: null, prediction_issued_at: '2026-07-16T00:59:00Z', prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true, side_hits: { tie: false } }, created_at: '2026-07-16T01:00:00Z' }
   const modern = { ...compatibility, id: 'modern', round_no: 4, settlement_final: true, side_hits: { tie: true }, prediction_features: { prediction_timing: 'pre_result_context' }, created_at: '2026-07-16T01:01:00Z' }
+  const recentV105 = { ...modern, id: 'recent-v105', strategy_version: 'v105' }
   const pending = { ...modern, id: 'pending', round_no: 5, actual_result: null, is_hit: null, settlement_final: false }
-  const client = createSupabaseIngestionClient({ url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false, fetchImpl: async (url) => { requests.push(new URL(url)); return response([modern, compatibility, pending]) } })
+  const client = createSupabaseIngestionClient({ url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false, fetchImpl: async (url) => { requests.push(new URL(url)); return response([modern, recentV105, compatibility, pending]) } })
   assert.deepEqual((await client.getStablePredictionRows()).map((row) => row.id), ['modern'])
-  assert.deepEqual((await client.getRecentPredictionRows()).map((row) => row.id), ['modern'])
+  assert.deepEqual((await client.getRecentPredictionRows()).map((row) => row.id), ['recent-v105'])
   assert.deepEqual((await client.getTableUiSettledPredictions({ tableId: 'BAG01', shoe: 88 })).map((row) => row.round), [4])
   assert.equal(await client.countTodayPredictionRounds(), 1)
   for (const url of requests) {
@@ -265,7 +283,7 @@ test('v102 readers require complete current final columns and exclude compatibil
       continue
     }
     assert.match(url.searchParams.get('select') ?? '', /settlement_final/)
-    assert.equal(url.searchParams.get('strategy_version'), 'eq.v105')
+    assert.equal(url.searchParams.get('strategy_version'), 'eq.v106')
     assert.equal(url.searchParams.get('settlement_final'), 'eq.true')
     assert.equal(url.searchParams.has('or'), false)
   }
@@ -303,7 +321,7 @@ test('issuance ACK identity is verified and issued prediction can be read exactl
 })
 
 test('final after restart and beyond display TTL settles exact DB issuance without issuing from post-result table', async () => {
-  const issued = { ...buildLivePrediction(table()), predictionId: 'pid-issued', issuedAt: '2026-07-16T01:00:00Z', createdAtMs: Date.parse('2026-07-16T01:00:00Z') }
+  const issued = { ...buildLivePrediction(table()), strategyVersion: 'v106', predictionId: 'pid-issued', issuedAt: '2026-07-16T01:00:00Z', createdAtMs: Date.parse('2026-07-16T01:00:00Z') }
   let issueCalls = 0
   let readCalls = 0
   const persisted = []
@@ -333,7 +351,7 @@ test('missing or failed issuance lookup fails closed without settlement', async 
 
 test('production settlement without predictionId fails closed instead of invoking legacy RPC', async () => {
   const requests = []
-  const strategyVersion = buildLivePrediction(table()).strategyVersion
+  const strategyVersion = 'v106'
   const client = createSupabaseIngestionClient({ url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: true, fetchImpl: async (url, init) => {
     const endpoint = String(url)
     if (endpoint.includes('ai_strategy_versions') && init?.method === 'PATCH') return response([])

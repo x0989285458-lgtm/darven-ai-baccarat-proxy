@@ -1,23 +1,8 @@
 import { spawn } from 'node:child_process'
-
-const env = { ...process.env }
-delete env.SUPABASE_DB_CONNECTION_STRING
-delete env.SUPABASE_SERVICE_ROLE_KEY
-delete env.SUPABASE_SECRET_KEY
-delete env.DATABASE_URL
-delete env.POSTGRES_URL
-delete env.POSTGRES_PRISMA_URL
-delete env.POSTGRES_URL_NON_POOLING
-delete env.PGHOST
-delete env.PGPORT
-delete env.PGDATABASE
-delete env.PGUSER
-delete env.PGPASSWORD
-delete env.PGSERVICE
-delete env.PGSERVICEFILE
+import { buildScrubbedTestEnv } from '../../scripts/test-env-scrub.mjs'
 
 const child = spawn(process.execPath, ['--test', ...process.argv.slice(2)], {
-  env,
+  env: buildScrubbedTestEnv(),
   stdio: 'inherit',
   shell: false,
 })

@@ -77,8 +77,8 @@ test('service work scheduler release freezes strategy while bounding proxy work'
   assert.equal(manifest.rollback.preserveOutboxHistory, true)
 })
 
-test('all deployable packages use application version 1.0.62', () => {
-  for (const path of ['../package.json', '../../frontend/package.json', '../../cloud-browser-worker/package.json']) {
-    assert.equal(readJson(path).version, '1.0.62')
-  }
+test('current v106 frontend and proxy keep the unchanged worker package on 1.0.62', () => {
+  assert.equal(readJson('../package.json').version, '1.0.63')
+  assert.equal(readJson('../../frontend/package.json').version, '1.0.63')
+  assert.equal(readJson('../../cloud-browser-worker/package.json').version, '1.0.62')
 })

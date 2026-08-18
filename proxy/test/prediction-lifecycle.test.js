@@ -184,7 +184,10 @@ test('lifecycle stats use an aggregate RPC and exclude expired and abandoned row
     },
   })
   assert.deepEqual(await client.getPredictionLifecycleStats(), { activePending: 2, settled: 1, expiredNoFinal: 1, abandonedShoeChange: 1, unclassified: 1, total: 6 })
+  assert.match(statsUrl, /\/rpc\/get_v106_prediction_lifecycle_stats$/)
+  await client.getPredictionLifecycleStats({ strategyVersion: 'v105' })
   assert.match(statsUrl, /\/rpc\/get_v105_prediction_lifecycle_stats$/)
+  await assert.rejects(client.getPredictionLifecycleStats({ strategyVersion: 'v999' }), /unsupported strategy version/i)
 
   const app = createApp({ autoConnect: false, licenseAdminClient: { configured: false, getCloudDataStatus: async () => ({ message: 'ok' }), getDailyAnalytics: async () => ({ todayRoundCount: 0, tableStats: [], dailyReports: [] }) }, supabaseClient: { configured: true, getPredictionLifecycleStats: async () => ({ activePending: 2, settled: 1, expiredNoFinal: 1, abandonedShoeChange: 1, unclassified: 0, total: 5 }) } })
   const status = JSON.parse((await app.inject({ url: '/api/cloud-data/status' })).body)
