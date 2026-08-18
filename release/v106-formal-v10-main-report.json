@@ -1,10 +1,10 @@
 {
-  "releaseVersion": "v106.0.0-formal.1",
+  "releaseVersion": "v106.0.0-formal.2",
   "strategyVersion": "v106",
   "applicationVersion": "1.0.63",
-  "status": "candidate-tested-under-independent-review",
-  "productionE2E": "not-run",
-  "deployment": "authorized-not-started",
+  "status": "production-hotfix-tested-e2e-pending",
+  "productionE2E": "pending-first-v106-final",
+  "deployment": "v106-active-proxy-hotfix-pending",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": { "packageVersion": "1.0.63", "buildVersion": "v106", "strategyVersion": "v106", "workerProtocol": "v105" },
@@ -12,8 +12,8 @@
     "worker": { "packageVersion": "1.0.62", "buildVersion": "105", "strategyVersion": "v105", "workerProtocol": "v105" }
   },
   "releaseBindingDigests": {
-    "implementationTree": "62a5d394fbcf56e19916894c2500269314015b7e1ffbccdf544c19ee1327ff9f",
-    "proxyBuildInput": "1204d9438161d72f091b0e2facc9f5ae64fb4ce7e693124630414852d9ccf161",
+    "implementationTree": "1915125b3672373bde101d414896499747b088dc8a94df8b6294e321dfd65f19",
+    "proxyBuildInput": "b92425f825294e46bd16cf6421fce56086fb839be7ed1cc242d183b3ac6395c7",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "994ec6c53388b940afe9d57b8fa328a3c336dc41e71461f2219917a1ebf48006",
     "databaseCutoverInput": "1a96e7f98d604a10880d3f8c4ed12bddbe779ce101343784b19c33fc56b4df79"

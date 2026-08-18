@@ -1,6 +1,6 @@
 {
-  "releaseVersion": "v106.0.0-formal.1",
-  "gitTag": "v106.0.0-formal.1",
+  "releaseVersion": "v106.0.0-formal.2",
+  "gitTag": "v106.0.0-formal.2",
   "applicationVersion": "1.0.63",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
@@ -150,13 +150,13 @@
       "algorithm": "sha256",
       "paths": ["proxy/package.json", "proxy/package-lock.json", "proxy/scripts/run-tests.mjs", "proxy/src", "frontend/package.json", "frontend/package-lock.json", "frontend/src", "cloud-browser-worker/Dockerfile", "cloud-browser-worker/package.json", "cloud-browser-worker/package-lock.json", "cloud-browser-worker/src", "shared", "scripts/verify-v106-formal-release.mjs", "scripts/run-worker-tests-scrubbed.mjs", "scripts/test-env-scrub.mjs", "supabase/migrations/20260818010000_v106_formal_v10_main.sql", "supabase/operations/fence_v105_new_issuance.sql", "supabase/operations/activate_v106_promotion.sql", "supabase/operations/finalize_v106_promotion.sql", "supabase/operations/rollback_v106_to_v105.sql"],
       "excludedPaths": [],
-      "sha256": "62a5d394fbcf56e19916894c2500269314015b7e1ffbccdf544c19ee1327ff9f"
+      "sha256": "1915125b3672373bde101d414896499747b088dc8a94df8b6294e321dfd65f19"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
       "paths": ["proxy/package.json", "proxy/package-lock.json", "proxy/src", "shared"],
       "excludedPaths": [],
-      "sha256": "1204d9438161d72f091b0e2facc9f5ae64fb4ce7e693124630414852d9ccf161"
+      "sha256": "b92425f825294e46bd16cf6421fce56086fb839be7ed1cc242d183b3ac6395c7"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
