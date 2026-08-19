@@ -75,6 +75,45 @@ test('lease renewal is armed before slow API startup can deliver historical Fina
   await runtime.stop()
 })
 
+test('runtime gives the MT client an ACK-cursor prefilter before source allocation', async () => {
+  const lease = { mode: 'api', ownerId: 'api-primary', epoch: 1, fence: 'fence-1', status: 'active', expiresAt: 15_000 }
+  let shouldAcceptFinal = null
+  const runtime = createWorkerSourceRuntime({
+    sourceOwner: {
+      acquireOrRecover: async () => lease,
+      lease: () => lease,
+      assertCurrent: () => true,
+      renew: async () => lease,
+      stop: async () => {},
+    },
+    journal: {
+      pending: () => [],
+      cursor: (tableId) => tableId === 'BAG01'
+        ? { shoe: 88, round: 7, identity: 'BAG01:88:7', hash: 'ack-7' }
+        : null,
+      ack: async () => {},
+    },
+    gapDetector: createGapDetector(),
+    replayProvider: { replay: async () => ({ ok: false, events: [] }) },
+    createApiClient: (options) => {
+      shouldAcceptFinal = options.shouldAcceptFinal
+      return { start: async () => {}, stop: () => {}, snapshot: () => ({}) }
+    },
+    setIntervalFn: () => ({ unref() {} }),
+    clearIntervalFn: () => {},
+  })
+
+  await runtime.start()
+
+  assert.equal(shouldAcceptFinal({ tableId: 'BAG01', shoe: 88, round: 7 }), false)
+  assert.equal(shouldAcceptFinal({ tableId: 'BAG01', shoe: 88, round: 6 }), false)
+  assert.equal(shouldAcceptFinal({ tableId: 'BAG01', shoe: 87, round: 99 }), false)
+  assert.equal(shouldAcceptFinal({ tableId: 'BAG01', shoe: 88, round: 8 }), true)
+  assert.equal(shouldAcceptFinal({ tableId: 'BAG01', shoe: 89, round: 1 }), true)
+  assert.equal(shouldAcceptFinal({ tableId: 'BAG02', shoe: 1, round: 1 }), true)
+  await runtime.stop()
+})
+
 test('runtime blocks Live ACK on a gap, replays exact missing Finals first, then resumes live event', async (t) => {
   const replayed = []
   const fixture = await runtimeFixture(t, {

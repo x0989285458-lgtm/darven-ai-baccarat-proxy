@@ -12,6 +12,7 @@ export function createMtApiClient({
   onFinal = async () => {},
   onTables = async () => {},
   onError = () => {},
+  shouldAcceptFinal = () => true,
   gameUrl = DEFAULT_GAME_URL,
   chatUrl = DEFAULT_CHAT_URL,
   reconnectDelayMs = 3_000,
@@ -190,6 +191,7 @@ export function createMtApiClient({
     const final = normalizeFinalPayload(payload, finalAction)
     if (!final) return
     if (!exactJoinComplete(current)) return
+    if (!await shouldAcceptFinal(final)) return
     refreshGenerationLease(current)
     eventSequence += 1
     const source = typeof sourceOwner.nextEventSource === 'function'

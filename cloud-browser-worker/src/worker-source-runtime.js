@@ -47,7 +47,7 @@ export function createWorkerSourceRuntime({
       )
       lease = sourceOwner.lease?.() ?? lease
     }
-    apiClient = createApiClient({ onFinal, onTables })
+    apiClient = createApiClient({ onFinal, onTables, shouldAcceptFinal })
     leaseTimer = setIntervalFn(async () => {
       try {
         lease = await sourceOwner.renew(sourceOwner.lease?.() ?? lease)
@@ -131,6 +131,19 @@ export function createWorkerSourceRuntime({
       const signal = signalFinalReady({ tableId, identity })
       if (signal && typeof signal.catch === 'function') void signal.catch(() => {})
     } catch {}
+  }
+
+  function shouldAcceptFinal(event) {
+    const tableId = canonicalProductionTableId(event?.tableId ?? event?.table_id)
+    const cursor = journal.cursor(tableId)
+    if (!cursor) return true
+    const shoe = Number(event?.shoe)
+    const round = Number(event?.round)
+    const cursorShoe = Number(cursor.shoe)
+    const cursorRound = Number(cursor.round)
+    if (shoe < cursorShoe) return false
+    if (shoe === cursorShoe && round <= cursorRound) return false
+    return true
   }
 
   function detectLiveFinalGap(event) {

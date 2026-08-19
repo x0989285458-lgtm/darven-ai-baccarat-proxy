@@ -101,6 +101,29 @@ test('a Final allocation race cannot let an old socket generation adopt a new ep
   client.stop()
 })
 
+test('durable cursor filters join replay before source allocation while allowing the next Final', async () => {
+  const delivered = []
+  let allocations = 0
+  const harness = createHarness({
+    shouldAcceptFinal: (event) => Number(event.shoe) > 88 || (Number(event.shoe) === 88 && Number(event.round) > 7),
+    nextEventSource: async () => ({ mode: 'api', ownerId: 'api-primary', epoch: 4, fence: 'fence-4', sequence: ++allocations }),
+    onFinal: async (event) => delivered.push(event),
+  })
+  const client = createMtApiClient(harness.options)
+  await client.start()
+  harness.openAll()
+  harness.authenticateAll()
+  harness.acknowledgeJoins()
+
+  harness.receive('game', summaryPacket(7))
+  harness.receive('game', summaryPacket(8))
+  await harness.flush(4)
+
+  assert.equal(allocations, 1, 'the ACKed join replay must not consume a source sequence')
+  assert.deepEqual(delivered.map((event) => event.round), [8])
+  client.stop()
+})
+
 test('Reviewer P1 Join/Tables: Chat has no ACK, so exact Tables release only after the genuine Game join ACK', async () => {
   const delivered = []
   const harness = createHarness({ onTables: async (tables) => delivered.push(tables) })
@@ -837,7 +860,7 @@ function createHarness({
   getSessionToken = async () => 'opaque-session-value', nextEventSource, now = Date.now,
   reconnectDelayMs = 0, reconnectMaxDelayMs, connectTimeoutMs = 0, authenticateTimeoutMs = connectTimeoutMs,
   tablesRefreshTimeoutMs, setTimeoutFn, clearTimeoutFn,
-  socketFailureCalls = [], sourceOwner,
+  socketFailureCalls = [], sourceOwner, shouldAcceptFinal,
 } = {}) {
   const sockets = []
   const timers = []
@@ -862,6 +885,7 @@ function createHarness({
     onFinal,
     onTables,
     onError,
+    ...(shouldAcceptFinal ? { shouldAcceptFinal } : {}),
     now,
     reconnectDelayMs,
     connectTimeoutMs,
