@@ -410,3 +410,113 @@ test('production preflight binds a negative issuance decision so a later issuanc
   assert.equal(settlements, 0)
   await app.stop()
 })
+
+test('production preflight rejects an issuance created after the authoritative Final was received', async () => {
+  let reads = 0
+  let settlements = 0
+  const writer = {
+    configured: true,
+    async readIssuedPrediction({ strategyVersion }) {
+      reads += 1
+      if (strategyVersion !== 'v106') return null
+      return {
+        targetTableId: 'BAG02', targetShoe: '15635', targetRound: 55,
+        strategyVersion: 'v106', predictionId: 'post-result-v106-55',
+        issuedAt: '2026-08-19T15:29:40.875Z',
+      }
+    },
+    async persistRound() { settlements += 1; return { prediction: { settlement_final: true } } },
+  }
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    ingestKey: 'worker-key',
+    controlToken: 'control-key',
+    memberSessionSecret: 'test-only-member-session-secret-that-is-longer-than-thirty-two-bytes',
+    adminSessionSecret: 'test-only-admin-session-secret-that-is-longer-than-thirty-two-bytes',
+    supabaseClient: writer,
+  })
+  const round = {
+    tableId: 'BAG02', shoe: 15635, round: 55, winner: 'banker',
+    rawResult: [28, 21, 31, 37, 0, 0, -1, -1, 7, 8],
+    sourceAction: 'summary',
+    receivedAt: '2026-08-19T15:28:11.952Z',
+  }
+
+  const preflight = await app.state.preflightRoundEvent(round)
+  assert.equal(preflight.ok, true)
+  assert.equal(preflight.value.formalRankEligible, false)
+  assert.equal(preflight.value.reason, 'no_immutable_issuance')
+  assert.equal(reads, 2)
+  await app.state.upsertRoundEvent(round, { preflight: preflight.value })
+  assert.equal(settlements, 0)
+  await app.stop()
+})
+
+test('production preflight fails closed when immutable issuance lookup is unavailable', async () => {
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    ingestKey: 'worker-key',
+    controlToken: 'control-key',
+    memberSessionSecret: 'test-only-member-session-secret-that-is-longer-than-thirty-two-bytes',
+    adminSessionSecret: 'test-only-admin-session-secret-that-is-longer-than-thirty-two-bytes',
+    supabaseClient: { configured: true, async persistRound() { assert.fail('lookup-unavailable Final must not settle') } },
+  })
+  const preflight = await app.state.preflightRoundEvent({
+    tableId: 'BAG01', shoe: 88, round: 20,
+    rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9],
+    sourceAction: 'summary', receivedAt: '2026-08-19T15:28:11.952Z',
+  })
+  assert.equal(preflight.ok, true)
+  assert.deepEqual(preflight.value, {
+    formalRankEligible: false,
+    settlementCandidateDecided: true,
+    issuedCandidate: null,
+    reason: 'issuance_lookup_unavailable',
+  })
+  await app.stop()
+})
+
+test('production preflight binds the first durable Final time across a later sequence replay', async () => {
+  let settlements = 0
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    ingestKey: 'worker-key',
+    controlToken: 'control-key',
+    memberSessionSecret: 'test-only-member-session-secret-that-is-longer-than-thirty-two-bytes',
+    adminSessionSecret: 'test-only-admin-session-secret-that-is-longer-than-thirty-two-bytes',
+    supabaseClient: {
+      configured: true,
+      async readIssuedPrediction({ strategyVersion }) {
+        if (strategyVersion !== 'v106') return null
+        return {
+          targetTableId: 'BAG02', targetShoe: '15635', targetRound: 55,
+          strategyVersion: 'v106', predictionId: 'post-result-v106-55',
+          issuedAt: '2026-08-19T15:29:40.875Z',
+        }
+      },
+      async readAuthoritativeFinalReceivedAt() { return '2026-08-19T15:28:11.952Z' },
+      async persistRound() { settlements += 1; return { prediction: { settlement_final: true } } },
+    },
+  })
+  const replay = {
+    tableId: 'BAG02', shoe: 15635, round: 55, winner: 'banker',
+    rawResult: [28, 21, 31, 37, 0, 0, -1, -1, 7, 8], sourceAction: 'summary',
+    receivedAt: '2026-08-19T15:31:30.000Z',
+  }
+  const preflight = await app.state.preflightRoundEvent(replay)
+  assert.equal(preflight.ok, true)
+  assert.equal(preflight.value.formalRankEligible, false)
+  assert.equal(preflight.value.reason, 'post_result_issuance')
+  await app.state.upsertRoundEvent(replay, { preflight: preflight.value })
+  assert.equal(settlements, 0)
+  await app.stop()
+})

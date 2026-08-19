@@ -17,13 +17,31 @@ const REQUIRED_RELEASE_BINDINGS = Object.freeze([
   'workerBuildInput',
   'databaseCutoverInput',
 ])
+const REQUIRED_DATABASE_ARTIFACTS = Object.freeze([
+  'supabase/migrations/20260818010000_v106_formal_v10_main.sql',
+  'supabase/migrations/20260820003500_v106_formal8_final_time_fence.sql',
+  'supabase/operations/fence_v105_new_issuance.sql',
+  'supabase/operations/terminalize_v105_cutover.sql',
+  'supabase/operations/activate_v106_promotion.sql',
+  'supabase/operations/finalize_v106_promotion.sql',
+  'supabase/operations/rollback_v106_to_v105.sql',
+])
+const REQUIRED_DATABASE_CONTRACTS = Object.freeze({
+  migration: { path: REQUIRED_DATABASE_ARTIFACTS[0], deploymentStep: 'database-additive' },
+  finalTimeFence: { path: REQUIRED_DATABASE_ARTIFACTS[1], deploymentStep: 'database-final-time-fence' },
+  fence: { path: REQUIRED_DATABASE_ARTIFACTS[2], deploymentStep: 'fence-v105-new-issuance' },
+  terminalize: { path: REQUIRED_DATABASE_ARTIFACTS[3], deploymentStep: 'terminalize-v105-cutover' },
+  activate: { path: REQUIRED_DATABASE_ARTIFACTS[4], deploymentStep: 'activate-v106' },
+  finalize: { path: REQUIRED_DATABASE_ARTIFACTS[5], deploymentStep: 'finalize' },
+  rollback: { path: REQUIRED_DATABASE_ARTIFACTS[6], deploymentStep: 'rollback-only' },
+})
 const DEPLOYABLE_BINDING_RULES = Object.freeze([
   { pattern: /^proxy\/(?:package(?:-lock)?\.json|src\/)/, bindings: ['implementationTree', 'proxyBuildInput'] },
   { pattern: /^proxy\/scripts\/run-tests\.mjs$/, bindings: ['implementationTree'] },
   { pattern: /^frontend\/(?:package(?:-lock)?\.json|src\/)/, bindings: ['implementationTree', 'frontendBuildInput'] },
   { pattern: /^cloud-browser-worker\/(?:Dockerfile|package(?:-lock)?\.json|src\/)/, bindings: ['implementationTree', 'workerBuildInput'] },
   { pattern: /^shared\//, bindings: ['implementationTree', 'proxyBuildInput', 'workerBuildInput'] },
-  { pattern: /^supabase\/(?:migrations\/20260818010000_v106_formal_v10_main\.sql|operations\/(?:fence_v105_new_issuance|activate_v106_promotion|finalize_v106_promotion|rollback_v106_to_v105)\.sql)$/, bindings: ['implementationTree', 'databaseCutoverInput'] },
+  { pattern: /^supabase\/(?:migrations\/(?:20260818010000_v106_formal_v10_main|20260820003500_v106_formal8_final_time_fence)\.sql|operations\/(?:fence_v105_new_issuance|terminalize_v105_cutover|activate_v106_promotion|finalize_v106_promotion|rollback_v106_to_v105)\.sql)$/, bindings: ['implementationTree', 'databaseCutoverInput'] },
   { pattern: /^scripts\/(?:verify-v106-formal-release|run-worker-tests-scrubbed|test-env-scrub)\.mjs$/, bindings: ['implementationTree'] },
 ])
 
@@ -57,8 +75,13 @@ export function resolveAnnotatedTagCommit({ tagName, root = repoRoot } = {}) {
 }
 
 export function verifyV106StagedDeployableCoverage({ manifest, root = repoRoot, stagedPaths } = {}) {
+  for (const artifact of REQUIRED_DATABASE_ARTIFACTS) {
+    if (!['implementationTree', 'databaseCutoverInput'].every((bindingName) => pathIsBound(manifest?.releaseBinding?.[bindingName], artifact))) {
+      throw new Error(`release_required_artifact_unbound:${artifact}`)
+    }
+  }
   const paths = stagedPaths ?? execFileSync('git', ['diff', '--cached', '--name-only', '--diff-filter=ACMRD'], { cwd: root, encoding: 'utf8' })
-    .split(/\r?\n/).filter(Boolean)
+    .split('\n').map((item) => item.trim()).filter(Boolean)
   for (const candidatePath of paths) {
     const rule = DEPLOYABLE_BINDING_RULES.find(({ pattern }) => pattern.test(candidatePath))
     if (!rule) continue
@@ -74,6 +97,38 @@ export function verifyV106StagedDeployableCoverage({ manifest, root = repoRoot, 
   }
 }
 
+export function verifyV106DatabaseArtifactContracts({ manifest, candidateIndexTree, root = repoRoot } = {}) {
+  const contracts = manifest?.databaseArtifacts
+  const deploymentOrder = manifest?.deploymentOrder
+  if (!contracts || typeof contracts !== 'object' || Array.isArray(contracts)) throw new Error('database_artifact_contracts_missing')
+  if (!Array.isArray(deploymentOrder)) throw new Error('database_deployment_order_missing')
+  let previousStepIndex = -1
+  for (const [name, expected] of Object.entries(REQUIRED_DATABASE_CONTRACTS)) {
+    const contract = contracts[name]
+    if (!contract) throw new Error(`database_artifact_contract_missing:${name}`)
+    if (contract.path !== expected.path) throw new Error(`database_artifact_path_mismatch:${name}`)
+    if (contract.deploymentStep !== expected.deploymentStep) throw new Error(`database_artifact_step_mismatch:${name}`)
+    if (!/^[a-f0-9]{40}$/.test(contract.gitBlobSha1 ?? '')) throw new Error(`database_artifact_blob_invalid:${name}`)
+    const actualBlob = execFileSync('git', ['rev-parse', `${candidateIndexTree}:${contract.path}`], { cwd: root, encoding: 'utf8' }).trim()
+    if (actualBlob !== contract.gitBlobSha1) throw new Error(`database_artifact_blob_mismatch:${name}`)
+    if (!['implementationTree', 'databaseCutoverInput'].every((bindingName) => pathIsBound(manifest?.releaseBinding?.[bindingName], contract.path))) {
+      throw new Error(`database_artifact_binding_mismatch:${name}`)
+    }
+    if (name !== 'rollback') {
+      const stepIndex = deploymentOrder.indexOf(contract.deploymentStep)
+      if (stepIndex < 0 || deploymentOrder.lastIndexOf(contract.deploymentStep) !== stepIndex || stepIndex <= previousStepIndex) {
+        throw new Error(`database_artifact_order_mismatch:${name}`)
+      }
+      previousStepIndex = stepIndex
+    }
+  }
+  if (manifest.database !== contracts.migration.path) throw new Error('database_artifact_alias_mismatch:migration')
+  if (manifest.activation !== contracts.activate.path) throw new Error('database_artifact_alias_mismatch:activate')
+  if (manifest.finalize !== contracts.finalize.path) throw new Error('database_artifact_alias_mismatch:finalize')
+  if (manifest?.rollback?.script !== contracts.rollback.path) throw new Error('database_artifact_alias_mismatch:rollback')
+  return { ok: true, contracts: Object.keys(REQUIRED_DATABASE_CONTRACTS) }
+}
+
 export async function verifyV106ManifestDigests({ manifest, candidateIndexTree, root = repoRoot } = {}) {
   assertCandidateIndexClean(root, candidateIndexTree)
   verifyV106PredecessorRegression({ manifest, candidateIndexTree, root })
@@ -82,6 +137,7 @@ export async function verifyV106ManifestDigests({ manifest, candidateIndexTree, 
   for (const name of REQUIRED_RELEASE_BINDINGS) {
     if (!Object.hasOwn(binding, name)) throw new Error(`release_binding_missing:${name}`)
   }
+  verifyV106DatabaseArtifactContracts({ manifest, candidateIndexTree, root })
   verifyV106StagedDeployableCoverage({ manifest, root })
   const result = {}
   for (const [name, spec] of Object.entries(binding)) {

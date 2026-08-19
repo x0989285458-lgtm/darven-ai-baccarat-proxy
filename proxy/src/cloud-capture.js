@@ -174,7 +174,7 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
   }
   const formalTables = Array.isArray(v100Result?.tables) ? v100Result.tables : parsed.tables
   state?.setStatus?.(parsed.status)
-  state?.setTables?.(formalTables)
+  state?.setTables?.(formalTables, { notify: false })
   const roundsByTable = new Map()
   for (const round of parsed.rounds) {
     const tableId = String(round?.tableId ?? '')
@@ -201,6 +201,7 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
     }
   }))
   durableTimings.formalSettlementMs = Date.now() - settlementStartedAt
+  state?.notifyTablesUpdated?.()
 
   if (!writer?.configured || !persistAncillary) return {
     v100Formal: v100Result,

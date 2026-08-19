@@ -435,10 +435,13 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const adminSessionTtlMs = Math.min(30 * 60 * 1000, Math.max(60000, Number.isFinite(resolvedAdminSessionTtlInput) ? resolvedAdminSessionTtlInput : 30 * 60 * 1000))
   let requestTablesBroadcast = () => {}
 
-  function validSettlementCandidate(candidate, pendingKey) {
+  function validSettlementCandidate(candidate, pendingKey, round) {
+    const issuedAtMs = Date.parse(candidate?.issuedAt ?? '')
+    const finalObservedAtMs = Date.parse(candidate?.authoritativeFinalReceivedAt ?? round?.receivedAt ?? round?.received_at ?? round?.rawEvent?.receivedAt ?? round?.raw_event?.receivedAt ?? '')
     return candidate
       && predictionTargetKey(candidate.targetTableId, candidate.targetShoe, candidate.targetRound) === pendingKey
       && SETTLEMENT_STRATEGY_VERSIONS.includes(candidate.strategyVersion)
+      && (!Number.isFinite(issuedAtMs) || !Number.isFinite(finalObservedAtMs) || issuedAtMs <= finalObservedAtMs)
       ? candidate
       : null
   }
@@ -446,20 +449,23 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   async function resolveSettlementCandidate(round, table) {
     const pendingKey = predictionTargetKey(round.tableId ?? table.tableId, round.shoe, round.round)
     if (preparingPredictionPromises.has(pendingKey)) await preparingPredictionPromises.get(pendingKey)
-    let issuedCandidate = pendingPredictions.get(pendingKey)
-    if (!issuedCandidate && issuingPredictionPromises.has(pendingKey)) issuedCandidate = await issuingPredictionPromises.get(pendingKey)
+    let issuedCandidate = validSettlementCandidate(pendingPredictions.get(pendingKey), pendingKey, round)
+    if (!issuedCandidate && issuingPredictionPromises.has(pendingKey)) {
+      issuedCandidate = validSettlementCandidate(await issuingPredictionPromises.get(pendingKey), pendingKey, round)
+    }
     if (!issuedCandidate && typeof supabaseClient?.readIssuedPrediction === 'function') {
       for (const strategyVersion of SETTLEMENT_STRATEGY_VERSIONS) {
-        issuedCandidate = await supabaseClient.readIssuedPrediction({
+        const candidate = await supabaseClient.readIssuedPrediction({
           tableId: round.tableId ?? table.tableId,
           shoe: round.shoe,
           round: round.round,
           strategyVersion,
         }, { priority: 'settlement' })
-        if (issuedCandidate) break
+        issuedCandidate = validSettlementCandidate(candidate, pendingKey, round)
+        if (issuedCandidate) return issuedCandidate
       }
     }
-    return validSettlementCandidate(issuedCandidate, pendingKey)
+    return issuedCandidate
   }
 
   const state = createProxyState({
@@ -506,10 +512,25 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       if (!production) return { formalRankEligible: true, reason: 'non_production' }
       if (!isVerifiedFinalRoundAction(round?.sourceAction)) return { formalRankEligible: false, reason: 'unverified_final_action' }
       if (strictRealCardRounds && !hasRealCardCodes(round)) return { formalRankEligible: false, reason: 'missing_real_cards' }
-      if (typeof supabaseClient?.readIssuedPrediction !== 'function') return { formalRankEligible: true, reason: 'preflight_unavailable' }
+      if (typeof supabaseClient?.readIssuedPrediction !== 'function') return { formalRankEligible: false, settlementCandidateDecided: true, issuedCandidate: null, reason: 'issuance_lookup_unavailable' }
       const issuedCandidate = await resolveSettlementCandidate(round, table)
       if (!issuedCandidate) return { formalRankEligible: false, settlementCandidateDecided: true, issuedCandidate: null, reason: 'no_immutable_issuance' }
-      return { formalRankEligible: true, settlementCandidateDecided: true, issuedCandidate }
+      if (typeof supabaseClient?.readAuthoritativeFinalReceivedAt !== 'function') {
+        throw new Error('authoritative Final-time lookup is unavailable')
+      }
+      const authoritativeFinalReceivedAt = await supabaseClient.readAuthoritativeFinalReceivedAt({
+        tableId: round.tableId ?? table.tableId,
+        shoe: round.shoe,
+        round: round.round,
+      }, { priority: 'settlement' })
+      if (!Number.isFinite(Date.parse(authoritativeFinalReceivedAt ?? ''))) {
+        throw new Error('authoritative Final receive time is unavailable')
+      }
+      const timeBoundCandidate = { ...issuedCandidate, authoritativeFinalReceivedAt }
+      if (!validSettlementCandidate(timeBoundCandidate, predictionTargetKey(round.tableId ?? table.tableId, round.shoe, round.round), round)) {
+        return { formalRankEligible: false, settlementCandidateDecided: true, issuedCandidate: null, reason: 'post_result_issuance' }
+      }
+      return { formalRankEligible: true, settlementCandidateDecided: true, issuedCandidate: timeBoundCandidate }
     },
     onRoundEvent: async (round, table, context = {}) => {
       if (!supabaseClient?.configured && !supabaseClient?.persistRound) return { formalRankEligible: false, reason: 'writer_unavailable' }
@@ -547,7 +568,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       let precomputedPrediction
       try {
         precomputedPrediction = context?.preflight?.settlementCandidateDecided === true
-          ? validSettlementCandidate(context.preflight.issuedCandidate, pendingKey)
+          ? validSettlementCandidate(context.preflight.issuedCandidate, pendingKey, round)
           : await resolveSettlementCandidate(round, table)
       } catch (error) {
         state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
@@ -847,9 +868,17 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           try {
             const work = row?.payload?.work
             if (!work || typeof work !== 'object') throw new Error('capture outbox work payload is missing')
+            const persistedRoundTimes = new Map((Array.isArray(row?.payload?.rounds) ? row.payload.rounds : []).map((round) => [
+              predictionTargetKey(round?.table_id ?? round?.tableId, round?.shoe_no ?? round?.shoe, round?.round_no ?? round?.round),
+              round?.received_at ?? round?.receivedAt ?? round?.raw_event?.receivedAt ?? null,
+            ]))
+            const timedWorkRounds = Array.isArray(work.rounds) ? work.rounds.map((round) => {
+              const receivedAt = round?.receivedAt ?? persistedRoundTimes.get(predictionTargetKey(round?.tableId ?? round?.table_id, round?.shoe ?? round?.shoe_no, round?.round ?? round?.round_no)) ?? null
+              return receivedAt ? { ...round, receivedAt } : { ...round }
+            }) : []
             const parsed = work.status && Array.isArray(work.tables) && Array.isArray(work.rounds)
-              ? { sessionId: work.sessionId ?? sessionId, status: work.status, tables: work.tables, rounds: work.rounds }
-              : parseCloudCapturePayload({ ...work, buildVersion: work.buildVersion ?? WORKER_PROTOCOL_BUILD_VERSION })
+              ? { sessionId: work.sessionId ?? sessionId, status: work.status, tables: work.tables, rounds: timedWorkRounds }
+              : parseCloudCapturePayload({ ...work, rounds: timedWorkRounds, buildVersion: work.buildVersion ?? WORKER_PROTOCOL_BUILD_VERSION })
             const applied = await runLeasePhase('formal', () => (
               applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Formal, persistAncillary: false })
             ))
@@ -1208,7 +1237,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                   captureSequence: Number(envelope.sequence),
                   captureTimestamp: stableCapturedAt,
                 })
-                state.setTables(parsed.tables)
+                state.setTables(parsed.tables, { notify: parsed.rounds.length === 0 })
               }
               captureResult = { durableTimings: { rawOutboxMs: Math.max(0, Date.now() - rawOutboxStartedAt) } }
               if (!duplicateCapture) {

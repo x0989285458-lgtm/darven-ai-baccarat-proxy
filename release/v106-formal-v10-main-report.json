@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.7",
+  "releaseVersion": "v106.0.0-formal.8",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.64",
-  "status": "formal7-cross-version-final-preflight-candidate",
+  "applicationVersion": "1.0.65",
+  "status": "formal8-authoritative-final-time-candidate",
   "productionE2E": "not-run-production-remains-v105",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.64",
+      "packageVersion": "1.0.65",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,11 +27,11 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "1ea0f8d533ac5d4e9736c061050bbd99cd7181fa2297d0270184577f449ca177",
-    "proxyBuildInput": "b3a5e3fa59d9a5fc0c9747a1101af42d91cae449005550e474e230e6d1d2186c",
+    "implementationTree": "5484d4a9399e02c657391a84a8c6af7646195c5457eb187697db2fb160f79fcd",
+    "proxyBuildInput": "32cbb1faedd3089bfc1844fff1c4fb67e82ff530fcaf5e7eca8dd0dc6d6cadcc",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "0acded55a1ab69499b8c33aac1914147a93e0375e0b3a379bfa83b34050c6c14"
+    "databaseCutoverInput": "14bffa7c78129bef735b97e92ea4cb4b25e3cbcfc04b5792e93a4728ec6db6c9"
   },
   "rollbackComponents": {
     "proxy": {
@@ -82,27 +82,30 @@
     "note": "Tie/PUSH excluded from directional hit-rate denominator. Full-output V10 candidate was rejected after producing net -15 hits; eligible-only promotion is the reviewed candidate."
   },
   "verified": {
-    "proxy": "canonical staged formal.6 suite 995/995 pass; exit 0; 2026-08-19",
-    "releaseBinding": "five mandatory staged-tree digests verified in precommit digests-only mode; release authorization remains false until external attestation and annotated tag",
+    "proxy": "canonical staged formal.8 suite 1009/1009 pass; exit 0; 2026-08-20",
+    "releaseBinding": "five mandatory staged-tree digests plus seven ordered database artifact contracts with exact Git blob SHA-1 verified in precommit mode; release authorization remains false until external attestation and annotated tag",
     "testEnvironmentFence": "shared proxy/worker scrubber removes DB, service-role, proxy-control, member/admin session, MT token/session/portal path, worker, ingest, Render and Cloudflare authority before child tests; focused 2/2 pass",
-    "focusedTests": "formal rank hydration affected 22/22 pass; release/harness focused 2/2 pass",
-    "predecessorRegression": "8/8 v105 predecessor regressions derived from release base 6bdd39e8 pass against the candidate server; the base source SHA-256 is verifier-bound and 9/9 dedicated v106 server tests pass separately",
+    "focusedTests": "formal.8 incident, strategy, writer, ACK, database and release-integrity focused rerun 103/103 pass; authoritative earliest timestamp, cross-sequence retry, retry-not-ACK, HTTP pre-observer suppression, fail-closed lookup, runtime lineage, ordered artifact contracts and required-artifact closure covered",
+    "predecessorRegression": "8/8 v105 predecessor regressions derived from release base 6bdd39e8 pass against the candidate server; the base source SHA-256 is verifier-bound and 13/13 dedicated v106 server tests pass separately",
     "outboxFailureAckIsolation": "25/25 outbox tests pass; a permanently stalled Formal promise enters FORMAL_SETTLEMENT_STALLED fatal with exit 70, sends no failure ACK, and retains the exact lease for stale-lease recovery",
     "frontend": "156/156 pass; exact production build pass; unchanged frontend binding e9810003…",
     "worker": "212/212 scrubbed pass; unchanged worker binding caea7c97…; package 1.0.63/build 105/protocol v105",
     "databaseMigration": "compiled against live schema inside transaction and fully rolled back; terminal lifecycle evidence cannot reopen; activation retains v105 immutable settlement but revokes legacy unbound persistence",
     "diffCheck": "git diff --check pass; only existing line-ending conversion warnings",
-    "secretScan": "gitleaks 8.30.1 staged binary patch scan; 38,879 bytes; zero leaks; exit 0",
+    "secretScan": "gitleaks 8.30.1 staged binary patch scan; 65,387 bytes; zero leaks; exit 0",
     "formal5RootCause": "formal.4 incident payload was ten tables and zero rounds; Formal ACK rank hydration now performs one read-only batch and zero synchronous ledger rebuilds.",
     "productionPreflight": "sole Active v105; exact proxy/worker commit 6bdd39e8; HTTP 200; ten tables; pending/processing/error outbox zero; v105 issuance and Final resumed; preserved dead-letter total 227 after two active-strategy-mismatch rows from rollback correction",
     "formal6RootCause": "formal.5 still sent every ten-table zero-round heartbeat through durable rank work; isolated exact-payload runtime took 372ms, but the full production app repeatedly exceeded the 45-second Formal lease. formal.6 removes rank work from zero-round heartbeat ACKs and limits Final-envelope hydration to the identities carrying durable rounds.",
     "formal5ProductionResult": "exact formal.5 commit b3fc4ac reached 166 v106 issuances and zero Finals before controlled rollback; no completion claim",
     "formal6ProductionResult": "exact formal.6 reached verified summary Finals but the first processing envelope carried only cross-version identities with no immutable v106 issuance; v106 Final remained zero before controlled rollback",
     "formal7Fix": "one production preflight decision is bound to each Final through rank and settlement; negative issuance decisions cannot be re-read or race with a later issuance, and positive decisions still require durable rank before settlement",
-    "formal7FocusedTests": "production incident replay plus negative-to-late-issuance interleaving regression; focused suite 52/52 pass"
+    "formal7FocusedTests": "production incident replay plus negative-to-late-issuance interleaving regression; focused suite 52/52 pass",
+    "formal7ProductionResult": "exact formal.7 reached 250 v106 issuances and zero Finals; retry exposed a post-result issuance created 88.923 seconds after the authoritative Final receive time; controlled rollback restored sole Active v105 and active outbox zero",
+    "formal8Fix": "propagate durable Final receive time into retry work; preserve the earliest cloud_table_rounds time through application upserts plus a database trigger; suppress HTTP durable-ingest observers until Final outbox mount; reject post-result issuance; retry rather than ACK when an otherwise eligible identity lacks authoritative Final time; emit exact formal.8 lineage; bind each ordered database artifact to its exact Git blob",
+    "formal8FocusedTests": "authoritative earliest timestamp, cross-sequence retry, retry-not-ACK on missing Final time, HTTP pre-observer suppression, database trigger, exact runtime lineage, and ordered Git-blob artifact closure regressions pass; Proxy 1009/1009, Frontend 156/156 plus build, Worker 212/212"
   },
   "pending": [
-    "formal.7 fresh independent review and external attestation",
-    "formal.7 controlled production cutover and live E2E"
+    "formal.8 fresh independent review and external attestation",
+    "formal.8 controlled production cutover and live E2E"
   ]
 }

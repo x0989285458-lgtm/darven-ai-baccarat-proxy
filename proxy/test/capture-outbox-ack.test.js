@@ -797,3 +797,127 @@ test('outbox consumer preserves raw source fence but canonicalizes formal round 
   assert.equal(shadowRounds[0].source, 'ofalive99')
   assert.deepEqual(work, rawBefore, 'durable raw fence evidence must stay immutable')
 })
+
+test('durable outbox preserves Final receive time and rejects a post-result issuance on retry', async () => {
+  let claimed = false
+  let completed = 0
+  let settlements = 0
+  let settlementReceivedAt = null
+  const work = structuredClone(envelope().snapshot)
+  work.rounds[0] = { ...work.rounds[0], tableId: 'BAG02', shoe: 15635, round: 55, sourceAction: 'summary' }
+  work.tables[0] = { ...work.tables[0], tableId: 'BAG02', shoe: 15635, round: 55 }
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    ingestKey: 'worker-key',
+    controlToken: 'control-key',
+    memberSessionSecret: 'test-only-member-session-secret-that-is-longer-than-thirty-two-bytes',
+    adminSessionSecret: 'test-only-admin-session-secret-that-is-longer-than-thirty-two-bytes',
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(204, {
+          payload: {
+            work,
+            rounds: [{ table_id: 'BAG02', shoe_no: '15635', round_no: 55, received_at: '2026-08-19T15:28:11.952Z' }],
+          },
+        })]
+      },
+      async readIssuedPrediction({ strategyVersion }) {
+        if (strategyVersion !== 'v106') return null
+        return {
+          targetTableId: 'BAG02', targetShoe: '15635', targetRound: 55,
+          strategyVersion: 'v106', predictionId: 'post-result-v106-55',
+          issuedAt: '2026-08-19T15:29:40.875Z',
+        }
+      },
+      async readAuthoritativeFinalReceivedAt() { return '2026-08-19T15:28:11.952Z' },
+      async persistRound() { settlements += 1; return { prediction: { settlement_final: true } } },
+      async completeCaptureOutbox() { completed += 1; return { completed: true } },
+      async failCaptureOutbox() { assert.fail('post-result issuance must be a bounded skip, not a retry') },
+    },
+  })
+
+  const result = await app.drainCaptureOutbox()
+  assert.deepEqual(result, { processed: 1, failed: 0 })
+  assert.equal(settlements, 0)
+  assert.equal(completed, 1)
+  await app.stop()
+})
+
+test('durable outbox retries instead of ACKing when authoritative Final time is temporarily missing', async () => {
+  let claimed = false
+  let completed = 0
+  let failed = 0
+  const work = structuredClone(envelope().snapshot)
+  work.rounds[0] = { ...work.rounds[0], tableId: 'BAG02', shoe: 15635, round: 55, sourceAction: 'summary' }
+  work.tables[0] = { ...work.tables[0], tableId: 'BAG02', shoe: 15635, round: 55 }
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    ingestKey: 'worker-key',
+    controlToken: 'control-key',
+    memberSessionSecret: 'test-only-member-session-secret-that-is-longer-than-thirty-two-bytes',
+    adminSessionSecret: 'test-only-admin-session-secret-that-is-longer-than-thirty-two-bytes',
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(205, { payload: { work } })]
+      },
+      async readIssuedPrediction({ strategyVersion }) {
+        return strategyVersion === 'v106'
+          ? { targetTableId: 'BAG02', targetShoe: '15635', targetRound: 55, strategyVersion: 'v106', predictionId: 'v106-55', issuedAt: '2026-08-19T15:27:00.000Z' }
+          : null
+      },
+      async readAuthoritativeFinalReceivedAt() { return null },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox() { failed += 1; return { failed: true } },
+    },
+  })
+  const result = await app.drainCaptureOutbox()
+  assert.deepEqual(result, { processed: 0, failed: 1 })
+  assert.equal(completed, 0)
+  assert.equal(failed, 1)
+  await app.stop()
+})
+
+test('durable ingest does not notify table observers before its Final outbox work is mounted', async () => {
+  let reconciliations = 0
+  const payload = envelope()
+  payload.snapshot.tables[0].round = 20
+  const app = createApp({
+    autoConnect: false,
+    now: () => 1_000_000,
+    production: true,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    ingestKey: 'worker-key',
+    controlToken: 'control-key',
+    memberSessionSecret: 'test-only-member-session-secret-that-is-longer-than-thirty-two-bytes',
+    adminSessionSecret: 'test-only-admin-session-secret-that-is-longer-than-thirty-two-bytes',
+    supabaseClient: {
+      configured: true,
+      async writeCloudTableSnapshot() { return { ok: true } },
+      async writeCloudRoundEvent() { return { ok: true } },
+      async persistCaptureEnvelope() { return { acceptedRoundKeys: ['BAG01:88:21'] } },
+      async claimCaptureOutbox() { return [] },
+      async reconcilePredictionLifecycle() { reconciliations += 1 },
+    },
+  })
+  const response = await app.inject({
+    method: 'POST', url: '/api/cloud-ingest/snapshot',
+    headers: { 'x-worker-key': 'worker-key', 'x-forwarded-proto': 'https' }, body: JSON.stringify(payload),
+  })
+  assert.equal(response.statusCode, 200, response.body)
+  await delay(20)
+  assert.equal(reconciliations, 0)
+  await app.stop()
+})

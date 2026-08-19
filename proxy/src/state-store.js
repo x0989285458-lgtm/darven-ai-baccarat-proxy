@@ -50,7 +50,7 @@ export function createProxyState({ onRoundEvent, onRoundPreflight, onTablesUpdat
       state.status = { ...state.status, ...nextStatus }
       if (nextStatus.connected === true) state.status.errorMessage = null
     },
-    setTables(tables = []) {
+    setTables(tables = [], { notify = true } = {}) {
       const previousTables = state.tables
       const inferredEvents = inferSnapshotRounds && Array.isArray(tables) ? inferRoundEventsFromSnapshots(previousTables, tables) : []
       const mergedTables = Array.isArray(tables) ? mergeExistingRoundData(tables, previousTables) : []
@@ -58,6 +58,9 @@ export function createProxyState({ onRoundEvent, onRoundPreflight, onTablesUpdat
       state.tables = mergedTables.map((table) => applyRealRoundRoadFallback(table, getContiguousRealRoundHistory(realRoundHistoryByTable, table.tableId)))
       state.status.tableCount = state.tables.length
       for (const item of inferredEvents) void emitRoundEvent(item.round, item.predictionTable)
+      if (notify && typeof onTablesUpdated === 'function') onTablesUpdated(structuredCloneSafe(state.tables))
+    },
+    notifyTablesUpdated() {
       if (typeof onTablesUpdated === 'function') onTablesUpdated(structuredCloneSafe(state.tables))
     },
     upsertRoundEvent(event = {}, context = {}) {

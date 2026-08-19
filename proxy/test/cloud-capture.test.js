@@ -378,6 +378,27 @@ test('production incident replay ACKs three cross-version Finals with no V106 is
   assert.equal(result.rounds.length, 3)
 })
 
+test('Final state is mounted before table observers can issue the same revealed round', async () => {
+  const order = []
+  const round = { tableId: 'BAG02', shoe: 15635, round: 55, rawResult: [28, 21, 31, 37, 0, 0, -1, -1, 7, 8], sourceAction: 'summary' }
+  const state = {
+    async preflightRoundEvent() { return { ok: true, value: { formalRankEligible: false, settlementCandidateDecided: true } } },
+    setStatus() {},
+    setTables(_tables, options) { order.push(`tables:${options?.notify === false ? 'silent' : 'notified'}`) },
+    async upsertRoundEvent() { order.push('final-mounted'); return { ok: true } },
+    notifyTablesUpdated() { order.push('observers-notified') },
+  }
+
+  await applyCloudCapturePayload({
+    parsed: { sessionId: 'incident-retry', status: { connected: true }, tables: [{ tableId: 'BAG02', shoe: 15635, round: 55 }], rounds: [round] },
+    state,
+    writer: { configured: true },
+    persistAncillary: false,
+  })
+
+  assert.deepEqual(order, ['tables:silent', 'final-mounted', 'observers-notified'])
+})
+
 function createFakeState() {
   const data = { status: {}, tables: [] }
   return {

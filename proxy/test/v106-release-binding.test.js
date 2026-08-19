@@ -9,6 +9,7 @@ import report from '../../release/v106-formal-v10-main-report.json' with { type:
 import {
   resolveAnnotatedTagCommit,
   verifyV106Attestation,
+  verifyV106DatabaseArtifactContracts,
   verifyV106ManifestDigests,
   verifyV106PredecessorRegression,
   verifyV106StagedDeployableCoverage,
@@ -40,7 +41,7 @@ test('v106 full release manifest binds the exact staged implementation, build in
   const result = await verifyV106ManifestDigests({ manifest, candidateIndexTree, root: repoRoot })
   assert.equal(result.ok, true)
   assert.equal(report.releaseVersion, manifest.releaseVersion)
-  assert.match(report.status, /formal7/)
+  assert.match(report.status, /formal8/)
   assert.doesNotMatch(report.status, /formal5/)
   assert.deepEqual(Object.keys(result.digests).sort(), [
     'databaseCutoverInput', 'frontendBuildInput', 'implementationTree', 'proxyBuildInput', 'workerBuildInput',
@@ -97,6 +98,55 @@ test('v106 full release manifest binds the exact staged implementation, build in
   assert.deepEqual(
     Object.fromEntries(Object.entries(report.rollbackComponents).filter(([, value]) => value?.commit).map(([name, value]) => [name, value.commit])),
     manifest.rollback.componentCommits,
+  )
+})
+
+test('v106 coverage fails closed when any mandatory database cutover artifact is omitted from every binding', () => {
+  const requiredArtifacts = [
+    'supabase/migrations/20260818010000_v106_formal_v10_main.sql',
+    'supabase/migrations/20260820003500_v106_formal8_final_time_fence.sql',
+    'supabase/operations/fence_v105_new_issuance.sql',
+    'supabase/operations/terminalize_v105_cutover.sql',
+    'supabase/operations/activate_v106_promotion.sql',
+    'supabase/operations/finalize_v106_promotion.sql',
+    'supabase/operations/rollback_v106_to_v105.sql',
+  ]
+  for (const artifact of requiredArtifacts) {
+    const incomplete = structuredClone(manifest)
+    for (const binding of Object.values(incomplete.releaseBinding)) {
+      binding.paths = binding.paths.filter((candidatePath) => candidatePath !== artifact)
+    }
+    assert.throws(
+      () => verifyV106StagedDeployableCoverage({ manifest: incomplete, stagedPaths: [] }),
+      new RegExp(`release_required_artifact_unbound:${artifact.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
+      artifact,
+    )
+  }
+})
+
+test('v106 database contracts bind every cutover step to one exact Git blob', () => {
+  const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
+  assert.equal(verifyV106DatabaseArtifactContracts({ manifest, candidateIndexTree, root: repoRoot }).ok, true)
+
+  const missing = structuredClone(manifest)
+  delete missing.databaseArtifacts.terminalize
+  assert.throws(
+    () => verifyV106DatabaseArtifactContracts({ manifest: missing, candidateIndexTree, root: repoRoot }),
+    /database_artifact_contract_missing:terminalize/,
+  )
+
+  const wrongStep = structuredClone(manifest)
+  wrongStep.databaseArtifacts.activate.deploymentStep = 'proxy'
+  assert.throws(
+    () => verifyV106DatabaseArtifactContracts({ manifest: wrongStep, candidateIndexTree, root: repoRoot }),
+    /database_artifact_step_mismatch:activate/,
+  )
+
+  const wrongBlob = structuredClone(manifest)
+  wrongBlob.databaseArtifacts.finalize.gitBlobSha1 = '0'.repeat(40)
+  assert.throws(
+    () => verifyV106DatabaseArtifactContracts({ manifest: wrongBlob, candidateIndexTree, root: repoRoot }),
+    /database_artifact_blob_mismatch:finalize/,
   )
 })
 

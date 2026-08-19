@@ -2176,7 +2176,7 @@ export function createSupabaseIngestionClient({
               session_id = excluded.session_id, table_name = excluded.table_name,
               main_result = excluded.main_result, banker_points = excluded.banker_points,
               player_points = excluded.player_points, raw_event = excluded.raw_event,
-              table_snapshot = excluded.table_snapshot, received_at = excluded.received_at,
+              table_snapshot = excluded.table_snapshot, received_at = least(cloud_table_rounds.received_at, excluded.received_at),
               metadata = excluded.metadata`,
           values: [body.session_id, body.source, body.table_id, body.table_name, body.shoe_no, body.round_no,
             body.main_result, body.banker_points, body.player_points, body.raw_event, body.table_snapshot,
@@ -2629,6 +2629,37 @@ export function createSupabaseIngestionClient({
         throw new Error('durable prediction issuance acknowledgement failed')
       }
       return structuredClone(prediction)
+    },
+    async readAuthoritativeFinalReceivedAt({ tableId, shoe, round } = {}, { priority = null } = {}) {
+      const targetRound = Number(round)
+      if (!tableId || shoe == null || !Number.isSafeInteger(targetRound) || targetRound < 1) return null
+      const directDb = priority === 'settlement' ? priorityStrategyDb : strategyDb
+      const rows = directDb
+        ? (await directDb.query({
+            text: `select received_at
+                     from public.cloud_table_rounds
+                    where source = $1
+                      and table_id = $2
+                      and shoe_no = $3
+                      and round_no = $4
+                    limit 2`,
+            values: [SOURCE, String(tableId), String(shoe), targetRound],
+            query_timeout: formalTimeoutMs,
+          })).rows
+        : await getRest('cloud_table_rounds', {
+            select: 'received_at',
+            source: `eq.${SOURCE}`,
+            table_id: `eq.${tableId}`,
+            shoe_no: `eq.${shoe}`,
+            round_no: `eq.${targetRound}`,
+            limit: '2',
+          }, { requestTimeoutMs: formalTimeoutMs })
+      if (!Array.isArray(rows) || rows.length === 0) return null
+      if (rows.length !== 1) throw new Error('conflicting authoritative Final identity')
+      const rawReceivedAt = rows[0]?.received_at
+      const receivedAt = rawReceivedAt instanceof Date ? rawReceivedAt.toISOString() : String(rawReceivedAt ?? '')
+      if (!Number.isFinite(Date.parse(receivedAt))) throw new Error('authoritative Final receive time read failed')
+      return receivedAt
     },
     async readIssuedPrediction({ tableId, shoe, round, strategyVersion } = {}, { priority = null } = {}) {
       const targetRound = Number(round)
@@ -3632,7 +3663,7 @@ export function createSupabaseIngestionClient({
               session_id = excluded.session_id, table_name = excluded.table_name,
               main_result = excluded.main_result, banker_points = excluded.banker_points,
               player_points = excluded.player_points, raw_event = excluded.raw_event,
-              table_snapshot = excluded.table_snapshot, received_at = excluded.received_at,
+              table_snapshot = excluded.table_snapshot, received_at = least(cloud_table_rounds.received_at, excluded.received_at),
               metadata = excluded.metadata`,
           values: [JSON.stringify(rows)],
         })

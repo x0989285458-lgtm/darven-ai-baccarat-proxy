@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.7",
-  "gitTag": "v106.0.0-formal.7",
-  "applicationVersion": "1.0.64",
+  "releaseVersion": "v106.0.0-formal.8",
+  "gitTag": "v106.0.0-formal.8",
+  "applicationVersion": "1.0.65",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -81,6 +81,43 @@
     "pushExcludedFromHitRate": true
   },
   "database": "supabase/migrations/20260818010000_v106_formal_v10_main.sql",
+  "databaseArtifacts": {
+    "migration": {
+      "path": "supabase/migrations/20260818010000_v106_formal_v10_main.sql",
+      "deploymentStep": "database-additive",
+      "gitBlobSha1": "38f0dabd05a846b1c77ac570ae9440a8709c1d2d"
+    },
+    "finalTimeFence": {
+      "path": "supabase/migrations/20260820003500_v106_formal8_final_time_fence.sql",
+      "deploymentStep": "database-final-time-fence",
+      "gitBlobSha1": "30758801fc37b3d1afc758030703ca5d28c028e5"
+    },
+    "fence": {
+      "path": "supabase/operations/fence_v105_new_issuance.sql",
+      "deploymentStep": "fence-v105-new-issuance",
+      "gitBlobSha1": "892ddb0d3a6fcf51a43f510a56c1967b0aeb82ea"
+    },
+    "terminalize": {
+      "path": "supabase/operations/terminalize_v105_cutover.sql",
+      "deploymentStep": "terminalize-v105-cutover",
+      "gitBlobSha1": "7a497cd7d910d0c493fea466c220948f24063a26"
+    },
+    "activate": {
+      "path": "supabase/operations/activate_v106_promotion.sql",
+      "deploymentStep": "activate-v106",
+      "gitBlobSha1": "2008bf05f07255cbf6589a3dc87c1265661e5a0e"
+    },
+    "finalize": {
+      "path": "supabase/operations/finalize_v106_promotion.sql",
+      "deploymentStep": "finalize",
+      "gitBlobSha1": "dd1b83e95da9b178427e6276d359fb07bd36b029"
+    },
+    "rollback": {
+      "path": "supabase/operations/rollback_v106_to_v105.sql",
+      "deploymentStep": "rollback-only",
+      "gitBlobSha1": "411869c5863bdc8ece82209f5102a59503bf0d78"
+    }
+  },
   "activation": "supabase/operations/activate_v106_promotion.sql",
   "settlementCompatibility": {
     "predecessorNewIssuanceFenced": true,
@@ -94,6 +131,7 @@
   },
   "deploymentOrder": [
     "database-additive",
+    "database-final-time-fence",
     "deploy-worker-1.0.63-protocol-v105",
     "verify-worker-v105-compatibility",
     "fence-v105-new-issuance",
@@ -204,6 +242,7 @@
         "scripts/run-worker-tests-scrubbed.mjs",
         "scripts/test-env-scrub.mjs",
         "supabase/migrations/20260818010000_v106_formal_v10_main.sql",
+        "supabase/migrations/20260820003500_v106_formal8_final_time_fence.sql",
         "supabase/operations/fence_v105_new_issuance.sql",
         "supabase/operations/terminalize_v105_cutover.sql",
         "supabase/operations/activate_v106_promotion.sql",
@@ -211,7 +250,7 @@
         "supabase/operations/rollback_v106_to_v105.sql"
       ],
       "excludedPaths": [],
-      "sha256": "1ea0f8d533ac5d4e9736c061050bbd99cd7181fa2297d0270184577f449ca177"
+      "sha256": "5484d4a9399e02c657391a84a8c6af7646195c5457eb187697db2fb160f79fcd"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -222,7 +261,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "b3a5e3fa59d9a5fc0c9747a1101af42d91cae449005550e474e230e6d1d2186c"
+      "sha256": "32cbb1faedd3089bfc1844fff1c4fb67e82ff530fcaf5e7eca8dd0dc6d6cadcc"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -250,6 +289,7 @@
       "algorithm": "sha256",
       "paths": [
         "supabase/migrations/20260818010000_v106_formal_v10_main.sql",
+        "supabase/migrations/20260820003500_v106_formal8_final_time_fence.sql",
         "supabase/operations/fence_v105_new_issuance.sql",
         "supabase/operations/terminalize_v105_cutover.sql",
         "supabase/operations/activate_v106_promotion.sql",
@@ -257,7 +297,7 @@
         "supabase/operations/rollback_v106_to_v105.sql"
       ],
       "excludedPaths": [],
-      "sha256": "0acded55a1ab69499b8c33aac1914147a93e0375e0b3a379bfa83b34050c6c14"
+      "sha256": "14bffa7c78129bef735b97e92ea4cb4b25e3cbcfc04b5792e93a4728ec6db6c9"
     }
   },
   "historicalArtifactsPreserved": true,
@@ -281,5 +321,12 @@
     "failedIdentities": ["BAG05:16959:6", "BAG03:16805:47", "BAG10:5032:24"],
     "safeState": "production rolled back to sole Active v105 before formal.7 release",
     "formal7Fix": "production preflight binds one positive or negative immutable issuance decision to each Final; a negative decision skips durable rank and settlement without a second database lookup, while a positive decision preserves durable rank before settlement"
+  },
+  "formal7Incident": {
+    "observedAt": "2026-08-19T15:30:00Z",
+    "productionEvidence": "v106 issuance advanced from 230 to 250 while Final remained 0; BAG02 shoe 15635 round 55 received its verified Final at 15:28:11.952Z but a v106 issuance was created later at 15:29:40.875Z, and retry could treat that post-result issuance as eligible",
+    "failedIdentities": ["BAG06:17257:48", "BAG02:15635:55"],
+    "safeState": "production rolled back to sole Active v105; exact v105 proxy restored; ten tables; active outbox zero; v105 Final resumed",
+    "formal8Fix": "durable outbox work inherits its persisted Final receive time and every retry rebinds to the first-write cloud_table_rounds receive time for that identity; post-result issuances are rejected across sequence replays; Final state is mounted before table observers may issue; missing issuance or authoritative Final-time lookup fails closed; verifier requires every named database cutover artifact including terminalize_v105_cutover.sql"
   }
 }

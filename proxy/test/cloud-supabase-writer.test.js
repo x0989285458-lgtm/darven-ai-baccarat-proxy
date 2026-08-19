@@ -107,6 +107,27 @@ test('formal issued-prediction identity reads use the backend transaction connec
   assert.deepEqual(queries[0].values, ['ofalive99', 'BAG01', '8', 9, 'v105'])
 })
 
+test('authoritative Final receive time reads the first-write cloud round identity through the settlement pool', async () => {
+  const queries = []
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.invalid', serviceKey: 'fixture-key', requestTimeoutMs: 30000,
+    fetchImpl: async () => { throw new Error('REST must not be used') },
+    strategyPool: { query: async (query) => {
+      queries.push(query)
+      return { rows: [{ received_at: '2026-08-19T15:28:11.952Z' }] }
+    } },
+  })
+  const receivedAt = await client.readAuthoritativeFinalReceivedAt(
+    { tableId: 'BAG02', shoe: 15635, round: 55 },
+    { priority: 'settlement' },
+  )
+  assert.equal(receivedAt, '2026-08-19T15:28:11.952Z')
+  assert.equal(queries.length, 1)
+  assert.match(queries[0].text, /from public\.cloud_table_rounds/i)
+  assert.deepEqual(queries[0].values, ['ofalive99', 'BAG02', '15635', 55])
+  assert.equal(queries[0].query_timeout, 30000)
+})
+
 test('backend formal reads use Supabase transaction pooler without rewriting unrelated database URLs', () => {
   const session = 'postgresql://user:secret@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres'
   const transaction = new URL(resolveBackendReadConnectionString(session))
@@ -285,6 +306,7 @@ test('formal capture status snapshot and round writes share the backend transact
   assert.match(queries[0].text, /insert into public\.cloud_capture_status/)
   assert.match(queries[1].text, /public\.persist_latest_cloud_table_snapshot\(\$1::jsonb\)/)
   assert.match(queries[2].text, /insert into public\.cloud_table_rounds/)
+  assert.match(queries[2].text, /received_at\s*=\s*least\(cloud_table_rounds\.received_at,\s*excluded\.received_at\)/i)
 })
 
 test('formal round batch uses one backend transaction query for the complete bounded envelope', async () => {
@@ -303,6 +325,7 @@ test('formal round batch uses one backend transaction query for the complete bou
   assert.equal(result.rows.length, 3)
   assert.equal(queries.length, 1)
   assert.match(queries[0].text, /jsonb_to_recordset\(\$1::jsonb\)/)
+  assert.match(queries[0].text, /received_at\s*=\s*least\(cloud_table_rounds\.received_at,\s*excluded\.received_at\)/i)
   assert.equal(JSON.parse(queries[0].values[0]).length, 3)
 })
 

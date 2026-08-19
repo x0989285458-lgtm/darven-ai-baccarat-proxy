@@ -13,7 +13,7 @@ const extractSqlFunction = (sql, name) => {
 }
 
 test('v106 release identity is coherent while the updated capture worker retains protocol v105', () => {
-  assert.equal(json('proxy/package.json').version, '1.0.64')
+  assert.equal(json('proxy/package.json').version, '1.0.65')
   assert.equal(json('frontend/package.json').version, '1.0.63')
   assert.equal(json('cloud-browser-worker/package.json').version, '1.0.63')
   assert.match(read('proxy/src/build-version.js'), /BUILD_VERSION = 'v106'/)
@@ -49,6 +49,15 @@ test('v106 database migration is additive, active-fenced, immutable issuance and
   assert.match(sql, /grant execute on function public\.settle_v105_prediction/i)
   assert.match(sql, /unique[^\n]*status[^\n]*active|exactly_one_active/i)
   assert.doesNotMatch(sql, /drop\s+(table|function)|truncate|delete\s+from\s+.*daily_prediction_results/i)
+})
+
+test('formal.8 database fence preserves the earliest authoritative Final receive time on every write path', () => {
+  const sql = read('supabase/migrations/20260820003500_v106_formal8_final_time_fence.sql')
+  assert.match(sql, /create or replace function public\.preserve_cloud_round_first_received_at\(\)/i)
+  assert.match(sql, /new\.received_at\s*:=\s*least\(old\.received_at,\s*new\.received_at\)/i)
+  assert.match(sql, /before update of received_at on public\.cloud_table_rounds/i)
+  assert.match(sql, /for each row execute function public\.preserve_cloud_round_first_received_at\(\)/i)
+  assert.doesNotMatch(sql, /grant execute/i)
 })
 
 test('v106 migration preserves the frozen v105 issuance contract and adds only the Active row lock fence', () => {
@@ -136,14 +145,14 @@ test('v106 frontend version gate fails closed and formal writer/hydration use v1
 
 test('v106 manifest encodes DB-first through finalize order and exact rollback', () => {
   const manifest = json('release/v106-formal-v10-main-release-manifest.json')
-  assert.equal(manifest.applicationVersion, '1.0.64')
+  assert.equal(manifest.applicationVersion, '1.0.65')
   assert.equal(manifest.strategyVersion, 'v106')
   assert.equal(manifest.mainStrategy.source, 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized')
   assert.equal(manifest.sideStrategy.source, 'v105')
   assert.equal(manifest.mainStrategy.activationGate, 'structureDiagnostics.eligible === true')
   assert.equal(manifest.mainStrategy.fallback, 'exact formal v105 main projection')
-  assert.equal(manifest.gitTag, 'v106.0.0-formal.7')
-  assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'deploy-worker-1.0.63-protocol-v105', 'verify-worker-v105-compatibility', 'fence-v105-new-issuance', 'producer-stop', 'terminalize-v105-cutover', 'drain-v105-and-queue', 'activate-v106', 'proxy', 'frontend', 'live-e2e', 'finalize'])
+  assert.equal(manifest.gitTag, 'v106.0.0-formal.8')
+  assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'database-final-time-fence', 'deploy-worker-1.0.63-protocol-v105', 'verify-worker-v105-compatibility', 'fence-v105-new-issuance', 'producer-stop', 'terminalize-v105-cutover', 'drain-v105-and-queue', 'activate-v106', 'proxy', 'frontend', 'live-e2e', 'finalize'])
   assert.equal(manifest.releaseScope.workerBehaviorChanged, true)
   assert.equal(manifest.releaseScope.workerProtocolChanged, false)
   assert.equal(manifest.inheritedProductionSafety.preserveQueue, true)
