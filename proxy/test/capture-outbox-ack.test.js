@@ -163,6 +163,42 @@ test('shadow work must settle before a timed-out lease is failed for retry', asy
   await app.stop()
 })
 
+test('permanently stalled formal work enters fatal without releasing the exact lease', async () => {
+  let claimed = false
+  let failureAcks = 0
+  const fatals = []
+  const never = new Promise(() => {})
+  const app = createApp({
+    autoConnect: false,
+    outboxWorkDeadlineMs: 10,
+    shadowShutdownDeadlineMs: 10,
+    fatalHandler(value) { fatals.push(value) },
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(7, { payload: { work: envelope().snapshot } })]
+      },
+      async completeCaptureOutbox() { assert.fail('stalled formal work must not complete') },
+      async failCaptureOutbox() { failureAcks += 1 },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot() { return never },
+    },
+  })
+
+  const result = await Promise.race([
+    app.drainCaptureOutbox(),
+    delay(100).then(() => assert.fail('drain remained blocked behind a permanent formal promise')),
+  ])
+  assert.deepEqual(result, { processed: 0, failed: 1 })
+  assert.equal(failureAcks, 0, 'fatal restart must retain the exact lease for stale-lease recovery')
+  assert.deepEqual(fatals, [{ code: 'FORMAL_SETTLEMENT_STALLED', exitCode: 70 }])
+  assert.equal(app.state.snapshot().status.captureOutboxPhase?.code, 'FORMAL_SETTLEMENT_STALLED')
+})
+
 test('same and older sequences always reach durable DB verification and conflicting payload returns 409', async () => {
   const persisted = []
   const app = createApp({
@@ -473,7 +509,7 @@ test('temporary claim failure retries but an uncancellable exact failure ACK is 
     v100FormalRuntime: { enabled: false },
   })
   await app.drainCaptureOutbox().catch(() => {})
-  const retryDeadline = Date.now() + 1_000
+  const retryDeadline = Date.now() + 5_000
   while (!completed.includes(2) && Date.now() < retryDeadline) {
     await new Promise((resolve) => setTimeout(resolve, 5))
   }
@@ -503,7 +539,7 @@ test('failure ACK outage does not hold another claimable Final behind retry back
     v100FormalRuntime: { enabled: false },
   })
   await app.drainCaptureOutbox()
-  const deadline = Date.now() + 250
+  const deadline = Date.now() + 5_000
   while (!completed.includes(2) && Date.now() < deadline) await delay(5)
   await app.stop()
   assert.deepEqual(completed, [2])

@@ -580,7 +580,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     if (captureOutboxFatal) return
     captureOutboxFatal = {
       phase: 'fatal',
-      code: /^SHADOW_[A-Z0-9_]+$/.test(String(code ?? '')) ? String(code) : 'SHADOW_PROCESS_FATAL',
+      code: /^(?:SHADOW|FORMAL)_[A-Z0-9_]+$/.test(String(code ?? '')) ? String(code) : 'SHADOW_PROCESS_FATAL',
       startedAt: new Date(Number(now())).toISOString(),
     }
     outboxStopping = true
@@ -800,7 +800,20 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               return await leaseDeadline.race(underlying)
             } catch (error) {
               setCaptureOutboxPhase(`${phase}_settling`, attempt)
-              await Promise.allSettled([underlying])
+              if (phase === 'formal') {
+                try {
+                  await withDeadline(
+                    Promise.allSettled([underlying]),
+                    resolvedShadowShutdownDeadlineMs,
+                    `formal settlement did not settle after lease deadline for ${sessionId}:${sequence}`,
+                  )
+                } catch {
+                  enterCaptureOutboxFatal('FORMAL_SETTLEMENT_STALLED')
+                  throw new Error(`formal settlement remained active after lease deadline for ${sessionId}:${sequence}`)
+                }
+              } else {
+                await Promise.allSettled([underlying])
+              }
               throw error
             }
           }
@@ -840,6 +853,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             const shadowProcessStatus = isolatedShadowProcess?.status?.() ?? null
             if (isolatedShadowProcess) state.setStatus({ shadowProcessStatus })
             state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+            if (captureOutboxFatal) return { processed, failed }
             if (shadowProcessStatus?.terminationFailed === true) {
               enterCaptureOutboxFatal(shadowProcessStatus.code)
               return { processed, failed }

@@ -2048,16 +2048,15 @@ export function createSupabaseIngestionClient({
   dbConnectionString = null,
   strategyPool = null,
   strategyPoolFactory = (config) => new pg.Pool(config),
-  strategyPoolMax = 3,
+  strategyPoolMax = 10,
 } = {}) {
   const configured = Boolean(url && serviceKey && fetchImpl)
-  const resolvedStrategyPoolMax = Number.isInteger(strategyPoolMax) && strategyPoolMax >= 1 && strategyPoolMax <= 10
-    ? strategyPoolMax
-    : 3
   const rawStrategyDb = strategyPool ?? (dbConnectionString ? strategyPoolFactory({
     connectionString: resolveBackendReadConnectionString(dbConnectionString),
     ssl: { rejectUnauthorized: false },
-    max: resolvedStrategyPoolMax,
+    max: Number.isInteger(strategyPoolMax) && strategyPoolMax >= 1 && strategyPoolMax <= 10
+      ? strategyPoolMax
+      : 10,
     connectionTimeoutMillis: 60000,
     query_timeout: 65000,
     statement_timeout: 60000,
@@ -2081,12 +2080,7 @@ export function createSupabaseIngestionClient({
   const startupTimeoutMs = Math.max(formalTimeoutMs, Number(startupRequestTimeoutMs) || 30000)
   const shadowTimeoutMs = Math.max(1, Number(shadowRequestTimeoutMs) || 30000)
   const strategyQueryScheduler = rawStrategyDb && typeof rawStrategyDb.query === 'function'
-    ? createStrategyQueryScheduler(rawStrategyDb, {
-        maxConcurrent: resolvedStrategyPoolMax,
-        maxStandardConcurrent: 1,
-        maxPriorityConcurrent: Math.min(2, resolvedStrategyPoolMax),
-        queueTimeoutMs: durableWriteTimeoutMs,
-      })
+    ? createStrategyQueryScheduler(rawStrategyDb, { queueTimeoutMs: durableWriteTimeoutMs })
     : null
   const strategyDb = strategyQueryScheduler ? { query: (...args) => strategyQueryScheduler.query(...args) } : null
   const priorityStrategyDb = strategyQueryScheduler ? { query: (...args) => strategyQueryScheduler.queryPriority(...args) } : null

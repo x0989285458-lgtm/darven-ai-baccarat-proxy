@@ -142,7 +142,7 @@ test('v106 manifest encodes DB-first through finalize order and exact rollback',
   assert.equal(manifest.sideStrategy.source, 'v105')
   assert.equal(manifest.mainStrategy.activationGate, 'structureDiagnostics.eligible === true')
   assert.equal(manifest.mainStrategy.fallback, 'exact formal v105 main projection')
-  assert.equal(manifest.gitTag, 'v106.0.0-formal.2')
+  assert.equal(manifest.gitTag, 'v106.0.0-formal.3')
   assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'fence-v105-new-issuance', 'producer-stop', 'drain-v105-and-queue', 'activate-v106', 'proxy', 'verify-unchanged-worker', 'frontend', 'live-e2e', 'finalize'])
   assert.equal(manifest.releaseScope.workerBehaviorChanged, false)
   assert.equal(manifest.inheritedProductionSafety.preserveQueue, true)
