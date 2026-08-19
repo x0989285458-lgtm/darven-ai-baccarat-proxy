@@ -5,7 +5,7 @@
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
-  "workerPackageVersion": "1.0.62",
+  "workerPackageVersion": "1.0.63",
   "workerBuildVersion": "105",
   "protocolVersion": "v105",
   "candidateMode": "formal",
@@ -16,7 +16,7 @@
     "predictionWeightsChanged": true,
     "frontendBehaviorChanged": true,
     "proxyBehaviorChanged": true,
-    "workerBehaviorChanged": false,
+    "workerBehaviorChanged": true,
     "workerProtocolChanged": false,
     "canonicalSource": "api",
     "singleWriterRequired": true
@@ -30,7 +30,8 @@
     "sessionRefreshRetries": true,
     "singleSocketGeneration": true,
     "secretRedactionRequired": true,
-    "unchangedWorkerNotRestartedDuringStrategyCutover": true
+    "unchangedWorkerNotRestartedDuringStrategyCutover": false,
+    "workerLeaseRenewalArmedBeforeApiStartup": true
   },
   "predecessorRegression": {
     "baseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
@@ -82,12 +83,13 @@
   },
   "deploymentOrder": [
     "database-additive",
+    "deploy-worker-1.0.63-protocol-v105",
+    "verify-worker-v105-compatibility",
     "fence-v105-new-issuance",
     "producer-stop",
     "drain-v105-and-queue",
     "activate-v106",
     "proxy",
-    "verify-unchanged-worker",
     "frontend",
     "live-e2e",
     "finalize"
@@ -133,14 +135,14 @@
       "releaseBaseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
       "allCommitsAreAncestorsOfReleaseBase": true,
       "packageAndBuildIdentityReadFromExactCommit": true,
-      "compatibility": "v105 proxy and frontend consume unchanged worker build 105 over protocol v105"
+      "compatibility": "v105 proxy and frontend consume worker package 1.0.63 build 105 over unchanged protocol v105; rollback restores worker 1.0.62"
     },
     "componentMatrixNote": "Exact heterogeneous production predecessor artifacts; do not infer one shared application package version.",
     "order": [
       "stop producer admission",
       "drain all non-terminal unsettled v106 issuances",
       "run rollback SQL",
-      "deploy exact v105 proxy and frontend; retain verified unchanged worker",
+      "deploy exact v105 proxy, frontend, and worker 1.0.62",
       "verify sole Active v105 and new v105 Final"
     ],
     "retains": ["v105 formal evidence", "V10 shadow evidence", "v106 evidence"]
@@ -150,7 +152,7 @@
       "algorithm": "sha256",
       "paths": ["proxy/package.json", "proxy/package-lock.json", "proxy/scripts/run-tests.mjs", "proxy/src", "frontend/package.json", "frontend/package-lock.json", "frontend/src", "cloud-browser-worker/Dockerfile", "cloud-browser-worker/package.json", "cloud-browser-worker/package-lock.json", "cloud-browser-worker/src", "shared", "scripts/verify-v106-formal-release.mjs", "scripts/run-worker-tests-scrubbed.mjs", "scripts/test-env-scrub.mjs", "supabase/migrations/20260818010000_v106_formal_v10_main.sql", "supabase/operations/fence_v105_new_issuance.sql", "supabase/operations/activate_v106_promotion.sql", "supabase/operations/finalize_v106_promotion.sql", "supabase/operations/rollback_v106_to_v105.sql"],
       "excludedPaths": [],
-      "sha256": "8b2a8905dd82fd5ae9794c8048e6cde440e05e6bac1d36491f1d31285cef0c62"
+      "sha256": "7ca04541648896578481a134960e7ebffdb63004c8111186c6acb2c06cdaa444"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -168,7 +170,7 @@
       "algorithm": "sha256",
       "paths": ["cloud-browser-worker/Dockerfile", "cloud-browser-worker/package.json", "cloud-browser-worker/package-lock.json", "cloud-browser-worker/src", "shared"],
       "excludedPaths": [],
-      "sha256": "994ec6c53388b940afe9d57b8fa328a3c336dc41e71461f2219917a1ebf48006"
+      "sha256": "08320d669d24c71fb521b27ba11d9fbf5be4798c976f56ed69cc1b8cfa9a747d"
     },
     "databaseCutoverInput": {
       "algorithm": "sha256",

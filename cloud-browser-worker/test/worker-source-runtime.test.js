@@ -39,6 +39,42 @@ test('a durably journaled Final signals immediate delivery without waiting for t
   assert.deepEqual(deliverySignals, [['BAG01:91:1']])
 })
 
+test('lease renewal is armed before slow API startup can deliver historical Finals', async () => {
+  const order = []
+  const lease = { mode: 'api', ownerId: 'api-primary', epoch: 1, fence: 'fence-1', status: 'active', expiresAt: 15_000 }
+  let renewalTick = null
+  const runtime = createWorkerSourceRuntime({
+    sourceOwner: {
+      acquireOrRecover: async () => { order.push('lease-acquired'); return lease },
+      lease: () => lease,
+      assertCurrent: () => true,
+      renew: async () => { order.push('lease-renewed'); return lease },
+      stop: async () => { order.push('lease-stopped') },
+    },
+    journal: { pending: () => [], cursor: () => null, ack: async () => {} },
+    gapDetector: createGapDetector(),
+    replayProvider: { replay: async () => ({ ok: false, events: [] }) },
+    createApiClient: () => ({
+      start: async () => {
+        order.push('api-started')
+        assert.equal(typeof renewalTick, 'function', 'renewal must be armed before API startup begins')
+        await renewalTick()
+        order.push('api-ready')
+      },
+      stop: () => { order.push('api-stopped') },
+      snapshot: () => ({}),
+    }),
+    leaseRenewalMs: 5_000,
+    setIntervalFn: (callback) => { renewalTick = callback; order.push('renewal-armed'); return callback },
+    clearIntervalFn: () => { order.push('renewal-cleared') },
+  })
+
+  await runtime.start()
+
+  assert.deepEqual(order.slice(0, 5), ['lease-acquired', 'renewal-armed', 'api-started', 'lease-renewed', 'api-ready'])
+  await runtime.stop()
+})
+
 test('runtime blocks Live ACK on a gap, replays exact missing Finals first, then resumes live event', async (t) => {
   const replayed = []
   const fixture = await runtimeFixture(t, {

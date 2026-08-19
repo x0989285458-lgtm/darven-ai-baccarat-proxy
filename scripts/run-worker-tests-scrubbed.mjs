@@ -1,7 +1,10 @@
 import { spawn } from 'node:child_process'
+import path from 'node:path'
 import { buildScrubbedTestEnv } from './test-env-scrub.mjs'
 
+const workerRoot = path.resolve(import.meta.dirname, '../cloud-browser-worker')
 const child = spawn(process.execPath, ['--test', ...process.argv.slice(2)], {
+  cwd: workerRoot,
   env: buildScrubbedTestEnv(),
   stdio: 'inherit',
   shell: false,

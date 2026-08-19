@@ -48,7 +48,6 @@ export function createWorkerSourceRuntime({
       lease = sourceOwner.lease?.() ?? lease
     }
     apiClient = createApiClient({ onFinal, onTables })
-    await apiClient.start()
     leaseTimer = setIntervalFn(async () => {
       try {
         lease = await sourceOwner.renew(sourceOwner.lease?.() ?? lease)
@@ -59,6 +58,7 @@ export function createWorkerSourceRuntime({
       }
     }, Math.max(1, Number(leaseRenewalMs) || 1))
     leaseTimer?.unref?.()
+    await apiClient.start()
     started = true
   }
 

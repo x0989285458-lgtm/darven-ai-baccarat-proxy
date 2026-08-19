@@ -47,10 +47,10 @@ test('MT session auto-refresh release freezes the two production incident fixes'
   ])
 })
 
-test('current v106 frontend and proxy preserve the historical v105 worker release binding', async () => {
+test('historical v105 worker release binding stays immutable after the v106 worker hotfix', async () => {
   assert.equal(readJson('../package.json').version, '1.0.63')
   assert.equal(readJson('../../frontend/package.json').version, '1.0.63')
-  assert.equal(readJson('../../cloud-browser-worker/package.json').version, '1.0.62')
+  assert.equal(readJson('../../cloud-browser-worker/package.json').version, '1.0.63')
   const historicalTree = execFileSync('git', ['rev-parse', `${manifest.gitTag}^{tree}`], { cwd: repoRoot, encoding: 'utf8' }).trim()
   for (const key of ['implementationTree', 'workerBuildInput']) {
     const result = await computeGitTreePathSetDigest(repoRoot, historicalTree, manifest.releaseBinding[key])

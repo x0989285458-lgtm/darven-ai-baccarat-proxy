@@ -42,8 +42,10 @@ test('v106 full release manifest binds the exact staged implementation, build in
   assert.deepEqual(Object.keys(result.digests).sort(), [
     'databaseCutoverInput', 'frontendBuildInput', 'implementationTree', 'proxyBuildInput', 'workerBuildInput',
   ])
-  assert.equal(manifest.releaseScope.workerBehaviorChanged, false)
-  assert.equal(manifest.inheritedProductionSafety.unchangedWorkerNotRestartedDuringStrategyCutover, true)
+  assert.equal(manifest.releaseScope.workerBehaviorChanged, true)
+  assert.equal(manifest.releaseScope.workerProtocolChanged, false)
+  assert.equal(manifest.inheritedProductionSafety.unchangedWorkerNotRestartedDuringStrategyCutover, false)
+  assert.equal(manifest.inheritedProductionSafety.workerLeaseRenewalArmedBeforeApiStartup, true)
   const predecessor = verifyV106PredecessorRegression({ manifest, candidateIndexTree, root: repoRoot })
   assert.equal(predecessor.sourceSha256, manifest.predecessorRegression.sourceSha256)
   const tamperedPredecessor = structuredClone(manifest)

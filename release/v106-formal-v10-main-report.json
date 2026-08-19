@@ -9,13 +9,13 @@
   "versionMatrix": {
     "proxy": { "packageVersion": "1.0.63", "buildVersion": "v106", "strategyVersion": "v106", "workerProtocol": "v105" },
     "frontend": { "packageVersion": "1.0.63", "buildVersion": "v106", "strategyVersion": "v106", "workerProtocol": "v105" },
-    "worker": { "packageVersion": "1.0.62", "buildVersion": "105", "strategyVersion": "v105", "workerProtocol": "v105" }
+    "worker": { "packageVersion": "1.0.63", "buildVersion": "105", "strategyVersion": "v105", "workerProtocol": "v105" }
   },
   "releaseBindingDigests": {
-    "implementationTree": "8b2a8905dd82fd5ae9794c8048e6cde440e05e6bac1d36491f1d31285cef0c62",
+    "implementationTree": "7ca04541648896578481a134960e7ebffdb63004c8111186c6acb2c06cdaa444",
     "proxyBuildInput": "a4e63255233aadc35b731dee563cb9dbb47c8c9262e556045d50f81818d4982a",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
-    "workerBuildInput": "994ec6c53388b940afe9d57b8fa328a3c336dc41e71461f2219917a1ebf48006",
+    "workerBuildInput": "08320d669d24c71fb521b27ba11d9fbf5be4798c976f56ed69cc1b8cfa9a747d",
     "databaseCutoverInput": "1a96e7f98d604a10880d3f8c4ed12bddbe779ce101343784b19c33fc56b4df79"
   },
   "rollbackComponents": {
@@ -53,7 +53,7 @@
     "predecessorRegression": "8/8 v105 predecessor regressions derived from release base 6bdd39e8 pass against the candidate server; the base source SHA-256 is verifier-bound and 9/9 dedicated v106 server tests pass separately",
     "outboxFailureAckIsolation": "25/25 outbox tests pass; a permanently stalled Formal promise enters FORMAL_SETTLEMENT_STALLED fatal with exit 70, sends no failure ACK, and retains the exact lease for stale-lease recovery",
     "frontend": "156/156 pass and production build pass",
-    "worker": "209/209 pass through scripts/run-worker-tests-scrubbed.mjs; worker build and protocol intentionally remain unchanged at 105/v105",
+    "worker": "210/210 pass; package 1.0.63 arms owner lease renewal before slow API startup while build/protocol remain compatible at 105/v105",
     "databaseMigration": "compiled against live schema inside transaction and fully rolled back; terminal lifecycle evidence cannot reopen; activation retains v105 immutable settlement but revokes legacy unbound persistence",
     "diffCheck": "git diff --check pass; only existing line-ending conversion warnings",
     "secretScan": "gitleaks 8.30.1 staged-diff scan; zero findings; exit 0"

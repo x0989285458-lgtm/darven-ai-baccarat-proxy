@@ -34,7 +34,7 @@ test('v106 frontend and proxy remain coherent while the unchanged worker protoco
   assert.match(read('cloud-browser-worker/src/runtime-config.js'), /BUILD_VERSION\s*=\s*'105'/)
   assert.match(read('cloud-browser-worker/src/snapshot-pusher.js'), /protocolVersion:\s*'v105'/)
   assert.match(read('cloud-browser-worker/Dockerfile'), /org\.opencontainers\.image\.version="v105"/)
-  assert.match(read('cloud-browser-worker/package.json'), /"version":\s*"1\.0\.62"/)
+  assert.match(read('cloud-browser-worker/package.json'), /"version":\s*"1\.0\.63"/)
   assert.match(read('cloud-browser-worker/deploy/vm/release.env.example'), /WORKER_IMAGE=darven-worker:v105-REVIEWED_SHA/)
 })
 

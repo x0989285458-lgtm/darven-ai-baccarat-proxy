@@ -12,11 +12,11 @@ const extractSqlFunction = (sql, name) => {
   return match[0]
 }
 
-test('v106 release identity is coherent while the unchanged capture worker retains protocol v105', () => {
+test('v106 release identity is coherent while the updated capture worker retains protocol v105', () => {
   for (const path of ['proxy/package.json', 'frontend/package.json']) {
     assert.equal(json(path).version, '1.0.63', path)
   }
-  assert.equal(json('cloud-browser-worker/package.json').version, '1.0.62')
+  assert.equal(json('cloud-browser-worker/package.json').version, '1.0.63')
   assert.match(read('proxy/src/build-version.js'), /BUILD_VERSION = 'v106'/)
   assert.match(read('proxy/src/supabase-writer.js'), /ALL_MT_EQUAL_STRATEGY_VERSION = 'v105'[\s\S]*FORMAL_STRATEGY_VERSION = 'v106'/)
   assert.match(read('proxy/src/server.js'), /import \{[^}]*FORMAL_STRATEGY_VERSION[^}]*\} from '\.\/supabase-writer\.js'/)
@@ -24,6 +24,7 @@ test('v106 release identity is coherent while the unchanged capture worker retai
   assert.match(read('frontend/src/lib/buildVersion.ts'), /buildVersion: 'v106'[\s\S]*strategyVersion: 'v106'/)
   assert.match(read('cloud-browser-worker/src/runtime-config.js'), /BUILD_VERSION = '105'/)
   assert.match(read('cloud-browser-worker/Dockerfile'), /image\.version="v105"/)
+  assert.match(read('scripts/run-worker-tests-scrubbed.mjs'), /cwd:\s*workerRoot/)
   assert.match(read('proxy/src/server.js'), /WORKER_PROTOCOL_BUILD_VERSION = '105'[\s\S]*WORKER_PROTOCOL_VERSION = 'v105'/)
 })
 
@@ -143,8 +144,9 @@ test('v106 manifest encodes DB-first through finalize order and exact rollback',
   assert.equal(manifest.mainStrategy.activationGate, 'structureDiagnostics.eligible === true')
   assert.equal(manifest.mainStrategy.fallback, 'exact formal v105 main projection')
   assert.equal(manifest.gitTag, 'v106.0.0-formal.3')
-  assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'fence-v105-new-issuance', 'producer-stop', 'drain-v105-and-queue', 'activate-v106', 'proxy', 'verify-unchanged-worker', 'frontend', 'live-e2e', 'finalize'])
-  assert.equal(manifest.releaseScope.workerBehaviorChanged, false)
+  assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'deploy-worker-1.0.63-protocol-v105', 'verify-worker-v105-compatibility', 'fence-v105-new-issuance', 'producer-stop', 'drain-v105-and-queue', 'activate-v106', 'proxy', 'frontend', 'live-e2e', 'finalize'])
+  assert.equal(manifest.releaseScope.workerBehaviorChanged, true)
+  assert.equal(manifest.releaseScope.workerProtocolChanged, false)
   assert.equal(manifest.inheritedProductionSafety.preserveQueue, true)
   assert.equal(manifest.inheritedProductionSafety.preserveAckCursor, true)
   assert.equal(manifest.inheritedProductionSafety.exactAckRequired, true)
@@ -159,5 +161,5 @@ test('v106 manifest encodes DB-first through finalize order and exact rollback',
     terminalEvidenceStatuses: ['expired_no_final', 'abandoned_shoe_change'],
     unknownOrPendingNonFinalBlocksCutover: true,
   })
-  assert.deepEqual(manifest.rollback.order, ['stop producer admission', 'drain all non-terminal unsettled v106 issuances', 'run rollback SQL', 'deploy exact v105 proxy and frontend; retain verified unchanged worker', 'verify sole Active v105 and new v105 Final'])
+  assert.deepEqual(manifest.rollback.order, ['stop producer admission', 'drain all non-terminal unsettled v106 issuances', 'run rollback SQL', 'deploy exact v105 proxy, frontend, and worker 1.0.62', 'verify sole Active v105 and new v105 Final'])
 })
