@@ -1970,37 +1970,43 @@ export function resolveBackendReadConnectionString(connectionString) {
   return raw
 }
 
-function createStrategyQueryScheduler(strategyDb, { priorityDb = strategyDb, criticalDb = strategyDb, maxConcurrent = 10, maxStandardConcurrent = 5, maxPriorityConcurrent = 4, maxCriticalConcurrent = 1, queueTimeoutMs = 30000 } = {}) {
+function createStrategyQueryScheduler(strategyDb, { priorityDb = strategyDb, criticalDb = strategyDb, controlDb = strategyDb, maxConcurrent = 10, maxStandardConcurrent = 4, maxPriorityConcurrent = 4, maxCriticalConcurrent = 1, maxControlConcurrent = 1, queueTimeoutMs = 30000 } = {}) {
   const criticalQueue = []
+  const controlQueue = []
   const priorityQueue = []
   const standardQueue = []
   let active = 0
   let standardActive = 0
   let priorityActive = 0
   let criticalActive = 0
+  let controlActive = 0
 
   function drain() {
     while (active < maxConcurrent) {
       const item = criticalQueue.length > 0 && criticalActive < maxCriticalConcurrent
         ? criticalQueue.shift()
-        : priorityQueue.length > 0 && priorityActive < maxPriorityConcurrent
-          ? priorityQueue.shift()
-          : standardQueue.length > 0 && standardActive < maxStandardConcurrent
-            ? standardQueue.shift()
-            : null
+        : controlQueue.length > 0 && controlActive < maxControlConcurrent
+          ? controlQueue.shift()
+          : priorityQueue.length > 0 && priorityActive < maxPriorityConcurrent
+            ? priorityQueue.shift()
+            : standardQueue.length > 0 && standardActive < maxStandardConcurrent
+              ? standardQueue.shift()
+              : null
       if (!item) return
       clearTimeout(item.timeout)
       active += 1
       if (item.critical) criticalActive += 1
+      else if (item.control) controlActive += 1
       else if (item.priority) priorityActive += 1
       else standardActive += 1
-      const laneDb = item.critical ? criticalDb : item.priority ? priorityDb : strategyDb
+      const laneDb = item.critical ? criticalDb : item.control ? controlDb : item.priority ? priorityDb : strategyDb
       Promise.resolve()
         .then(() => laneDb.query(...item.args))
         .then(item.resolve, item.reject)
         .finally(() => {
           active -= 1
           if (item.critical) criticalActive -= 1
+          else if (item.control) controlActive -= 1
           else if (item.priority) priorityActive -= 1
           else standardActive -= 1
           drain()
@@ -2019,9 +2025,10 @@ function createStrategyQueryScheduler(strategyDb, { priorityDb = strategyDb, cri
   function query(lane, args) {
     return new Promise((resolve, reject) => {
       const critical = lane === 'critical'
+      const control = lane === 'control'
       const priority = lane === 'priority'
-      const queue = critical ? criticalQueue : priority ? priorityQueue : standardQueue
-      const item = { critical, priority, args, label: queryLabel(args), resolve, reject, timeout: null }
+      const queue = critical ? criticalQueue : control ? controlQueue : priority ? priorityQueue : standardQueue
+      const item = { critical, control, priority, args, label: queryLabel(args), resolve, reject, timeout: null }
       item.timeout = setTimeout(() => {
         const index = queue.indexOf(item)
         if (index < 0) return
@@ -2037,6 +2044,7 @@ function createStrategyQueryScheduler(strategyDb, { priorityDb = strategyDb, cri
     query: (...args) => query('standard', args),
     queryPriority: (...args) => query('priority', args),
     queryCritical: (...args) => query('critical', args),
+    queryControl: (...args) => query('control', args),
   }
 }
 
@@ -2065,20 +2073,33 @@ export function createSupabaseIngestionClient({
     ? strategyPoolMax
     : 10
   const physicalLaneIsolation = !strategyPool && Boolean(dbConnectionString) && resolvedStrategyPoolMax === 10
-  const createPool = (max) => strategyPoolFactory({
+  const createPool = (max, {
+    connectionTimeoutMillis = 60000,
+    queryTimeoutMs = 65000,
+    statementTimeoutMs = 60000,
+  } = {}) => strategyPoolFactory({
     connectionString: resolveBackendReadConnectionString(dbConnectionString),
     ssl: { rejectUnauthorized: false },
     max,
-    connectionTimeoutMillis: 60000,
-    query_timeout: 65000,
-    statement_timeout: 60000,
+    connectionTimeoutMillis,
+    query_timeout: queryTimeoutMs,
+    statement_timeout: statementTimeoutMs,
     idleTimeoutMillis: 30000,
   })
   const rawStrategyDb = strategyPool ?? (dbConnectionString
-    ? createPool(physicalLaneIsolation ? 5 : resolvedStrategyPoolMax)
+    ? createPool(physicalLaneIsolation ? 4 : resolvedStrategyPoolMax, physicalLaneIsolation
+      ? { connectionTimeoutMillis: 10000, queryTimeoutMs: 30000, statementTimeoutMs: 25000 }
+      : {})
     : null)
-  const rawPriorityStrategyDb = physicalLaneIsolation ? createPool(4) : rawStrategyDb
-  const rawCriticalStrategyDb = physicalLaneIsolation ? createPool(1) : rawStrategyDb
+  const rawPriorityStrategyDb = physicalLaneIsolation
+    ? createPool(4, { connectionTimeoutMillis: 10000, queryTimeoutMs: 40000, statementTimeoutMs: 35000 })
+    : rawStrategyDb
+  const rawCriticalStrategyDb = physicalLaneIsolation
+    ? createPool(1, { connectionTimeoutMillis: 10000, queryTimeoutMs: 25000, statementTimeoutMs: 20000 })
+    : rawStrategyDb
+  const rawControlStrategyDb = physicalLaneIsolation
+    ? createPool(1, { connectionTimeoutMillis: 10000, queryTimeoutMs: 10000, statementTimeoutMs: 8000 })
+    : rawStrategyDb
   const completedRoundKeys = new Set()
   const inFlightRoundWrites = new Map()
   const preparedRoundWrites = new Map()
@@ -2100,12 +2121,14 @@ export function createSupabaseIngestionClient({
     ? createStrategyQueryScheduler(rawStrategyDb, {
         priorityDb: rawPriorityStrategyDb,
         criticalDb: rawCriticalStrategyDb,
+        controlDb: rawControlStrategyDb,
         queueTimeoutMs: durableWriteTimeoutMs,
       })
     : null
   const strategyDb = strategyQueryScheduler ? { query: (...args) => strategyQueryScheduler.query(...args) } : null
   const priorityStrategyDb = strategyQueryScheduler ? { query: (...args) => strategyQueryScheduler.queryPriority(...args) } : null
   const criticalStrategyDb = strategyQueryScheduler ? { query: (...args) => strategyQueryScheduler.queryCritical(...args) } : null
+  const controlStrategyDb = strategyQueryScheduler ? { query: (...args) => strategyQueryScheduler.queryControl(...args) } : null
 
   async function verifyActiveStrategyFromDatabase() {
     if (!strategyDb || typeof strategyDb.query !== 'function') return false
@@ -2263,7 +2286,9 @@ export function createSupabaseIngestionClient({
       if (directRpc) {
         const directDb = options.critical === true
           ? criticalStrategyDb
-          : options.priority === true ? priorityStrategyDb : strategyDb
+          : options.control === true
+            ? controlStrategyDb
+            : options.priority === true ? priorityStrategyDb : strategyDb
         const result = await directDb.query(directRpc)
         const row = Array.isArray(result?.rows) ? result.rows[0] : null
         const functionName = path.slice('rpc/'.length)
@@ -3552,8 +3577,8 @@ export function createSupabaseIngestionClient({
     },
     async claimCaptureOutbox({ limit = 10 } = {}) {
       const normalizedLimit = Math.max(1, Math.min(100, Number(limit) || 10))
-      if (criticalStrategyDb && typeof criticalStrategyDb.query === 'function') {
-        const result = await criticalStrategyDb.query({
+      if (controlStrategyDb && typeof controlStrategyDb.query === 'function') {
+        const result = await controlStrategyDb.query({
           text: 'select * from public.claim_v105_capture_settlement_outbox($1::integer)',
           values: [normalizedLimit],
         })
@@ -3568,17 +3593,17 @@ export function createSupabaseIngestionClient({
       return postDurableRest('rpc/complete_v105_capture_settlement_outbox', {
         p_session_id: String(sessionId ?? ''), p_sequence: Number(sequence),
         p_claim_token: String(claimToken ?? ''), p_attempt: Number(attempt),
-      }, undefined, { requireObject: true, critical: true })
+      }, undefined, { requireObject: true, control: true })
     },
     async failCaptureOutbox({ sessionId, sequence, claimToken, attempt, error } = {}) {
       return postDurableRest('rpc/fail_v105_capture_settlement_outbox', {
         p_session_id: String(sessionId ?? ''), p_sequence: Number(sequence),
         p_claim_token: String(claimToken ?? ''), p_attempt: Number(attempt), p_error: redactSecrets(error),
-      }, undefined, { requireObject: true, critical: true })
+      }, undefined, { requireObject: true, control: true })
     },
     async getCaptureOutboxHealth() {
-      if (criticalStrategyDb && typeof criticalStrategyDb.query === 'function') {
-        const result = await criticalStrategyDb.query({
+      if (controlStrategyDb && typeof controlStrategyDb.query === 'function') {
+        const result = await controlStrategyDb.query({
           text: 'select public.get_v105_capture_outbox_health() as health',
           values: [],
         })
@@ -3589,7 +3614,7 @@ export function createSupabaseIngestionClient({
         return health
       }
       return postDurableRest('rpc/get_v105_capture_outbox_health', {}, undefined, {
-        requireObject: true, critical: true,
+        requireObject: true, control: true,
       })
     },
     async writeCloudCaptureStatus(payload) {

@@ -1896,7 +1896,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         shoe: table.shoe,
         round: targetRound,
         strategyVersion: FORMAL_STRATEGY_VERSION,
-      }))
+      }, { priority: 'settlement' }))
       .then((candidate) => {
         if (!isExactScreenPrediction(candidate, table, targetRound, durableIssuanceRequired)) {
           rememberIssuedPredictionReadBackoff(key)

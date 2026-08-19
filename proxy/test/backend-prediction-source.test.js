@@ -5,7 +5,7 @@ import { buildLivePrediction } from '../src/supabase-writer.js'
 
 const issuedAt = '2026-07-17T01:00:00.000Z'
 
-test('tables expose only a complete backend prediction for the exact screen round', async () => {
+test('tables expose only a complete backend prediction for the exact screen round through the formal pool', async () => {
   const tableState = { tableId: 'BAG01', shoe: 88, round: 20, sourceUpdatedAt: issuedAt }
   const exact = {
     ...buildLivePrediction({ ...tableState, round: 19 }),
@@ -13,16 +13,18 @@ test('tables expose only a complete backend prediction for the exact screen roun
     predictionId: 'pid-screen-round-20',
     issuedAt,
   }
+  let readOptions = null
   const app = createApp({
     autoConnect: false,
     supabaseClient: {
       configured: true,
       issuePrediction: async (candidate) => ({ ...candidate, predictionId: `pid-${candidate.targetRound}`, issuedAt }),
-      readIssuedPrediction: async () => exact,
+      readIssuedPrediction: async (_identity, options) => { readOptions = options; return exact },
     },
   })
   app.state.setTables([tableState])
   const [table] = JSON.parse((await app.inject({ url: '/api/tables' })).body)
+  assert.deepEqual(readOptions, { priority: 'settlement' })
   assert.equal(table.prediction.source, 'backend')
   assert.equal(table.prediction.targetRound, 20)
   assert.equal(table.prediction.predictionId, 'pid-screen-round-20')

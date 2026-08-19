@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.10",
+  "releaseVersion": "v106.0.0-formal.11",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.67",
-  "status": "formal10-physical-pool-isolation-candidate",
+  "applicationVersion": "1.0.68",
+  "status": "formal11-raw-control-isolation-candidate",
   "productionE2E": "not-run-production-remains-v105",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.67",
+      "packageVersion": "1.0.68",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,8 +27,8 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "a9f882f6f1525b68fcf41cc9a50737abb858a704ec3179f0ada98d536cdb4eb9",
-    "proxyBuildInput": "624552e8dc7bbb5226363a7d12ea22a4332e008558323f1d54dc4e2c57f88815",
+    "implementationTree": "244429fd1c8e74010e8335c4ea4d06090b52bf46259b05885f6999a104ccf21a",
+    "proxyBuildInput": "da044cb5b6ce8fa2888bb0aa8abe79a0cb5c27b90fe21ac5e7efd9cf6fa874a9",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
     "databaseCutoverInput": "14bffa7c78129bef735b97e92ea4cb4b25e3cbcfc04b5792e93a4728ec6db6c9"
@@ -82,7 +82,7 @@
     "note": "Tie/PUSH excluded from directional hit-rate denominator. Full-output V10 candidate was rejected after producing net -15 hits; eligible-only promotion is the reviewed candidate."
   },
   "verified": {
-    "proxy": "canonical staged formal.10 suite 1013/1013 pass; exit 0; physical-pool construction and routing regressions pass; writer/backpressure/release focused suites pass; 2026-08-20",
+    "proxy": "canonical staged formal.11 suite 1014/1014 pass; exit 0; exact formal-read route, 4/4/1/1 physical pools, raw/control isolation and bounded SQL deadlines covered; 2026-08-20",
     "releaseBinding": "five mandatory staged-tree digests plus seven ordered database artifact contracts with exact Git blob SHA-1 verified in precommit mode; release authorization remains false until external attestation and annotated tag",
     "testEnvironmentFence": "shared proxy/worker scrubber removes DB, service-role, proxy-control, member/admin session, MT token/session/portal path, worker, ingest, Render and Cloudflare authority before child tests; focused 2/2 pass",
     "focusedTests": "formal.8 incident, strategy, writer, ACK, database and release-integrity focused rerun 103/103 pass; authoritative earliest timestamp, cross-sequence retry, retry-not-ACK, HTTP pre-observer suppression, fail-closed lookup, runtime lineage, ordered artifact contracts and required-artifact closure covered",
@@ -91,8 +91,8 @@
     "frontend": "156/156 pass; exact production build pass; unchanged frontend binding e9810003…",
     "worker": "212/212 scrubbed pass; unchanged worker binding caea7c97…; package 1.0.63/build 105/protocol v105",
     "databaseMigration": "compiled against live schema inside transaction and fully rolled back; terminal lifecycle evidence cannot reopen; activation retains v105 immutable settlement but revokes legacy unbound persistence",
-    "diffCheck": "git diff --check pass; only existing line-ending conversion warnings",
-    "secretScan": "gitleaks 8.30.1 formal.10 staged-tree scan; 8.97 KB; zero leaks; exit 0",
+    "diffCheck": "git diff --check pass",
+    "secretScan": "gitleaks 8.30.1 exact staged blobs; 19 files; zero leaks; exit 0",
     "formal5RootCause": "formal.4 incident payload was ten tables and zero rounds; Formal ACK rank hydration now performs one read-only batch and zero synchronous ledger rebuilds.",
     "productionPreflight": "sole Active v105; exact proxy/worker commit 6bdd39e8; HTTP 200; ten tables; pending/processing/error outbox zero; v105 issuance and Final resumed; preserved incident dead-letter baseline 273",
     "formal6RootCause": "formal.5 still sent every ten-table zero-round heartbeat through durable rank work; isolated exact-payload runtime took 372ms, but the full production app repeatedly exceeded the 45-second Formal lease. formal.6 removes rank work from zero-round heartbeat ACKs and limits Final-envelope hydration to the identities carrying durable rounds.",
@@ -109,10 +109,13 @@
     "v105LiveBaseline": "production remains sole Active v105 on exact proxy and worker commit 6bdd39e8; ten tables connected/authenticated/joined; active pending/processing/error zero; incident dead-letter baseline 273 preserved",
     "formal9ProductionResult": "exact formal.9 advanced v106 issuance 261 to 285 while Final remained 0; one outbox lease stayed processing, pending reached 43, and Render recorded nonZeroExit 70 from FORMAL_SETTLEMENT_STALLED; controlled rollback terminalized 10 unresolved issuances, isolated 44 active rows, and restored sole Active v105",
     "formal10Fix": "three physical pg pools now enforce the logical budgets: standard max 5, formal max 4, critical max 1, total 10; standard, formal issuance/lookup/settlement, and critical raw/outbox control operations are routed to their matching physical pool",
-    "formal10FocusedTests": "physical construction RED was one pool versus required three; routing RED observed 5/5/5 instead of 5/4/1; both are GREEN after the fix, and focused writer/backpressure tests pass"
+    "formal10FocusedTests": "physical construction RED was one pool versus required three; routing RED observed 5/5/5 instead of 5/4/1; both are GREEN after the fix, and focused writer/backpressure tests pass",
+    "formal10ProductionResult": "exact formal.10 produced 9 unresolved v106 issuances and zero Finals; a zero-round envelope waited about 43.5 seconds in outbox control after raw envelopes had already shown 18-second then 85-second durable gaps; Proxy health returned 503 and status timed out; controlled rollback restored exact v105 with active outbox zero and dead-letter baseline unchanged at 273",
+    "formal11Fix": "route every issued-prediction read through the four-slot formal pool; split raw durable ingest from slow outbox lifecycle control into independent one-connection physical pools; budgets are 4 standard, 4 formal, 1 raw, 1 control, total 10; bound pool SQL deadlines to 30/40/25/10 seconds with statement deadlines 25/35/20/8 seconds",
+    "formal11FocusedTests": "RED proves a stalled outbox claim blocked the next raw durable ACK and screen issuance read used standard; GREEN proves independent raw/control lanes, exact 4/4/1/1 construction and routing, and formal screen read priority"
   },
   "pending": [
-    "formal.10 staged-tree binding, full suite, fresh independent review and external attestation",
-    "formal.10 controlled production cutover and live E2E"
+    "formal.11 staged-tree binding, exact full suite, two explicit Fresh Reviews and external attestation",
+    "formal.11 controlled production cutover and live E2E"
   ]
 }

@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.10",
-  "gitTag": "v106.0.0-formal.10",
-  "applicationVersion": "1.0.67",
+  "releaseVersion": "v106.0.0-formal.11",
+  "gitTag": "v106.0.0-formal.11",
+  "applicationVersion": "1.0.68",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -250,7 +250,7 @@
         "supabase/operations/rollback_v106_to_v105.sql"
       ],
       "excludedPaths": [],
-      "sha256": "a9f882f6f1525b68fcf41cc9a50737abb858a704ec3179f0ada98d536cdb4eb9"
+      "sha256": "244429fd1c8e74010e8335c4ea4d06090b52bf46259b05885f6999a104ccf21a"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -261,7 +261,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "624552e8dc7bbb5226363a7d12ea22a4332e008558323f1d54dc4e2c57f88815"
+      "sha256": "da044cb5b6ce8fa2888bb0aa8abe79a0cb5c27b90fe21ac5e7efd9cf6fa874a9"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -347,5 +347,11 @@
     "productionEvidence": "v106 immutable issuance advanced from 261 to 285 while Final remained 0; one exact outbox lease remained processing, pending grew to 43, and Render recorded nonZeroExit 70 at 19:25:10Z, proving FORMAL_SETTLEMENT_STALLED after the 45-second lease plus 5-second settle grace",
     "safeState": "all producers stopped; 10 unresolved v106 issuances terminalized; 44 active outbox rows isolated as immutable dead-letter evidence; production restored to sole Active v105, exact proxy and worker commit 6bdd39e8, ten tables, active outbox zero; historical dead-letter baseline is now 273",
     "formal10Fix": "replace the single physical pg.Pool behind logical 5/4/1 scheduling with three independent physical pools capped at 5 standard, 4 formal, and 1 critical connections; route every lane to its matching pool while keeping the total main Proxy DB budget exactly 10"
+  },
+  "formal10Incident": {
+    "observedAt": "2026-08-20T20:42:38+08:00",
+    "productionEvidence": "exact formal.10 produced 9 unresolved v106 issuances and zero Finals; a zero-round outbox envelope waited about 43.5 seconds after earlier raw durable gaps of about 18 and 85 seconds; Proxy health returned 503 and status timed out; independent review also proved the screen issued-prediction read bypassed the formal pool and used standard",
+    "safeState": "Render and Worker stopped; all unresolved v106 issuances terminalized; active outbox zero; production restored to sole Active v105 exact proxy/worker commit 6bdd39e8; ten tables connected/authenticated/joined; historical dead-letter remained 273",
+    "formal11Fix": "use four independent physical pools capped at 4 standard, 4 formal, 1 raw durable ingest, and 1 outbox lifecycle control connection; route every formal issuance/read/settlement to formal; route raw envelope persistence only to raw and claim/complete/fail/health only to control; total remains 10; bound SQL deadlines below HTTP and lease deadlines"
   }
 }

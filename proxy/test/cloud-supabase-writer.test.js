@@ -139,7 +139,7 @@ test('backend formal reads use Supabase transaction pooler without rewriting unr
   assert.equal(resolveBackendReadConnectionString(direct), direct)
 })
 
-test('backend transaction pools physically reserve five standard, four formal, and one critical connection', () => {
+test('backend transaction pools physically reserve four standard, four formal, one raw, and one control connection', () => {
   const configs = []
   createSupabaseIngestionClient({
     dbConnectionString: 'postgresql://user:secret@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres',
@@ -148,17 +148,19 @@ test('backend transaction pools physically reserve five standard, four formal, a
       return { query: async () => ({ rows: [] }) }
     },
   })
-  assert.equal(configs.length, 3)
-  assert.deepEqual(configs.map((config) => config.max), [5, 4, 1])
+  assert.equal(configs.length, 4)
+  assert.deepEqual(configs.map((config) => config.max), [4, 4, 1, 1])
+  assert.deepEqual(configs.map((config) => config.query_timeout), [30000, 40000, 25000, 10000])
+  assert.deepEqual(configs.map((config) => config.statement_timeout), [25000, 35000, 20000, 8000])
   assert.equal(configs.reduce((sum, config) => sum + config.max, 0), 10)
   for (const config of configs) {
     assert.equal(new URL(config.connectionString).port, '6543')
-    assert.equal(config.connectionTimeoutMillis, 60000)
+    assert.equal(config.connectionTimeoutMillis, 10000)
     assert.equal(config.idleTimeoutMillis, 30000)
   }
 })
 
-test('backend transaction pools route standard, formal, and critical work through their physical reservations', async () => {
+test('backend transaction pools route standard, formal, raw, and control work through physical reservations', async () => {
   const laneCalls = []
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co',
@@ -174,6 +176,9 @@ test('backend transaction pools route standard, formal, and critical work throug
         }
         if (/persist_v105_fenced_capture_envelope/i.test(text)) {
           return { rows: [{ persist_v105_fenced_capture_envelope: { persisted: true, duplicate: false, accepted_round_keys: [] } }] }
+        }
+        if (/get_v105_capture_outbox_health/i.test(text)) {
+          return { rows: [{ health: { pending: 0, processing: 0, error: 0, dead_letter: 0 } }] }
         }
         return { rows: [] }
       },
@@ -192,7 +197,8 @@ test('backend transaction pools route standard, formal, and critical work throug
     capturedAt: '2026-08-20T00:00:00.000Z',
     source: { role: 'canonical_api', ownerId: 'physical-owner', epoch: 1 },
   })
-  assert.deepEqual(laneCalls.map((call) => call.max), [5, 4, 1])
+  await client.getCaptureOutboxHealth()
+  assert.deepEqual(laneCalls.map((call) => call.max), [4, 4, 1, 1])
 })
 
 test('builds cloud capture status row without leaking tokenized URL', () => {
