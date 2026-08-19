@@ -152,7 +152,11 @@ server.listen(PORT, () => {
       apiStartupController = createRetryingStartup({
         start: ensureSourceRuntime,
         onReady: () => { lastError = null; snapshotPusher.start() },
-        onError: (error) => { lastError = redactUrlSecrets(error?.message ?? String(error)) },
+        onError: (error) => {
+          lastError = redactUrlSecrets(error?.message ?? String(error))
+          const stack = redactUrlSecrets(error?.stack ?? '').split('\n').slice(0, 12).join('\n')
+          console.error(JSON.stringify({ event: 'worker_source_start_failed', error: lastError, stack }))
+        },
         baseDelayMs: Number(process.env.MT_SOURCE_STARTUP_RETRY_BASE_MS ?? 1000),
         maxDelayMs: Number(process.env.MT_SOURCE_STARTUP_RETRY_MAX_MS ?? 30000),
       })

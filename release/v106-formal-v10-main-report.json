@@ -12,10 +12,10 @@
     "worker": { "packageVersion": "1.0.63", "buildVersion": "105", "strategyVersion": "v105", "workerProtocol": "v105" }
   },
   "releaseBindingDigests": {
-    "implementationTree": "bbeee73eec670a8b028c1f6b62c18f3216ebdfa6d83ff4e4c8d592aeb45a6171",
+    "implementationTree": "c80532f20988356b04a1a129916bf912abd6998d3593275a9d8732b29f0e45de",
     "proxyBuildInput": "a4e63255233aadc35b731dee563cb9dbb47c8c9262e556045d50f81818d4982a",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
-    "workerBuildInput": "d3a65cd863c3fe16fe300dbe3e4293b1cd17bda712d61c9c3e8679d331eeedb1",
+    "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
     "databaseCutoverInput": "1a96e7f98d604a10880d3f8c4ed12bddbe779ce101343784b19c33fc56b4df79"
   },
   "rollbackComponents": {

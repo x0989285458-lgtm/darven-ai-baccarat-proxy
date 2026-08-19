@@ -152,7 +152,7 @@
       "algorithm": "sha256",
       "paths": ["proxy/package.json", "proxy/package-lock.json", "proxy/scripts/run-tests.mjs", "proxy/src", "frontend/package.json", "frontend/package-lock.json", "frontend/src", "cloud-browser-worker/Dockerfile", "cloud-browser-worker/package.json", "cloud-browser-worker/package-lock.json", "cloud-browser-worker/src", "shared", "scripts/verify-v106-formal-release.mjs", "scripts/run-worker-tests-scrubbed.mjs", "scripts/test-env-scrub.mjs", "supabase/migrations/20260818010000_v106_formal_v10_main.sql", "supabase/operations/fence_v105_new_issuance.sql", "supabase/operations/activate_v106_promotion.sql", "supabase/operations/finalize_v106_promotion.sql", "supabase/operations/rollback_v106_to_v105.sql"],
       "excludedPaths": [],
-      "sha256": "bbeee73eec670a8b028c1f6b62c18f3216ebdfa6d83ff4e4c8d592aeb45a6171"
+      "sha256": "c80532f20988356b04a1a129916bf912abd6998d3593275a9d8732b29f0e45de"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -170,7 +170,7 @@
       "algorithm": "sha256",
       "paths": ["cloud-browser-worker/Dockerfile", "cloud-browser-worker/package.json", "cloud-browser-worker/package-lock.json", "cloud-browser-worker/src", "shared"],
       "excludedPaths": [],
-      "sha256": "d3a65cd863c3fe16fe300dbe3e4293b1cd17bda712d61c9c3e8679d331eeedb1"
+      "sha256": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f"
     },
     "databaseCutoverInput": {
       "algorithm": "sha256",
