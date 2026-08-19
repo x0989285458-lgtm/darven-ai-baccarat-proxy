@@ -112,6 +112,11 @@
       "deploymentStep": "finalize",
       "gitBlobSha1": "dd1b83e95da9b178427e6276d359fb07bd36b029"
     },
+    "rollbackTerminalize": {
+      "path": "supabase/operations/terminalize_v106_rollback.sql",
+      "deploymentStep": "rollback-terminalize",
+      "gitBlobSha1": "726be4c0062ca36aea38cd086a1097ba64bb10ce"
+    },
     "rollback": {
       "path": "supabase/operations/rollback_v106_to_v105.sql",
       "deploymentStep": "rollback-only",
@@ -211,7 +216,7 @@
     "componentMatrixNote": "Exact heterogeneous production predecessor artifacts; do not infer one shared application package version.",
     "order": [
       "stop producer admission",
-      "drain all non-terminal unsettled v106 issuances",
+      "run bound v106 rollback terminalization and isolate active outbox evidence",
       "run rollback SQL",
       "deploy exact v105 proxy 6bdd39e8, current exact v105 frontend, and worker 6bdd39e8",
       "verify sole Active v105 and new v105 Final"
@@ -220,7 +225,8 @@
       "v105 formal evidence",
       "V10 shadow evidence",
       "v106 evidence"
-    ]
+    ],
+    "terminalizeScript": "supabase/operations/terminalize_v106_rollback.sql"
   },
   "releaseBinding": {
     "implementationTree": {
@@ -247,10 +253,11 @@
         "supabase/operations/terminalize_v105_cutover.sql",
         "supabase/operations/activate_v106_promotion.sql",
         "supabase/operations/finalize_v106_promotion.sql",
+        "supabase/operations/terminalize_v106_rollback.sql",
         "supabase/operations/rollback_v106_to_v105.sql"
       ],
       "excludedPaths": [],
-      "sha256": "244429fd1c8e74010e8335c4ea4d06090b52bf46259b05885f6999a104ccf21a"
+      "sha256": "ceaf51746f98d95b620f444887ae97b651f76625f10d79b2e29723b7a67b984e"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -294,10 +301,11 @@
         "supabase/operations/terminalize_v105_cutover.sql",
         "supabase/operations/activate_v106_promotion.sql",
         "supabase/operations/finalize_v106_promotion.sql",
+        "supabase/operations/terminalize_v106_rollback.sql",
         "supabase/operations/rollback_v106_to_v105.sql"
       ],
       "excludedPaths": [],
-      "sha256": "14bffa7c78129bef735b97e92ea4cb4b25e3cbcfc04b5792e93a4728ec6db6c9"
+      "sha256": "c61f755ff872f1eb6eb14aa1d7f83b8202db294a9d49367e6f0b9f953e50b4ec"
     }
   },
   "historicalArtifactsPreserved": true,

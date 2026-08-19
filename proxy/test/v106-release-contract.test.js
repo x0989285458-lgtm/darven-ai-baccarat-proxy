@@ -169,7 +169,23 @@ test('v106 manifest encodes DB-first through finalize order and exact rollback',
     terminalEvidenceStatuses: ['expired_no_final', 'abandoned_shoe_change'],
     unknownOrPendingNonFinalBlocksCutover: true,
   })
-  assert.deepEqual(manifest.rollback.order, ['stop producer admission', 'drain all non-terminal unsettled v106 issuances', 'run rollback SQL', 'deploy exact v105 proxy 6bdd39e8, current exact v105 frontend, and worker 6bdd39e8', 'verify sole Active v105 and new v105 Final'])
+  assert.deepEqual(manifest.rollback.order, ['stop producer admission', 'run bound v106 rollback terminalization and isolate active outbox evidence', 'run rollback SQL', 'deploy exact v105 proxy 6bdd39e8, current exact v105 frontend, and worker 6bdd39e8', 'verify sole Active v105 and new v105 Final'])
+})
+
+test('formal rollback terminalization fences v106, proves quiet, preserves evidence, and isolates active outbox', () => {
+  const sql = read('supabase/operations/terminalize_v106_rollback.sql')
+  const manifest = json('release/v106-formal-v10-main-release-manifest.json')
+  assert.match(sql, /revoke execute on function public\.issue_v106_prediction\(jsonb\) from service_role/i)
+  assert.match(sql, /version\s*=\s*'v106'[\s\S]*status\s*=\s*'active'/i)
+  assert.match(sql, /prediction_issued_at\s*>\s*now\(\)\s*-\s*interval\s*'15 seconds'/i)
+  assert.match(sql, /issuance_status\s*=\s*'expired_no_final'/i)
+  assert.match(sql, /status\s*=\s*'dead_letter'[\s\S]*claim_token\s*=\s*null[\s\S]*isolated_at\s*=\s*now\(\)/i)
+  assert.match(sql, /status\s+in\s*\(\s*'pending'\s*,\s*'processing'\s*,\s*'error'\s*\)/i)
+  assert.match(sql, /v106 non-terminal issuance remains after rollback terminalization/i)
+  assert.match(sql, /active outbox remains after rollback terminalization/i)
+  assert.equal(manifest.databaseArtifacts.rollbackTerminalize.path, 'supabase/operations/terminalize_v106_rollback.sql')
+  assert.equal(manifest.rollback.terminalizeScript, 'supabase/operations/terminalize_v106_rollback.sql')
+  assert.equal(manifest.rollback.order[1], 'run bound v106 rollback terminalization and isolate active outbox evidence')
 })
 
 test('formal.4 cutover terminalization is fenced, quiet-period guarded, and identity preserving', () => {

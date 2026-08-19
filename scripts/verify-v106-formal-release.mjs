@@ -24,6 +24,7 @@ const REQUIRED_DATABASE_ARTIFACTS = Object.freeze([
   'supabase/operations/terminalize_v105_cutover.sql',
   'supabase/operations/activate_v106_promotion.sql',
   'supabase/operations/finalize_v106_promotion.sql',
+  'supabase/operations/terminalize_v106_rollback.sql',
   'supabase/operations/rollback_v106_to_v105.sql',
 ])
 const REQUIRED_DATABASE_CONTRACTS = Object.freeze({
@@ -33,7 +34,8 @@ const REQUIRED_DATABASE_CONTRACTS = Object.freeze({
   terminalize: { path: REQUIRED_DATABASE_ARTIFACTS[3], deploymentStep: 'terminalize-v105-cutover' },
   activate: { path: REQUIRED_DATABASE_ARTIFACTS[4], deploymentStep: 'activate-v106' },
   finalize: { path: REQUIRED_DATABASE_ARTIFACTS[5], deploymentStep: 'finalize' },
-  rollback: { path: REQUIRED_DATABASE_ARTIFACTS[6], deploymentStep: 'rollback-only' },
+  rollbackTerminalize: { path: REQUIRED_DATABASE_ARTIFACTS[6], deploymentStep: 'rollback-terminalize' },
+  rollback: { path: REQUIRED_DATABASE_ARTIFACTS[7], deploymentStep: 'rollback-only' },
 })
 const DEPLOYABLE_BINDING_RULES = Object.freeze([
   { pattern: /^proxy\/(?:package(?:-lock)?\.json|src\/)/, bindings: ['implementationTree', 'proxyBuildInput'] },
@@ -41,7 +43,7 @@ const DEPLOYABLE_BINDING_RULES = Object.freeze([
   { pattern: /^frontend\/(?:package(?:-lock)?\.json|src\/)/, bindings: ['implementationTree', 'frontendBuildInput'] },
   { pattern: /^cloud-browser-worker\/(?:Dockerfile|package(?:-lock)?\.json|src\/)/, bindings: ['implementationTree', 'workerBuildInput'] },
   { pattern: /^shared\//, bindings: ['implementationTree', 'proxyBuildInput', 'workerBuildInput'] },
-  { pattern: /^supabase\/(?:migrations\/(?:20260818010000_v106_formal_v10_main|20260820003500_v106_formal8_final_time_fence)\.sql|operations\/(?:fence_v105_new_issuance|terminalize_v105_cutover|activate_v106_promotion|finalize_v106_promotion|rollback_v106_to_v105)\.sql)$/, bindings: ['implementationTree', 'databaseCutoverInput'] },
+  { pattern: /^supabase\/(?:migrations\/(?:20260818010000_v106_formal_v10_main|20260820003500_v106_formal8_final_time_fence)\.sql|operations\/(?:fence_v105_new_issuance|terminalize_v105_cutover|activate_v106_promotion|finalize_v106_promotion|terminalize_v106_rollback|rollback_v106_to_v105)\.sql)$/, bindings: ['implementationTree', 'databaseCutoverInput'] },
   { pattern: /^scripts\/(?:verify-v106-formal-release|run-worker-tests-scrubbed|test-env-scrub)\.mjs$/, bindings: ['implementationTree'] },
 ])
 
@@ -114,7 +116,7 @@ export function verifyV106DatabaseArtifactContracts({ manifest, candidateIndexTr
     if (!['implementationTree', 'databaseCutoverInput'].every((bindingName) => pathIsBound(manifest?.releaseBinding?.[bindingName], contract.path))) {
       throw new Error(`database_artifact_binding_mismatch:${name}`)
     }
-    if (name !== 'rollback') {
+    if (!['rollbackTerminalize', 'rollback'].includes(name)) {
       const stepIndex = deploymentOrder.indexOf(contract.deploymentStep)
       if (stepIndex < 0 || deploymentOrder.lastIndexOf(contract.deploymentStep) !== stepIndex || stepIndex <= previousStepIndex) {
         throw new Error(`database_artifact_order_mismatch:${name}`)
@@ -125,6 +127,7 @@ export function verifyV106DatabaseArtifactContracts({ manifest, candidateIndexTr
   if (manifest.database !== contracts.migration.path) throw new Error('database_artifact_alias_mismatch:migration')
   if (manifest.activation !== contracts.activate.path) throw new Error('database_artifact_alias_mismatch:activate')
   if (manifest.finalize !== contracts.finalize.path) throw new Error('database_artifact_alias_mismatch:finalize')
+  if (manifest?.rollback?.terminalizeScript !== contracts.rollbackTerminalize.path) throw new Error('database_artifact_alias_mismatch:rollbackTerminalize')
   if (manifest?.rollback?.script !== contracts.rollback.path) throw new Error('database_artifact_alias_mismatch:rollback')
   return { ok: true, contracts: Object.keys(REQUIRED_DATABASE_CONTRACTS) }
 }

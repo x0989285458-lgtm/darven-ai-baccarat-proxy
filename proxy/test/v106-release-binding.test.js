@@ -109,6 +109,7 @@ test('v106 coverage fails closed when any mandatory database cutover artifact is
     'supabase/operations/terminalize_v105_cutover.sql',
     'supabase/operations/activate_v106_promotion.sql',
     'supabase/operations/finalize_v106_promotion.sql',
+    'supabase/operations/terminalize_v106_rollback.sql',
     'supabase/operations/rollback_v106_to_v105.sql',
   ]
   for (const artifact of requiredArtifacts) {
@@ -129,10 +130,10 @@ test('v106 database contracts bind every cutover step to one exact Git blob', ()
   assert.equal(verifyV106DatabaseArtifactContracts({ manifest, candidateIndexTree, root: repoRoot }).ok, true)
 
   const missing = structuredClone(manifest)
-  delete missing.databaseArtifacts.terminalize
+  delete missing.databaseArtifacts.rollbackTerminalize
   assert.throws(
     () => verifyV106DatabaseArtifactContracts({ manifest: missing, candidateIndexTree, root: repoRoot }),
-    /database_artifact_contract_missing:terminalize/,
+    /database_artifact_contract_missing:rollbackTerminalize/,
   )
 
   const wrongStep = structuredClone(manifest)
