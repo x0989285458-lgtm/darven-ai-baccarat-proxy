@@ -52,7 +52,7 @@ begin
       locked_at = null,
       next_attempt_at = null,
       isolated_at = now(),
-      last_error = 'formal_v106_rollback_after_producer_stop',
+      last_error = coalesce(nullif(last_error, ''), 'formal_v106_rollback_after_producer_stop'),
       updated_at = now()
   where status in ('pending', 'processing', 'error');
   get diagnostics isolated_outbox_count = row_count;

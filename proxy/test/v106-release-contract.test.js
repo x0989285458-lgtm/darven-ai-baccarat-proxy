@@ -180,6 +180,7 @@ test('formal rollback terminalization fences v106, proves quiet, preserves evide
   assert.match(sql, /prediction_issued_at\s*>\s*now\(\)\s*-\s*interval\s*'15 seconds'/i)
   assert.match(sql, /issuance_status\s*=\s*'expired_no_final'/i)
   assert.match(sql, /status\s*=\s*'dead_letter'[\s\S]*claim_token\s*=\s*null[\s\S]*isolated_at\s*=\s*now\(\)/i)
+  assert.match(sql, /last_error\s*=\s*coalesce\(\s*nullif\(last_error,\s*''\),\s*'formal_v106_rollback_after_producer_stop'\s*\)/i)
   assert.match(sql, /status\s+in\s*\(\s*'pending'\s*,\s*'processing'\s*,\s*'error'\s*\)/i)
   assert.match(sql, /v106 non-terminal issuance remains after rollback terminalization/i)
   assert.match(sql, /active outbox remains after rollback terminalization/i)

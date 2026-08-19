@@ -115,7 +115,7 @@
     "rollbackTerminalize": {
       "path": "supabase/operations/terminalize_v106_rollback.sql",
       "deploymentStep": "rollback-terminalize",
-      "gitBlobSha1": "726be4c0062ca36aea38cd086a1097ba64bb10ce"
+      "gitBlobSha1": "dab02ca35b9da15a74aec415467564692facab67"
     },
     "rollback": {
       "path": "supabase/operations/rollback_v106_to_v105.sql",
@@ -257,7 +257,7 @@
         "supabase/operations/rollback_v106_to_v105.sql"
       ],
       "excludedPaths": [],
-      "sha256": "ceaf51746f98d95b620f444887ae97b651f76625f10d79b2e29723b7a67b984e"
+      "sha256": "1eee1f8fb8b36bc0a55bed823f6ef8811788363f6ffa65b6690befc08d774ac2"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -305,7 +305,7 @@
         "supabase/operations/rollback_v106_to_v105.sql"
       ],
       "excludedPaths": [],
-      "sha256": "c61f755ff872f1eb6eb14aa1d7f83b8202db294a9d49367e6f0b9f953e50b4ec"
+      "sha256": "a6bb70aa2802ff6fe2d1ee7c1bdab4ef82a0537956fd729a853a87dd96d24438"
     }
   },
   "historicalArtifactsPreserved": true,
