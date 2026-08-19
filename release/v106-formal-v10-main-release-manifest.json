@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.8",
-  "gitTag": "v106.0.0-formal.8",
-  "applicationVersion": "1.0.65",
+  "releaseVersion": "v106.0.0-formal.9",
+  "gitTag": "v106.0.0-formal.9",
+  "applicationVersion": "1.0.66",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -250,7 +250,7 @@
         "supabase/operations/rollback_v106_to_v105.sql"
       ],
       "excludedPaths": [],
-      "sha256": "5484d4a9399e02c657391a84a8c6af7646195c5457eb187697db2fb160f79fcd"
+      "sha256": "ae21a55ad12fa8d0b36adfb15cb05b2c52d04e94e0556da243cfaa501c152e2c"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -261,7 +261,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "32cbb1faedd3089bfc1844fff1c4fb67e82ff530fcaf5e7eca8dd0dc6d6cadcc"
+      "sha256": "971e74106eaae11c3c2c28030a9d4beebe109d90c73633630420133fc0d004da"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -328,5 +328,11 @@
     "failedIdentities": ["BAG06:17257:48", "BAG02:15635:55"],
     "safeState": "production rolled back to sole Active v105; exact v105 proxy restored; ten tables; active outbox zero; v105 Final resumed",
     "formal8Fix": "durable outbox work inherits its persisted Final receive time and every retry rebinds to the first-write cloud_table_rounds receive time for that identity; post-result issuances are rejected across sequence replays; Final state is mounted before table observers may issue; missing issuance or authoritative Final-time lookup fails closed; verifier requires every named database cutover artifact including terminalize_v105_cutover.sql"
+  },
+  "formal8Incident": {
+    "observedAt": "2026-08-19T17:34:00Z",
+    "productionEvidence": "v106 issuance advanced from 252 to 261 while Final remained 0; four zero-round outbox envelopes completed in about 0.5, 68, 67 and 23 seconds, and the third five-second capture reached durable storage about 41 seconds after its capture timestamp",
+    "safeState": "production rolled back to sole Active v105; exact v105 proxy and worker restored; v105 Final increased from 120198 to 120252 during the later live probe; active outbox returned to zero; historical dead-letter baseline 229 preserved",
+    "formal9Fix": "one of ten backend scheduler slots is reserved for durable worker-envelope persistence and outbox claim/complete/fail/health control RPCs; standard work is bounded to five and formal work to four so ACK-critical persistence and lifecycle control cannot queue behind a saturated non-critical mix"
   }
 }

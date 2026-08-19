@@ -25,7 +25,7 @@ const mainProjection = (prediction) => ({
 
 test('v106 formal identity promotes the exact V10 main projection without shadow visibility fields', () => {
   assert.equal(V106_FORMAL_STRATEGY_VERSION, 'v106')
-  assert.equal(V106_FORMAL_RELEASE_VERSION, 'v106.0.0-formal.8')
+  assert.equal(V106_FORMAL_RELEASE_VERSION, 'v106.0.0-formal.9')
   const expected = buildV105ShadowV10Prediction(table)
   const actual = buildV106FormalPrediction(table)
   assert.equal(expected.structureDiagnostics.eligible, true)

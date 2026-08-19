@@ -762,7 +762,7 @@ test('strategy queue deadline identifies the exact queued SQL target', async () 
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
     requestTimeoutMs: 20, durableWriteRequestTimeoutMs: 20, strategyPool,
   })
-  const blockers = Array.from({ length: 6 }, (_, index) => writer.writeCloudTableSnapshot({
+  const blockers = Array.from({ length: 5 }, (_, index) => writer.writeCloudTableSnapshot({
     sessionId: `diagnostic-blocker-${index}`, tables: [{ tableId: 'BAG01' }], status: { connected: true },
   }))
   await delay(10)
@@ -778,7 +778,7 @@ test('strategy queue deadline identifies the exact queued SQL target', async () 
   }
 })
 
-test('strategy scheduler uses six standard slots when database headroom is available', async () => {
+test('strategy scheduler keeps five standard slots when database headroom is available', async () => {
   let started = 0
   let releaseAll = false
   const releases = []
@@ -795,12 +795,12 @@ test('strategy scheduler uses six standard slots when database headroom is avail
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
     requestTimeoutMs: 100, durableWriteRequestTimeoutMs: 100, strategyPool,
   })
-  const calls = Array.from({ length: 6 }, (_, index) => writer.writeCloudTableSnapshot({
+  const calls = Array.from({ length: 5 }, (_, index) => writer.writeCloudTableSnapshot({
     sessionId: `standard-headroom-${index}`, tables: [{ tableId: 'BAG01' }], status: { connected: true },
   }))
   await delay(20)
   try {
-    assert.equal(started, 6, 'all six standard slots should start without queueing')
+    assert.equal(started, 5, 'all five standard slots should start without queueing')
   } finally {
     releaseAll = true
     for (const release of releases.splice(0)) release()
@@ -858,7 +858,7 @@ test('formal issuance uses the reserved priority slot when shadow-standard traff
   }
 })
 
-test('formal settlement burst keeps four reserved priority slots beside six standard slots', async () => {
+test('formal settlement burst keeps four reserved priority slots beside five standard slots', async () => {
   let standardStarted = 0
   let formalStarted = 0
   let releaseAll = false
@@ -899,10 +899,10 @@ test('formal settlement burst keeps four reserved priority slots beside six stan
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
     requestTimeoutMs: 100, durableWriteRequestTimeoutMs: 100, strategyPool,
   })
-  const standardCalls = [1, 2, 3, 4, 5, 6].map((index) => writer.writeCloudTableSnapshot({
+  const standardCalls = [1, 2, 3, 4, 5].map((index) => writer.writeCloudTableSnapshot({
     sessionId: `standard-${index}`, tables: [{ tableId: `BAG${index}` }], status: { connected: true },
   }))
-  while (standardStarted < 6) await new Promise((resolve) => setImmediate(resolve))
+  while (standardStarted < 5) await new Promise((resolve) => setImmediate(resolve))
 
   const tableIds = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05']
   const formalCalls = tableIds.map((tableId, index) => {
@@ -922,6 +922,159 @@ test('formal settlement burst keeps four reserved priority slots beside six stan
   for (const release of standardReleases.splice(0)) release()
   for (const release of formalReleases.splice(0)) release()
   await Promise.all([...standardCalls, ...formalCalls])
+})
+
+test('raw ingest ACK keeps a dedicated slot when five standard and four formal queries are saturated', async () => {
+  let standardStarted = 0
+  let formalStarted = 0
+  let rawIngestStarted = 0
+  let releaseAll = false
+  const releases = []
+  const strategyPool = {
+    async query(query) {
+      const text = String(query?.text ?? query)
+      if (/persist_latest_cloud_table_snapshot/i.test(text)) standardStarted += 1
+      else if (/persist_v105_fenced_capture_envelope/i.test(text)) rawIngestStarted += 1
+      else formalStarted += 1
+      if (!releaseAll && !/persist_v105_fenced_capture_envelope/i.test(text)) {
+        await new Promise((resolve) => releases.push(resolve))
+      }
+      if (/persist_latest_cloud_table_snapshot/i.test(text)) {
+        return { rows: [{ persist_latest_cloud_table_snapshot: { persisted: true } }] }
+      }
+      if (/persist_v105_fenced_capture_envelope/i.test(text)) {
+        return { rows: [{ persist_v105_fenced_capture_envelope: {
+          persisted: true, duplicate: false, accepted_round_keys: [],
+        } }] }
+      }
+      return { rows: [] }
+    },
+  }
+  const writer = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    requestTimeoutMs: 500, durableWriteRequestTimeoutMs: 500, strategyPool,
+  })
+  const standardCalls = Array.from({ length: 5 }, (_, index) => writer.writeCloudTableSnapshot({
+    sessionId: `raw-ack-standard-${index}`, tables: [{ tableId: `BAG${index}` }], status: { connected: true },
+  }))
+  while (standardStarted < 5) await new Promise((resolve) => setImmediate(resolve))
+  const formalCalls = [1, 2, 3, 4].map((round) => writer.readIssuedPrediction({
+    tableId: 'BAG01', shoe: 'S1', round, strategyVersion: 'v105',
+  }, { priority: 'settlement' }))
+  while (formalStarted < 4) await new Promise((resolve) => setImmediate(resolve))
+  const rawIngest = writer.persistCaptureEnvelope({
+    sessionId: 'raw-ack-worker', sequence: 1, roundKeys: [],
+    tables: [{ tableId: 'BAG01', shoe: 'S1', round: 10 }], rounds: [],
+    status: { connected: true, authenticated: true, tableCount: 1 },
+    capturedAt: '2026-08-20T00:00:00.000Z',
+    source: { role: 'canonical_api', ownerId: 'raw-ack-owner', epoch: 1 },
+  })
+  await delay(20)
+  try {
+    assert.equal(rawIngestStarted, 1, 'raw ingest must not queue behind all background/formal slots')
+  } finally {
+    releaseAll = true
+    for (const release of releases.splice(0)) release()
+    await Promise.allSettled([...standardCalls, ...formalCalls, rawIngest])
+  }
+})
+
+test('outbox control RPCs keep the critical lane when standard and formal work are saturated', async () => {
+  let standardStarted = 0
+  let formalStarted = 0
+  const controlStarted = []
+  let releaseAll = false
+  const releases = []
+  const strategyPool = {
+    async query(query) {
+      const text = String(query?.text ?? query)
+      if (/persist_latest_cloud_table_snapshot/i.test(text)) {
+        standardStarted += 1
+        if (!releaseAll) await new Promise((resolve) => releases.push(resolve))
+        return { rows: [{ persist_latest_cloud_table_snapshot: { persisted: true } }] }
+      }
+      if (/claim_v105_capture_settlement_outbox/i.test(text)) {
+        controlStarted.push('claim')
+        return { rows: [] }
+      }
+      if (/complete_v105_capture_settlement_outbox/i.test(text)) {
+        controlStarted.push('complete')
+        return { rows: [{ complete_v105_capture_settlement_outbox: { completed: true } }] }
+      }
+      if (/fail_v105_capture_settlement_outbox/i.test(text)) {
+        controlStarted.push('fail')
+        return { rows: [{ fail_v105_capture_settlement_outbox: { failed: true } }] }
+      }
+      if (/get_v105_capture_outbox_health/i.test(text)) {
+        controlStarted.push('health')
+        return { rows: [{ health: { pending: 0, processing: 0, error: 0, dead_letter: 0 } }] }
+      }
+      formalStarted += 1
+      if (!releaseAll) await new Promise((resolve) => releases.push(resolve))
+      return { rows: [] }
+    },
+  }
+  const writer = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    requestTimeoutMs: 500, durableWriteRequestTimeoutMs: 500, strategyPool,
+  })
+  const standardCalls = Array.from({ length: 5 }, (_, index) => writer.writeCloudTableSnapshot({
+    sessionId: `control-standard-${index}`, tables: [{ tableId: `BAG${index}` }], status: { connected: true },
+  }))
+  while (standardStarted < 5) await new Promise((resolve) => setImmediate(resolve))
+  const formalCalls = [1, 2, 3, 4].map((round) => writer.readIssuedPrediction({
+    tableId: 'BAG01', shoe: 'S1', round, strategyVersion: 'v105',
+  }, { priority: 'settlement' }))
+  while (formalStarted < 4) await new Promise((resolve) => setImmediate(resolve))
+  const controls = [
+    writer.claimCaptureOutbox({ limit: 1 }),
+    writer.completeCaptureOutbox({ sessionId: 'control', sequence: 1, claimToken: '00000000-0000-0000-0000-000000000001', attempt: 1 }),
+    writer.failCaptureOutbox({ sessionId: 'control', sequence: 2, claimToken: '00000000-0000-0000-0000-000000000002', attempt: 1, error: 'bounded' }),
+    writer.getCaptureOutboxHealth(),
+  ]
+  await delay(20)
+  try {
+    assert.deepEqual(controlStarted, ['claim', 'complete', 'fail', 'health'])
+  } finally {
+    releaseAll = true
+    for (const release of releases.splice(0)) release()
+    await Promise.allSettled([...standardCalls, ...formalCalls, ...controls])
+  }
+})
+
+test('timed-out critical control work is removed and the reserved slot remains reusable', async () => {
+  let releaseClaim
+  let healthStarted = 0
+  const strategyPool = {
+    async query(query) {
+      const text = String(query?.text ?? query)
+      if (/claim_v105_capture_settlement_outbox/i.test(text)) {
+        await new Promise((resolve) => { releaseClaim = resolve })
+        return { rows: [] }
+      }
+      if (/get_v105_capture_outbox_health/i.test(text)) {
+        healthStarted += 1
+        return { rows: [{ health: { pending: 0, processing: 0, error: 0, dead_letter: 0 } }] }
+      }
+      throw new Error(`unexpected query in critical timeout test: ${text}`)
+    },
+  }
+  const writer = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    requestTimeoutMs: 20, durableWriteRequestTimeoutMs: 20, strategyPool,
+  })
+  const blockingClaim = writer.claimCaptureOutbox({ limit: 1 })
+  while (typeof releaseClaim !== 'function') await new Promise((resolve) => setImmediate(resolve))
+  await assert.rejects(
+    writer.getCaptureOutboxHealth(),
+    /strategy query queue deadline exceeded: get_v105_capture_outbox_health/,
+  )
+  assert.equal(healthStarted, 0)
+  releaseClaim()
+  await blockingClaim
+  const health = await writer.getCaptureOutboxHealth()
+  assert.equal(healthStarted, 1)
+  assert.equal(health.pending, 0)
 })
 
 test('sustained priority traffic cannot starve an ACK-required standard durable write', async () => {
