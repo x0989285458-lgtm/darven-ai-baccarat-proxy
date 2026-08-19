@@ -149,6 +149,25 @@ test('v106 database contracts bind every cutover step to one exact Git blob', ()
     () => verifyV106DatabaseArtifactContracts({ manifest: wrongBlob, candidateIndexTree, root: repoRoot }),
     /database_artifact_blob_mismatch:finalize/,
   )
+
+  const unsafeRollbackOrder = structuredClone(manifest)
+  unsafeRollbackOrder.rollback.order = [
+    'run rollback SQL',
+    'run bound v106 rollback terminalization and isolate active outbox evidence',
+    'stop producer admission',
+    ...manifest.rollback.order.slice(3),
+  ]
+  assert.throws(
+    () => verifyV106DatabaseArtifactContracts({ manifest: unsafeRollbackOrder, candidateIndexTree, root: repoRoot }),
+    /database_rollback_order_mismatch/,
+  )
+
+  const omittedRollbackTerminalizer = structuredClone(manifest)
+  omittedRollbackTerminalizer.rollback.order = manifest.rollback.order.filter((step) => step !== 'run bound v106 rollback terminalization and isolate active outbox evidence')
+  assert.throws(
+    () => verifyV106DatabaseArtifactContracts({ manifest: omittedRollbackTerminalizer, candidateIndexTree, root: repoRoot }),
+    /database_rollback_order_mismatch/,
+  )
 })
 
 test('v106 release authorization rejects lightweight tags and resolves annotated tags', async () => {

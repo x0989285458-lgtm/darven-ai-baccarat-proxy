@@ -37,6 +37,13 @@ const REQUIRED_DATABASE_CONTRACTS = Object.freeze({
   rollbackTerminalize: { path: REQUIRED_DATABASE_ARTIFACTS[6], deploymentStep: 'rollback-terminalize' },
   rollback: { path: REQUIRED_DATABASE_ARTIFACTS[7], deploymentStep: 'rollback-only' },
 })
+const REQUIRED_ROLLBACK_ORDER = Object.freeze([
+  'stop producer admission',
+  'run bound v106 rollback terminalization and isolate active outbox evidence',
+  'run rollback SQL',
+  'deploy exact v105 proxy 6bdd39e8, current exact v105 frontend, and worker 6bdd39e8',
+  'verify sole Active v105 and new v105 Final',
+])
 const DEPLOYABLE_BINDING_RULES = Object.freeze([
   { pattern: /^proxy\/(?:package(?:-lock)?\.json|src\/)/, bindings: ['implementationTree', 'proxyBuildInput'] },
   { pattern: /^proxy\/scripts\/run-tests\.mjs$/, bindings: ['implementationTree'] },
@@ -129,6 +136,11 @@ export function verifyV106DatabaseArtifactContracts({ manifest, candidateIndexTr
   if (manifest.finalize !== contracts.finalize.path) throw new Error('database_artifact_alias_mismatch:finalize')
   if (manifest?.rollback?.terminalizeScript !== contracts.rollbackTerminalize.path) throw new Error('database_artifact_alias_mismatch:rollbackTerminalize')
   if (manifest?.rollback?.script !== contracts.rollback.path) throw new Error('database_artifact_alias_mismatch:rollback')
+  if (!Array.isArray(manifest?.rollback?.order)
+      || manifest.rollback.order.length !== REQUIRED_ROLLBACK_ORDER.length
+      || manifest.rollback.order.some((step, index) => step !== REQUIRED_ROLLBACK_ORDER[index])) {
+    throw new Error('database_rollback_order_mismatch')
+  }
   return { ok: true, contracts: Object.keys(REQUIRED_DATABASE_CONTRACTS) }
 }
 

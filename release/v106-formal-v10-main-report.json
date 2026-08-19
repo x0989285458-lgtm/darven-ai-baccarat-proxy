@@ -27,7 +27,7 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "1eee1f8fb8b36bc0a55bed823f6ef8811788363f6ffa65b6690befc08d774ac2",
+    "implementationTree": "037560d33b2e6eb4e41321f8967c7a7d1e9b539dd5fb5b393b9a2fb33bb503d6",
     "proxyBuildInput": "da044cb5b6ce8fa2888bb0aa8abe79a0cb5c27b90fe21ac5e7efd9cf6fa874a9",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
@@ -82,7 +82,7 @@
     "note": "Tie/PUSH excluded from directional hit-rate denominator. Full-output V10 candidate was rejected after producing net -15 hits; eligible-only promotion is the reviewed candidate."
   },
   "verified": {
-    "proxy": "1015/1015 PASS after preserving existing rollback Outbox diagnostics",
+    "proxy": "1015/1015 PASS after verifier rollback-order fail-closed fix",
     "releaseBinding": "five mandatory staged-tree digests plus seven ordered database artifact contracts with exact Git blob SHA-1 verified in precommit mode; release authorization remains false until external attestation and annotated tag",
     "testEnvironmentFence": "shared proxy/worker scrubber removes DB, service-role, proxy-control, member/admin session, MT token/session/portal path, worker, ingest, Render and Cloudflare authority before child tests; focused 2/2 pass",
     "focusedTests": "formal.8 incident, strategy, writer, ACK, database and release-integrity focused rerun 103/103 pass; authoritative earliest timestamp, cross-sequence retry, retry-not-ACK, HTTP pre-observer suppression, fail-closed lookup, runtime lineage, ordered artifact contracts and required-artifact closure covered",
@@ -118,7 +118,10 @@
     "formal11FinalReviewBlock": "candidate 9830dca BLOCK: rollback terminalizer overwrote pre-existing Outbox last_error evidence",
     "formal11EvidencePreservationFix": "rollback terminalizer now preserves every non-empty existing last_error exactly and writes the bounded rollback reason only when no prior diagnostic exists",
     "rollbackTerminalizerEvidenceProbe": "PASS in rolled-back production-schema transaction: error row became dead_letter, exact pre-existing last_error preserved, claim cleared, isolated_at set, active Outbox 0; rollback restored v105 and removed test row",
-    "gitleaksFinalEvidenceFix": "0 findings across 4 staged final evidence-preservation files"
+    "gitleaksFinalEvidenceFix": "0 findings across 4 staged final evidence-preservation files",
+    "formal11RollbackOrderReviewBlock": "candidate deb6225 BLOCK: verifier accepted swapped rollback order and omission of the bound terminalizer step",
+    "formal11RollbackOrderFix": "verifier now fail-closes unless rollback order exactly stops producer admission, runs bound v106 terminalization, runs rollback SQL, restores exact V105 components, then verifies sole V105 plus new V105 Final; negative tests cover swapped and omitted terminalizer order",
+    "gitleaksFinalOrderFix": "0 findings across 4 staged rollback-order verifier files"
   },
   "pending": [
     "formal.11 refreshed final commit/tree, full suite, two explicit Fresh Reviews and external attestation",

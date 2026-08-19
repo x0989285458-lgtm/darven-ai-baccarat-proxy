@@ -257,7 +257,7 @@
         "supabase/operations/rollback_v106_to_v105.sql"
       ],
       "excludedPaths": [],
-      "sha256": "1eee1f8fb8b36bc0a55bed823f6ef8811788363f6ffa65b6690befc08d774ac2"
+      "sha256": "037560d33b2e6eb4e41321f8967c7a7d1e9b539dd5fb5b393b9a2fb33bb503d6"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
