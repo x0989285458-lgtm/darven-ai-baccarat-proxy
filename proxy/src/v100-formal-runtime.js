@@ -110,7 +110,7 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
       identities.push({ source, tableId, shoe, expectedCompleteThrough })
     }
     if (identities.length === 0) return
-    const rows = await writer.readV100RankLedgers(identities)
+    const rows = await writer.readV100RankLedgers(identities, { recoverMissing: false })
     for (const row of Array.isArray(rows) ? rows : []) {
       const rowSource = String(row?.identity?.source ?? row?.source ?? '')
       const tableId = String(row?.identity?.table_id ?? row?.identity?.tableId ?? row?.table_id ?? row?.tableId ?? '')

@@ -151,10 +151,12 @@ test('formal rank-ledger work is serialized so one capture cannot starve service
 
 test('cold ten-table capture hydrates exact rank-ledger identities with one bounded batch read', async () => {
   const batchCalls = []
+  const batchOptions = []
   const writer = {
     configured: true,
-    async readV100RankLedgers(identities) {
+    async readV100RankLedgers(identities, options) {
       batchCalls.push(structuredClone(identities))
+      batchOptions.push(structuredClone(options))
       return identities.map((identity) => durable({
         identity: { source: identity.source, table_id: identity.tableId, shoe: identity.shoe },
         completeThroughRound: 0,
@@ -176,6 +178,7 @@ test('cold ten-table capture hydrates exact rank-ledger identities with one boun
   assert.deepEqual(batchCalls[0], tables.map((item) => ({
     source: 'mt-cloud', tableId: item.tableId, shoe: item.shoe, expectedCompleteThrough: item.round,
   })))
+  assert.deepEqual(batchOptions, [{ recoverMissing: false }])
   assert.equal(result.tables.length, 10)
 })
 

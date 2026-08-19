@@ -2477,7 +2477,7 @@ export function createSupabaseIngestionClient({
       if (rows.length !== 1) throw new Error('conflicting v100 durable rank ledger identity')
       return normalizeV100DurableRankLedger(rows[0], { source: normalizedSource, tableId: normalizedTable, shoe: normalizedShoe })
     },
-    async readV100RankLedgers(identities = []) {
+    async readV100RankLedgers(identities = [], { recoverMissing = true } = {}) {
       const exact = []
       const seen = new Set()
       for (const identity of Array.isArray(identities) ? identities : []) {
@@ -2532,29 +2532,31 @@ export function createSupabaseIngestionClient({
         JSON.stringify([String(row?.source ?? ''), String(row?.table_id ?? ''), String(row?.shoe_no ?? '')]), row,
       ]))
       let recovered = false
-      for (const identity of exact) {
-        const key = JSON.stringify([identity.source, identity.tableId, identity.shoe])
-        const current = initial.get(key)
-        const completeThrough = Number(current?.complete_through_round)
-        const terminal = current?.status === 'invalid' || current?.status === 'conflicted'
-        const currentEnough = current?.status === 'contiguous'
-          && (identity.expectedCompleteThrough == null
-            || (Number.isSafeInteger(completeThrough) && completeThrough >= identity.expectedCompleteThrough))
-        if (terminal || currentEnough) continue
-        try {
-          const acknowledgement = priorityStrategyDb && typeof priorityStrategyDb.query === 'function'
-            ? (await priorityStrategyDb.query({
-                text: 'select public.rebuild_v100_rank_ledger_from_cloud_rounds($1,$2,$3) as recovery',
-                values: [identity.source, identity.tableId, identity.shoe],
-              })).rows?.[0]?.recovery
-            : await postDurableRest('rpc/rebuild_v100_rank_ledger_from_cloud_rounds', {
-                p_source: identity.source,
-                p_table_id: identity.tableId,
-                p_shoe_no: identity.shoe,
-              }, undefined, { requireObject: true })
-          if (acknowledgement?.accepted === true && acknowledgement?.status === 'contiguous') recovered = true
-        } catch {
-          // Fail closed with the existing gap/missing ledger; the runtime retries this identity.
+      if (recoverMissing) {
+        for (const identity of exact) {
+          const key = JSON.stringify([identity.source, identity.tableId, identity.shoe])
+          const current = initial.get(key)
+          const completeThrough = Number(current?.complete_through_round)
+          const terminal = current?.status === 'invalid' || current?.status === 'conflicted'
+          const currentEnough = current?.status === 'contiguous'
+            && (identity.expectedCompleteThrough == null
+              || (Number.isSafeInteger(completeThrough) && completeThrough >= identity.expectedCompleteThrough))
+          if (terminal || currentEnough) continue
+          try {
+            const acknowledgement = priorityStrategyDb && typeof priorityStrategyDb.query === 'function'
+              ? (await priorityStrategyDb.query({
+                  text: 'select public.rebuild_v100_rank_ledger_from_cloud_rounds($1,$2,$3) as recovery',
+                  values: [identity.source, identity.tableId, identity.shoe],
+                })).rows?.[0]?.recovery
+              : await postDurableRest('rpc/rebuild_v100_rank_ledger_from_cloud_rounds', {
+                  p_source: identity.source,
+                  p_table_id: identity.tableId,
+                  p_shoe_no: identity.shoe,
+                }, undefined, { requireObject: true })
+            if (acknowledgement?.accepted === true && acknowledgement?.status === 'contiguous') recovered = true
+          } catch {
+            // Fail closed with the existing gap/missing ledger; the runtime retries this identity.
+          }
         }
       }
       if (recovered) rows = await readRows()

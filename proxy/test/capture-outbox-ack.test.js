@@ -489,6 +489,8 @@ test('temporary claim failure retries but an uncancellable exact failure ACK is 
   let claimCalls = 0
   const failedAcks = []
   const completed = []
+  let resolveSecondCompletion
+  const secondCompletion = new Promise((resolve) => { resolveSecondCompletion = resolve })
   const app = createApp({
     autoConnect: false, outboxBackoffMs: 1, outboxWorkDeadlineMs: 25,
     supabaseClient: {
@@ -500,7 +502,11 @@ test('temporary claim failure retries but an uncancellable exact failure ACK is 
         if (claimCalls === 3) return [claimedRow(2)]
         return []
       },
-      async completeCaptureOutbox({ sequence }) { completed.push(sequence); return { completed: true } },
+      async completeCaptureOutbox({ sequence }) {
+        completed.push(sequence)
+        if (sequence === 2) resolveSecondCompletion()
+        return { completed: true }
+      },
       async failCaptureOutbox(identity) {
         failedAcks.push(`${identity.sessionId}\u0000${identity.sequence}\u0000${identity.claimToken}\u0000${identity.attempt}`)
         throw new Error(`temporary fail RPC outage for ${identity.claimToken}`)
@@ -509,9 +515,16 @@ test('temporary claim failure retries but an uncancellable exact failure ACK is 
     v100FormalRuntime: { enabled: false },
   })
   await app.drainCaptureOutbox().catch(() => {})
-  const retryDeadline = Date.now() + 5_000
-  while (!completed.includes(2) && Date.now() < retryDeadline) {
-    await new Promise((resolve) => setTimeout(resolve, 5))
+  let retryTimeout
+  try {
+    await Promise.race([
+      secondCompletion,
+      new Promise((_, reject) => {
+        retryTimeout = setTimeout(() => reject(new Error('scheduled claim retry did not complete the next claimable Final')), 15_000)
+      }),
+    ])
+  } finally {
+    clearTimeout(retryTimeout)
   }
   await app.waitForCaptureOutboxIdle()
   assert.ok(claimCalls >= 3)

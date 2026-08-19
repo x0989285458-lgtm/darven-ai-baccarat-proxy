@@ -122,6 +122,30 @@ test('batch rank-ledger hydration recovers missing current shoes before one exac
   assert.deepEqual(queries[3].values, [['mt-cloud', 'mt-cloud'], ['BAG01', 'BAG10'], ['S1', 'S9']])
 })
 
+test('formal batch rank-ledger hydration can skip synchronous recovery writes', async () => {
+  const queries = []
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    strategyPool: { async query(query) {
+      queries.push(query)
+      if (/rebuild_v100_rank_ledger_from_cloud_rounds/i.test(query.text)) {
+        assert.fail('formal ACK path must not synchronously rebuild rank ledgers')
+      }
+      return { rows: [] }
+    } },
+    fetchImpl: async () => assert.fail('Direct DB batch hydration must not use REST'),
+  })
+
+  const rows = await client.readV100RankLedgers([
+    { source: 'mt-cloud', tableId: 'BAG01', shoe: 'S1', expectedCompleteThrough: 10 },
+    { source: 'mt-cloud', tableId: 'BAG02', shoe: 'S2', expectedCompleteThrough: 20 },
+  ], { recoverMissing: false })
+
+  assert.deepEqual(rows, [])
+  assert.equal(queries.length, 1)
+  assert.match(queries[0].text, /unnest\(\$1::text\[\], \$2::text\[\], \$3::text\[\]\)/i)
+})
+
 test('batch rank-ledger hydration never rebuilds a terminal invalid ledger', async () => {
   const queries = []
   const ranks = Object.fromEntries(['A','2','3','4','5','6','7','8','9','10','J','Q','K'].map((rank) => [rank, 0]))
