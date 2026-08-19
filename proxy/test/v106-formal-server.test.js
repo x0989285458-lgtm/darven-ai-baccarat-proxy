@@ -367,3 +367,46 @@ test('server links a durable Final settlement back to the original v106 predicti
   assert.equal(settlements.length, 1)
   assert.equal(settlements[0].predictionId, 'formal-v106-20')
 })
+
+test('production preflight binds a negative issuance decision so a later issuance cannot settle without rank work', async () => {
+  let reads = 0
+  let settlements = 0
+  const lateCandidate = {
+    targetTableId: 'BAG01', targetShoe: '88', targetRound: 20,
+    strategyVersion: 'v106', predictionId: 'late-v106-20',
+  }
+  const writer = {
+    configured: true,
+    async readIssuedPrediction() {
+      reads += 1
+      return reads > 2 ? lateCandidate : null
+    },
+    async persistRound() { settlements += 1; return { prediction: { settlement_final: true } } },
+  }
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    ingestKey: 'worker-key',
+    controlToken: 'control-key',
+    memberSessionSecret: 'test-only-member-session-secret-that-is-longer-than-thirty-two-bytes',
+    adminSessionSecret: 'test-only-admin-session-secret-that-is-longer-than-thirty-two-bytes',
+    supabaseClient: writer,
+  })
+  const round = {
+    tableId: 'BAG01', shoe: 88, round: 20, winner: 'banker',
+    rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9],
+    sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
+  }
+
+  const preflight = await app.state.preflightRoundEvent(round)
+  assert.equal(preflight.ok, true)
+  assert.equal(preflight.value.formalRankEligible, false)
+  assert.equal(preflight.value.settlementCandidateDecided, true)
+  await app.state.upsertRoundEvent(round, { preflight: preflight.value })
+
+  assert.equal(reads, 2)
+  assert.equal(settlements, 0)
+  await app.stop()
+})

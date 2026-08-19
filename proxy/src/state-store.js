@@ -5,7 +5,7 @@ import { isVerifiedFinalRoundAction } from '../../shared/real-card-validator.js'
 
 const MAX_ROAD_HISTORY_ROUND = 100
 
-export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotRounds = true } = {}) {
+export function createProxyState({ onRoundEvent, onRoundPreflight, onTablesUpdated, inferSnapshotRounds = true } = {}) {
   const shoeTracker = createShoeTracker({ deckCount: 8 })
   const rankLedger = createRankLedger()
   const realRoundHistoryByTable = new Map()
@@ -23,11 +23,22 @@ export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotR
     tables: [],
   }
 
-  async function emitRoundEvent(round, table) {
+  async function emitRoundEvent(round, table, context) {
     if (typeof onRoundEvent !== 'function') return { ok: true }
     try {
-      await onRoundEvent(round, table)
-      return { ok: true }
+      const value = await onRoundEvent(round, table, context)
+      return { ok: true, value }
+    } catch (error) {
+      state.status.persistenceError = redactSecrets(error?.message ?? String(error))
+      return { ok: false, error }
+    }
+  }
+
+  async function preflightRoundEvent(round, table) {
+    if (typeof onRoundPreflight !== 'function') return { ok: true }
+    try {
+      const value = await onRoundPreflight(round, table)
+      return { ok: true, value }
     } catch (error) {
       state.status.persistenceError = redactSecrets(error?.message ?? String(error))
       return { ok: false, error }
@@ -49,7 +60,7 @@ export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotR
       for (const item of inferredEvents) void emitRoundEvent(item.round, item.predictionTable)
       if (typeof onTablesUpdated === 'function') onTablesUpdated(structuredCloneSafe(state.tables))
     },
-    upsertRoundEvent(event = {}) {
+    upsertRoundEvent(event = {}, context = {}) {
       const tableId = String(event.tableId ?? '')
       if (!tableId) return
       const now = new Date().toISOString()
@@ -118,7 +129,13 @@ export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotR
         }, realRoundHistory))
       }
       state.status.tableCount = state.tables.length
-      return emitRoundEvent(lastRound, state.tables.find((item) => String(item.tableId) === tableId) ?? { tableId })
+      return emitRoundEvent(lastRound, state.tables.find((item) => String(item.tableId) === tableId) ?? { tableId }, context)
+    },
+    preflightRoundEvent(event = {}) {
+      const tableId = String(event.tableId ?? '')
+      if (!tableId) return Promise.resolve({ ok: true, value: { formalRankEligible: false, reason: 'missing_table_identity' } })
+      const table = state.tables.find((item) => String(item.tableId) === tableId) ?? { tableId }
+      return preflightRoundEvent(event, table)
     },
     recordError(message) {
       state.status.connected = false

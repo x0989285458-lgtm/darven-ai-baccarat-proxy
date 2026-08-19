@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.6",
-  "gitTag": "v106.0.0-formal.6",
-  "applicationVersion": "1.0.63",
+  "releaseVersion": "v106.0.0-formal.7",
+  "gitTag": "v106.0.0-formal.7",
+  "applicationVersion": "1.0.64",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -20,7 +20,7 @@
     "workerProtocolChanged": false,
     "canonicalSource": "api",
     "singleWriterRequired": true,
-    "applicationVersionChanged": false
+    "applicationVersionChanged": true
   },
   "inheritedProductionSafety": {
     "preserveQueue": true,
@@ -211,7 +211,7 @@
         "supabase/operations/rollback_v106_to_v105.sql"
       ],
       "excludedPaths": [],
-      "sha256": "31648d0db31a539e0b53012b3cbcd76543058089fddb3e4d24b6c39b1472d7c0"
+      "sha256": "1ea0f8d533ac5d4e9736c061050bbd99cd7181fa2297d0270184577f449ca177"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -222,7 +222,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "b18612abc5701ba2aae0a806288bf24d40360c759e6f41c694a00661209cb662"
+      "sha256": "b3a5e3fa59d9a5fc0c9747a1101af42d91cae449005550e474e230e6d1d2186c"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -274,5 +274,12 @@
     "productionEvidence": "v106 issuance advanced from 147 to 166 while Final remained 0; the first ten-table zero-round heartbeat repeatedly exhausted the Formal lease until rollback",
     "safeState": "production rolled back to sole Active v105; proxy and worker exact 6bdd39e8; ten tables; unfinished outbox zero",
     "formal6Fix": "zero-round heartbeats bypass durable rank work; Final envelopes batch-hydrate only identities carrying round work"
+  },
+  "formal6Incident": {
+    "observedAt": "2026-08-19T14:28:17Z",
+    "productionEvidence": "the first processing outbox envelope carried three verified summary Finals whose identities had no immutable v106 issuance; later envelopes remained pending while v106 Final stayed zero",
+    "failedIdentities": ["BAG05:16959:6", "BAG03:16805:47", "BAG10:5032:24"],
+    "safeState": "production rolled back to sole Active v105 before formal.7 release",
+    "formal7Fix": "production preflight binds one positive or negative immutable issuance decision to each Final; a negative decision skips durable rank and settlement without a second database lookup, while a positive decision preserves durable rank before settlement"
   }
 }

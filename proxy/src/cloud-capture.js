@@ -152,11 +152,19 @@ async function runDurableStage(stage, operation) {
 export async function applyCloudCapturePayload({ parsed, state, writer, v100Formal = null, persistAncillary = true }) {
   parsed = canonicalizeFormalRoundSources(parsed)
   const durableTimings = {}
+  const rankEligibleRounds = []
+  const preflights = await Promise.all(parsed.rounds.map((round) => state?.preflightRoundEvent?.(round)))
+  for (let index = 0; index < parsed.rounds.length; index += 1) {
+    const preflight = preflights[index]
+    if (preflight?.ok === false) throw preflight.error ?? new Error('formal settlement preflight failed before ingest acknowledgement')
+    if (preflight?.value?.formalRankEligible !== false) rankEligibleRounds.push(parsed.rounds[index])
+  }
+  const preflightDecisions = new Map(parsed.rounds.map((round, index) => [round, preflights[index]?.value]))
   let v100Result = null
-  if (v100Formal?.enabled === true && parsed.rounds.length > 0) {
+  if (v100Formal?.enabled === true && rankEligibleRounds.length > 0) {
     const startedAt = Date.now()
     try {
-      v100Result = await runDurableStage('durable_rank_ledger', () => v100Formal.processSnapshot({ tables: parsed.tables, rounds: parsed.rounds }))
+      v100Result = await runDurableStage('durable_rank_ledger', () => v100Formal.processSnapshot({ tables: parsed.tables, rounds: rankEligibleRounds }))
     } catch (error) {
       state?.setStatus?.({ v104RuntimeStatus: 'error', v104RuntimeError: String(error?.message ?? error) })
       throw error
@@ -186,13 +194,14 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
         return shoeDelta || Number(left?.round) - Number(right?.round)
       })
       for (const round of tableRounds) {
-        const settlement = await state?.upsertRoundEvent?.(round)
+        const settlement = await state?.upsertRoundEvent?.(round, { preflight: preflightDecisions.get(round) })
         if (settlement?.ok === false) throw settlement.error ?? new Error('formal settlement failed before ingest acknowledgement')
       }
       await new Promise((resolve) => setImmediate(resolve))
     }
   }))
   durableTimings.formalSettlementMs = Date.now() - settlementStartedAt
+
   if (!writer?.configured || !persistAncillary) return {
     v100Formal: v100Result,
     tables: structuredClone(formalTables),

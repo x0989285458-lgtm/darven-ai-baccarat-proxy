@@ -434,6 +434,34 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const resolvedAdminSessionTtlInput = Number(requestedAdminSessionTtlMs)
   const adminSessionTtlMs = Math.min(30 * 60 * 1000, Math.max(60000, Number.isFinite(resolvedAdminSessionTtlInput) ? resolvedAdminSessionTtlInput : 30 * 60 * 1000))
   let requestTablesBroadcast = () => {}
+
+  function validSettlementCandidate(candidate, pendingKey) {
+    return candidate
+      && predictionTargetKey(candidate.targetTableId, candidate.targetShoe, candidate.targetRound) === pendingKey
+      && SETTLEMENT_STRATEGY_VERSIONS.includes(candidate.strategyVersion)
+      ? candidate
+      : null
+  }
+
+  async function resolveSettlementCandidate(round, table) {
+    const pendingKey = predictionTargetKey(round.tableId ?? table.tableId, round.shoe, round.round)
+    if (preparingPredictionPromises.has(pendingKey)) await preparingPredictionPromises.get(pendingKey)
+    let issuedCandidate = pendingPredictions.get(pendingKey)
+    if (!issuedCandidate && issuingPredictionPromises.has(pendingKey)) issuedCandidate = await issuingPredictionPromises.get(pendingKey)
+    if (!issuedCandidate && typeof supabaseClient?.readIssuedPrediction === 'function') {
+      for (const strategyVersion of SETTLEMENT_STRATEGY_VERSIONS) {
+        issuedCandidate = await supabaseClient.readIssuedPrediction({
+          tableId: round.tableId ?? table.tableId,
+          shoe: round.shoe,
+          round: round.round,
+          strategyVersion,
+        }, { priority: 'settlement' })
+        if (issuedCandidate) break
+      }
+    }
+    return validSettlementCandidate(issuedCandidate, pendingKey)
+  }
+
   const state = createProxyState({
     inferSnapshotRounds: !strictRealCardRounds,
     onTablesUpdated: (tables) => {
@@ -474,10 +502,19 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         })
       }
     },
-    onRoundEvent: async (round, table) => {
-      if (!supabaseClient?.configured && !supabaseClient?.persistRound) return
-      if (!isVerifiedFinalRoundAction(round?.sourceAction)) return
-      if (strictRealCardRounds && !hasRealCardCodes(round)) return
+    onRoundPreflight: async (round, table) => {
+      if (!production) return { formalRankEligible: true, reason: 'non_production' }
+      if (!isVerifiedFinalRoundAction(round?.sourceAction)) return { formalRankEligible: false, reason: 'unverified_final_action' }
+      if (strictRealCardRounds && !hasRealCardCodes(round)) return { formalRankEligible: false, reason: 'missing_real_cards' }
+      if (typeof supabaseClient?.readIssuedPrediction !== 'function') return { formalRankEligible: true, reason: 'preflight_unavailable' }
+      const issuedCandidate = await resolveSettlementCandidate(round, table)
+      if (!issuedCandidate) return { formalRankEligible: false, settlementCandidateDecided: true, issuedCandidate: null, reason: 'no_immutable_issuance' }
+      return { formalRankEligible: true, settlementCandidateDecided: true, issuedCandidate }
+    },
+    onRoundEvent: async (round, table, context = {}) => {
+      if (!supabaseClient?.configured && !supabaseClient?.persistRound) return { formalRankEligible: false, reason: 'writer_unavailable' }
+      if (!isVerifiedFinalRoundAction(round?.sourceAction)) return { formalRankEligible: false, reason: 'unverified_final_action' }
+      if (strictRealCardRounds && !hasRealCardCodes(round)) return { formalRankEligible: false, reason: 'missing_real_cards' }
       const shadowSettlements = isolatedShadowProcess
         ? []
         : [
@@ -507,34 +544,21 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         }).catch(() => {})
       }
       const pendingKey = predictionTargetKey(round.tableId ?? table.tableId, round.shoe, round.round)
-      let issuedCandidate
+      let precomputedPrediction
       try {
-        if (preparingPredictionPromises.has(pendingKey)) await preparingPredictionPromises.get(pendingKey)
-        issuedCandidate = pendingPredictions.get(pendingKey)
-        if (!issuedCandidate && issuingPredictionPromises.has(pendingKey)) issuedCandidate = await issuingPredictionPromises.get(pendingKey)
-        if (!issuedCandidate && typeof supabaseClient?.readIssuedPrediction === 'function') {
-          for (const strategyVersion of SETTLEMENT_STRATEGY_VERSIONS) {
-            issuedCandidate = await supabaseClient.readIssuedPrediction({
-              tableId: round.tableId ?? table.tableId,
-              shoe: round.shoe,
-              round: round.round,
-              strategyVersion,
-            }, { priority: 'settlement' })
-            if (issuedCandidate) break
-          }
-        }
+        precomputedPrediction = context?.preflight?.settlementCandidateDecided === true
+          ? validSettlementCandidate(context.preflight.issuedCandidate, pendingKey)
+          : await resolveSettlementCandidate(round, table)
       } catch (error) {
         state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
         throw error
       }
-      const precomputedPrediction = issuedCandidate
-        && predictionTargetKey(issuedCandidate.targetTableId, issuedCandidate.targetShoe, issuedCandidate.targetRound) === pendingKey
-        && SETTLEMENT_STRATEGY_VERSIONS.includes(issuedCandidate.strategyVersion)
-        ? issuedCandidate
-        : null
-      if (!precomputedPrediction) return
+      if (!precomputedPrediction) return { formalRankEligible: false, reason: 'no_immutable_issuance' }
       const existingSettlement = settlingPredictionPromises.get(pendingKey)
-      if (existingSettlement) return existingSettlement
+      if (existingSettlement) return {
+        formalRankEligible: true,
+        persisted: await existingSettlement,
+      }
       const settlementPromise = (async () => {
         try {
           const persisted = await supabaseClient.persistRound?.(round, table, precomputedPrediction)
@@ -564,7 +588,10 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       })()
       settlingPredictionPromises.set(pendingKey, settlementPromise)
       try {
-        return await settlementPromise
+        return {
+          formalRankEligible: true,
+          persisted: await settlementPromise,
+        }
       } finally {
         if (settlingPredictionPromises.get(pendingKey) === settlementPromise) settlingPredictionPromises.delete(pendingKey)
       }

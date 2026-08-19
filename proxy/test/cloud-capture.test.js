@@ -296,6 +296,88 @@ test('ten-table heartbeat without Final bypasses durable rank work on the ACK pa
   assert.equal(state.snapshot().tables.length, 10)
 })
 
+test('Final without an immutable formal issuance releases ACK and never enters durable rank work', async () => {
+  const missingIssuance = {
+    tableId: 'BAG01', shoe: 15606, round: 52,
+    rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 3, 9],
+    sourceAction: 'summary',
+  }
+  const issuedFinal = {
+    tableId: 'BAG02', shoe: 15634, round: 30,
+    rawResult: [9, 1, 10, 2, -1, -1, -1, -1, 9, 3],
+    sourceAction: 'summary',
+  }
+  const state = createFakeState()
+  state.preflightRoundEvent = async (round) => ({
+    ok: true,
+    value: { formalRankEligible: round.tableId === issuedFinal.tableId },
+  })
+  let formalRounds = null
+
+  const result = await applyCloudCapturePayload({
+    parsed: {
+      sessionId: 'production-incident-replay',
+      status: { connected: true, authenticated: true, tableCount: 2 },
+      tables: [
+        { tableId: 'BAG01', shoe: 15606, round: 52 },
+        { tableId: 'BAG02', shoe: 15634, round: 30 },
+      ],
+      rounds: [missingIssuance, issuedFinal],
+    },
+    state,
+    writer: { configured: true },
+    v100Formal: {
+      enabled: true,
+      async processSnapshot({ tables, rounds }) {
+        formalRounds = rounds
+        return { tables }
+      },
+    },
+    persistAncillary: false,
+  })
+
+  assert.deepEqual(formalRounds.map((round) => round.tableId), ['BAG02'])
+  assert.equal(result.rounds.length, 2)
+})
+
+test('production incident replay ACKs three cross-version Finals with no V106 issuance without starting rank work', async () => {
+  const rounds = [
+    { tableId: 'BAG05', shoe: 16959, round: 6, rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 3, 9], sourceAction: 'summary' },
+    { tableId: 'BAG03', shoe: 16805, round: 47, rawResult: [9, 1, 10, 2, -1, -1, -1, -1, 9, 3], sourceAction: 'summary' },
+    { tableId: 'BAG10', shoe: 5032, round: 24, rawResult: [1, 1, 2, 2, -1, -1, -1, -1, 3, 3], sourceAction: 'summary' },
+  ]
+  const state = createFakeState()
+  const seen = []
+  state.preflightRoundEvent = async (round) => {
+    seen.push(`${round.tableId}:${round.shoe}:${round.round}`)
+    return { ok: true, value: { formalRankEligible: false, reason: 'no_immutable_issuance' } }
+  }
+  let rankStarted = false
+
+  const result = await applyCloudCapturePayload({
+    parsed: {
+      sessionId: 'worker-darven-vm-taiwan-worker-5-api-254',
+      status: { connected: true, authenticated: true, tableCount: 10 },
+      tables: rounds.map(({ tableId, shoe, round }) => ({ tableId, shoe, round })),
+      rounds,
+    },
+    state,
+    writer: { configured: true },
+    v100Formal: {
+      enabled: true,
+      async processSnapshot() {
+        rankStarted = true
+        return new Promise(() => {})
+      },
+    },
+    persistAncillary: false,
+  })
+
+  assert.equal(rankStarted, false)
+  assert.deepEqual(seen, ['BAG05:16959:6', 'BAG03:16805:47', 'BAG10:5032:24'])
+  assert.equal(result.rounds.length, 3)
+})
+
 function createFakeState() {
   const data = { status: {}, tables: [] }
   return {
