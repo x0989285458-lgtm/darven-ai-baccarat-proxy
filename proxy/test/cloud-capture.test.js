@@ -263,6 +263,39 @@ test('cloud capture retries a transient worker snapshot failure and replaces sta
   assert.equal(state.snapshot().status.connected, true)
 })
 
+test('ten-table heartbeat without Final bypasses durable rank work on the ACK path', async () => {
+  let formalCalls = 0
+  const state = createFakeState()
+  const tables = Array.from({ length: 10 }, (_, index) => ({
+    tableId: `BAG${String(index + 1).padStart(2, '0')}`,
+    shoe: `S${index + 1}`,
+    round: index + 1,
+  }))
+
+  const result = await applyCloudCapturePayload({
+    parsed: {
+      sessionId: 'heartbeat-only',
+      status: { connected: true, authenticated: true, tableCount: 10 },
+      tables,
+      rounds: [],
+    },
+    state,
+    writer: { configured: true },
+    v100Formal: {
+      enabled: true,
+      async processSnapshot() {
+        formalCalls += 1
+        throw new Error('heartbeat must not enter durable rank work')
+      },
+    },
+    persistAncillary: false,
+  })
+
+  assert.equal(formalCalls, 0)
+  assert.equal(result.tables.length, 10)
+  assert.equal(state.snapshot().tables.length, 10)
+})
+
 function createFakeState() {
   const data = { status: {}, tables: [] }
   return {

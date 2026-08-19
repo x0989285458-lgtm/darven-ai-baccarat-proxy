@@ -153,7 +153,7 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
   parsed = canonicalizeFormalRoundSources(parsed)
   const durableTimings = {}
   let v100Result = null
-  if (v100Formal?.enabled === true) {
+  if (v100Formal?.enabled === true && parsed.rounds.length > 0) {
     const startedAt = Date.now()
     try {
       v100Result = await runDurableStage('durable_rank_ledger', () => v100Formal.processSnapshot({ tables: parsed.tables, rounds: parsed.rounds }))

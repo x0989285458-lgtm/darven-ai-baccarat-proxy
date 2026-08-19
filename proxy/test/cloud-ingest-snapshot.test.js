@@ -142,31 +142,43 @@ test('v102 rank-ledger failure returns 503 without accepting the worker sequence
     v100FormalRuntime: { enabled: true, async processSnapshot() { throw new Error('rank ledger unavailable') } },
     supabaseClient: { configured: true, writeCloudTableSnapshot: async () => assert.fail('must not write') },
   })
-  const response = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': key }, body: body() })
+  const finalRound = {
+    tableId: 'BAG01', shoe: 14509, round: 9, winner: 'banker',
+    playerPoint: 4, bankerPoint: 6,
+    rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
+    sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
+  }
+  const response = await app.inject({
+    method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': key },
+    body: body({
+      roundKeys: ['BAG01:14509:9'],
+      snapshot: {
+        buildVersion: '105', connected: true, authenticated: true,
+        sessionId: 'vm-worker', snapshotAt: new Date(now).toISOString(),
+        tables: [{ tableId: 'BAG01', tableType: 'BAC', displayName: '測試桌', shoe: 14509, round: 9 }],
+        rounds: [finalRound],
+      },
+    }),
+  })
   assert.equal(response.statusCode, 503)
   assert.equal(JSON.parse(response.body).accepted, false)
 })
 
-test('v102 runtime mounts durable rank data before formal table state', async () => {
+test('heartbeat mounts formal table state without entering durable rank work', async () => {
   const calls = []
   const app = createTestApp({
     v100FormalRuntime: {
       enabled: true,
-      processSnapshot: async ({ tables, rounds }) => {
-        calls.push(['shadow', tables[0].tableId, rounds.length, app.state.snapshot().tables.length])
-        return {
-          enabled: true,
-          predictions: [],
-          tables: [{ ...tables[0], v102RankLedger: { status: 'contiguous', rankDataAvailable: true } }],
-        }
+      processSnapshot: async () => {
+        assert.fail('heartbeat must not enter durable rank work')
       },
     },
     supabaseClient: { configured: true, writeCloudTableSnapshot: async () => calls.push(['tables']) },
   })
   const response = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': key }, body: body() })
   assert.equal(response.statusCode, 200)
-  assert.deepEqual(calls, [['shadow', 'BAG01', 0, 0], ['tables']])
-  assert.equal(app.state.snapshot().tables[0].v102RankLedger.rankDataAvailable, true)
+  assert.deepEqual(calls, [['tables']])
+  assert.equal(app.state.snapshot().tables[0].v102RankLedger, undefined)
 })
 
 test('cloud ingest rejects an exact-looking provisional show_poker before any durable write', async () => {

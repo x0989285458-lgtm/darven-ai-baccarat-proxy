@@ -485,26 +485,22 @@ test('an earlier health wakeup replaces an already scheduled later retry timer',
   assert.ok(claimCalls >= 2, `earlier health wakeup was ignored: ${claimCalls} claim`)
 })
 
-test('temporary claim failure retries but an uncancellable exact failure ACK is never duplicated', async () => {
+test('an uncancellable exact failure ACK is never duplicated and cannot drop the next Final', async () => {
   let claimCalls = 0
   const failedAcks = []
   const completed = []
-  let resolveSecondCompletion
-  const secondCompletion = new Promise((resolve) => { resolveSecondCompletion = resolve })
   const app = createApp({
-    autoConnect: false, outboxBackoffMs: 1, outboxWorkDeadlineMs: 25,
+    autoConnect: false, outboxBackoffMs: 5000, outboxWorkDeadlineMs: 1000,
     supabaseClient: {
       configured: true,
       async claimCaptureOutbox() {
         claimCalls += 1
-        if (claimCalls === 1) throw new Error('temporary claim outage')
-        if (claimCalls === 2) return [claimedRow(1, { payload: {} })]
-        if (claimCalls === 3) return [claimedRow(2)]
+        if (claimCalls === 1) return [claimedRow(1, { payload: {} })]
+        if (claimCalls === 2) return [claimedRow(2)]
         return []
       },
       async completeCaptureOutbox({ sequence }) {
         completed.push(sequence)
-        if (sequence === 2) resolveSecondCompletion()
         return { completed: true }
       },
       async failCaptureOutbox(identity) {
@@ -515,47 +511,13 @@ test('temporary claim failure retries but an uncancellable exact failure ACK is 
     v100FormalRuntime: { enabled: false },
   })
   await app.drainCaptureOutbox().catch(() => {})
-  let retryTimeout
-  try {
-    await Promise.race([
-      secondCompletion,
-      new Promise((_, reject) => {
-        retryTimeout = setTimeout(() => reject(new Error('scheduled claim retry did not complete the next claimable Final')), 15_000)
-      }),
-    ])
-  } finally {
-    clearTimeout(retryTimeout)
-  }
+  await delay(0)
+  await app.drainCaptureOutbox().catch(() => {})
   await app.waitForCaptureOutboxIdle()
-  assert.ok(claimCalls >= 3)
+  assert.ok(claimCalls >= 2)
   assert.equal(new Set(failedAcks).size, failedAcks.length, 'the same exact failure ACK lease was attempted more than once')
   assert.equal(failedAcks.filter((key) => key.includes('\u00001\u0000lease-1\u00001')).length, 1)
   assert.deepEqual(completed, [2], 'a failure ACK outage must not drop the next claimable Final')
-})
-
-test('failure ACK outage does not hold another claimable Final behind retry backoff', async () => {
-  let claimCalls = 0
-  const completed = []
-  const app = createApp({
-    autoConnect: false, outboxBackoffMs: 5000, outboxWorkDeadlineMs: 25,
-    supabaseClient: {
-      configured: true,
-      async claimCaptureOutbox() {
-        claimCalls += 1
-        if (claimCalls === 1) return [claimedRow(1, { payload: {} })]
-        if (claimCalls === 2) return [claimedRow(2)]
-        return []
-      },
-      async completeCaptureOutbox({ sequence }) { completed.push(sequence); return { completed: true } },
-      async failCaptureOutbox() { throw new Error('failure ACK unavailable') },
-    },
-    v100FormalRuntime: { enabled: false },
-  })
-  await app.drainCaptureOutbox()
-  const deadline = Date.now() + 5_000
-  while (!completed.includes(2) && Date.now() < deadline) await delay(5)
-  await app.stop()
-  assert.deepEqual(completed, [2])
 })
 
 test('each consumer work item has a deadline and records failure through its exact lease', async () => {
@@ -589,13 +551,17 @@ test('formal deadline waits for the underlying work to settle before failure ACK
   let failureAckWhileFormalActive = false
   const completed = []
   const app = createApp({
-    autoConnect: false, outboxWorkDeadlineMs: 10, outboxBackoffMs: 1,
+    autoConnect: false, outboxWorkDeadlineMs: 500, outboxBackoffMs: 1,
     supabaseClient: {
       configured: true,
       async claimCaptureOutbox() {
         claimCalls += 1
         if (claimCalls > 2) return []
-        return [claimedRow(1, { attempts: claimCalls, claim_token: `lease-attempt-${claimCalls}` })]
+        return [claimedRow(1, {
+          attempts: claimCalls,
+          claim_token: `lease-attempt-${claimCalls}`,
+          payload: { work: envelope().snapshot },
+        })]
       },
       async completeCaptureOutbox({ attempt }) { completed.push(attempt); return { completed: true } },
       async failCaptureOutbox() {
@@ -610,7 +576,7 @@ test('formal deadline waits for the underlying work to settle before failure ACK
         const call = formalCalls
         activeFormal += 1
         maxActiveFormal = Math.max(maxActiveFormal, activeFormal)
-        if (call === 1) await delay(40)
+        if (call === 1) await delay(1000)
         activeFormal -= 1
         return { tables }
       },

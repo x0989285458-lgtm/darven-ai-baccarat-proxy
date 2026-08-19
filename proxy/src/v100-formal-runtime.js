@@ -222,7 +222,21 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
         }
 
         const hasBatchHydration = typeof writer.readV100RankLedgers === 'function'
-        if (hasBatchHydration) await withIdentityPermit(() => hydrateTables(tables))
+        if (hasBatchHydration) {
+          const roundIdentityKeys = new Set(rounds.map((event) => identityKey(event?.source ?? source, event?.tableId, event?.shoe)))
+          const hydrationTables = rounds.length === 0
+            ? tables
+            : tables.filter((table) => roundIdentityKeys.has(identityKey(source, table?.tableId, table?.shoe)))
+          const coveredKeys = new Set(hydrationTables.map((table) => identityKey(source, table?.tableId, table?.shoe)))
+          for (const event of rounds) {
+            const eventSource = event?.source ?? source
+            const key = identityKey(eventSource, event?.tableId, event?.shoe)
+            if (coveredKeys.has(key)) continue
+            hydrationTables.push({ tableId: event?.tableId, shoe: event?.shoe, round: event?.round })
+            coveredKeys.add(key)
+          }
+          await withIdentityPermit(() => hydrateTables(hydrationTables))
+        }
 
         const results = await settleWithConcurrency([...workByIdentity.entries()], ([key, work]) => (
           withIdentityTail(key, () => withIdentityPermit(async () => {

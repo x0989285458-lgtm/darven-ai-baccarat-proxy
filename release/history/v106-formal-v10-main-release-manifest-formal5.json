@@ -1,6 +1,6 @@
 {
-  "releaseVersion": "v106.0.0-formal.6",
-  "gitTag": "v106.0.0-formal.6",
+  "releaseVersion": "v106.0.0-formal.5",
+  "gitTag": "v106.0.0-formal.5",
   "applicationVersion": "1.0.63",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
@@ -211,7 +211,7 @@
         "supabase/operations/rollback_v106_to_v105.sql"
       ],
       "excludedPaths": [],
-      "sha256": "31648d0db31a539e0b53012b3cbcd76543058089fddb3e4d24b6c39b1472d7c0"
+      "sha256": "ea706699c52575d8239a837e022fe54b51c01899b620940d7b651ca0949581ad"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -222,7 +222,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "b18612abc5701ba2aae0a806288bf24d40360c759e6f41c694a00661209cb662"
+      "sha256": "5bfe78de63d26eb1d7270ec268351986d82885d150b7875592d236c1d3108d87"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -267,12 +267,5 @@
     "rootCause": "formal ACK path synchronously attempted per-table rank-ledger recovery during ten-table zero-Final snapshots; sequential database timeouts outlived the lease shutdown window",
     "formal5Fix": "formal rank-ledger hydration is read-only and fail-closed; synchronous recovery is excluded from the ACK-required path",
     "productionV105CoherentBeforeRetry": true
-  },
-  "formal5Incident": {
-    "observedAt": "2026-08-19T11:21:00Z",
-    "exactCommit": "b3fc4ac85b412b3b7e897b517c3f9991cbe3f65b",
-    "productionEvidence": "v106 issuance advanced from 147 to 166 while Final remained 0; the first ten-table zero-round heartbeat repeatedly exhausted the Formal lease until rollback",
-    "safeState": "production rolled back to sole Active v105; proxy and worker exact 6bdd39e8; ten tables; unfinished outbox zero",
-    "formal6Fix": "zero-round heartbeats bypass durable rank work; Final envelopes batch-hydrate only identities carrying round work"
   }
 }

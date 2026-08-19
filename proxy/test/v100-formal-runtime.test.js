@@ -182,6 +182,45 @@ test('cold ten-table capture hydrates exact rank-ledger identities with one boun
   assert.equal(result.tables.length, 10)
 })
 
+test('ten-table Final capture hydrates only the identity carrying durable round work', async () => {
+  const batchCalls = []
+  const writer = {
+    configured: true,
+    async readV100RankLedgers(identities) {
+      batchCalls.push(structuredClone(identities))
+      return []
+    },
+    async readV100RankLedger() { assert.fail('batch path must not fall back to serial reads') },
+    async applyV100RankLedgerEvent(event) {
+      return durable({
+        identity: { source: event.source, table_id: event.tableId, shoe: event.shoe },
+        completeThroughRound: event.round,
+        complete_through_round: event.round,
+        targetRound: event.round + 1,
+      })
+    },
+  }
+  const runtime = createV100FormalRuntime({ enabled: true, writer, source: 'mt-cloud' })
+  const tables = Array.from({ length: 10 }, (_, index) => ({
+    ...table(), tableId: `BAG${String(index + 1).padStart(2, '0')}`, shoe: `S${index + 1}`, round: index + 10,
+  }))
+  const finalTable = tables[4]
+
+  const result = await runtime.processSnapshot({
+    tables,
+    rounds: [{ ...round(), tableId: finalTable.tableId, shoe: finalTable.shoe, round: finalTable.round }],
+  })
+
+  assert.equal(batchCalls.length, 1)
+  assert.deepEqual(batchCalls[0], [{
+    source: 'mt-cloud',
+    tableId: finalTable.tableId,
+    shoe: finalTable.shoe,
+    expectedCompleteThrough: finalTable.round,
+  }])
+  assert.equal(result.tables.length, 10)
+})
+
 test('concurrent snapshots serialize batch hydration before applying the same identity tail', async () => {
   let batchCalls = 0
   let activeBatchReads = 0
