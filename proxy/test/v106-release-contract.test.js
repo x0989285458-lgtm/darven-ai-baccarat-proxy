@@ -143,8 +143,8 @@ test('v106 manifest encodes DB-first through finalize order and exact rollback',
   assert.equal(manifest.sideStrategy.source, 'v105')
   assert.equal(manifest.mainStrategy.activationGate, 'structureDiagnostics.eligible === true')
   assert.equal(manifest.mainStrategy.fallback, 'exact formal v105 main projection')
-  assert.equal(manifest.gitTag, 'v106.0.0-formal.3')
-  assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'deploy-worker-1.0.63-protocol-v105', 'verify-worker-v105-compatibility', 'fence-v105-new-issuance', 'producer-stop', 'drain-v105-and-queue', 'activate-v106', 'proxy', 'frontend', 'live-e2e', 'finalize'])
+  assert.equal(manifest.gitTag, 'v106.0.0-formal.4')
+  assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'deploy-worker-1.0.63-protocol-v105', 'verify-worker-v105-compatibility', 'fence-v105-new-issuance', 'producer-stop', 'terminalize-v105-cutover', 'drain-v105-and-queue', 'activate-v106', 'proxy', 'frontend', 'live-e2e', 'finalize'])
   assert.equal(manifest.releaseScope.workerBehaviorChanged, true)
   assert.equal(manifest.releaseScope.workerProtocolChanged, false)
   assert.equal(manifest.inheritedProductionSafety.preserveQueue, true)
@@ -162,4 +162,15 @@ test('v106 manifest encodes DB-first through finalize order and exact rollback',
     unknownOrPendingNonFinalBlocksCutover: true,
   })
   assert.deepEqual(manifest.rollback.order, ['stop producer admission', 'drain all non-terminal unsettled v106 issuances', 'run rollback SQL', 'deploy exact v105 proxy, frontend, and worker 1.0.62', 'verify sole Active v105 and new v105 Final'])
+})
+
+test('formal.4 cutover terminalization is fenced, quiet-period guarded, and identity preserving', () => {
+  const sql = read('supabase/operations/terminalize_v105_cutover.sql')
+  assert.match(sql, /has_function_privilege\('service_role',\s*'public\.issue_v105_prediction\(jsonb\)',\s*'EXECUTE'\)/i)
+  assert.match(sql, /version\s*=\s*'v105'[\s\S]*status\s*=\s*'active'/i)
+  assert.match(sql, /prediction_issued_at\s*>\s*now\(\)\s*-\s*interval\s*'15 seconds'/i)
+  assert.match(sql, /strategy_version\s*=\s*'v105'[\s\S]*prediction_issued_at\s+is\s+not\s+null[\s\S]*settlement_final\s+is\s+not\s+true/i)
+  assert.match(sql, /issuance_status\s*=\s*'expired_no_final'/i)
+  assert.match(sql, /issuance_status_reason\s*=\s*'formal_v106_cutover_after_producer_stop'/i)
+  assert.doesNotMatch(sql, /delete\s+from|prediction_issued_at\s*=|issued_prediction_payload\s*=/i)
 })

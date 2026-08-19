@@ -1,8 +1,8 @@
 {
-  "releaseVersion": "v106.0.0-formal.3",
+  "releaseVersion": "v106.0.0-formal.4",
   "strategyVersion": "v106",
   "applicationVersion": "1.0.63",
-  "status": "formal3-candidate-tested-review-pending",
+  "status": "formal4-cutover-terminalization-candidate",
   "productionE2E": "not-run-production-remains-v105",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
@@ -12,11 +12,11 @@
     "worker": { "packageVersion": "1.0.63", "buildVersion": "105", "strategyVersion": "v105", "workerProtocol": "v105" }
   },
   "releaseBindingDigests": {
-    "implementationTree": "c80532f20988356b04a1a129916bf912abd6998d3593275a9d8732b29f0e45de",
-    "proxyBuildInput": "a4e63255233aadc35b731dee563cb9dbb47c8c9262e556045d50f81818d4982a",
+    "implementationTree": "e271de18f3581b9459fbf179b9e59c67e0a110f4528a0f781a6aae775ffcf7ea",
+    "proxyBuildInput": "a140654590765af9741cfd2149f7b91cc0622284e832a72e1f64563dd1de85ff",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "1a96e7f98d604a10880d3f8c4ed12bddbe779ce101343784b19c33fc56b4df79"
+    "databaseCutoverInput": "0acded55a1ab69499b8c33aac1914147a93e0375e0b3a379bfa83b34050c6c14"
   },
   "rollbackComponents": {
     "proxy": { "commit": "fad9bd839eb272d8e9ab3db00852c1261aa620dd", "package": "draven-mt-data-proxy-v105", "packageVersion": "1.0.61", "buildVersion": "v105", "strategyVersion": "v105", "workerProtocol": "v105" },
@@ -46,10 +46,10 @@
     "note": "Tie/PUSH excluded from directional hit-rate denominator. Full-output V10 candidate was rejected after producing net -15 hits; eligible-only promotion is the reviewed candidate."
   },
   "verified": {
-    "proxy": "215 isolated files; 992/992 pass with canonical scrubbed test runner; exit 0",
+    "proxy": "215 isolated files; 993/993 pass with canonical scrubbed test runner; exit 0",
     "releaseBinding": "all five mandatory bindings (implementation, proxy, frontend, unchanged worker, database cutover) verified against the frozen staged Git tree; release CLI requires external attestation unless explicit pre-commit --digests-only is selected",
     "testEnvironmentFence": "shared proxy/worker scrubber removes DB, service-role, proxy-control, member/admin session, MT token/session/portal path, worker, ingest, Render and Cloudflare authority before child tests; focused 2/2 pass",
-    "focusedTests": "34/34 strategy, malformed-road, hydration and isolated V10-fence tests pass; 15/15 registry, DB cutover, annotated-tag and rollback contract tests pass",
+    "focusedTests": "formal.4 strategy and DB cutover contract 15/15 pass; release binding and verifier focused gates pass",
     "predecessorRegression": "8/8 v105 predecessor regressions derived from release base 6bdd39e8 pass against the candidate server; the base source SHA-256 is verifier-bound and 9/9 dedicated v106 server tests pass separately",
     "outboxFailureAckIsolation": "25/25 outbox tests pass; a permanently stalled Formal promise enters FORMAL_SETTLEMENT_STALLED fatal with exit 70, sends no failure ACK, and retains the exact lease for stale-lease recovery",
     "frontend": "156/156 pass and production build pass",
