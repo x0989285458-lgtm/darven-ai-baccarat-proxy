@@ -1970,7 +1970,7 @@ export function resolveBackendReadConnectionString(connectionString) {
   return raw
 }
 
-function createStrategyQueryScheduler(strategyDb, { maxConcurrent = 10, maxStandardConcurrent = 5, maxPriorityConcurrent = 4, maxCriticalConcurrent = 1, queueTimeoutMs = 30000 } = {}) {
+function createStrategyQueryScheduler(strategyDb, { priorityDb = strategyDb, criticalDb = strategyDb, maxConcurrent = 10, maxStandardConcurrent = 5, maxPriorityConcurrent = 4, maxCriticalConcurrent = 1, queueTimeoutMs = 30000 } = {}) {
   const criticalQueue = []
   const priorityQueue = []
   const standardQueue = []
@@ -1994,8 +1994,9 @@ function createStrategyQueryScheduler(strategyDb, { maxConcurrent = 10, maxStand
       if (item.critical) criticalActive += 1
       else if (item.priority) priorityActive += 1
       else standardActive += 1
+      const laneDb = item.critical ? criticalDb : item.priority ? priorityDb : strategyDb
       Promise.resolve()
-        .then(() => strategyDb.query(...item.args))
+        .then(() => laneDb.query(...item.args))
         .then(item.resolve, item.reject)
         .finally(() => {
           active -= 1
@@ -2060,17 +2061,24 @@ export function createSupabaseIngestionClient({
   strategyPoolMax = 10,
 } = {}) {
   const configured = Boolean(url && serviceKey && fetchImpl)
-  const rawStrategyDb = strategyPool ?? (dbConnectionString ? strategyPoolFactory({
+  const resolvedStrategyPoolMax = Number.isInteger(strategyPoolMax) && strategyPoolMax >= 1 && strategyPoolMax <= 10
+    ? strategyPoolMax
+    : 10
+  const physicalLaneIsolation = !strategyPool && Boolean(dbConnectionString) && resolvedStrategyPoolMax === 10
+  const createPool = (max) => strategyPoolFactory({
     connectionString: resolveBackendReadConnectionString(dbConnectionString),
     ssl: { rejectUnauthorized: false },
-    max: Number.isInteger(strategyPoolMax) && strategyPoolMax >= 1 && strategyPoolMax <= 10
-      ? strategyPoolMax
-      : 10,
+    max,
     connectionTimeoutMillis: 60000,
     query_timeout: 65000,
     statement_timeout: 60000,
     idleTimeoutMillis: 30000,
-  }) : null)
+  })
+  const rawStrategyDb = strategyPool ?? (dbConnectionString
+    ? createPool(physicalLaneIsolation ? 5 : resolvedStrategyPoolMax)
+    : null)
+  const rawPriorityStrategyDb = physicalLaneIsolation ? createPool(4) : rawStrategyDb
+  const rawCriticalStrategyDb = physicalLaneIsolation ? createPool(1) : rawStrategyDb
   const completedRoundKeys = new Set()
   const inFlightRoundWrites = new Map()
   const preparedRoundWrites = new Map()
@@ -2089,7 +2097,11 @@ export function createSupabaseIngestionClient({
   const startupTimeoutMs = Math.max(formalTimeoutMs, Number(startupRequestTimeoutMs) || 30000)
   const shadowTimeoutMs = Math.max(1, Number(shadowRequestTimeoutMs) || 30000)
   const strategyQueryScheduler = rawStrategyDb && typeof rawStrategyDb.query === 'function'
-    ? createStrategyQueryScheduler(rawStrategyDb, { queueTimeoutMs: durableWriteTimeoutMs })
+    ? createStrategyQueryScheduler(rawStrategyDb, {
+        priorityDb: rawPriorityStrategyDb,
+        criticalDb: rawCriticalStrategyDb,
+        queueTimeoutMs: durableWriteTimeoutMs,
+      })
     : null
   const strategyDb = strategyQueryScheduler ? { query: (...args) => strategyQueryScheduler.query(...args) } : null
   const priorityStrategyDb = strategyQueryScheduler ? { query: (...args) => strategyQueryScheduler.queryPriority(...args) } : null

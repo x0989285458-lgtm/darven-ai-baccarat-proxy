@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.9",
+  "releaseVersion": "v106.0.0-formal.10",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.66",
-  "status": "formal9-durable-control-critical-lane-candidate",
+  "applicationVersion": "1.0.67",
+  "status": "formal10-physical-pool-isolation-candidate",
   "productionE2E": "not-run-production-remains-v105",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.66",
+      "packageVersion": "1.0.67",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,17 +27,17 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "ae21a55ad12fa8d0b36adfb15cb05b2c52d04e94e0556da243cfaa501c152e2c",
-    "proxyBuildInput": "971e74106eaae11c3c2c28030a9d4beebe109d90c73633630420133fc0d004da",
+    "implementationTree": "a9f882f6f1525b68fcf41cc9a50737abb858a704ec3179f0ada98d536cdb4eb9",
+    "proxyBuildInput": "624552e8dc7bbb5226363a7d12ea22a4332e008558323f1d54dc4e2c57f88815",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
     "databaseCutoverInput": "14bffa7c78129bef735b97e92ea4cb4b25e3cbcfc04b5792e93a4728ec6db6c9"
   },
   "rollbackComponents": {
     "proxy": {
-      "commit": "fad9bd839eb272d8e9ab3db00852c1261aa620dd",
+      "commit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
       "package": "draven-mt-data-proxy-v105",
-      "packageVersion": "1.0.61",
+      "packageVersion": "1.0.62",
       "buildVersion": "v105",
       "strategyVersion": "v105",
       "workerProtocol": "v105"
@@ -82,7 +82,7 @@
     "note": "Tie/PUSH excluded from directional hit-rate denominator. Full-output V10 candidate was rejected after producing net -15 hits; eligible-only promotion is the reviewed candidate."
   },
   "verified": {
-    "proxy": "canonical staged formal.9 suite 1012/1012 pass; exit 0; critical-lane focused suite 33/33 pass; release-binding focused suite 9/9 pass; 2026-08-20",
+    "proxy": "canonical staged formal.10 suite 1013/1013 pass; exit 0; physical-pool construction and routing regressions pass; writer/backpressure/release focused suites pass; 2026-08-20",
     "releaseBinding": "five mandatory staged-tree digests plus seven ordered database artifact contracts with exact Git blob SHA-1 verified in precommit mode; release authorization remains false until external attestation and annotated tag",
     "testEnvironmentFence": "shared proxy/worker scrubber removes DB, service-role, proxy-control, member/admin session, MT token/session/portal path, worker, ingest, Render and Cloudflare authority before child tests; focused 2/2 pass",
     "focusedTests": "formal.8 incident, strategy, writer, ACK, database and release-integrity focused rerun 103/103 pass; authoritative earliest timestamp, cross-sequence retry, retry-not-ACK, HTTP pre-observer suppression, fail-closed lookup, runtime lineage, ordered artifact contracts and required-artifact closure covered",
@@ -92,9 +92,9 @@
     "worker": "212/212 scrubbed pass; unchanged worker binding caea7c97…; package 1.0.63/build 105/protocol v105",
     "databaseMigration": "compiled against live schema inside transaction and fully rolled back; terminal lifecycle evidence cannot reopen; activation retains v105 immutable settlement but revokes legacy unbound persistence",
     "diffCheck": "git diff --check pass; only existing line-ending conversion warnings",
-    "secretScan": "gitleaks 8.30.1 formal.9 exact commit scan; about 14.3 KB; zero leaks; exit 0",
+    "secretScan": "gitleaks 8.30.1 formal.10 staged-tree scan; 8.97 KB; zero leaks; exit 0",
     "formal5RootCause": "formal.4 incident payload was ten tables and zero rounds; Formal ACK rank hydration now performs one read-only batch and zero synchronous ledger rebuilds.",
-    "productionPreflight": "sole Active v105; exact proxy/worker commit 6bdd39e8; HTTP 200; ten tables; pending/processing/error outbox zero; v105 issuance and Final resumed; preserved historical dead-letter baseline 229",
+    "productionPreflight": "sole Active v105; exact proxy/worker commit 6bdd39e8; HTTP 200; ten tables; pending/processing/error outbox zero; v105 issuance and Final resumed; preserved incident dead-letter baseline 273",
     "formal6RootCause": "formal.5 still sent every ten-table zero-round heartbeat through durable rank work; isolated exact-payload runtime took 372ms, but the full production app repeatedly exceeded the 45-second Formal lease. formal.6 removes rank work from zero-round heartbeat ACKs and limits Final-envelope hydration to the identities carrying durable rounds.",
     "formal5ProductionResult": "exact formal.5 commit b3fc4ac reached 166 v106 issuances and zero Finals before controlled rollback; no completion claim",
     "formal6ProductionResult": "exact formal.6 reached verified summary Finals but the first processing envelope carried only cross-version identities with no immutable v106 issuance; v106 Final remained zero before controlled rollback",
@@ -106,10 +106,13 @@
     "formal8ProductionResult": "exact formal.8 reached 261 v106 immutable issuances but zero Finals during a controlled trial; raw ingest heartbeat envelopes waited about 23 to 68 seconds before outbox completion and the third five-second capture entered durable storage about 41 seconds late; controlled rollback restored sole Active v105 without deleting evidence",
     "formal9Fix": "reserve one of ten backend database scheduler slots for durable worker-envelope persistence and outbox claim/complete/fail/health control RPCs; bound standard work to five slots and formal settlement/issuance to four, so neither ACK-critical persistence nor outbox lifecycle control can queue behind a fully saturated five-plus-four background/formal mix",
     "formal9FocusedTests": "paired RED/GREEN reproduces both raw-envelope starvation and outbox claim/complete/fail/health starvation with all five standard plus four formal slots saturated; GREEN proves all durable ingest/control operations use the reserved lane, FIFO order is preserved, and a queued critical timeout is removed without leaking the slot; scheduler and ingest backpressure suite 33/33 pass",
-    "v105LiveBaseline": "production remains sole Active v105; during the post-rollback probe v105 Final increased 120198 to 120252 with about 41 to 44 authoritative rounds in each rolling three-minute window; active pending/processing/error returned to zero; preserved historical dead-letter baseline 229 was not modified"
+    "v105LiveBaseline": "production remains sole Active v105 on exact proxy and worker commit 6bdd39e8; ten tables connected/authenticated/joined; active pending/processing/error zero; incident dead-letter baseline 273 preserved",
+    "formal9ProductionResult": "exact formal.9 advanced v106 issuance 261 to 285 while Final remained 0; one outbox lease stayed processing, pending reached 43, and Render recorded nonZeroExit 70 from FORMAL_SETTLEMENT_STALLED; controlled rollback terminalized 10 unresolved issuances, isolated 44 active rows, and restored sole Active v105",
+    "formal10Fix": "three physical pg pools now enforce the logical budgets: standard max 5, formal max 4, critical max 1, total 10; standard, formal issuance/lookup/settlement, and critical raw/outbox control operations are routed to their matching physical pool",
+    "formal10FocusedTests": "physical construction RED was one pool versus required three; routing RED observed 5/5/5 instead of 5/4/1; both are GREEN after the fix, and focused writer/backpressure tests pass"
   },
   "pending": [
-    "formal.9 staged-tree binding, full suite, fresh independent review and external attestation",
-    "formal.9 controlled production cutover and live E2E"
+    "formal.10 staged-tree binding, full suite, fresh independent review and external attestation",
+    "formal.10 controlled production cutover and live E2E"
   ]
 }

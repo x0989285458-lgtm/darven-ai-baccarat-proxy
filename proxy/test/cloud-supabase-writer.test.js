@@ -139,16 +139,60 @@ test('backend formal reads use Supabase transaction pooler without rewriting unr
   assert.equal(resolveBackendReadConnectionString(direct), direct)
 })
 
-test('backend transaction pool survives idle periods and remains bounded to ten connections', () => {
-  let config = null
+test('backend transaction pools physically reserve five standard, four formal, and one critical connection', () => {
+  const configs = []
   createSupabaseIngestionClient({
     dbConnectionString: 'postgresql://user:secret@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres',
-    strategyPoolFactory: (value) => { config = value; return { query: async () => ({ rows: [] }) } },
+    strategyPoolFactory: (value) => {
+      configs.push(structuredClone(value))
+      return { query: async () => ({ rows: [] }) }
+    },
   })
-  assert.equal(new URL(config.connectionString).port, '6543')
-  assert.equal(config.connectionTimeoutMillis, 60000)
-  assert.equal(config.idleTimeoutMillis, 30000)
-  assert.equal(config.max, 10)
+  assert.equal(configs.length, 3)
+  assert.deepEqual(configs.map((config) => config.max), [5, 4, 1])
+  assert.equal(configs.reduce((sum, config) => sum + config.max, 0), 10)
+  for (const config of configs) {
+    assert.equal(new URL(config.connectionString).port, '6543')
+    assert.equal(config.connectionTimeoutMillis, 60000)
+    assert.equal(config.idleTimeoutMillis, 30000)
+  }
+})
+
+test('backend transaction pools route standard, formal, and critical work through their physical reservations', async () => {
+  const laneCalls = []
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co',
+    serviceKey: 'test-only',
+    requireVerifiedStrategy: false,
+    dbConnectionString: 'postgresql://user:secret@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres',
+    strategyPoolFactory: (config) => ({
+      async query(query) {
+        const text = String(query?.text ?? query)
+        laneCalls.push({ max: config.max, text })
+        if (/persist_latest_cloud_table_snapshot/i.test(text)) {
+          return { rows: [{ persist_latest_cloud_table_snapshot: { persisted: true, skipped: false } }] }
+        }
+        if (/persist_v105_fenced_capture_envelope/i.test(text)) {
+          return { rows: [{ persist_v105_fenced_capture_envelope: { persisted: true, duplicate: false, accepted_round_keys: [] } }] }
+        }
+        return { rows: [] }
+      },
+    }),
+  })
+  await client.writeCloudTableSnapshot({
+    sessionId: 'physical-standard', tables: [{ tableId: 'BAG01' }], status: { connected: true },
+  })
+  await client.readIssuedPrediction({
+    tableId: 'BAG01', shoe: 'S1', round: 1, strategyVersion: 'v106',
+  }, { priority: 'settlement' })
+  await client.persistCaptureEnvelope({
+    sessionId: 'physical-critical', sequence: 1, roundKeys: [],
+    tables: [{ tableId: 'BAG01', shoe: 'S1', round: 1 }], rounds: [],
+    status: { connected: true, authenticated: true, tableCount: 1 },
+    capturedAt: '2026-08-20T00:00:00.000Z',
+    source: { role: 'canonical_api', ownerId: 'physical-owner', epoch: 1 },
+  })
+  assert.deepEqual(laneCalls.map((call) => call.max), [5, 4, 1])
 })
 
 test('builds cloud capture status row without leaking tokenized URL', () => {

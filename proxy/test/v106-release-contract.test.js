@@ -13,7 +13,7 @@ const extractSqlFunction = (sql, name) => {
 }
 
 test('v106 release identity is coherent while the updated capture worker retains protocol v105', () => {
-  assert.equal(json('proxy/package.json').version, '1.0.66')
+  assert.equal(json('proxy/package.json').version, '1.0.67')
   assert.equal(json('frontend/package.json').version, '1.0.63')
   assert.equal(json('cloud-browser-worker/package.json').version, '1.0.63')
   assert.match(read('proxy/src/build-version.js'), /BUILD_VERSION = 'v106'/)
@@ -145,13 +145,13 @@ test('v106 frontend version gate fails closed and formal writer/hydration use v1
 
 test('v106 manifest encodes DB-first through finalize order and exact rollback', () => {
   const manifest = json('release/v106-formal-v10-main-release-manifest.json')
-  assert.equal(manifest.applicationVersion, '1.0.66')
+  assert.equal(manifest.applicationVersion, '1.0.67')
   assert.equal(manifest.strategyVersion, 'v106')
   assert.equal(manifest.mainStrategy.source, 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized')
   assert.equal(manifest.sideStrategy.source, 'v105')
   assert.equal(manifest.mainStrategy.activationGate, 'structureDiagnostics.eligible === true')
   assert.equal(manifest.mainStrategy.fallback, 'exact formal v105 main projection')
-  assert.equal(manifest.gitTag, 'v106.0.0-formal.9')
+  assert.equal(manifest.gitTag, 'v106.0.0-formal.10')
   assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'database-final-time-fence', 'deploy-worker-1.0.63-protocol-v105', 'verify-worker-v105-compatibility', 'fence-v105-new-issuance', 'producer-stop', 'terminalize-v105-cutover', 'drain-v105-and-queue', 'activate-v106', 'proxy', 'frontend', 'live-e2e', 'finalize'])
   assert.equal(manifest.releaseScope.workerBehaviorChanged, true)
   assert.equal(manifest.releaseScope.workerProtocolChanged, false)
@@ -169,7 +169,7 @@ test('v106 manifest encodes DB-first through finalize order and exact rollback',
     terminalEvidenceStatuses: ['expired_no_final', 'abandoned_shoe_change'],
     unknownOrPendingNonFinalBlocksCutover: true,
   })
-  assert.deepEqual(manifest.rollback.order, ['stop producer admission', 'drain all non-terminal unsettled v106 issuances', 'run rollback SQL', 'deploy exact v105 proxy, frontend, and worker 1.0.62', 'verify sole Active v105 and new v105 Final'])
+  assert.deepEqual(manifest.rollback.order, ['stop producer admission', 'drain all non-terminal unsettled v106 issuances', 'run rollback SQL', 'deploy exact v105 proxy 6bdd39e8, current exact v105 frontend, and worker 6bdd39e8', 'verify sole Active v105 and new v105 Final'])
 })
 
 test('formal.4 cutover terminalization is fenced, quiet-period guarded, and identity preserving', () => {

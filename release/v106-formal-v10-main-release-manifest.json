@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.9",
-  "gitTag": "v106.0.0-formal.9",
-  "applicationVersion": "1.0.66",
+  "releaseVersion": "v106.0.0-formal.10",
+  "gitTag": "v106.0.0-formal.10",
+  "applicationVersion": "1.0.67",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -167,14 +167,14 @@
     "script": "supabase/operations/rollback_v106_to_v105.sql",
     "targetSoleActive": "v105",
     "componentCommits": {
-      "proxy": "fad9bd839eb272d8e9ab3db00852c1261aa620dd",
+      "proxy": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
       "frontend": "4a6b4bc8b4ab8357dfefdf738f73d41adc520bf0",
       "worker": "6bdd39e8c241c6d9341229d20bb5e281022c7d58"
     },
     "componentPackages": {
       "proxy": {
         "name": "draven-mt-data-proxy-v105",
-        "version": "1.0.61"
+        "version": "1.0.62"
       },
       "frontend": {
         "name": "darven-ai-baccarat-frontend",
@@ -206,14 +206,14 @@
       "releaseBaseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
       "allCommitsAreAncestorsOfReleaseBase": true,
       "packageAndBuildIdentityReadFromExactCommit": true,
-      "compatibility": "v105 proxy and frontend consume worker package 1.0.63 build 105 over unchanged protocol v105; rollback restores worker 1.0.62"
+      "compatibility": "exact v105 proxy 6bdd39e8 package 1.0.62 and current frontend consume worker 6bdd39e8 package 1.0.62 build 105 over unchanged protocol v105"
     },
     "componentMatrixNote": "Exact heterogeneous production predecessor artifacts; do not infer one shared application package version.",
     "order": [
       "stop producer admission",
       "drain all non-terminal unsettled v106 issuances",
       "run rollback SQL",
-      "deploy exact v105 proxy, frontend, and worker 1.0.62",
+      "deploy exact v105 proxy 6bdd39e8, current exact v105 frontend, and worker 6bdd39e8",
       "verify sole Active v105 and new v105 Final"
     ],
     "retains": [
@@ -250,7 +250,7 @@
         "supabase/operations/rollback_v106_to_v105.sql"
       ],
       "excludedPaths": [],
-      "sha256": "ae21a55ad12fa8d0b36adfb15cb05b2c52d04e94e0556da243cfaa501c152e2c"
+      "sha256": "a9f882f6f1525b68fcf41cc9a50737abb858a704ec3179f0ada98d536cdb4eb9"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -261,7 +261,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "971e74106eaae11c3c2c28030a9d4beebe109d90c73633630420133fc0d004da"
+      "sha256": "624552e8dc7bbb5226363a7d12ea22a4332e008558323f1d54dc4e2c57f88815"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -318,14 +318,21 @@
   "formal6Incident": {
     "observedAt": "2026-08-19T14:28:17Z",
     "productionEvidence": "the first processing outbox envelope carried three verified summary Finals whose identities had no immutable v106 issuance; later envelopes remained pending while v106 Final stayed zero",
-    "failedIdentities": ["BAG05:16959:6", "BAG03:16805:47", "BAG10:5032:24"],
+    "failedIdentities": [
+      "BAG05:16959:6",
+      "BAG03:16805:47",
+      "BAG10:5032:24"
+    ],
     "safeState": "production rolled back to sole Active v105 before formal.7 release",
     "formal7Fix": "production preflight binds one positive or negative immutable issuance decision to each Final; a negative decision skips durable rank and settlement without a second database lookup, while a positive decision preserves durable rank before settlement"
   },
   "formal7Incident": {
     "observedAt": "2026-08-19T15:30:00Z",
     "productionEvidence": "v106 issuance advanced from 230 to 250 while Final remained 0; BAG02 shoe 15635 round 55 received its verified Final at 15:28:11.952Z but a v106 issuance was created later at 15:29:40.875Z, and retry could treat that post-result issuance as eligible",
-    "failedIdentities": ["BAG06:17257:48", "BAG02:15635:55"],
+    "failedIdentities": [
+      "BAG06:17257:48",
+      "BAG02:15635:55"
+    ],
     "safeState": "production rolled back to sole Active v105; exact v105 proxy restored; ten tables; active outbox zero; v105 Final resumed",
     "formal8Fix": "durable outbox work inherits its persisted Final receive time and every retry rebinds to the first-write cloud_table_rounds receive time for that identity; post-result issuances are rejected across sequence replays; Final state is mounted before table observers may issue; missing issuance or authoritative Final-time lookup fails closed; verifier requires every named database cutover artifact including terminalize_v105_cutover.sql"
   },
@@ -334,5 +341,11 @@
     "productionEvidence": "v106 issuance advanced from 252 to 261 while Final remained 0; four zero-round outbox envelopes completed in about 0.5, 68, 67 and 23 seconds, and the third five-second capture reached durable storage about 41 seconds after its capture timestamp",
     "safeState": "production rolled back to sole Active v105; exact v105 proxy and worker restored; v105 Final increased from 120198 to 120252 during the later live probe; active outbox returned to zero; historical dead-letter baseline 229 preserved",
     "formal9Fix": "one of ten backend scheduler slots is reserved for durable worker-envelope persistence and outbox claim/complete/fail/health control RPCs; standard work is bounded to five and formal work to four so ACK-critical persistence and lifecycle control cannot queue behind a saturated non-critical mix"
+  },
+  "formal9Incident": {
+    "observedAt": "2026-08-19T19:18:03Z",
+    "productionEvidence": "v106 immutable issuance advanced from 261 to 285 while Final remained 0; one exact outbox lease remained processing, pending grew to 43, and Render recorded nonZeroExit 70 at 19:25:10Z, proving FORMAL_SETTLEMENT_STALLED after the 45-second lease plus 5-second settle grace",
+    "safeState": "all producers stopped; 10 unresolved v106 issuances terminalized; 44 active outbox rows isolated as immutable dead-letter evidence; production restored to sole Active v105, exact proxy and worker commit 6bdd39e8, ten tables, active outbox zero; historical dead-letter baseline is now 273",
+    "formal10Fix": "replace the single physical pg.Pool behind logical 5/4/1 scheduling with three independent physical pools capped at 5 standard, 4 formal, and 1 critical connections; route every lane to its matching pool while keeping the total main Proxy DB budget exactly 10"
   }
 }

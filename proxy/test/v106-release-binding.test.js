@@ -41,7 +41,7 @@ test('v106 full release manifest binds the exact staged implementation, build in
   const result = await verifyV106ManifestDigests({ manifest, candidateIndexTree, root: repoRoot })
   assert.equal(result.ok, true)
   assert.equal(report.releaseVersion, manifest.releaseVersion)
-  assert.match(report.status, /formal9/)
+  assert.match(report.status, /formal10/)
   assert.doesNotMatch(report.status, /formal5/)
   assert.deepEqual(Object.keys(result.digests).sort(), [
     'databaseCutoverInput', 'frontendBuildInput', 'implementationTree', 'proxyBuildInput', 'workerBuildInput',
@@ -73,12 +73,12 @@ test('v106 full release manifest binds the exact staged implementation, build in
     /release_deployable_out_of_binding:implementationTree:proxy\/src\/unbound-deployable\.js/,
   )
   assert.deepEqual(manifest.rollback.componentCommits, {
-    proxy: 'fad9bd839eb272d8e9ab3db00852c1261aa620dd',
+    proxy: '6bdd39e8c241c6d9341229d20bb5e281022c7d58',
     frontend: '4a6b4bc8b4ab8357dfefdf738f73d41adc520bf0',
     worker: '6bdd39e8c241c6d9341229d20bb5e281022c7d58',
   })
   assert.deepEqual(manifest.rollback.componentPackages, {
-    proxy: { name: 'draven-mt-data-proxy-v105', version: '1.0.61' },
+    proxy: { name: 'draven-mt-data-proxy-v105', version: '1.0.62' },
     frontend: { name: 'darven-ai-baccarat-frontend', version: '1.0.60' },
     worker: { name: 'darven-cloud-browser-worker', version: '1.0.62' },
   })

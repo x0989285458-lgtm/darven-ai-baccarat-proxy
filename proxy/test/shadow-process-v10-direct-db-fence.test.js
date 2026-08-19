@@ -13,20 +13,21 @@ const candidate = {
 }
 const response = (payload) => ({ ok: true, status: 200, text: async () => JSON.stringify(payload), json: async () => payload })
 
-test('createSupabaseIngestionClient eagerly constructs its Direct DB pool when configured', () => {
-  let poolConstructions = 0
+test('createSupabaseIngestionClient eagerly constructs all three physically isolated Direct DB pools when configured', () => {
+  const poolConfigs = []
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co',
     serviceKey: 'test-only',
     requireVerifiedStrategy: false,
     dbConnectionString: 'postgresql://direct.invalid/db',
     strategyPoolFactory(config) {
-      poolConstructions += 1
+      poolConfigs.push(structuredClone(config))
       return { config, async query() { return { rows: [] } } }
     },
   })
 
-  assert.equal(poolConstructions, 1)
+  assert.deepEqual(poolConfigs.map((config) => config.max), [5, 4, 1])
+  assert.equal(poolConfigs.reduce((sum, config) => sum + config.max, 0), 10)
   assert.equal(client.configured, true)
 })
 
