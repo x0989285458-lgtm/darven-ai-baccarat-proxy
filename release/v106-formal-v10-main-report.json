@@ -2,7 +2,7 @@
   "releaseVersion": "v106.0.0-formal.6",
   "strategyVersion": "v106",
   "applicationVersion": "1.0.63",
-  "status": "formal5-rank-hydration-hotfix-candidate",
+  "status": "formal6-zero-final-heartbeat-hotfix-candidate",
   "productionE2E": "not-run-production-remains-v105",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
