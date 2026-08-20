@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.13",
-  "gitTag": "v106.0.0-formal.13",
-  "applicationVersion": "1.0.70",
+  "releaseVersion": "v106.0.0-formal.14",
+  "gitTag": "v106.0.0-formal.14",
+  "applicationVersion": "1.0.71",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -158,6 +158,8 @@
     "drain-v105-and-queue",
     "activate-v106",
     "proxy",
+    "verify-external-proxy-health-200",
+    "producer-start-after-external-health",
     "frontend",
     "live-e2e",
     "finalize"
@@ -272,7 +274,7 @@
         "supabase/operations/rollback_v106_to_v105.sql"
       ],
       "excludedPaths": [],
-      "sha256": "66bb4ed55d2dc5af452322e959ee90bae590eb1df781911b7604b435f6beeea7"
+      "sha256": "7965f1f02a6be0082153e95b531e24deec451274cfbb0380bff76d68b4f3c95c"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -283,7 +285,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "865fac75d83242ed7a3c440e4399df878c4a4b485913bd27dfd6382134473425"
+      "sha256": "1a891c939c112eb8a99ef6f5bff86736172e824415c23909f01fe440821b2156"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -391,5 +393,11 @@
     "candidateCommit": "fc140ff4b56bc873c5170cfa00d8a1f8b25bd1ef",
     "candidateTree": "a88b2f428bc0fef8f7921c13182d786ff8926b29",
     "formal13Fix": "Outbox work carries immutable sequence/capturedAt and a single atomic monotonic RPC skips stale sequence or capture time before writing either projection."
+  },
+  "formal14Incident": {
+    "observedAt": "2026-08-20T08:30:00Z",
+    "verdict": "BLOCK_AND_ROLLBACK",
+    "evidence": "Render deploy API reported live before the public service was externally routable; Worker started early, received five HTTP 503 acknowledgements, queued six envelopes, and V106 produced zero Final before rollback. Render logs later showed port detection at 08:34:42Z.",
+    "releaseRule": "Do not start producer until exact candidate public /health returns HTTP 200 with v106 identity on two bounded consecutive probes. Formal.13 is immutable and may not be retried."
   }
 }
