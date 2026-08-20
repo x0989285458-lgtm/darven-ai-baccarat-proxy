@@ -9,7 +9,7 @@ const root = path.resolve(import.meta.dirname, '../..')
 const head = () => execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
 const tree = () => execFileSync('git', ['write-tree'], { cwd: root, encoding: 'utf8' }).trim()
 
-test('Formal.17 bound cutover authorizes exact HEAD, proves public identity, then and only then starts producer', async () => {
+test('Formal.18 bound cutover authorizes exact HEAD, proves public identity, then and only then starts producer', async () => {
   const events = []
   const result = await runV106ProductionCutover({
     manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', url: 'https://example.test', root,
@@ -30,7 +30,7 @@ test('Formal.17 bound cutover authorizes exact HEAD, proves public identity, the
   ])
 })
 
-test('Formal.17 bound cutover never calls producer when exact public readiness blocks', async () => {
+test('Formal.18 bound cutover never calls producer when exact public readiness blocks', async () => {
   let producerCalls = 0
   await assert.rejects(runV106ProductionCutover({
     manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', url: 'https://example.test', root,
@@ -41,7 +41,7 @@ test('Formal.17 bound cutover never calls producer when exact public readiness b
   assert.equal(producerCalls, 0)
 })
 
-test('Formal.17 bound cutover rejects an authorized commit that is not exact checked-out HEAD before probing or producer start', async () => {
+test('Formal.18 bound cutover rejects an authorized commit that is not exact checked-out HEAD before probing or producer start', async () => {
   let sideEffects = 0
   await assert.rejects(runV106ProductionCutover({
     manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', url: 'https://example.test', root,

@@ -187,7 +187,7 @@ export function verifyV106PublicReadinessContract({ manifest, candidateIndexTree
       || !pathIsBound(manifest?.releaseBinding?.implementationTree, evidence)) throw new Error('public_readiness_gate_binding_mismatch')
   for (const artifact of [script, runner, evidence]) execFileSync('git', ['cat-file', '-e', `${candidateIndexTree}:${artifact}`], { cwd: root })
   const source = execFileSync('git', ['show', `${candidateIndexTree}:${script}`], { cwd: root, encoding: 'utf8' })
-  for (const requiredText of ['requiredStreak = Math.max(2', 'maxAttempts = Math.min(30', 'body?.releaseVersion === expectedRelease', 'body?.packageVersion === expectedPackage', 'body?.commit === expectedCommit', "blocked.code = 'PUBLIC_PROXY_READINESS_BLOCK'"]) {
+  for (const requiredText of ['requiredStreak = Math.max(2', 'maxAttempts = Math.min(30', "redirect: 'error'", 'body?.releaseVersion === expectedRelease', 'body?.packageVersion === expectedPackage', 'body?.commit === expectedCommit', "blocked.code = 'PUBLIC_PROXY_READINESS_BLOCK'"]) {
     if (!source.includes(requiredText)) throw new Error('public_readiness_gate_executable_mismatch')
   }
   const runnerSource = execFileSync('git', ['show', `${candidateIndexTree}:${runner}`], { cwd: root, encoding: 'utf8' })

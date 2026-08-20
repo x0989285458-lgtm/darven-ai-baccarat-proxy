@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.17",
-  "gitTag": "v106.0.0-formal.17",
-  "applicationVersion": "1.0.74",
+  "releaseVersion": "v106.0.0-formal.18",
+  "gitTag": "v106.0.0-formal.18",
+  "applicationVersion": "1.0.75",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -294,7 +294,7 @@
         "supabase/migrations/20260820040000_v106_formal17_single_use_rollback_receipt.sql"
       ],
       "excludedPaths": [],
-      "sha256": "bcb2dfba8371df4dde1c7468c985f2a94ec64776eed296025ef331b80befe243"
+      "sha256": "97be30abc99edc20a052c1c5637f567f4cdd6b4f6a289562148f09474913473d"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -305,7 +305,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "d5946814ac72c2b0e19d98463c69bc793bfa2df2f0f6f31013696efa600f88f0"
+      "sha256": "9e5e11534a84591d22506f268cc6f7248ce47959a264758ce5caeba70aca4794"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -433,8 +433,8 @@
     "requiredIdentity": {
       "version": "v106",
       "buildVersion": "v106",
-      "releaseVersion": "v106.0.0-formal.17",
-      "packageVersion": "1.0.74",
+      "releaseVersion": "v106.0.0-formal.18",
+      "packageVersion": "1.0.75",
       "commit": "annotated-tag-attested-commit"
     },
     "failClosedExitCode": 2

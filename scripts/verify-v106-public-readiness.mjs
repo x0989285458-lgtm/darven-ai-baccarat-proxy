@@ -31,7 +31,7 @@ export async function verifyV106PublicReadiness({
     const timer = setTimeout(() => controller.abort(), Math.max(1, Number(requestTimeoutMs) || 20000))
     try {
       response = await fetchImpl(`${String(url).replace(/\/$/, '')}/health`, {
-        method: 'GET', headers: { accept: 'application/json' }, signal: controller.signal,
+        method: 'GET', headers: { accept: 'application/json' }, redirect: 'error', signal: controller.signal,
       })
       body = await response.json()
     } catch (caught) {
