@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.16",
-  "gitTag": "v106.0.0-formal.16",
-  "applicationVersion": "1.0.73",
+  "releaseVersion": "v106.0.0-formal.17",
+  "gitTag": "v106.0.0-formal.17",
+  "applicationVersion": "1.0.74",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -109,6 +109,12 @@
       "contract": "Durable quiet-period terminalization receipt binds lifecycle closure and zero active Outbox before rollback.",
       "gitBlobSha1": "863221c9735f4dcc7f5ca59a986f0a9172e04f22"
     },
+    "rollbackReceiptSingleUse": {
+      "path": "supabase/migrations/20260820040000_v106_formal17_single_use_rollback_receipt.sql",
+      "deploymentStep": "database-single-use-rollback-receipt",
+      "contract": "Receipt is bound to the active v106 activation generation, unique, unconsumed and atomically consumed by rollback.",
+      "gitBlobSha1": "1b8f7972f6734dd7a1b37f7618ac4f6d3478f308"
+    },
     "fence": {
       "path": "supabase/operations/fence_v105_new_issuance.sql",
       "deploymentStep": "fence-v105-new-issuance",
@@ -132,12 +138,12 @@
     "rollbackTerminalize": {
       "path": "supabase/operations/terminalize_v106_rollback.sql",
       "deploymentStep": "rollback-terminalize",
-      "gitBlobSha1": "a83751899ec00ca7c2c07c40c7239256e976fb22"
+      "gitBlobSha1": "aed0e7062179477ddcf88c37504ab66bfa3a5cda"
     },
     "rollback": {
       "path": "supabase/operations/rollback_v106_to_v105.sql",
       "deploymentStep": "rollback-only",
-      "gitBlobSha1": "723e80318947d45fee1fb6cd00e374c6e50419f6"
+      "gitBlobSha1": "55598fcdc852e64e99761114844483c1da3e98b8"
     }
   },
   "activation": "supabase/operations/activate_v106_promotion.sql",
@@ -157,6 +163,7 @@
     "database-bounded-raw-ack",
     "database-monotonic-projection",
     "database-rollback-receipt",
+    "database-single-use-rollback-receipt",
     "deploy-worker-1.0.63-protocol-v105",
     "verify-worker-v105-compatibility",
     "fence-v105-new-issuance",
@@ -283,10 +290,11 @@
         "scripts/verify-v106-public-readiness.mjs",
         "release/evidence/v106-formal13-production-block.json",
         "scripts/run-v106-production-cutover.mjs",
-        "supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql"
+        "supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql",
+        "supabase/migrations/20260820040000_v106_formal17_single_use_rollback_receipt.sql"
       ],
       "excludedPaths": [],
-      "sha256": "c6cb61d24a35dd6ae4154437e27432503d3efff74b398fa1af0a6739e41b7f8f"
+      "sha256": "bcb2dfba8371df4dde1c7468c985f2a94ec64776eed296025ef331b80befe243"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -297,7 +305,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "6090c50af8f1b2c81fe9f5d4bd1113895e355393b1253cc1833f20b308746645"
+      "sha256": "d5946814ac72c2b0e19d98463c69bc793bfa2df2f0f6f31013696efa600f88f0"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -334,10 +342,11 @@
         "supabase/operations/finalize_v106_promotion.sql",
         "supabase/operations/terminalize_v106_rollback.sql",
         "supabase/operations/rollback_v106_to_v105.sql",
-        "supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql"
+        "supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql",
+        "supabase/migrations/20260820040000_v106_formal17_single_use_rollback_receipt.sql"
       ],
       "excludedPaths": [],
-      "sha256": "ad375058f1ba6a5a4a2e7c329845921507736cea63d84de3db77452dc88d45da"
+      "sha256": "03acc82ff5d90429c1b86edfec88cd18ce19955f29032d04e1f8e9e404c4c129"
     }
   },
   "historicalArtifactsPreserved": true,
@@ -424,8 +433,8 @@
     "requiredIdentity": {
       "version": "v106",
       "buildVersion": "v106",
-      "releaseVersion": "v106.0.0-formal.16",
-      "packageVersion": "1.0.73",
+      "releaseVersion": "v106.0.0-formal.17",
+      "packageVersion": "1.0.74",
       "commit": "annotated-tag-attested-commit"
     },
     "failClosedExitCode": 2
@@ -433,7 +442,8 @@
   "incidentEvidence": {
     "formal13": "release/evidence/v106-formal13-production-block.json",
     "formal14FreshReview": "BLOCK: declarative readiness did not bind executable exact identity gate",
-    "formal15FreshReview": "BLOCK: readiness was not invoked by a bound deployment runner; expected commit and 30-attempt cap were caller-controlled; rollback lacked a durable terminalization receipt."
+    "formal15FreshReview": "BLOCK: readiness was not invoked by a bound deployment runner; expected commit and 30-attempt cap were caller-controlled; rollback lacked a durable terminalization receipt.",
+    "formal16FreshReview": "BLOCK: canonical URL was caller-controlled; receipt could be replayed and did not cover abandoned status; capture-source ingest was not exclusively fenced through rollback."
   },
   "productionCutoverRunner": {
     "script": "scripts/run-v106-production-cutover.mjs",
@@ -443,5 +453,6 @@
     "requiresExactCheckedOutHead": true,
     "startsProducerOnlyAfterReadinessPass": true,
     "producerStartScriptMustBeAbsolute": true
-  }
+  },
+  "canonicalPublicProxyUrl": "https://darven-ai-baccarat-proxy.onrender.com"
 }

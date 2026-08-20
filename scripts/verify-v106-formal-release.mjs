@@ -23,6 +23,7 @@ const REQUIRED_DATABASE_ARTIFACTS = Object.freeze([
   'supabase/migrations/20260820010000_v106_formal12_bounded_raw_ack.sql',
   'supabase/migrations/20260820020000_v106_formal13_monotonic_projection.sql',
   'supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql',
+  'supabase/migrations/20260820040000_v106_formal17_single_use_rollback_receipt.sql',
   'supabase/operations/fence_v105_new_issuance.sql',
   'supabase/operations/terminalize_v105_cutover.sql',
   'supabase/operations/activate_v106_promotion.sql',
@@ -36,12 +37,13 @@ const REQUIRED_DATABASE_CONTRACTS = Object.freeze({
   boundedRawAck: { path: REQUIRED_DATABASE_ARTIFACTS[2], deploymentStep: 'database-bounded-raw-ack' },
   monotonicProjection: { path: REQUIRED_DATABASE_ARTIFACTS[3], deploymentStep: 'database-monotonic-projection' },
   rollbackReceipt: { path: REQUIRED_DATABASE_ARTIFACTS[4], deploymentStep: 'database-rollback-receipt' },
-  fence: { path: REQUIRED_DATABASE_ARTIFACTS[5], deploymentStep: 'fence-v105-new-issuance' },
-  terminalize: { path: REQUIRED_DATABASE_ARTIFACTS[6], deploymentStep: 'terminalize-v105-cutover' },
-  activate: { path: REQUIRED_DATABASE_ARTIFACTS[7], deploymentStep: 'activate-v106' },
-  finalize: { path: REQUIRED_DATABASE_ARTIFACTS[8], deploymentStep: 'finalize' },
-  rollbackTerminalize: { path: REQUIRED_DATABASE_ARTIFACTS[9], deploymentStep: 'rollback-terminalize' },
-  rollback: { path: REQUIRED_DATABASE_ARTIFACTS[10], deploymentStep: 'rollback-only' },
+  rollbackReceiptSingleUse: { path: REQUIRED_DATABASE_ARTIFACTS[5], deploymentStep: 'database-single-use-rollback-receipt' },
+  fence: { path: REQUIRED_DATABASE_ARTIFACTS[6], deploymentStep: 'fence-v105-new-issuance' },
+  terminalize: { path: REQUIRED_DATABASE_ARTIFACTS[7], deploymentStep: 'terminalize-v105-cutover' },
+  activate: { path: REQUIRED_DATABASE_ARTIFACTS[8], deploymentStep: 'activate-v106' },
+  finalize: { path: REQUIRED_DATABASE_ARTIFACTS[9], deploymentStep: 'finalize' },
+  rollbackTerminalize: { path: REQUIRED_DATABASE_ARTIFACTS[10], deploymentStep: 'rollback-terminalize' },
+  rollback: { path: REQUIRED_DATABASE_ARTIFACTS[11], deploymentStep: 'rollback-only' },
 })
 const REQUIRED_ROLLBACK_ORDER = Object.freeze([
   'stop producer admission',
@@ -56,7 +58,7 @@ const DEPLOYABLE_BINDING_RULES = Object.freeze([
   { pattern: /^frontend\/(?:package(?:-lock)?\.json|src\/)/, bindings: ['implementationTree', 'frontendBuildInput'] },
   { pattern: /^cloud-browser-worker\/(?:Dockerfile|package(?:-lock)?\.json|src\/)/, bindings: ['implementationTree', 'workerBuildInput'] },
   { pattern: /^shared\//, bindings: ['implementationTree', 'proxyBuildInput', 'workerBuildInput'] },
-  { pattern: /^supabase\/(?:migrations\/(?:20260818010000_v106_formal_v10_main|20260820003500_v106_formal8_final_time_fence|20260820010000_v106_formal12_bounded_raw_ack|20260820020000_v106_formal13_monotonic_projection|20260820030000_v106_formal16_rollback_receipt)\.sql|operations\/(?:fence_v105_new_issuance|terminalize_v105_cutover|activate_v106_promotion|finalize_v106_promotion|terminalize_v106_rollback|rollback_v106_to_v105)\.sql)$/, bindings: ['implementationTree', 'databaseCutoverInput'] },
+  { pattern: /^supabase\/(?:migrations\/(?:20260818010000_v106_formal_v10_main|20260820003500_v106_formal8_final_time_fence|20260820010000_v106_formal12_bounded_raw_ack|20260820020000_v106_formal13_monotonic_projection|20260820030000_v106_formal16_rollback_receipt|20260820040000_v106_formal17_single_use_rollback_receipt)\.sql|operations\/(?:fence_v105_new_issuance|terminalize_v105_cutover|activate_v106_promotion|finalize_v106_promotion|terminalize_v106_rollback|rollback_v106_to_v105)\.sql)$/, bindings: ['implementationTree', 'databaseCutoverInput'] },
   { pattern: /^scripts\/(?:verify-v106-formal-release|verify-v106-public-readiness|run-v106-production-cutover|run-worker-tests-scrubbed|test-env-scrub)\.mjs$/, bindings: ['implementationTree'] },
   { pattern: /^release\/evidence\/v106-formal13-production-block\.json$/, bindings: ['implementationTree'] },
 ])
@@ -156,6 +158,9 @@ export function verifyV106PublicReadinessContract({ manifest, candidateIndexTree
   const script = 'scripts/verify-v106-public-readiness.mjs'
   const runner = 'scripts/run-v106-production-cutover.mjs'
   const evidence = 'release/evidence/v106-formal13-production-block.json'
+  if (manifest?.canonicalPublicProxyUrl !== 'https://darven-ai-baccarat-proxy.onrender.com') {
+    throw new Error('canonical_public_proxy_url_mismatch')
+  }
   if (!gate || gate.script !== script || gate.deploymentStep !== 'run-bound-production-cutover'
       || gate.producerStartStep !== gate.deploymentStep) throw new Error('public_readiness_gate_contract_missing')
   if (gate.requiredConsecutive !== 2 || gate.boundedAttempts !== 30 || gate.requestTimeoutMs !== 20000
@@ -186,12 +191,13 @@ export function verifyV106PublicReadinessContract({ manifest, candidateIndexTree
     if (!source.includes(requiredText)) throw new Error('public_readiness_gate_executable_mismatch')
   }
   const runnerSource = execFileSync('git', ['show', `${candidateIndexTree}:${runner}`], { cwd: root, encoding: 'utf8' })
-  for (const requiredText of ['verifyV106Attestation', 'resolveAnnotatedTagCommit', "if (head !== authorization.commit)", 'const readiness = await verifyReadiness', 'const producer = await startProducer']) {
+  for (const requiredText of ['verifyV106Attestation', 'resolveAnnotatedTagCommit', "if (head !== authorization.commit)", 'url: manifest.canonicalPublicProxyUrl', 'const readiness = await verifyReadiness', 'const producer = await startProducer']) {
     if (!runnerSource.includes(requiredText)) throw new Error('production_cutover_runner_executable_mismatch')
   }
   if (runnerSource.indexOf('const producer = await startProducer') < runnerSource.indexOf('const readiness = await verifyReadiness')) {
     throw new Error('production_cutover_runner_order_mismatch')
   }
+  if (runnerSource.includes("get('--url')")) throw new Error('production_cutover_runner_url_override_forbidden')
   return { ok: true, script, runner, evidence, required }
 }
 
@@ -224,6 +230,7 @@ export async function verifyV106Attestation({ manifest, candidateIndexTree, atte
   const attestation = JSON.parse(await readFile(externalPath, 'utf8'))
   if (attestation.releaseVersion !== manifest.releaseVersion) throw new Error('attestation_release_mismatch')
   if (attestation.tagName !== manifest.gitTag) throw new Error('attestation_tag_mismatch')
+  if (attestation.publicProxyUrl !== manifest.canonicalPublicProxyUrl) throw new Error('attestation_public_proxy_url_mismatch')
   if (attestation.candidateIndexTree !== candidateIndexTree) throw new Error('attestation_tree_mismatch')
   const expectedDigests = digests.digests
   const attestedDigests = attestation.digests

@@ -1,10 +1,13 @@
--- Non-destructive rollback. Run only after producer stop and a durable Formal.16
+-- Non-destructive rollback. Run only after producer stop and a durable Formal.17
 -- terminalization receipt proves quiet, bounded lifecycle closure and zero active outbox.
 begin;
+
+select pg_advisory_xact_lock(hashtextextended('v105_capture_source_fence:capture', 0));
 
 do $$
 declare
   latest_receipt public.v106_rollback_terminalization_receipts%rowtype;
+  active_strategy_activated_at timestamptz;
 begin
   perform 1
   from public.ai_strategy_versions
@@ -14,9 +17,17 @@ begin
   if not exists (select 1 from public.ai_strategy_versions where version = 'v105') then
     raise exception 'v105 rollback target is missing';
   end if;
+  select activated_at into active_strategy_activated_at
+  from public.ai_strategy_versions
+  where version = 'v106' and status = 'active';
+  if active_strategy_activated_at is null then
+    raise exception 'active v106 activation generation is missing';
+  end if;
   select * into latest_receipt
   from public.v106_rollback_terminalization_receipts
   where reason = 'formal_v106_rollback_after_producer_stop'
+    and strategy_activated_at = active_strategy_activated_at
+    and consumed_at is null
   order by completed_at desc
   limit 1
   for update;
@@ -58,9 +69,15 @@ begin
     where strategy_version = 'v106'
       and prediction_issued_at is not null
       and settlement_final is not true
-      and coalesce(issuance_status, 'pending') not in ('expired_no_final', 'abandoned_shoe_change')
+      and issuance_status is distinct from 'expired_no_final'
   ) then
     raise exception 'v106 still has non-terminal unsettled immutable issuances; rollback aborted';
+  end if;
+  update public.v106_rollback_terminalization_receipts
+  set consumed_at = clock_timestamp(), consumed_by = 'rollback_v106_to_v105'
+  where receipt_id = latest_receipt.receipt_id and consumed_at is null;
+  if not found then
+    raise exception 'v106 rollback receipt was already consumed';
   end if;
 end;
 $$;
@@ -77,6 +94,7 @@ grant execute on function public.settle_v105_prediction(jsonb, jsonb) to service
 grant execute on function public.persist_v105_settled_round(jsonb, jsonb) to service_role;
 grant execute on function public.reconcile_v105_prediction_lifecycle(text, text, text, integer) to service_role;
 grant execute on function public.get_v105_prediction_lifecycle_stats() to service_role;
+grant execute on function public.persist_v105_fenced_capture_envelope(jsonb) to service_role;
 
 update public.ai_strategy_versions
 set status = 'archived'

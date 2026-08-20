@@ -11,7 +11,6 @@ export async function runV106ProductionCutover({
   manifest,
   candidateIndexTree,
   attestationPath,
-  url,
   authorizeRelease = (options) => verifyV106Attestation(options),
   verifyReadiness = verifyV106PublicReadiness,
   startProducer,
@@ -28,7 +27,7 @@ export async function runV106ProductionCutover({
   if (head !== authorization.commit) throw new Error('production_cutover_head_commit_mismatch')
   const gate = manifest.publicReadinessGate
   const readiness = await verifyReadiness({
-    url,
+    url: manifest.canonicalPublicProxyUrl,
     expectedRelease: manifest.releaseVersion,
     expectedPackage: manifest.applicationVersion,
     expectedCommit: authorization.commit,
@@ -57,16 +56,15 @@ async function main() {
     const index = args.indexOf(name)
     return index >= 0 ? args[index + 1] : undefined
   }
-  const url = get('--url')
   const attestationPath = get('--attestation')
   const producerStartScript = get('--producer-start-script')
-  if (!url || !attestationPath || !producerStartScript) throw new Error('url_attestation_and_producer_start_script_required')
+  if (!attestationPath || !producerStartScript) throw new Error('attestation_and_producer_start_script_required')
   if (!path.isAbsolute(producerStartScript)) throw new Error('producer_start_script_must_be_absolute')
   const manifest = JSON.parse(await readFile(path.join(repoRoot, 'release', 'v106-formal-v10-main-release-manifest.json'), 'utf8'))
   const tagCommit = resolveAnnotatedTagCommit({ tagName: manifest.gitTag, root: repoRoot })
   const candidateIndexTree = execFileSync('git', ['rev-parse', `${tagCommit}^{tree}`], { cwd: repoRoot, encoding: 'utf8' }).trim()
   const result = await runV106ProductionCutover({
-    manifest, candidateIndexTree, attestationPath, url, root: repoRoot,
+    manifest, candidateIndexTree, attestationPath, root: repoRoot,
     onProbe: (probe) => process.stdout.write(`${JSON.stringify({ type: 'public-readiness-probe', ...probe })}\n`),
     startProducer: async (identity) => {
       const child = spawnSync('python', [producerStartScript], {

@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.16",
+  "releaseVersion": "v106.0.0-formal.17",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.73",
-  "status": "formal16_candidate_pending_exact_tests_review_and_production_gate",
+  "applicationVersion": "1.0.74",
+  "status": "formal17_candidate_pending_exact_tests_review_and_production_gate",
   "productionE2E": "not-run-production-remains-v105",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.73",
+      "packageVersion": "1.0.74",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,11 +27,11 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "c6cb61d24a35dd6ae4154437e27432503d3efff74b398fa1af0a6739e41b7f8f",
-    "proxyBuildInput": "6090c50af8f1b2c81fe9f5d4bd1113895e355393b1253cc1833f20b308746645",
+    "implementationTree": "bcb2dfba8371df4dde1c7468c985f2a94ec64776eed296025ef331b80befe243",
+    "proxyBuildInput": "d5946814ac72c2b0e19d98463c69bc793bfa2df2f0f6f31013696efa600f88f0",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "ad375058f1ba6a5a4a2e7c329845921507736cea63d84de3db77452dc88d45da"
+    "databaseCutoverInput": "03acc82ff5d90429c1b86edfec88cd18ce19955f29032d04e1f8e9e404c4c129"
   },
   "rollbackComponents": {
     "proxy": {
@@ -82,10 +82,10 @@
     "note": "Tie/PUSH excluded from directional hit-rate denominator. Full-output V10 candidate was rejected after producing net -15 hits; eligible-only promotion is the reviewed candidate."
   },
   "verified": {
-    "proxy": "1031/1031 PASS for Formal.16 exact staged candidate",
+    "proxy": "1031/1031 PASS for Formal.17 exact staged candidate",
     "releaseBinding": "five mandatory staged-tree digests plus seven ordered database artifact contracts with exact Git blob SHA-1 verified in precommit mode; release authorization remains false until external attestation and annotated tag",
     "testEnvironmentFence": "shared proxy/worker scrubber removes DB, service-role, proxy-control, member/admin session, MT token/session/portal path, worker, ingest, Render and Cloudflare authority before child tests; focused 2/2 pass",
-    "focusedTests": "Formal.16 bound authorized cutover runner, fixed 30-probe exact identity gate, durable rollback receipt and fake-terminal-label negative contracts PASS.",
+    "focusedTests": "Formal.17 bound authorized cutover runner, fixed 30-probe exact identity gate, durable rollback receipt and fake-terminal-label negative contracts PASS.",
     "predecessorRegression": "8/8 v105 predecessor regressions derived from release base 6bdd39e8 pass against the candidate server; the base source SHA-256 is verifier-bound and 13/13 dedicated v106 server tests pass separately",
     "outboxFailureAckIsolation": "25/25 outbox tests pass; a permanently stalled Formal promise enters FORMAL_SETTLEMENT_STALLED fatal with exit 70, sends no failure ACK, and retains the exact lease for stale-lease recovery",
     "frontend": "156/156 PASS and production build PASS",
@@ -139,11 +139,11 @@
       ]
     },
     "digests": {
-      "implementationTree": "c6cb61d24a35dd6ae4154437e27432503d3efff74b398fa1af0a6739e41b7f8f",
-      "proxyBuildInput": "6090c50af8f1b2c81fe9f5d4bd1113895e355393b1253cc1833f20b308746645",
+      "implementationTree": "bcb2dfba8371df4dde1c7468c985f2a94ec64776eed296025ef331b80befe243",
+      "proxyBuildInput": "d5946814ac72c2b0e19d98463c69bc793bfa2df2f0f6f31013696efa600f88f0",
       "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
       "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-      "databaseCutoverInput": "ad375058f1ba6a5a4a2e7c329845921507736cea63d84de3db77452dc88d45da"
+      "databaseCutoverInput": "03acc82ff5d90429c1b86edfec88cd18ce19955f29032d04e1f8e9e404c4c129"
     },
     "formal16PostgresRehearsal": {
       "migrationTransactionRollback": "PASS",
@@ -157,8 +157,8 @@
     }
   },
   "pending": [
-    "formal.16 exact commit/tree, full suite, two explicit Fresh Reviews and external attestation",
-    "formal.16 controlled production cutover through bound runner, core Final gate and live E2E"
+    "formal.17 exact commit/tree, full suite, two explicit Fresh Reviews and external attestation",
+    "formal.17 controlled production cutover through canonical bound runner, core Final gate and live E2E"
   ],
   "productionTrialFormal13": {
     "verdict": "BLOCK_AND_ROLLBACK",
@@ -187,8 +187,18 @@
       "Rollback accepted terminal labels without a durable terminalization receipt read-back."
     ]
   },
-  "formal16Fix": {
-    "scope": "Bound authorized production cutover runner plus durable rollback terminalization receipt.",
-    "gate": "Runner resolves exact commit from annotated tag and external attestation, requires exact checked-out HEAD, executes a fixed 30-attempt exact public identity gate, and invokes producer start only after two consecutive PASS probes. Rollback requires a durable quiet-period receipt and zero active Outbox read-back."
+  "productionTrialFormal16": {
+    "verdict": "FRESH_REVIEW_BLOCK_NO_PRODUCTION_RETRY",
+    "candidateCommit": "5080a35c3618d7784128baee29087a73edbff95e",
+    "candidateTree": "e5d26469bbeb7de2b8164e9858931fc5af29b741",
+    "findings": [
+      "Canonical public URL remained caller-controlled.",
+      "Rollback receipt was replayable and abandoned_shoe_change was outside receipt coverage.",
+      "Capture-source exclusive fence and ingest RPC revoke did not span terminalization through rollback."
+    ]
+  },
+  "formal17Fix": {
+    "scope": "Canonical attested endpoint, single-use activation-bound rollback receipt, full non-Final receipt coverage and capture-source exclusive fence.",
+    "gate": "Runner has no URL override and uses the manifest/attestation-bound Render endpoint. Terminalizer acquires the capture-source exclusive lock, revokes Raw ingest, covers every non-Final issuance, records active v106 activation generation and nonce. Rollback requires an unconsumed matching-generation receipt, rechecks zero active Outbox, consumes the receipt and only then restores v105 ingest."
   }
 }

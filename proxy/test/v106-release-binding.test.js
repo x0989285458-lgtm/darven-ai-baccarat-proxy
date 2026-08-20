@@ -18,7 +18,7 @@ import {
 
 const repoRoot = path.resolve(import.meta.dirname, '../..')
 
-test('Formal.16 verifier rejects deletion or weakening of the executable exact public readiness gate', () => {
+test('Formal.17 verifier rejects deletion or weakening of the executable exact public readiness gate', () => {
   const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
   assert.deepEqual(verifyV106PublicReadinessContract({ manifest, candidateIndexTree, root: repoRoot }).required, [
     'proxy', 'run-bound-production-cutover', 'frontend', 'live-e2e', 'finalize',
@@ -55,7 +55,7 @@ test('v106 full release manifest binds the exact staged implementation, build in
   const result = await verifyV106ManifestDigests({ manifest, candidateIndexTree, root: repoRoot })
   assert.equal(result.ok, true)
   assert.equal(report.releaseVersion, manifest.releaseVersion)
-  assert.match(report.status, /formal16/)
+  assert.match(report.status, /formal17/)
   assert.doesNotMatch(report.status, /formal5/)
   assert.deepEqual(Object.keys(result.digests).sort(), [
     'databaseCutoverInput', 'frontendBuildInput', 'implementationTree', 'proxyBuildInput', 'workerBuildInput',
@@ -212,6 +212,7 @@ test('v106 external attestation requires the exact complete release digest set b
     const base = {
       releaseVersion: manifest.releaseVersion,
       tagName: manifest.gitTag,
+      publicProxyUrl: manifest.canonicalPublicProxyUrl,
       candidateIndexTree,
       commit: '0'.repeat(40),
     }
