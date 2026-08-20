@@ -7,6 +7,18 @@ import { verifyV106PublicReadiness } from './verify-v106-public-readiness.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
+export function loadBoundPythonSource({ candidateIndexTree, relativePath, expectedBlob, root = repoRoot } = {}) {
+  if (!/^[a-f0-9]{40}$/.test(candidateIndexTree ?? '') || !/^[a-f0-9]{40}$/.test(expectedBlob ?? '')) {
+    throw new Error('bound_python_source_identity_invalid')
+  }
+  if (typeof relativePath !== 'string' || path.isAbsolute(relativePath) || relativePath.includes('..')) {
+    throw new Error('bound_python_source_path_invalid')
+  }
+  const actualBlob = execFileSync('git', ['rev-parse', `${candidateIndexTree}:${relativePath}`], { cwd: root, encoding: 'utf8' }).trim()
+  if (actualBlob !== expectedBlob) throw new Error('bound_python_source_blob_mismatch')
+  return execFileSync('git', ['show', `${candidateIndexTree}:${relativePath}`], { cwd: root, encoding: 'utf8', maxBuffer: 1024 * 1024 })
+}
+
 export async function runV106ProductionCutover({
   manifest,
   candidateIndexTree,
@@ -17,6 +29,7 @@ export async function runV106ProductionCutover({
   stopProducer,
   verifyProductionDb,
   resolveCurrentTree = ({ root: currentRoot }) => execFileSync('git', ['rev-parse', 'HEAD^{tree}'], { cwd: currentRoot, encoding: 'utf8' }).trim(),
+  resolveArtifactBlob = ({ relativePath, root: currentRoot }) => execFileSync('git', ['hash-object', relativePath], { cwd: currentRoot, encoding: 'utf8' }).trim(),
   onProbe = () => {},
   root = repoRoot,
 } = {}) {
@@ -48,12 +61,22 @@ export async function runV106ProductionCutover({
   const postReadinessHead = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
   const postReadinessTree = resolveCurrentTree({ root })
   const producerScript = manifest.productionCutoverRunner.producerStartScript
-  const producerBlob = execFileSync('git', ['hash-object', producerScript], { cwd: root, encoding: 'utf8' }).trim()
+  const producerStopScript = manifest.productionCutoverRunner.producerStopScript
+  const productionDbGateScript = manifest.productionCutoverRunner.productionDbGateScript
+  const producerBlob = resolveArtifactBlob({ relativePath: producerScript, root })
+  const producerStopBlob = resolveArtifactBlob({ relativePath: producerStopScript, root })
+  const productionDbGateBlob = resolveArtifactBlob({ relativePath: productionDbGateScript, root })
   if (postReadinessHead !== authorization.commit || postReadinessTree !== candidateIndexTree) {
     throw new Error('production_cutover_post_readiness_identity_drift')
   }
   if (producerBlob !== manifest.productionCutoverRunner.producerStartScriptGitBlobSha1) {
     throw new Error('production_cutover_producer_blob_drift')
+  }
+  if (producerStopBlob !== manifest.productionCutoverRunner.producerStopScriptGitBlobSha1) {
+    throw new Error('production_cutover_producer_stop_blob_drift')
+  }
+  if (productionDbGateBlob !== manifest.productionCutoverRunner.productionDbGateScriptGitBlobSha1) {
+    throw new Error('production_cutover_db_gate_blob_drift')
   }
   const preDbGate = await verifyProductionDb({ phase: 'pre', releaseVersion: manifest.releaseVersion, packageVersion: manifest.applicationVersion })
   if (preDbGate?.ok !== true || !/^[0-9a-f-]{36}$/.test(preDbGate?.generation ?? '')) {
@@ -123,11 +146,14 @@ async function main() {
   }
   const tagCommit = resolveAnnotatedTagCommit({ tagName: manifest.gitTag, root: repoRoot })
   const candidateIndexTree = execFileSync('git', ['rev-parse', `${tagCommit}^{tree}`], { cwd: repoRoot, encoding: 'utf8' }).trim()
+  const producerStartSource = loadBoundPythonSource({ candidateIndexTree, relativePath: manifest.productionCutoverRunner.producerStartScript, expectedBlob: manifest.productionCutoverRunner.producerStartScriptGitBlobSha1, root: repoRoot })
+  const producerStopSource = loadBoundPythonSource({ candidateIndexTree, relativePath: manifest.productionCutoverRunner.producerStopScript, expectedBlob: manifest.productionCutoverRunner.producerStopScriptGitBlobSha1, root: repoRoot })
+  const productionDbGateSource = loadBoundPythonSource({ candidateIndexTree, relativePath: manifest.productionCutoverRunner.productionDbGateScript, expectedBlob: manifest.productionCutoverRunner.productionDbGateScriptGitBlobSha1, root: repoRoot })
   const result = await runV106ProductionCutover({
     manifest, candidateIndexTree, attestationPath, root: repoRoot,
     onProbe: (probe) => process.stdout.write(`${JSON.stringify({ type: 'public-readiness-probe', ...probe })}\n`),
     verifyProductionDb: async (identity) => {
-      const child = spawnSync('python', [productionDbGateScript], {
+      const child = spawnSync('python', ['-c', productionDbGateSource], {
         cwd: repoRoot, encoding: 'utf8', env: {
           ...process.env,
           V106_RELEASE_VERSION: identity.releaseVersion,
@@ -141,7 +167,7 @@ async function main() {
       return child.status === 0 && payload ? payload : { ok: false, exitCode: child.status }
     },
     startProducer: async (identity) => {
-      const child = spawnSync('python', [producerStartScript], {
+      const child = spawnSync('python', ['-c', producerStartSource], {
         cwd: repoRoot, encoding: 'utf8', env: {
           ...process.env,
           V106_RELEASE_VERSION: identity.releaseVersion,
@@ -157,7 +183,7 @@ async function main() {
       return child.status === 0 && payload ? payload : { ok: false, exitCode: child.status }
     },
     stopProducer: async (identity) => {
-      const child = spawnSync('python', [producerStopScript], {
+      const child = spawnSync('python', ['-c', producerStopSource], {
         cwd: repoRoot, encoding: 'utf8', env: {
           ...process.env,
           V106_RELEASE_VERSION: identity.releaseVersion,

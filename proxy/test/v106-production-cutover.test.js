@@ -12,6 +12,48 @@ const generation = '11111111-1111-4111-8111-111111111111'
 const productionDbGate = async () => ({ ok: true, generation })
 const stoppedProducer = async () => ({ ok: true, stopped: true, activeState: 'inactive' })
 
+test('Formal.22 production CLI executes all Python launchers from exact-tree source bytes', () => {
+  const candidateIndexTree = tree()
+  const source = execFileSync('git', ['show', `${candidateIndexTree}:scripts/run-v106-production-cutover.mjs`], { cwd: root, encoding: 'utf8' })
+  assert.match(source, /const producerStartSource = loadBoundPythonSource/)
+  assert.match(source, /const producerStopSource = loadBoundPythonSource/)
+  assert.match(source, /const productionDbGateSource = loadBoundPythonSource/)
+  assert.match(source, /spawnSync\('python', \['-c', producerStartSource\]/)
+  assert.match(source, /spawnSync\('python', \['-c', producerStopSource\]/)
+  assert.match(source, /spawnSync\('python', \['-c', productionDbGateSource\]/)
+})
+
+test('Formal.22 production launcher source is loaded from the exact candidate Git tree', async () => {
+  const runner = await import('../../scripts/run-v106-production-cutover.mjs')
+  assert.equal(typeof runner.loadBoundPythonSource, 'function')
+  const candidateIndexTree = tree()
+  const source = runner.loadBoundPythonSource({
+    candidateIndexTree,
+    relativePath: manifest.productionCutoverRunner.producerStopScript,
+    expectedBlob: manifest.productionCutoverRunner.producerStopScriptGitBlobSha1,
+    root,
+  })
+  const exact = execFileSync('git', ['show', `${candidateIndexTree}:${manifest.productionCutoverRunner.producerStopScript}`], { cwd: root, encoding: 'utf8' })
+  assert.equal(source, exact)
+})
+
+test('Formal.22 blocks before producer start when the actual stop launcher blob drifts', async () => {
+  let producerCalls = 0
+  await assert.rejects(runV106ProductionCutover({
+    manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', root,
+    resolveCurrentTree: () => tree(),
+    resolveArtifactBlob: ({ relativePath }) => relativePath === manifest.productionCutoverRunner.producerStopScript
+      ? '0'.repeat(40)
+      : manifest.productionCutoverRunner.producerStartScriptGitBlobSha1,
+    authorizeRelease: async () => ({ releaseAuthorized: true, commit: head() }),
+    verifyReadiness: async () => ({ verdict: 'PASS', consecutive: 2 }),
+    verifyProductionDb: productionDbGate,
+    startProducer: async () => { producerCalls += 1; return { ok: true, generation, workerImageId: manifest.productionCutoverRunner.producerImageId } },
+    stopProducer: stoppedProducer,
+  }), /production_cutover_producer_stop_blob_drift/)
+  assert.equal(producerCalls, 0)
+})
+
 test('Formal.21 bound cutover authorizes exact HEAD, proves public identity, then and only then starts producer', async () => {
   const events = []
   const result = await runV106ProductionCutover({
