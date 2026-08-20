@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
+import { readFileSync, realpathSync } from 'node:fs'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import {
@@ -12,8 +13,10 @@ import {
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const TRUSTED_TAG_SIGNER_FINGERPRINT = 'SHA256:y0VSR6o6x7g/c/PM2vrBeFGtDHELAVODN95N7N7eZAQ'
 const TRUSTED_TAG_PRINCIPAL = 'v106-release'
-const TRUSTED_SIGNERS_PATH = 'release/trusted-v106-release-signers'
+const EXTERNAL_TRUST_POLICY_PATH = 'D:/AI Hermes/release-trust/v106-production-policy.json'
+const EXTERNAL_TRUST_POLICY_VERSION = 'v106-release-trust-v1'
 const BOUND_PRODUCER_START_SCRIPT = 'scripts/start-v106-formal-producer.py'
+const BOUND_PRODUCTION_DB_GATE_SCRIPT = 'scripts/verify-v106-production-db-gate.py'
 const REQUIRED_RELEASE_BINDINGS = Object.freeze([
   'implementationTree',
   'proxyBuildInput',
@@ -29,6 +32,7 @@ const REQUIRED_DATABASE_ARTIFACTS = Object.freeze([
   'supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql',
   'supabase/migrations/20260820040000_v106_formal17_single_use_rollback_receipt.sql',
   'supabase/migrations/20260820050000_v106_formal19_cutover_generation.sql',
+  'supabase/migrations/20260820060000_v106_formal20_raw_ingest_barrier.sql',
   'supabase/operations/fence_v105_new_issuance.sql',
   'supabase/operations/terminalize_v105_cutover.sql',
   'supabase/operations/activate_v106_promotion.sql',
@@ -44,12 +48,13 @@ const REQUIRED_DATABASE_CONTRACTS = Object.freeze({
   rollbackReceipt: { path: REQUIRED_DATABASE_ARTIFACTS[4], deploymentStep: 'database-rollback-receipt' },
   rollbackReceiptSingleUse: { path: REQUIRED_DATABASE_ARTIFACTS[5], deploymentStep: 'database-single-use-rollback-receipt' },
   cutoverGeneration: { path: REQUIRED_DATABASE_ARTIFACTS[6], deploymentStep: 'database-cutover-generation' },
-  fence: { path: REQUIRED_DATABASE_ARTIFACTS[7], deploymentStep: 'fence-v105-new-issuance' },
-  terminalize: { path: REQUIRED_DATABASE_ARTIFACTS[8], deploymentStep: 'terminalize-v105-cutover' },
-  activate: { path: REQUIRED_DATABASE_ARTIFACTS[9], deploymentStep: 'activate-v106' },
-  finalize: { path: REQUIRED_DATABASE_ARTIFACTS[10], deploymentStep: 'finalize' },
-  rollbackTerminalize: { path: REQUIRED_DATABASE_ARTIFACTS[11], deploymentStep: 'rollback-terminalize' },
-  rollback: { path: REQUIRED_DATABASE_ARTIFACTS[12], deploymentStep: 'rollback-only' },
+  rawIngestBarrier: { path: REQUIRED_DATABASE_ARTIFACTS[7], deploymentStep: 'database-raw-ingest-barrier' },
+  fence: { path: REQUIRED_DATABASE_ARTIFACTS[8], deploymentStep: 'fence-v105-new-issuance' },
+  terminalize: { path: REQUIRED_DATABASE_ARTIFACTS[9], deploymentStep: 'terminalize-v105-cutover' },
+  activate: { path: REQUIRED_DATABASE_ARTIFACTS[10], deploymentStep: 'activate-v106' },
+  finalize: { path: REQUIRED_DATABASE_ARTIFACTS[11], deploymentStep: 'finalize' },
+  rollbackTerminalize: { path: REQUIRED_DATABASE_ARTIFACTS[12], deploymentStep: 'rollback-terminalize' },
+  rollback: { path: REQUIRED_DATABASE_ARTIFACTS[13], deploymentStep: 'rollback-only' },
 })
 const REQUIRED_ROLLBACK_ORDER = Object.freeze([
   'stop producer admission',
@@ -64,10 +69,9 @@ const DEPLOYABLE_BINDING_RULES = Object.freeze([
   { pattern: /^frontend\/(?:package(?:-lock)?\.json|src\/)/, bindings: ['implementationTree', 'frontendBuildInput'] },
   { pattern: /^cloud-browser-worker\/(?:Dockerfile|package(?:-lock)?\.json|src\/)/, bindings: ['implementationTree', 'workerBuildInput'] },
   { pattern: /^shared\//, bindings: ['implementationTree', 'proxyBuildInput', 'workerBuildInput'] },
-  { pattern: /^supabase\/(?:migrations\/(?:20260818010000_v106_formal_v10_main|20260820003500_v106_formal8_final_time_fence|20260820010000_v106_formal12_bounded_raw_ack|20260820020000_v106_formal13_monotonic_projection|20260820030000_v106_formal16_rollback_receipt|20260820040000_v106_formal17_single_use_rollback_receipt|20260820050000_v106_formal19_cutover_generation)\.sql|operations\/(?:fence_v105_new_issuance|terminalize_v105_cutover|activate_v106_promotion|finalize_v106_promotion|terminalize_v106_rollback|rollback_v106_to_v105)\.sql)$/, bindings: ['implementationTree', 'databaseCutoverInput'] },
+  { pattern: /^supabase\/(?:migrations\/(?:20260818010000_v106_formal_v10_main|20260820003500_v106_formal8_final_time_fence|20260820010000_v106_formal12_bounded_raw_ack|20260820020000_v106_formal13_monotonic_projection|20260820030000_v106_formal16_rollback_receipt|20260820040000_v106_formal17_single_use_rollback_receipt|20260820050000_v106_formal19_cutover_generation|20260820060000_v106_formal20_raw_ingest_barrier)\.sql|operations\/(?:fence_v105_new_issuance|terminalize_v105_cutover|activate_v106_promotion|finalize_v106_promotion|terminalize_v106_rollback|rollback_v106_to_v105)\.sql)$/, bindings: ['implementationTree', 'databaseCutoverInput'] },
   { pattern: /^scripts\/(?:verify-v106-formal-release|verify-v106-public-readiness|run-v106-production-cutover|run-worker-tests-scrubbed|test-env-scrub)\.mjs$/, bindings: ['implementationTree'] },
-  { pattern: /^scripts\/start-v106-formal-producer\.py$/, bindings: ['implementationTree'] },
-  { pattern: /^release\/trusted-v106-release-signers$/, bindings: ['implementationTree'] },
+  { pattern: /^scripts\/(?:start-v106-formal-producer|verify-v106-production-db-gate)\.py$/, bindings: ['implementationTree'] },
   { pattern: /^release\/evidence\/v106-formal13-production-block\.json$/, bindings: ['implementationTree'] },
 ])
 
@@ -100,10 +104,36 @@ export function resolveAnnotatedTagCommit({ tagName, root = repoRoot } = {}) {
   return execFileSync('git', ['rev-parse', `${tagRef}^{commit}`], { cwd: root, encoding: 'utf8' }).trim()
 }
 
+function loadExternalReleaseTrustPolicy({ root = repoRoot } = {}) {
+  const policyPath = realpathSync(EXTERNAL_TRUST_POLICY_PATH)
+  const canonicalRoot = realpathSync(root)
+  const relative = path.relative(canonicalRoot, policyPath)
+  const policyInsideCandidate = relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))
+  if (policyInsideCandidate) throw new Error('external_release_trust_policy_required')
+  const policyBytes = readFileSync(policyPath)
+  const policy = JSON.parse(policyBytes.toString('utf8'))
+  const allowedSigners = realpathSync(policy.allowedSignersPath)
+  const allowedRelative = path.relative(canonicalRoot, allowedSigners)
+  const allowedSha256 = createHash('sha256').update(readFileSync(allowedSigners)).digest('hex')
+  const allowedInsideCandidate = allowedRelative === '' || (!allowedRelative.startsWith('..') && !path.isAbsolute(allowedRelative))
+  if (allowedInsideCandidate
+      || policy.policyVersion !== EXTERNAL_TRUST_POLICY_VERSION
+      || policy.principal !== TRUSTED_TAG_PRINCIPAL
+      || policy.signerFingerprint !== TRUSTED_TAG_SIGNER_FINGERPRINT
+      || policy.allowedSignersSha256 !== allowedSha256
+      || policy.supabaseProjectRef !== 'gscfexhsqxvtpyxudtza'
+      || policy.workerImage !== 'darven-worker:v106-formal3-33f9dc6'
+      || policy.workerImageId !== 'sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2') {
+    throw new Error('external_release_trust_policy_mismatch')
+  }
+  return { policyPath, allowedSigners, allowedSha256, policy }
+}
+
 export function verifyV106TrustedSignedTag({ tagName, attestationSha256, root = repoRoot } = {}) {
   if (!/^[a-f0-9]{64}$/.test(attestationSha256 ?? '')) throw new Error('attestation_sha256_invalid')
   const tagRef = `refs/tags/${tagName}`
-  const allowedSigners = path.join(root, TRUSTED_SIGNERS_PATH)
+  const trust = loadExternalReleaseTrustPolicy({ root })
+  const allowedSigners = trust.allowedSigners
   const verification = spawnSync('git', [
     '-c', `gpg.ssh.allowedSignersFile=${allowedSigners}`,
     'verify-tag', tagRef,
@@ -118,7 +148,7 @@ export function verifyV106TrustedSignedTag({ tagName, attestationSha256, root = 
   if (!tagObject.includes(`Attestation-SHA256: ${attestationSha256}`)) {
     throw new Error('signed_tag_attestation_digest_mismatch')
   }
-  return { ok: true, signerFingerprint: TRUSTED_TAG_SIGNER_FINGERPRINT, principal: TRUSTED_TAG_PRINCIPAL, attestationSha256 }
+  return { ok: true, signerFingerprint: TRUSTED_TAG_SIGNER_FINGERPRINT, principal: TRUSTED_TAG_PRINCIPAL, attestationSha256, trustPolicyVersion: trust.policy.policyVersion, trustPolicyPath: trust.policyPath, allowedSignersSha256: trust.allowedSha256 }
 }
 
 export function verifyV106StagedDeployableCoverage({ manifest, root = repoRoot, stagedPaths } = {}) {
@@ -256,17 +286,26 @@ export function verifyV106PublicReadinessContract({ manifest, candidateIndexTree
       || identity?.commit !== 'annotated-tag-attested-commit') throw new Error('public_readiness_gate_identity_mismatch')
   const cutover = manifest?.productionCutoverRunner
   if (cutover?.script !== runner || cutover?.deploymentStep !== gate.deploymentStep
-      || cutover?.requiresExternalAttestation !== true || cutover?.requiresTrustedSignedTag !== true
+      || cutover?.requiresExternalAttestation !== true || cutover?.requiresExternalTrustPolicy !== true
+      || cutover?.requiresTrustedSignedTag !== true || cutover?.requiresPreAndPostDatabaseGenerationGate !== true
       || cutover?.resolvesCommitFromAnnotatedTag !== true
       || cutover?.requiresExactCheckedOutHead !== true || cutover?.startsProducerOnlyAfterReadinessPass !== true
       || cutover?.producerStartScript !== BOUND_PRODUCER_START_SCRIPT
-      || !/^[a-f0-9]{40}$/.test(cutover?.producerStartScriptGitBlobSha1 ?? '')) {
+      || cutover?.productionDbGateScript !== BOUND_PRODUCTION_DB_GATE_SCRIPT
+      || !/^[a-f0-9]{40}$/.test(cutover?.producerStartScriptGitBlobSha1 ?? '')
+      || !/^[a-f0-9]{40}$/.test(cutover?.productionDbGateScriptGitBlobSha1 ?? '')
+      || cutover?.producerImage !== 'darven-worker:v106-formal3-33f9dc6'
+      || cutover?.producerImageId !== 'sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2') {
     throw new Error('production_cutover_runner_contract_missing')
   }
   const authorization = manifest?.releaseAuthorization
   if (authorization?.trustedSignerFingerprint !== TRUSTED_TAG_SIGNER_FINGERPRINT
       || authorization?.trustedSignerPrincipal !== TRUSTED_TAG_PRINCIPAL
-      || authorization?.allowedSignersFile !== TRUSTED_SIGNERS_PATH
+      || authorization?.trustPolicyVersion !== EXTERNAL_TRUST_POLICY_VERSION
+      || authorization?.trustPolicyLocation !== 'external-out-of-repository'
+      || authorization?.trustPolicySha256Required !== true
+      || authorization?.allowedSignersLocation !== 'external-out-of-repository'
+      || authorization?.allowedSignersSha256 !== 'd0c454dd0083b124894ef1ec7689094d09dc1732b03e89089e197fc6431889a0'
       || authorization?.signedTagBindsAttestationSha256 !== true) {
     throw new Error('trusted_release_authorization_contract_missing')
   }
@@ -280,20 +319,22 @@ export function verifyV106PublicReadinessContract({ manifest, candidateIndexTree
       || !pathIsBound(manifest?.releaseBinding?.implementationTree, script)
       || !pathIsBound(manifest?.releaseBinding?.implementationTree, runner)
       || !pathIsBound(manifest?.releaseBinding?.implementationTree, BOUND_PRODUCER_START_SCRIPT)
-      || !pathIsBound(manifest?.releaseBinding?.implementationTree, TRUSTED_SIGNERS_PATH)
+      || !pathIsBound(manifest?.releaseBinding?.implementationTree, BOUND_PRODUCTION_DB_GATE_SCRIPT)
       || manifest?.incidentEvidence?.formal13 !== evidence
       || !pathIsBound(manifest?.releaseBinding?.implementationTree, evidence)) throw new Error('public_readiness_gate_binding_mismatch')
-  for (const artifact of [script, runner, BOUND_PRODUCER_START_SCRIPT, TRUSTED_SIGNERS_PATH, evidence]) {
+  for (const artifact of [script, runner, BOUND_PRODUCER_START_SCRIPT, BOUND_PRODUCTION_DB_GATE_SCRIPT, evidence]) {
     execFileSync('git', ['cat-file', '-e', `${candidateIndexTree}:${artifact}`], { cwd: root })
   }
   const producerBlob = execFileSync('git', ['rev-parse', `${candidateIndexTree}:${BOUND_PRODUCER_START_SCRIPT}`], { cwd: root, encoding: 'utf8' }).trim()
+  const dbGateBlob = execFileSync('git', ['rev-parse', `${candidateIndexTree}:${BOUND_PRODUCTION_DB_GATE_SCRIPT}`], { cwd: root, encoding: 'utf8' }).trim()
   if (producerBlob !== cutover.producerStartScriptGitBlobSha1) throw new Error('producer_start_script_blob_mismatch')
+  if (dbGateBlob !== cutover.productionDbGateScriptGitBlobSha1) throw new Error('production_db_gate_script_blob_mismatch')
   const source = execFileSync('git', ['show', `${candidateIndexTree}:${script}`], { cwd: root, encoding: 'utf8' })
   for (const requiredText of ['requiredStreak = Math.max(2', 'maxAttempts = Math.min(30', "redirect: 'error'", 'body?.releaseVersion === expectedRelease', 'body?.packageVersion === expectedPackage', 'body?.commit === expectedCommit', "blocked.code = 'PUBLIC_PROXY_READINESS_BLOCK'"]) {
     if (!source.includes(requiredText)) throw new Error('public_readiness_gate_executable_mismatch')
   }
   const runnerSource = execFileSync('git', ['show', `${candidateIndexTree}:${runner}`], { cwd: root, encoding: 'utf8' })
-  for (const requiredText of ['verifyV106Attestation', 'resolveAnnotatedTagCommit', "if (head !== authorization.commit)", 'url: manifest.canonicalPublicProxyUrl', 'const readiness = await verifyReadiness', 'const postReadinessHead', 'const postReadinessTree', 'production_cutover_post_readiness_identity_drift', 'production_cutover_producer_blob_drift', 'const producer = await startProducer', 'producer_start_script_override_forbidden', 'manifest.productionCutoverRunner.producerStartScript']) {
+  for (const requiredText of ['verifyV106Attestation', 'resolveAnnotatedTagCommit', "if (head !== authorization.commit)", 'url: manifest.canonicalPublicProxyUrl', 'const readiness = await verifyReadiness', 'const postReadinessHead', 'const postReadinessTree', 'production_cutover_post_readiness_identity_drift', 'production_cutover_producer_blob_drift', "verifyProductionDb({ phase: 'pre'", 'production_cutover_db_provenance_not_proven', 'generation: preDbGate.generation', "verifyProductionDb({ phase: 'post'", 'production_cutover_db_generation_drift', 'const producer = await startProducer', 'producer_start_script_override_forbidden', 'manifest.productionCutoverRunner.producerStartScript']) {
     if (!runnerSource.includes(requiredText)) throw new Error('production_cutover_runner_executable_mismatch')
   }
   if (runnerSource.indexOf('const producer = await startProducer') < runnerSource.indexOf('const readiness = await verifyReadiness')) {
@@ -303,10 +344,14 @@ export function verifyV106PublicReadinessContract({ manifest, candidateIndexTree
     throw new Error('production_cutover_runner_override_forbidden')
   }
   const producerSource = execFileSync('git', ['show', `${candidateIndexTree}:${BOUND_PRODUCER_START_SCRIPT}`], { cwd: root, encoding: 'utf8' })
-  for (const requiredText of ["EXPECTED_RELEASE = 'v106.0.0-formal.19'", "EXPECTED_PACKAGE = '1.0.76'", "EXPECTED_IMAGE = 'darven-worker:v106-formal3-33f9dc6'", 'systemctl start darven-worker.service', "'tenTables':", "'exactImage':"]) {
+  for (const requiredText of ["EXPECTED_RELEASE = 'v106.0.0-formal.20'", "EXPECTED_PACKAGE = '1.0.77'", "EXPECTED_IMAGE = 'darven-worker:v106-formal3-33f9dc6'", "EXPECTED_IMAGE_ID = 'sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2'", 'identity_parts != [EXPECTED_IMAGE, EXPECTED_IMAGE_ID', 'V106_CUTOVER_GENERATION', 'systemctl start darven-worker.service', "'tenTables':", "'exactImage':"]) {
     if (!producerSource.includes(requiredText)) throw new Error('producer_start_script_executable_mismatch')
   }
-  return { ok: true, script, runner, producerStartScript: BOUND_PRODUCER_START_SCRIPT, evidence, required }
+  const dbGateSource = execFileSync('git', ['show', `${candidateIndexTree}:${BOUND_PRODUCTION_DB_GATE_SCRIPT}`], { cwd: root, encoding: 'utf8' })
+  for (const requiredText of ["EXPECTED_PROJECT_REF = 'gscfexhsqxvtpyxudtza'", "EXPECTED_RELEASE = 'v106.0.0-formal.20'", "status='active'", 'cutover_generation::text', 'production DB gate migration provenance mismatch', 'pg_advisory_xact_lock_shared', "'rawDirect': False", "'rawFenced': True", "phase == 'pre'", "phase == 'post'"]) {
+    if (!dbGateSource.includes(requiredText)) throw new Error('production_db_gate_script_executable_mismatch')
+  }
+  return { ok: true, script, runner, producerStartScript: BOUND_PRODUCER_START_SCRIPT, productionDbGateScript: BOUND_PRODUCTION_DB_GATE_SCRIPT, evidence, required }
 }
 
 export async function verifyV106ManifestDigests({ manifest, candidateIndexTree, root = repoRoot } = {}) {
@@ -367,13 +412,10 @@ async function main() {
   }
   const candidateIndexTree = get('--candidate-index-tree')
   const attestationPath = get('--attestation')
-  const digestsOnly = args.includes('--digests-only')
-  if (!attestationPath && !digestsOnly) throw new Error('attestation_required')
-  if (attestationPath && digestsOnly) throw new Error('attestation_and_digests_only_are_mutually_exclusive')
+  if (args.includes('--digests-only')) throw new Error('digest_only_release_ticket_forbidden')
+  if (!attestationPath) throw new Error('attestation_required')
   const manifest = JSON.parse(await readFile(path.join(repoRoot, 'release', 'v106-formal-v10-main-release-manifest.json'), 'utf8'))
-  const result = digestsOnly
-    ? await verifyV106ManifestDigests({ manifest, candidateIndexTree })
-    : await verifyV106Attestation({ manifest, candidateIndexTree, attestationPath })
+  const result = await verifyV106Attestation({ manifest, candidateIndexTree, attestationPath })
   process.stdout.write(`${JSON.stringify(result)}\n`)
 }
 

@@ -99,7 +99,6 @@ grant execute on function public.settle_v105_prediction(jsonb, jsonb) to service
 grant execute on function public.persist_v105_settled_round(jsonb, jsonb) to service_role;
 grant execute on function public.reconcile_v105_prediction_lifecycle(text, text, text, integer) to service_role;
 grant execute on function public.get_v105_prediction_lifecycle_stats() to service_role;
-grant execute on function public.persist_v105_capture_envelope(jsonb) to service_role;
 grant execute on function public.persist_v105_fenced_capture_envelope(jsonb) to service_role;
 
 update public.ai_strategy_versions

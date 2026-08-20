@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.19",
-  "gitTag": "v106.0.0-formal.19",
-  "applicationVersion": "1.0.76",
+  "releaseVersion": "v106.0.0-formal.20",
+  "gitTag": "v106.0.0-formal.20",
+  "applicationVersion": "1.0.77",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -121,6 +121,12 @@
       "contract": "Every strategy activation receives a database-owned immutable generation UUID; terminalization and rollback must match the exact active v106 generation.",
       "gitBlobSha1": "b108628a8f6b3a6da888e323e3103e773ac6659a"
     },
+    "rawIngestBarrier": {
+      "path": "supabase/migrations/20260820060000_v106_formal20_raw_ingest_barrier.sql",
+      "deploymentStep": "database-raw-ingest-barrier",
+      "contract": "Direct and fenced Raw persistence share the rollback advisory barrier; service_role can execute only the fenced wrapper.",
+      "gitBlobSha1": "b4663d70d463f9c867b565417a3fe1a36074116a"
+    },
     "fence": {
       "path": "supabase/operations/fence_v105_new_issuance.sql",
       "deploymentStep": "fence-v105-new-issuance",
@@ -134,7 +140,7 @@
     "activate": {
       "path": "supabase/operations/activate_v106_promotion.sql",
       "deploymentStep": "activate-v106",
-      "gitBlobSha1": "1ba0b20f53f36dd1cb91d5fe40e009780f5d4309"
+      "gitBlobSha1": "0b378711f7081bf2dc2845f3ba4d35f38502a723"
     },
     "finalize": {
       "path": "supabase/operations/finalize_v106_promotion.sql",
@@ -149,7 +155,7 @@
     "rollback": {
       "path": "supabase/operations/rollback_v106_to_v105.sql",
       "deploymentStep": "rollback-only",
-      "gitBlobSha1": "69b61ad2d856bca77211e37d75c6d829acd020e4"
+      "gitBlobSha1": "3cd4f7cc0b334a7a9dc0135b3fdc56ff3bbfd981"
     }
   },
   "activation": "supabase/operations/activate_v106_promotion.sql",
@@ -171,6 +177,7 @@
     "database-rollback-receipt",
     "database-single-use-rollback-receipt",
     "database-cutover-generation",
+    "database-raw-ingest-barrier",
     "deploy-worker-1.0.63-protocol-v105",
     "verify-worker-v105-compatibility",
     "fence-v105-new-issuance",
@@ -300,11 +307,12 @@
         "supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql",
         "supabase/migrations/20260820040000_v106_formal17_single_use_rollback_receipt.sql",
         "supabase/migrations/20260820050000_v106_formal19_cutover_generation.sql",
+        "supabase/migrations/20260820060000_v106_formal20_raw_ingest_barrier.sql",
         "scripts/start-v106-formal-producer.py",
-        "release/trusted-v106-release-signers"
+        "scripts/verify-v106-production-db-gate.py"
       ],
       "excludedPaths": [],
-      "sha256": "672d6ee8c70af12f610ec2bfa1368b25f5d17d55291e987a0169e0cf0c8f3434"
+      "sha256": "4b7c7bed4f6ea034f05875ae9779b2792fed6971d9fb02b117fcc4fe5536d9bf"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -315,7 +323,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "44eabf0de6a72ee987a1d0c1349193c5c4d2ec9507ab5a8e892fe7d48ca52a60"
+      "sha256": "2f269df52cfe47728a5fdbab26473330aba7ecf3cb86182d66ff8e977562c6b2"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -354,10 +362,11 @@
         "supabase/operations/rollback_v106_to_v105.sql",
         "supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql",
         "supabase/migrations/20260820040000_v106_formal17_single_use_rollback_receipt.sql",
-        "supabase/migrations/20260820050000_v106_formal19_cutover_generation.sql"
+        "supabase/migrations/20260820050000_v106_formal19_cutover_generation.sql",
+        "supabase/migrations/20260820060000_v106_formal20_raw_ingest_barrier.sql"
       ],
       "excludedPaths": [],
-      "sha256": "39877fec45e16f78c50c3d725635869ed98588de6815e0405dfe2c979f1151aa"
+      "sha256": "bd507af7e70c675e6605f8aeb76a7aa0183c6ca64989c7a73e01d51cd8dc6edb"
     }
   },
   "historicalArtifactsPreserved": true,
@@ -444,8 +453,8 @@
     "requiredIdentity": {
       "version": "v106",
       "buildVersion": "v106",
-      "releaseVersion": "v106.0.0-formal.19",
-      "packageVersion": "1.0.76",
+      "releaseVersion": "v106.0.0-formal.20",
+      "packageVersion": "1.0.77",
       "commit": "annotated-tag-attested-commit"
     },
     "failClosedExitCode": 2
@@ -456,23 +465,34 @@
     "formal15FreshReview": "BLOCK: readiness was not invoked by a bound deployment runner; expected commit and 30-attempt cap were caller-controlled; rollback lacked a durable terminalization receipt.",
     "formal16FreshReview": "BLOCK: canonical URL was caller-controlled; receipt could be replayed and did not cover abandoned status; capture-source ingest was not exclusively fenced through rollback.",
     "formal17FreshReview": "BLOCK: external JSON and unsigned tag were self-authorizing; producer starter path/blob was not release-bound; stale receipts could be rebound to a later activation.",
-    "formal18FreshReview": "BLOCK inherited Formal.17 authorization, producer binding and stale receipt generation defects; redirect following was fixed but release remained blocked."
+    "formal18FreshReview": "BLOCK inherited Formal.17 authorization, producer binding and stale receipt generation defects; redirect following was fixed but release remained blocked.",
+    "formal19FreshReview": "BLOCK: candidate-tree signer allowlist was self-authorizing; runner omitted production DB generation/ACL provenance; direct Raw RPC could commit across rollback barrier; worker admission matched mutable tag but not immutable image ID."
   },
   "productionCutoverRunner": {
     "script": "scripts/run-v106-production-cutover.mjs",
     "deploymentStep": "run-bound-production-cutover",
     "requiresExternalAttestation": true,
+    "requiresExternalTrustPolicy": true,
     "requiresTrustedSignedTag": true,
     "resolvesCommitFromAnnotatedTag": true,
     "requiresExactCheckedOutHead": true,
     "startsProducerOnlyAfterReadinessPass": true,
+    "requiresPreAndPostDatabaseGenerationGate": true,
+    "productionDbGateScript": "scripts/verify-v106-production-db-gate.py",
+    "productionDbGateScriptGitBlobSha1": "603d468010b8e07f411072a3694a8529c0384943",
     "producerStartScript": "scripts/start-v106-formal-producer.py",
-    "producerStartScriptGitBlobSha1": "2b969183ca1d32af2bdbc133fa70ce352868025a"
+    "producerStartScriptGitBlobSha1": "294271bb68244fdb02ea3a97f84a31cd0d3d70f7",
+    "producerImage": "darven-worker:v106-formal3-33f9dc6",
+    "producerImageId": "sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2"
   },
   "releaseAuthorization": {
+    "trustPolicyVersion": "v106-release-trust-v1",
+    "trustPolicyLocation": "external-out-of-repository",
+    "trustPolicySha256Required": true,
     "trustedSignerFingerprint": "SHA256:y0VSR6o6x7g/c/PM2vrBeFGtDHELAVODN95N7N7eZAQ",
     "trustedSignerPrincipal": "v106-release",
-    "allowedSignersFile": "release/trusted-v106-release-signers",
+    "allowedSignersLocation": "external-out-of-repository",
+    "allowedSignersSha256": "d0c454dd0083b124894ef1ec7689094d09dc1732b03e89089e197fc6431889a0",
     "signedTagBindsAttestationSha256": true
   },
   "canonicalPublicProxyUrl": "https://darven-ai-baccarat-proxy.onrender.com"

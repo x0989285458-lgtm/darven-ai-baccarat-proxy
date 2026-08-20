@@ -13,7 +13,7 @@ const extractSqlFunction = (sql, name) => {
 }
 
 test('v106 release identity is coherent while the updated capture worker retains protocol v105', () => {
-  assert.equal(json('proxy/package.json').version, '1.0.76')
+  assert.equal(json('proxy/package.json').version, '1.0.77')
   assert.equal(json('frontend/package.json').version, '1.0.63')
   assert.equal(json('cloud-browser-worker/package.json').version, '1.0.63')
   assert.match(read('proxy/src/build-version.js'), /BUILD_VERSION = 'v106'/)
@@ -146,14 +146,14 @@ test('v106 frontend version gate fails closed and formal writer/hydration use v1
 
 test('v106 manifest encodes DB-first through finalize order and exact rollback', () => {
   const manifest = json('release/v106-formal-v10-main-release-manifest.json')
-  assert.equal(manifest.applicationVersion, '1.0.76')
+  assert.equal(manifest.applicationVersion, '1.0.77')
   assert.equal(manifest.strategyVersion, 'v106')
   assert.equal(manifest.mainStrategy.source, 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized')
   assert.equal(manifest.sideStrategy.source, 'v105')
   assert.equal(manifest.mainStrategy.activationGate, 'structureDiagnostics.eligible === true')
   assert.equal(manifest.mainStrategy.fallback, 'exact formal v105 main projection')
-  assert.equal(manifest.gitTag, 'v106.0.0-formal.19')
-  assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'database-final-time-fence', 'database-bounded-raw-ack', 'database-monotonic-projection', 'database-rollback-receipt', 'database-single-use-rollback-receipt', 'database-cutover-generation', 'deploy-worker-1.0.63-protocol-v105', 'verify-worker-v105-compatibility', 'fence-v105-new-issuance', 'producer-stop', 'terminalize-v105-cutover', 'drain-v105-and-queue', 'activate-v106', 'proxy', 'run-bound-production-cutover', 'frontend', 'live-e2e', 'finalize'])
+  assert.equal(manifest.gitTag, 'v106.0.0-formal.20')
+  assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'database-final-time-fence', 'database-bounded-raw-ack', 'database-monotonic-projection', 'database-rollback-receipt', 'database-single-use-rollback-receipt', 'database-cutover-generation', 'database-raw-ingest-barrier', 'deploy-worker-1.0.63-protocol-v105', 'verify-worker-v105-compatibility', 'fence-v105-new-issuance', 'producer-stop', 'terminalize-v105-cutover', 'drain-v105-and-queue', 'activate-v106', 'proxy', 'run-bound-production-cutover', 'frontend', 'live-e2e', 'finalize'])
   assert.equal(manifest.canonicalPublicProxyUrl, 'https://darven-ai-baccarat-proxy.onrender.com')
   assert.deepEqual(manifest.publicReadinessGate, {
     script: 'scripts/verify-v106-public-readiness.mjs',
@@ -164,8 +164,8 @@ test('v106 manifest encodes DB-first through finalize order and exact rollback',
     requestTimeoutMs: 20000,
     intervalMs: 15000,
     requiredIdentity: {
-      version: 'v106', buildVersion: 'v106', releaseVersion: 'v106.0.0-formal.19',
-      packageVersion: '1.0.76', commit: 'annotated-tag-attested-commit',
+      version: 'v106', buildVersion: 'v106', releaseVersion: 'v106.0.0-formal.20',
+      packageVersion: '1.0.77', commit: 'annotated-tag-attested-commit',
     },
     failClosedExitCode: 2,
   })
@@ -194,6 +194,7 @@ test('formal rollback terminalization fences v106, proves quiet, preserves evide
   const receipt = read('supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql')
   const singleUseReceipt = read('supabase/migrations/20260820040000_v106_formal17_single_use_rollback_receipt.sql')
   const cutoverGeneration = read('supabase/migrations/20260820050000_v106_formal19_cutover_generation.sql')
+  const rawIngestBarrier = read('supabase/migrations/20260820060000_v106_formal20_raw_ingest_barrier.sql')
   const activation = read('supabase/operations/activate_v106_promotion.sql')
   const manifest = json('release/v106-formal-v10-main-release-manifest.json')
   assert.match(sql, /revoke execute on function public\.issue_v106_prediction\(jsonb\) from service_role/i)
@@ -218,6 +219,10 @@ test('formal rollback terminalization fences v106, proves quiet, preserves evide
   assert.match(singleUseReceipt, /unique index[\s\S]*cutover_generation/i)
   assert.match(cutoverGeneration, /alter table public\.ai_strategy_versions[\s\S]*add column if not exists cutover_generation uuid/i)
   assert.match(cutoverGeneration, /cutover_generation set not null/i)
+  assert.match(rawIngestBarrier, /pg_advisory_xact_lock_shared\(pg_catalog\.hashtextextended\('v105_capture_source_fence:capture', 0\)\)/i)
+  assert.match(rawIngestBarrier, /revoke execute on function public\.persist_v105_capture_envelope\(jsonb\) from public, anon, authenticated, service_role/i)
+  assert.match(rawIngestBarrier, /grant execute on function public\.persist_v105_fenced_capture_envelope\(jsonb\) to service_role/i)
+  assert.match(activation, /revoke execute on function public\.persist_v105_capture_envelope\(jsonb\) from service_role/i)
   assert.match(activation, /status = 'active', activated_at = now\(\), cutover_generation = gen_random_uuid\(\)/i)
   assert.match(sql, /select activated_at, cutover_generation[\s\S]*receipt_generation := active_cutover_generation/i)
   assert.match(rollback, /cutover_generation = active_cutover_generation/i)
@@ -229,11 +234,13 @@ test('formal rollback terminalization fences v106, proves quiet, preserves evide
   assert.match(rollback, /strategy_activated_at = active_strategy_activated_at/i)
   assert.match(rollback, /consumed_at is null/i)
   assert.match(rollback, /set consumed_at = clock_timestamp\(\), consumed_by = 'rollback_v106_to_v105'/i)
-  assert.match(rollback, /grant execute on function public\.persist_v105_capture_envelope\(jsonb\) to service_role/i)
+  assert.doesNotMatch(rollback, /grant execute on function public\.persist_v105_capture_envelope\(jsonb\) to service_role/i)
   assert.match(rollback, /grant execute on function public\.persist_v105_fenced_capture_envelope\(jsonb\) to service_role/i)
   assert.doesNotMatch(rollback, /abandoned_shoe_change/)
   assert.equal(manifest.databaseArtifacts.rollbackReceipt.path, 'supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql')
   assert.equal(manifest.databaseArtifacts.rollbackReceiptSingleUse.path, 'supabase/migrations/20260820040000_v106_formal17_single_use_rollback_receipt.sql')
+  assert.equal(manifest.databaseArtifacts.cutoverGeneration.path, 'supabase/migrations/20260820050000_v106_formal19_cutover_generation.sql')
+  assert.equal(manifest.databaseArtifacts.rawIngestBarrier.path, 'supabase/migrations/20260820060000_v106_formal20_raw_ingest_barrier.sql')
   assert.equal(manifest.databaseArtifacts.rollbackTerminalize.path, 'supabase/operations/terminalize_v106_rollback.sql')
   assert.equal(manifest.rollback.terminalizeScript, 'supabase/operations/terminalize_v106_rollback.sql')
   assert.equal(manifest.rollback.order[1], 'run bound v106 rollback terminalization and isolate active outbox evidence')

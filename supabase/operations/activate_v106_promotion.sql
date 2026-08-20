@@ -10,6 +10,7 @@ grant execute on function public.get_v106_prediction_lifecycle_stats() to servic
 grant execute on function public.settle_v105_prediction(jsonb, jsonb) to service_role;
 grant execute on function public.reconcile_v105_prediction_lifecycle(text, text, text, integer) to service_role;
 grant execute on function public.get_v105_prediction_lifecycle_stats() to service_role;
+revoke execute on function public.persist_v105_capture_envelope(jsonb) from service_role;
 revoke execute on function public.persist_v105_settled_round(jsonb, jsonb) from service_role;
 
 do $$

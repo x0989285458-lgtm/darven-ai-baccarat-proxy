@@ -20,7 +20,7 @@ import {
 
 const repoRoot = path.resolve(import.meta.dirname, '../..')
 
-test('Formal.19 verifier rejects deletion or weakening of the executable exact public readiness gate', () => {
+test('Formal.20 verifier rejects deletion or weakening of the executable exact public readiness gate', () => {
   const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
   assert.deepEqual(verifyV106PublicReadinessContract({ manifest, candidateIndexTree, root: repoRoot }).required, [
     'proxy', 'run-bound-production-cutover', 'frontend', 'live-e2e', 'finalize',
@@ -40,9 +40,18 @@ test('Formal.19 verifier rejects deletion or weakening of the executable exact p
   const arbitrarySigner = structuredClone(manifest)
   arbitrarySigner.releaseAuthorization.trustedSignerFingerprint = `SHA256:${'0'.repeat(43)}`
   assert.throws(() => verifyV106PublicReadinessContract({ manifest: arbitrarySigner, candidateIndexTree, root: repoRoot }), /trusted_release_authorization_contract_missing/)
+  const inRepoTrust = structuredClone(manifest)
+  inRepoTrust.releaseAuthorization.trustPolicyLocation = 'candidate-tree'
+  assert.throws(() => verifyV106PublicReadinessContract({ manifest: inRepoTrust, candidateIndexTree, root: repoRoot }), /trusted_release_authorization_contract_missing/)
+  const wrongDbGate = structuredClone(manifest)
+  wrongDbGate.productionCutoverRunner.productionDbGateScriptGitBlobSha1 = '0'.repeat(40)
+  assert.throws(() => verifyV106PublicReadinessContract({ manifest: wrongDbGate, candidateIndexTree, root: repoRoot }), /production_db_gate_script_blob_mismatch/)
+  const mutableImage = structuredClone(manifest)
+  mutableImage.productionCutoverRunner.producerImageId = 'sha256:' + '0'.repeat(64)
+  assert.throws(() => verifyV106PublicReadinessContract({ manifest: mutableImage, candidateIndexTree, root: repoRoot }), /production_cutover_runner_contract_missing/)
 })
 
-test('v106 verifier CLI requires external attestation unless explicit pre-commit digest-only mode is selected', () => {
+test('v106 release-ticket CLI requires external attestation and rejects digest-only escape hatches', () => {
   const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
   const missing = spawnSync(process.execPath, ['scripts/verify-v106-formal-release.mjs', '--candidate-index-tree', candidateIndexTree], {
     cwd: repoRoot,
@@ -50,15 +59,12 @@ test('v106 verifier CLI requires external attestation unless explicit pre-commit
   })
   assert.notEqual(missing.status, 0)
   assert.match(missing.stderr, /attestation_required/)
-  const output = execFileSync(process.execPath, ['scripts/verify-v106-formal-release.mjs', '--candidate-index-tree', candidateIndexTree, '--digests-only'], {
+  const digestOnly = spawnSync(process.execPath, ['scripts/verify-v106-formal-release.mjs', '--candidate-index-tree', candidateIndexTree, '--digests-only'], {
     cwd: repoRoot,
     encoding: 'utf8',
   })
-  const result = JSON.parse(output)
-  assert.equal(result.ok, true)
-  assert.equal(result.mode, 'precommit-digests-only')
-  assert.equal(result.releaseAuthorized, false)
-  assert.equal(result.candidateIndexTree, candidateIndexTree)
+  assert.notEqual(digestOnly.status, 0)
+  assert.match(digestOnly.stderr, /digest_only_release_ticket_forbidden/)
 })
 
 test('v106 full release manifest binds the exact staged implementation, build inputs, and database cutover', async () => {
@@ -66,7 +72,7 @@ test('v106 full release manifest binds the exact staged implementation, build in
   const result = await verifyV106ManifestDigests({ manifest, candidateIndexTree, root: repoRoot })
   assert.equal(result.ok, true)
   assert.equal(report.releaseVersion, manifest.releaseVersion)
-  assert.match(report.status, /formal19/)
+  assert.match(report.status, /formal20/)
   assert.doesNotMatch(report.status, /formal5/)
   assert.deepEqual(Object.keys(result.digests).sort(), [
     'databaseCutoverInput', 'frontendBuildInput', 'implementationTree', 'proxyBuildInput', 'workerBuildInput',
@@ -135,6 +141,7 @@ test('v106 coverage fails closed when any mandatory database cutover artifact is
     'supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql',
     'supabase/migrations/20260820040000_v106_formal17_single_use_rollback_receipt.sql',
     'supabase/migrations/20260820050000_v106_formal19_cutover_generation.sql',
+    'supabase/migrations/20260820060000_v106_formal20_raw_ingest_barrier.sql',
     'supabase/operations/fence_v105_new_issuance.sql',
     'supabase/operations/terminalize_v105_cutover.sql',
     'supabase/operations/activate_v106_promotion.sql',
@@ -230,6 +237,24 @@ test('v106 release authorization rejects lightweight tags and resolves annotated
     execFileSync('git', ['-c', 'user.name=Hermes Verify', '-c', 'user.email=verify@example.invalid', 'tag', '-am', 'verified release', 'v-test'], { cwd: directory })
     assert.match(resolveAnnotatedTagCommit({ tagName: 'v-test', root: directory }), /^[a-f0-9]{40}$/)
     assert.throws(() => verifyV106TrustedSignedTag({ tagName: 'v-test', attestationSha256: 'a'.repeat(64), root: directory }), /trusted_signed_tag_required/)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('v106 candidate-added signer cannot self-authorize against the repository-external trust root', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'v106-candidate-signer-'))
+  try {
+    execFileSync('git', ['init', '-q'], { cwd: directory })
+    await writeFile(path.join(directory, 'README.md'), 'release\n')
+    execFileSync('git', ['add', 'README.md'], { cwd: directory })
+    execFileSync('git', ['-c', 'user.name=Hermes Verify', '-c', 'user.email=verify@example.invalid', 'commit', '-qm', 'release'], { cwd: directory })
+    const key = path.join(directory, 'candidate-signing-key')
+    execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', key])
+    const publicKey = (await import('node:fs/promises')).readFile(`${key}.pub`, 'utf8')
+    await writeFile(path.join(directory, 'candidate-allowed-signers'), `v106-release namespaces=\"git\" ${await publicKey}`)
+    execFileSync('git', ['-c', 'user.name=Hermes Verify', '-c', 'user.email=verify@example.invalid', '-c', 'gpg.format=ssh', '-c', `user.signingkey=${key}`, 'tag', '-s', '-m', `Attestation-SHA256: ${'a'.repeat(64)}`, 'v-wrong-signer'], { cwd: directory })
+    assert.throws(() => verifyV106TrustedSignedTag({ tagName: 'v-wrong-signer', attestationSha256: 'a'.repeat(64), root: directory }), /trusted_signed_tag_required/)
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

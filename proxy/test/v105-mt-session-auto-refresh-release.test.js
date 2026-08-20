@@ -48,7 +48,7 @@ test('MT session auto-refresh release freezes the two production incident fixes'
 })
 
 test('historical v105 worker release binding stays immutable after the v106 worker hotfix', async () => {
-  assert.equal(readJson('../package.json').version, '1.0.76')
+  assert.equal(readJson('../package.json').version, '1.0.77')
   assert.equal(readJson('../../frontend/package.json').version, '1.0.63')
   assert.equal(readJson('../../cloud-browser-worker/package.json').version, '1.0.63')
   const historicalTree = execFileSync('git', ['rev-parse', `${manifest.gitTag}^{tree}`], { cwd: repoRoot, encoding: 'utf8' }).trim()

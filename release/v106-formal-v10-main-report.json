@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.19",
+  "releaseVersion": "v106.0.0-formal.20",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.76",
-  "status": "formal19_candidate_pending_exact_tests_review_and_production_gate",
+  "applicationVersion": "1.0.77",
+  "status": "formal20_candidate_tests_pass_pending_exact_commit_fresh_review_and_production_gate",
   "productionE2E": "not-run-production-remains-v105",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.76",
+      "packageVersion": "1.0.77",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,11 +27,11 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "672d6ee8c70af12f610ec2bfa1368b25f5d17d55291e987a0169e0cf0c8f3434",
-    "proxyBuildInput": "44eabf0de6a72ee987a1d0c1349193c5c4d2ec9507ab5a8e892fe7d48ca52a60",
+    "implementationTree": "4b7c7bed4f6ea034f05875ae9779b2792fed6971d9fb02b117fcc4fe5536d9bf",
+    "proxyBuildInput": "2f269df52cfe47728a5fdbab26473330aba7ecf3cb86182d66ff8e977562c6b2",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "39877fec45e16f78c50c3d725635869ed98588de6815e0405dfe2c979f1151aa"
+    "databaseCutoverInput": "bd507af7e70c675e6605f8aeb76a7aa0183c6ca64989c7a73e01d51cd8dc6edb"
   },
   "rollbackComponents": {
     "proxy": {
@@ -82,14 +82,14 @@
     "note": "Tie/PUSH excluded from directional hit-rate denominator. Full-output V10 candidate was rejected after producing net -15 hits; eligible-only promotion is the reviewed candidate."
   },
   "verified": {
-    "proxy": "1034/1034 PASS for Formal.19 exact staged candidate",
+    "proxy": "1037/1037 PASS for Formal.20 staged candidate",
     "releaseBinding": "five mandatory staged-tree digests plus thirteen ordered database artifact contracts with exact Git blob SHA-1, exact rollback component commit ancestry/package/build/protocol derivation, manifest-bound producer blob and trusted signed-tag authorization",
     "testEnvironmentFence": "shared proxy/worker scrubber removes DB, service-role, proxy-control, member/admin session, MT token/session/portal path, worker, ingest, Render and Cloudflare authority before child tests; focused 2/2 pass",
-    "focusedTests": "Formal.19 bound authorized cutover runner, fixed 30-probe exact identity gate, durable rollback receipt and fake-terminal-label negative contracts PASS.",
+    "focusedTests": "Formal.20 DB provenance, generation drift, immutable image ID, external trust, Raw barrier, readiness, release binding and rollback contracts PASS; candidate-added signer negative PASS.",
     "predecessorRegression": "8/8 v105 predecessor regressions derived from release base 6bdd39e8 pass against the candidate server; the base source SHA-256 is verifier-bound and 13/13 dedicated v106 server tests pass separately",
     "outboxFailureAckIsolation": "25/25 outbox tests pass; a permanently stalled Formal promise enters FORMAL_SETTLEMENT_STALLED fatal with exit 70, sends no failure ACK, and retains the exact lease for stale-lease recovery",
-    "frontend": "156/156 PASS and production build PASS",
-    "worker": "212/212 PASS",
+    "frontend": "156/156 PASS and production build PASS for Formal.20 staged candidate",
+    "worker": "212/212 PASS for Formal.20 staged candidate under scrubbed environment",
     "databaseMigration": "PASS on production schema inside one stripped-outer-boundary transaction and fully rolled back: both SECURITY DEFINER functions compiled, two service_role EXECUTE grants read back, shared source fence present, mutable projections absent, function definitions and sole Active v105 restored byte-for-byte by hash",
     "diffCheck": "git diff --check pass",
     "secretScan": "gitleaks 8.30.1 exact staged blobs; 26 files; zero leaks; exit 0",
@@ -164,8 +164,8 @@
     }
   },
   "pending": [
-    "formal.19 exact commit/tree, full suite, two explicit Fresh Reviews and trusted signed-tag attestation",
-    "formal.19 controlled production cutover through canonical bound runner, core Final gate and live E2E"
+    "formal.20 exact commit/tree, full suite, two explicit Fresh Reviews and external-trust-policy signed-tag attestation",
+    "formal.20 controlled production cutover through canonical bound runner, DB provenance gate, core Final gate and live E2E"
   ],
   "productionTrialFormal13": {
     "verdict": "BLOCK_AND_ROLLBACK",
@@ -215,5 +215,23 @@
   "formal19Fix": {
     "scope": "Trusted signed-tag authorization, repository-bound producer starter, and database-owned activation generation.",
     "gate": "The SSH-signed tag must be from the pinned release signer and bind the exact external-attestation SHA-256. The cutover runner rejects producer path overrides, rechecks HEAD/index tree and producer blob after readiness, then executes only the manifest-bound Git blob with post-start worker identity/health readback. Activation assigns a database-owned generation UUID; terminalization copies it, revokes both direct and fenced Raw ingest paths, and rollback requires exact generation plus post-activation receipt times. Rollback component package/build/strategy/protocol and ancestry are derived from exact Git commits rather than trusted manifest booleans."
+  },
+  "formal20Fix": {
+    "scope": "Repository-external signer trust policy, production DB generation/ACL provenance gate, shared direct-Raw rollback barrier, and immutable worker image ID.",
+    "formal19Verdict": "BLOCK; immutable and not deployable",
+    "externalTrustPolicy": "v106-release-trust-v1 outside candidate repository; signer bytes SHA-256 pinned",
+    "databaseGate": "Manifest/blob-bound pre/post producer gate binds expected Supabase project, migrations, sole Active v106 generation, ACL tuple, Raw barrier and bounded Outbox.",
+    "rawBarrier": "Direct inner RPC now acquires shared advisory barrier and runtime service_role cannot execute it; rollback restores fenced wrapper only.",
+    "workerImageId": "sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2"
+  },
+  "formal20PostgresRehearsal": {
+    "allMigrationsTransactionRollback": "PASS; committed=false",
+    "generationColumnInTransaction": "NOT NULL",
+    "directRawServiceRoleExecuteInTransaction": false,
+    "fencedRawServiceRoleExecuteInTransaction": true,
+    "innerRawSharedBarrierDefinition": "PASS",
+    "twoConnectionBarrierProbe": "shared transaction lock blocked exclusive rollback lock",
+    "postRollbackCatalog": "cutover_generation absent and direct Raw privilege restored to pre-rehearsal state",
+    "productionDbGateNegative": "PASS; current V105 database rejected with migration provenance mismatch"
   }
 }
