@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.14",
-  "gitTag": "v106.0.0-formal.14",
-  "applicationVersion": "1.0.71",
+  "releaseVersion": "v106.0.0-formal.15",
+  "gitTag": "v106.0.0-formal.15",
+  "applicationVersion": "1.0.72",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -180,7 +180,8 @@
   "testRunners": {
     "proxy": "proxy/scripts/run-tests.mjs",
     "worker": "scripts/run-worker-tests-scrubbed.mjs",
-    "credentialScrubber": "scripts/test-env-scrub.mjs"
+    "credentialScrubber": "scripts/test-env-scrub.mjs",
+    "publicReadiness": "scripts/verify-v106-public-readiness.mjs"
   },
   "finalize": "supabase/operations/finalize_v106_promotion.sql",
   "rollback": {
@@ -271,10 +272,12 @@
         "supabase/operations/activate_v106_promotion.sql",
         "supabase/operations/finalize_v106_promotion.sql",
         "supabase/operations/terminalize_v106_rollback.sql",
-        "supabase/operations/rollback_v106_to_v105.sql"
+        "supabase/operations/rollback_v106_to_v105.sql",
+        "scripts/verify-v106-public-readiness.mjs",
+        "release/evidence/v106-formal13-production-block.json"
       ],
       "excludedPaths": [],
-      "sha256": "7965f1f02a6be0082153e95b531e24deec451274cfbb0380bff76d68b4f3c95c"
+      "sha256": "0e3019ebd6e06441abd04351b87d3df2725703d40d72c89b16a4203cb9decae4"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -285,7 +288,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "1a891c939c112eb8a99ef6f5bff86736172e824415c23909f01fe440821b2156"
+      "sha256": "08a107171312eda885554990b4bf1e57f1bb1c3a0f28281c648f2d1c923ced78"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -399,5 +402,26 @@
     "verdict": "BLOCK_AND_ROLLBACK",
     "evidence": "Render deploy API reported live before the public service was externally routable; Worker started early, received five HTTP 503 acknowledgements, queued six envelopes, and V106 produced zero Final before rollback. Render logs later showed port detection at 08:34:42Z.",
     "releaseRule": "Do not start producer until exact candidate public /health returns HTTP 200 with v106 identity on two bounded consecutive probes. Formal.13 is immutable and may not be retried."
+  },
+  "publicReadinessGate": {
+    "script": "scripts/verify-v106-public-readiness.mjs",
+    "deploymentStep": "verify-external-proxy-health-200",
+    "producerStartStep": "producer-start-after-external-health",
+    "requiredConsecutive": 2,
+    "boundedAttempts": 30,
+    "requestTimeoutMs": 20000,
+    "intervalMs": 15000,
+    "requiredIdentity": {
+      "version": "v106",
+      "buildVersion": "v106",
+      "releaseVersion": "v106.0.0-formal.15",
+      "packageVersion": "1.0.72",
+      "commit": "exact-release-commit-cli-argument"
+    },
+    "failClosedExitCode": 2
+  },
+  "incidentEvidence": {
+    "formal13": "release/evidence/v106-formal13-production-block.json",
+    "formal14FreshReview": "BLOCK: declarative readiness did not bind executable exact identity gate"
   }
 }

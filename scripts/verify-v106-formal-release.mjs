@@ -55,7 +55,8 @@ const DEPLOYABLE_BINDING_RULES = Object.freeze([
   { pattern: /^cloud-browser-worker\/(?:Dockerfile|package(?:-lock)?\.json|src\/)/, bindings: ['implementationTree', 'workerBuildInput'] },
   { pattern: /^shared\//, bindings: ['implementationTree', 'proxyBuildInput', 'workerBuildInput'] },
   { pattern: /^supabase\/(?:migrations\/(?:20260818010000_v106_formal_v10_main|20260820003500_v106_formal8_final_time_fence|20260820010000_v106_formal12_bounded_raw_ack|20260820020000_v106_formal13_monotonic_projection)\.sql|operations\/(?:fence_v105_new_issuance|terminalize_v105_cutover|activate_v106_promotion|finalize_v106_promotion|terminalize_v106_rollback|rollback_v106_to_v105)\.sql)$/, bindings: ['implementationTree', 'databaseCutoverInput'] },
-  { pattern: /^scripts\/(?:verify-v106-formal-release|run-worker-tests-scrubbed|test-env-scrub)\.mjs$/, bindings: ['implementationTree'] },
+  { pattern: /^scripts\/(?:verify-v106-formal-release|verify-v106-public-readiness|run-worker-tests-scrubbed|test-env-scrub)\.mjs$/, bindings: ['implementationTree'] },
+  { pattern: /^release\/evidence\/v106-formal13-production-block\.json$/, bindings: ['implementationTree'] },
 ])
 
 function pathIsBound(spec, candidatePath) {
@@ -148,6 +149,36 @@ export function verifyV106DatabaseArtifactContracts({ manifest, candidateIndexTr
   return { ok: true, contracts: Object.keys(REQUIRED_DATABASE_CONTRACTS) }
 }
 
+export function verifyV106PublicReadinessContract({ manifest, candidateIndexTree, root = repoRoot } = {}) {
+  const gate = manifest?.publicReadinessGate
+  const script = 'scripts/verify-v106-public-readiness.mjs'
+  const evidence = 'release/evidence/v106-formal13-production-block.json'
+  if (!gate || gate.script !== script || gate.deploymentStep !== 'verify-external-proxy-health-200'
+      || gate.producerStartStep !== 'producer-start-after-external-health') throw new Error('public_readiness_gate_contract_missing')
+  if (gate.requiredConsecutive !== 2 || gate.boundedAttempts !== 30 || gate.requestTimeoutMs !== 20000
+      || gate.intervalMs !== 15000 || gate.failClosedExitCode !== 2) throw new Error('public_readiness_gate_bounds_mismatch')
+  const identity = gate.requiredIdentity
+  if (identity?.version !== 'v106' || identity?.buildVersion !== 'v106'
+      || identity?.releaseVersion !== manifest.releaseVersion || identity?.packageVersion !== manifest.applicationVersion
+      || identity?.commit !== 'exact-release-commit-cli-argument') throw new Error('public_readiness_gate_identity_mismatch')
+  const order = manifest.deploymentOrder
+  const required = ['proxy', gate.deploymentStep, gate.producerStartStep, 'frontend', 'live-e2e', 'finalize']
+  const indexes = required.map((step) => order.indexOf(step))
+  if (indexes.some((index) => index < 0) || indexes.some((index, position) => position > 0 && index <= indexes[position - 1])) {
+    throw new Error('public_readiness_gate_order_mismatch')
+  }
+  if (manifest?.testRunners?.publicReadiness !== script
+      || !pathIsBound(manifest?.releaseBinding?.implementationTree, script)
+      || manifest?.incidentEvidence?.formal13 !== evidence
+      || !pathIsBound(manifest?.releaseBinding?.implementationTree, evidence)) throw new Error('public_readiness_gate_binding_mismatch')
+  for (const artifact of [script, evidence]) execFileSync('git', ['cat-file', '-e', `${candidateIndexTree}:${artifact}`], { cwd: root })
+  const source = execFileSync('git', ['show', `${candidateIndexTree}:${script}`], { cwd: root, encoding: 'utf8' })
+  for (const requiredText of ['requiredStreak = Math.max(2', 'body?.releaseVersion === expectedRelease', 'body?.packageVersion === expectedPackage', 'body?.commit === expectedCommit', "blocked.code = 'PUBLIC_PROXY_READINESS_BLOCK'"]) {
+    if (!source.includes(requiredText)) throw new Error('public_readiness_gate_executable_mismatch')
+  }
+  return { ok: true, script, evidence, required }
+}
+
 export async function verifyV106ManifestDigests({ manifest, candidateIndexTree, root = repoRoot } = {}) {
   assertCandidateIndexClean(root, candidateIndexTree)
   verifyV106PredecessorRegression({ manifest, candidateIndexTree, root })
@@ -157,6 +188,7 @@ export async function verifyV106ManifestDigests({ manifest, candidateIndexTree, 
     if (!Object.hasOwn(binding, name)) throw new Error(`release_binding_missing:${name}`)
   }
   verifyV106DatabaseArtifactContracts({ manifest, candidateIndexTree, root })
+  verifyV106PublicReadinessContract({ manifest, candidateIndexTree, root })
   verifyV106StagedDeployableCoverage({ manifest, root })
   const result = {}
   for (const [name, spec] of Object.entries(binding)) {

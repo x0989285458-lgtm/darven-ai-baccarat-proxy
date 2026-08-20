@@ -12,6 +12,7 @@ import { createV100FormalRuntime, resolveV100FormalEnabled } from './v100-formal
 import { createV103ShadowRuntime, resolveV103ShadowEnabled } from './v103-shadow-runtime.js'
 import { createV104FormalRuntime } from './v104-formal-runtime.js'
 import { createV106FormalRuntime } from './v106-formal-runtime.js'
+import { V106_FORMAL_RELEASE_VERSION } from './v106-formal-strategy.js'
 import { createV104ShadowRuntime, resolveV104ShadowEnabled } from './v104-shadow-runtime.js'
 import { createV104IterationShadowRuntime, resolveV104IterationShadowEnabled } from './v104-iteration-shadow-runtime.js'
 import { createV105ShadowV9Runtime, resolveV105ShadowV9Enabled } from './v105-shadow-v9-runtime.js'
@@ -23,12 +24,13 @@ import { createLicenseAdminClient } from './license-admin.js'
 import { chooseCaptureSource, describeCaptureStatus } from './capture-source.js'
 import { buildOperationalEvent, toStatusEvent } from './event-layer.js'
 import { createFormalDailyMemoryRollover } from './formal-daily-memory-rollover.js'
-import { BUILD_VERSION } from './build-version.js'
+import { BUILD_VERSION, PROXY_PACKAGE_VERSION } from './build-version.js'
 import { hasExactRealCardCodes, isExactTenRawResult, isVerifiedFinalRoundAction } from '../../shared/real-card-validator.js'
 import { createInMemoryIngestSourceFence, normalizeSource } from './ingest-source-fence.js'
 
 const VERSION = BUILD_VERSION
 const SERVICE = 'Draven MT資料代理伺服器'
+const RELEASE_COMMIT = process.env.RENDER_GIT_COMMIT ?? process.env.RELEASE_COMMIT_SHA ?? null
 const WORKER_PROTOCOL_BUILD_VERSION = '105'
 const WORKER_PROTOCOL_VERSION = 'v105'
 const SETTLEMENT_STRATEGY_VERSIONS = FORMAL_STRATEGY_VERSION === 'v106'
@@ -1060,7 +1062,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         ...(liveShadowProcessStatus ? { shadowProcessStatus: liveShadowProcessStatus } : {}),
       }
       const health = buildServiceHealth(nextStatus)
-      return jsonResponse(health.degraded ? 503 : 200, { ok: !health.degraded, service: SERVICE, version: VERSION, buildVersion: BUILD_VERSION, deployMode: deployConfig.deployMode, ...health }, frontendOrigin)
+      return jsonResponse(health.degraded ? 503 : 200, {
+        ok: !health.degraded, service: SERVICE, version: VERSION, buildVersion: BUILD_VERSION,
+        releaseVersion: V106_FORMAL_RELEASE_VERSION, packageVersion: PROXY_PACKAGE_VERSION,
+        commit: RELEASE_COMMIT, deployMode: deployConfig.deployMode, ...health,
+      }, frontendOrigin)
     }
     if (pathname === '/api/status') {
       const cloudStatus = await readCloudSnapshotStatus()
@@ -1071,7 +1077,12 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         ...(liveShadowProcessStatus ? { shadowProcessStatus: liveShadowProcessStatus } : {}),
       }
       const health = buildServiceHealth(nextStatus)
-      return jsonResponse(200, { ...nextStatus, version: VERSION, buildVersion: BUILD_VERSION, deployMode: deployConfig.deployMode, ...health, statusText: cloudStatus?.statusText ?? describeCaptureStatus(nextStatus) }, frontendOrigin)
+      return jsonResponse(200, {
+        ...nextStatus, version: VERSION, buildVersion: BUILD_VERSION,
+        releaseVersion: V106_FORMAL_RELEASE_VERSION, packageVersion: PROXY_PACKAGE_VERSION,
+        commit: RELEASE_COMMIT, deployMode: deployConfig.deployMode, ...health,
+        statusText: cloudStatus?.statusText ?? describeCaptureStatus(nextStatus),
+      }, frontendOrigin)
     }
     if (pathname === '/api/v103-shadow/status') {
       const controlError = requireControlAccess(headers)

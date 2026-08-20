@@ -1,0 +1,60 @@
+{
+  "incident": "v106-formal13-public-routing-not-ready",
+  "candidate": {
+    "release": "v106.0.0-formal.13",
+    "commit": "49f4aa044e0efe8a68126673585946aa3ccac923",
+    "tree": "6e9ea1351c48515ff895c2e562e21b3c4da090b9",
+    "renderDeploy": "dep-da3blluk1f9s73ehj7o0"
+  },
+  "renderReadback": {
+    "checkoutAt": "2026-08-20T08:29:16.026696708Z",
+    "apiLiveAt": "2026-08-20T08:29:35.484453Z",
+    "applicationStartedAt": "2026-08-20T08:29:54.524535705Z",
+    "publicPortDetectedAt": "2026-08-20T08:34:42.517318799Z",
+    "finding": "Render deploy status became live before public routing readiness. Producer admission must not depend on deploy status alone."
+  },
+  "liveGateBlock": {
+    "workerSession": "worker-darven-vm-taiwan-worker-5-api-283",
+    "workerQueueEntries": 6,
+    "workerQueuedRoundKeys": 8,
+    "workerConsecutiveFailures": 5,
+    "workerLastError": "push failed with invalid acknowledgement (503)",
+    "lastAcknowledgedSequence": 1787214623908,
+    "blockedHeadSequence": 1787214628907,
+    "v106SettlementFinal": 0,
+    "v106PendingAtBlock": 9,
+    "activeStrategyAtBlock": "v106"
+  },
+  "rollbackReadback": {
+    "producerStopped": true,
+    "terminalizedV106Pending": 0,
+    "activeStrategy": "v105",
+    "v105IssuanceEnabled": true,
+    "v106IssuanceEnabled": false,
+    "activeOutbox": 0,
+    "historicalDeadLetter": 274,
+    "renderDeploy": "dep-da3boh8jo6nc73e796t0",
+    "renderCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
+    "workerImage": "darven-worker:v105-6bdd39e8",
+    "workerSession": "worker-darven-vm-taiwan-worker-5-api-284",
+    "workerHealthy": true,
+    "workerConnected": true,
+    "workerAuthenticated": true,
+    "workerJoined": true,
+    "workerTableCount": 10,
+    "workerQueueEntries": 0,
+    "workerConsecutiveFailures": 0
+  },
+  "evidenceSources": [
+    "Render API exact deploy and log readback",
+    "formal9 production live gate database snapshots",
+    "Supabase outbox and immutable prediction readback",
+    "GCP worker local /health and Docker image readback",
+    "bound rollback terminalization and rollback SQL output"
+  ],
+  "releaseDecision": {
+    "verdict": "BLOCK_AND_ROLLBACK",
+    "formal13MayBeRetried": false,
+    "successorIdentityRequired": true
+  }
+}

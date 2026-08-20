@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.14",
+  "releaseVersion": "v106.0.0-formal.15",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.71",
-  "status": "formal14_candidate_pending_exact_tests_review_and_production_gate",
+  "applicationVersion": "1.0.72",
+  "status": "formal15_candidate_pending_exact_tests_review_and_production_gate",
   "productionE2E": "not-run-production-remains-v105",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.71",
+      "packageVersion": "1.0.72",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,8 +27,8 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "7965f1f02a6be0082153e95b531e24deec451274cfbb0380bff76d68b4f3c95c",
-    "proxyBuildInput": "1a891c939c112eb8a99ef6f5bff86736172e824415c23909f01fe440821b2156",
+    "implementationTree": "0e3019ebd6e06441abd04351b87d3df2725703d40d72c89b16a4203cb9decae4",
+    "proxyBuildInput": "08a107171312eda885554990b4bf1e57f1bb1c3a0f28281c648f2d1c923ced78",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
     "databaseCutoverInput": "68025baa823b533c11f066ff8262c7c9be2121a16100ff5bfb8503d9975a8abd"
@@ -82,10 +82,10 @@
     "note": "Tie/PUSH excluded from directional hit-rate denominator. Full-output V10 candidate was rejected after producing net -15 hits; eligible-only promotion is the reviewed candidate."
   },
   "verified": {
-    "proxy": "1023/1023 PASS for Formal.14 exact staged candidate",
+    "proxy": "1027/1027 PASS for Formal.15 exact staged candidate",
     "releaseBinding": "five mandatory staged-tree digests plus seven ordered database artifact contracts with exact Git blob SHA-1 verified in precommit mode; release authorization remains false until external attestation and annotated tag",
     "testEnvironmentFence": "shared proxy/worker scrubber removes DB, service-role, proxy-control, member/admin session, MT token/session/portal path, worker, ingest, Render and Cloudflare authority before child tests; focused 2/2 pass",
-    "focusedTests": "Formal.14 release identity/readiness ordering plus inherited Formal.13 monotonic projection and complete release binding tests PASS.",
+    "focusedTests": "Formal.15 executable exact public readiness and verifier fail-closed contracts PASS; inherited Formal.13 monotonic projection and complete release binding PASS.",
     "predecessorRegression": "8/8 v105 predecessor regressions derived from release base 6bdd39e8 pass against the candidate server; the base source SHA-256 is verifier-bound and 13/13 dedicated v106 server tests pass separately",
     "outboxFailureAckIsolation": "25/25 outbox tests pass; a permanently stalled Formal promise enters FORMAL_SETTLEMENT_STALLED fatal with exit 70, sends no failure ACK, and retains the exact lease for stale-lease recovery",
     "frontend": "156/156 PASS and production build PASS",
@@ -139,16 +139,16 @@
       ]
     },
     "digests": {
-      "implementationTree": "7965f1f02a6be0082153e95b531e24deec451274cfbb0380bff76d68b4f3c95c",
-      "proxyBuildInput": "1a891c939c112eb8a99ef6f5bff86736172e824415c23909f01fe440821b2156",
+      "implementationTree": "0e3019ebd6e06441abd04351b87d3df2725703d40d72c89b16a4203cb9decae4",
+      "proxyBuildInput": "08a107171312eda885554990b4bf1e57f1bb1c3a0f28281c648f2d1c923ced78",
       "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
       "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
       "databaseCutoverInput": "68025baa823b533c11f066ff8262c7c9be2121a16100ff5bfb8503d9975a8abd"
     }
   },
   "pending": [
-    "formal.12 refreshed final commit/tree, full suite, two explicit Fresh Reviews and external attestation",
-    "formal.12 controlled production cutover and live E2E"
+    "formal.15 exact commit/tree, full suite, two explicit Fresh Reviews and external attestation",
+    "formal.15 controlled production cutover, exact public identity readiness, core Final gate and live E2E"
   ],
   "productionTrialFormal13": {
     "verdict": "BLOCK_AND_ROLLBACK",
@@ -157,8 +157,18 @@
     "observed": "Render API became live before external routing readiness; Worker received 503 acknowledgements, V106 issuance increased but settlement Final stayed zero.",
     "rollback": "Stopped producer, terminalized unresolved V106 and one active Outbox as dead-letter evidence, restored sole Active V105, exact Render 6bdd39e8 and Worker v105 image. Historical dead-letter is now 274."
   },
-  "formal14Fix": {
-    "scope": "release sequencing only; product implementation remains Formal.13 monotonic projection",
-    "gate": "After exact Proxy deployment, require two consecutive public /health HTTP 200 responses with v106 identity before starting Worker producer. API deploy status live alone is insufficient."
+  "productionTrialFormal14": {
+    "verdict": "FRESH_REVIEW_BLOCK_NO_PRODUCTION_RETRY",
+    "candidateCommit": "807c2776a50b1f09004850b359b366b9cda085dd",
+    "candidateTree": "6e373e0ca5b1e9d0f9dfdf21aec2a9272bf8b979",
+    "findings": [
+      "Producer gate was manifest-only and not verifier-enforced.",
+      "Public health returned only shared v106 identity and could not distinguish Formal.13 from Formal.14.",
+      "Formal.13 incident receipts were not tracked and bound."
+    ]
+  },
+  "formal15Fix": {
+    "scope": "Executable exact public readiness gate, runtime release/package/commit health identity, verifier-enforced deployment ordering, tracked Formal.13 incident receipt.",
+    "gate": "Bound script requires two consecutive public HTTP 200 responses matching v106, v106.0.0-formal.15, package 1.0.72 and exact release commit before producer start; any mismatch or timeout exits 2 and blocks."
   }
 }
