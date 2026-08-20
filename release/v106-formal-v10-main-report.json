@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.11",
+  "releaseVersion": "v106.0.0-formal.12",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.68",
-  "status": "formal11-raw-control-isolation-candidate",
+  "applicationVersion": "1.0.69",
+  "status": "formal12-bounded-raw-ack-candidate",
   "productionE2E": "not-run-production-remains-v105",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.68",
+      "packageVersion": "1.0.69",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,11 +27,11 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "037560d33b2e6eb4e41321f8967c7a7d1e9b539dd5fb5b393b9a2fb33bb503d6",
-    "proxyBuildInput": "da044cb5b6ce8fa2888bb0aa8abe79a0cb5c27b90fe21ac5e7efd9cf6fa874a9",
+    "implementationTree": "0090ca2f8702f770bc28dd246dc7eca1b044738f0c3e96988e1f35b659f08feb",
+    "proxyBuildInput": "55a279313dc86a49d7cee09dbac012c003be5aca9c63ff9c427e0e17a5ae3f8d",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "a6bb70aa2802ff6fe2d1ee7c1bdab4ef82a0537956fd729a853a87dd96d24438"
+    "databaseCutoverInput": "1d1bca0bd3d82c3311648c712c5ec3eba6472df37f78ee297603907879451a14"
   },
   "rollbackComponents": {
     "proxy": {
@@ -82,15 +82,15 @@
     "note": "Tie/PUSH excluded from directional hit-rate denominator. Full-output V10 candidate was rejected after producing net -15 hits; eligible-only promotion is the reviewed candidate."
   },
   "verified": {
-    "proxy": "1015/1015 PASS after verifier rollback-order fail-closed fix",
+    "proxy": "1019/1019 PASS for Formal.12 exact staged candidate",
     "releaseBinding": "five mandatory staged-tree digests plus seven ordered database artifact contracts with exact Git blob SHA-1 verified in precommit mode; release authorization remains false until external attestation and annotated tag",
     "testEnvironmentFence": "shared proxy/worker scrubber removes DB, service-role, proxy-control, member/admin session, MT token/session/portal path, worker, ingest, Render and Cloudflare authority before child tests; focused 2/2 pass",
-    "focusedTests": "formal.8 incident, strategy, writer, ACK, database and release-integrity focused rerun 103/103 pass; authoritative earliest timestamp, cross-sequence retry, retry-not-ACK, HTTP pre-observer suppression, fail-closed lookup, runtime lineage, ordered artifact contracts and required-artifact closure covered",
+    "focusedTests": "Formal.12 Raw ACK, pool routing, ancillary recovery, release identity and binding focused suite 90/90 PASS before full suite",
     "predecessorRegression": "8/8 v105 predecessor regressions derived from release base 6bdd39e8 pass against the candidate server; the base source SHA-256 is verifier-bound and 13/13 dedicated v106 server tests pass separately",
     "outboxFailureAckIsolation": "25/25 outbox tests pass; a permanently stalled Formal promise enters FORMAL_SETTLEMENT_STALLED fatal with exit 70, sends no failure ACK, and retains the exact lease for stale-lease recovery",
-    "frontend": "156/156 pass; exact production build pass; unchanged frontend binding e9810003…",
-    "worker": "212/212 scrubbed pass; unchanged worker binding caea7c97…; package 1.0.63/build 105/protocol v105",
-    "databaseMigration": "compiled against live schema inside transaction and fully rolled back; terminal lifecycle evidence cannot reopen; activation retains v105 immutable settlement but revokes legacy unbound persistence",
+    "frontend": "156/156 PASS; exact production build PASS; frontend unchanged",
+    "worker": "212/212 scrubbed PASS; unchanged worker package 1.0.63/build 105/protocol v105",
+    "databaseMigration": "PASS on production schema inside one stripped-outer-boundary transaction and fully rolled back: both SECURITY DEFINER functions compiled, two service_role EXECUTE grants read back, shared source fence present, mutable projections absent, function definitions and sole Active v105 restored byte-for-byte by hash",
     "diffCheck": "git diff --check pass",
     "secretScan": "gitleaks 8.30.1 exact staged blobs; 19 files; zero leaks; exit 0",
     "formal5RootCause": "formal.4 incident payload was ten tables and zero rounds; Formal ACK rank hydration now performs one read-only batch and zero synchronous ledger rebuilds.",
@@ -121,10 +121,13 @@
     "gitleaksFinalEvidenceFix": "0 findings across 4 staged final evidence-preservation files",
     "formal11RollbackOrderReviewBlock": "candidate deb6225 BLOCK: verifier accepted swapped rollback order and omission of the bound terminalizer step",
     "formal11RollbackOrderFix": "verifier now fail-closes unless rollback order exactly stops producer admission, runs bound v106 terminalization, runs rollback SQL, restores exact V105 components, then verifies sole V105 plus new V105 Final; negative tests cover swapped and omitted terminalizer order",
-    "gitleaksFinalOrderFix": "0 findings across 4 staged rollback-order verifier files"
+    "gitleaksFinalOrderFix": "0 findings across 4 staged rollback-order verifier files",
+    "formal12Fix": "Raw ACK durable transaction is bounded to immutable evidence/outbox/cursor; mutable snapshot/status writes are coalesced outside the HTTP ACK await path; same-source DB work uses shared source fencing, epoch takeover remains exclusive; pools are 3/4/2/1 with total 10 and Raw 12/10-second query/statement bounds",
+    "formal12DatabaseBarrier": "PASS in a disposable isolated schema on production PostgreSQL: two same-source different sessions progressed concurrently while one immutable insert was blocked; same-session contention failed fast without cursor advance; epoch takeover failed while shared work was active, succeeded after drain, and rejected stale epoch; schema removed afterward",
+    "formal11ProductionResult": "exact formal.11 advanced v106 issuance but settlement_final stayed zero; ACK stayed zero, Queue rose, Worker received 502 invalid acknowledgement, and Proxy health degraded; controlled rollback restored sole Active v105 exact proxy/worker 6bdd39e8, ten tables, active outbox zero, dead-letter baseline 273"
   },
   "pending": [
-    "formal.11 refreshed final commit/tree, full suite, two explicit Fresh Reviews and external attestation",
-    "formal.11 controlled production cutover and live E2E"
+    "formal.12 refreshed final commit/tree, full suite, two explicit Fresh Reviews and external attestation",
+    "formal.12 controlled production cutover and live E2E"
   ]
 }

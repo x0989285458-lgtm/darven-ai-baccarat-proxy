@@ -139,7 +139,7 @@ test('backend formal reads use Supabase transaction pooler without rewriting unr
   assert.equal(resolveBackendReadConnectionString(direct), direct)
 })
 
-test('backend transaction pools physically reserve four standard, four formal, one raw, and one control connection', () => {
+test('backend transaction pools physically reserve three standard, four formal, two raw, and one control connection', () => {
   const configs = []
   createSupabaseIngestionClient({
     dbConnectionString: 'postgresql://user:secret@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres',
@@ -149,13 +149,13 @@ test('backend transaction pools physically reserve four standard, four formal, o
     },
   })
   assert.equal(configs.length, 4)
-  assert.deepEqual(configs.map((config) => config.max), [4, 4, 1, 1])
-  assert.deepEqual(configs.map((config) => config.query_timeout), [30000, 40000, 25000, 10000])
-  assert.deepEqual(configs.map((config) => config.statement_timeout), [25000, 35000, 20000, 8000])
+  assert.deepEqual(configs.map((config) => config.max), [3, 4, 2, 1])
+  assert.deepEqual(configs.map((config) => config.query_timeout), [30000, 40000, 12000, 10000])
+  assert.deepEqual(configs.map((config) => config.statement_timeout), [25000, 35000, 10000, 8000])
   assert.equal(configs.reduce((sum, config) => sum + config.max, 0), 10)
+  assert.deepEqual(configs.map((config) => config.connectionTimeoutMillis), [10000, 10000, 5000, 10000])
   for (const config of configs) {
     assert.equal(new URL(config.connectionString).port, '6543')
-    assert.equal(config.connectionTimeoutMillis, 10000)
     assert.equal(config.idleTimeoutMillis, 30000)
   }
 })
@@ -198,7 +198,43 @@ test('backend transaction pools route standard, formal, raw, and control work th
     source: { role: 'canonical_api', ownerId: 'physical-owner', epoch: 1 },
   })
   await client.getCaptureOutboxHealth()
-  assert.deepEqual(laneCalls.map((call) => call.max), [4, 4, 1, 1])
+  assert.deepEqual(laneCalls.map((call) => call.max), [3, 4, 2, 1])
+})
+
+test('two physical raw connections prevent one stalled session from head-of-line blocking another session', async () => {
+  let rawStarted = 0
+  let releaseRaw
+  const blocked = new Promise((resolve) => { releaseRaw = resolve })
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    dbConnectionString: 'postgresql://user:***@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres',
+    durableWriteRequestTimeoutMs: 500,
+    strategyPoolFactory: (config) => ({
+      async query(query) {
+        const text = String(query?.text ?? query)
+        if (!/persist_v105_fenced_capture_envelope/i.test(text)) return { rows: [] }
+        rawStarted += 1
+        if (rawStarted === 1) await blocked
+        return { rows: [{ persist_v105_fenced_capture_envelope: { persisted: true, duplicate: false, accepted_round_keys: [] } }] }
+      },
+    }),
+  })
+  const payload = (sessionId, sequence) => ({
+    sessionId, sequence, roundKeys: [], tables: [], rounds: [],
+    status: { connected: true, authenticated: true, tableCount: 0 },
+    capturedAt: '2026-08-20T00:00:00.000Z',
+    source: { role: 'canonical_api', ownerId: 'physical-owner', epoch: 1 },
+  })
+  const first = client.persistCaptureEnvelope(payload('raw-a', 1))
+  while (rawStarted < 1) await new Promise((resolve) => setImmediate(resolve))
+  const second = client.persistCaptureEnvelope(payload('raw-b', 1))
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  try {
+    assert.equal(rawStarted, 2, 'second raw session must enter its independently reserved connection')
+  } finally {
+    releaseRaw()
+    await Promise.allSettled([first, second])
+  }
 })
 
 test('builds cloud capture status row without leaking tokenized URL', () => {

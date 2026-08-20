@@ -26,7 +26,7 @@ test('createSupabaseIngestionClient eagerly constructs all four physically isola
     },
   })
 
-  assert.deepEqual(poolConfigs.map((config) => config.max), [4, 4, 1, 1])
+  assert.deepEqual(poolConfigs.map((config) => config.max), [3, 4, 2, 1])
   assert.equal(poolConfigs.reduce((sum, config) => sum + config.max, 0), 10)
   assert.equal(client.configured, true)
 })

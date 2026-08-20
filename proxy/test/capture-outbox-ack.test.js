@@ -92,8 +92,9 @@ test('durable raw capture and outbox ACK do not wait for formal settlement', asy
   }
 })
 
-test('restart drains a pending durable outbox item before marking it complete', async () => {
+test('restart drains a pending durable outbox item only after durable projection recovery succeeds', async () => {
   const completed = []
+  const projectionWrites = []
   let claimed = false
   const work = envelope().snapshot
   const app = createApp({
@@ -105,7 +106,13 @@ test('restart drains a pending durable outbox item before marking it complete', 
         claimed = true
         return [claimedRow(7, { payload: { work } })]
       },
-      async completeCaptureOutbox(identity) { completed.push(identity); return { completed: true } },
+      async writeCloudCaptureStatus() { projectionWrites.push('status') },
+      async writeCloudTableSnapshot() { projectionWrites.push('snapshot') },
+      async completeCaptureOutbox(identity) {
+        assert.deepEqual(projectionWrites.sort(), ['snapshot', 'status'])
+        completed.push(identity)
+        return { completed: true }
+      },
       async failCaptureOutbox() { assert.fail('valid pending work must not fail') },
     },
     v100FormalRuntime: {
@@ -281,6 +288,51 @@ test('rawOutboxMs measures the real durable DB acknowledgement latency', async (
   const response = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': 'worker-key' }, body: JSON.stringify(envelope()) })
   assert.equal(response.statusCode, 200)
   assert.ok(app.state.snapshot().status.durableTimings.rawOutboxMs >= 10)
+})
+
+test('mutable snapshot and status persistence never delay raw durable ACK and coalesce to the latest envelope', async () => {
+  let releaseAncillary
+  const ancillaryBlocked = new Promise((resolve) => { releaseAncillary = resolve })
+  let statusWrites = 0
+  let snapshotWrites = 0
+  const persisted = []
+  const app = createApp({
+    autoConnect: false, ingestKey: 'worker-key', now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async persistCaptureEnvelope(value) {
+        persisted.push(value.sequence)
+        return { acceptedRoundKeys: value.roundKeys }
+      },
+      async writeCloudCaptureStatus() { statusWrites += 1; await ancillaryBlocked },
+      async writeCloudTableSnapshot() { snapshotWrites += 1; await ancillaryBlocked },
+      async writeCloudRoundEvent() {},
+      async claimCaptureOutbox() { return [] },
+    },
+  })
+  const firstEnvelope = envelope()
+  const secondEnvelope = envelope()
+  secondEnvelope.sequence += 1
+  secondEnvelope.timestamp += 1
+
+  const first = await Promise.race([
+    app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': 'worker-key' }, body: JSON.stringify(firstEnvelope) }),
+    delay(50).then(() => assert.fail('first raw ACK waited for ancillary projection')),
+  ])
+  const second = await Promise.race([
+    app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': 'worker-key' }, body: JSON.stringify(secondEnvelope) }),
+    delay(50).then(() => assert.fail('second raw ACK waited for blocked ancillary projection')),
+  ])
+  assert.equal(first.statusCode, 200, first.body)
+  assert.equal(second.statusCode, 200, second.body)
+  assert.deepEqual(persisted, [firstEnvelope.sequence, secondEnvelope.sequence])
+  assert.equal(statusWrites, 1)
+  assert.equal(snapshotWrites, 1)
+
+  releaseAncillary()
+  await delay(20)
+  assert.equal(statusWrites, 2, 'latest pending status projection must run after the blocked write')
+  assert.equal(snapshotWrites, 2, 'latest pending snapshot projection must run after the blocked write')
 })
 
 test('bounded outbox passes automatically continue beyond 100 rows without monopolizing one event-loop turn', async () => {

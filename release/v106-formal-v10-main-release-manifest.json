@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.11",
-  "gitTag": "v106.0.0-formal.11",
-  "applicationVersion": "1.0.68",
+  "releaseVersion": "v106.0.0-formal.12",
+  "gitTag": "v106.0.0-formal.12",
+  "applicationVersion": "1.0.69",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -92,6 +92,11 @@
       "deploymentStep": "database-final-time-fence",
       "gitBlobSha1": "30758801fc37b3d1afc758030703ca5d28c028e5"
     },
+    "boundedRawAck": {
+      "path": "supabase/migrations/20260820010000_v106_formal12_bounded_raw_ack.sql",
+      "deploymentStep": "database-bounded-raw-ack",
+      "gitBlobSha1": "414290db7134adcfedfa56563492233088964905"
+    },
     "fence": {
       "path": "supabase/operations/fence_v105_new_issuance.sql",
       "deploymentStep": "fence-v105-new-issuance",
@@ -137,6 +142,7 @@
   "deploymentOrder": [
     "database-additive",
     "database-final-time-fence",
+    "database-bounded-raw-ack",
     "deploy-worker-1.0.63-protocol-v105",
     "verify-worker-v105-compatibility",
     "fence-v105-new-issuance",
@@ -249,6 +255,7 @@
         "scripts/test-env-scrub.mjs",
         "supabase/migrations/20260818010000_v106_formal_v10_main.sql",
         "supabase/migrations/20260820003500_v106_formal8_final_time_fence.sql",
+        "supabase/migrations/20260820010000_v106_formal12_bounded_raw_ack.sql",
         "supabase/operations/fence_v105_new_issuance.sql",
         "supabase/operations/terminalize_v105_cutover.sql",
         "supabase/operations/activate_v106_promotion.sql",
@@ -257,7 +264,7 @@
         "supabase/operations/rollback_v106_to_v105.sql"
       ],
       "excludedPaths": [],
-      "sha256": "037560d33b2e6eb4e41321f8967c7a7d1e9b539dd5fb5b393b9a2fb33bb503d6"
+      "sha256": "0090ca2f8702f770bc28dd246dc7eca1b044738f0c3e96988e1f35b659f08feb"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -268,7 +275,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "da044cb5b6ce8fa2888bb0aa8abe79a0cb5c27b90fe21ac5e7efd9cf6fa874a9"
+      "sha256": "55a279313dc86a49d7cee09dbac012c003be5aca9c63ff9c427e0e17a5ae3f8d"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -297,6 +304,7 @@
       "paths": [
         "supabase/migrations/20260818010000_v106_formal_v10_main.sql",
         "supabase/migrations/20260820003500_v106_formal8_final_time_fence.sql",
+        "supabase/migrations/20260820010000_v106_formal12_bounded_raw_ack.sql",
         "supabase/operations/fence_v105_new_issuance.sql",
         "supabase/operations/terminalize_v105_cutover.sql",
         "supabase/operations/activate_v106_promotion.sql",
@@ -305,7 +313,7 @@
         "supabase/operations/rollback_v106_to_v105.sql"
       ],
       "excludedPaths": [],
-      "sha256": "a6bb70aa2802ff6fe2d1ee7c1bdab4ef82a0537956fd729a853a87dd96d24438"
+      "sha256": "1d1bca0bd3d82c3311648c712c5ec3eba6472df37f78ee297603907879451a14"
     }
   },
   "historicalArtifactsPreserved": true,
@@ -361,5 +369,11 @@
     "productionEvidence": "exact formal.10 produced 9 unresolved v106 issuances and zero Finals; a zero-round outbox envelope waited about 43.5 seconds after earlier raw durable gaps of about 18 and 85 seconds; Proxy health returned 503 and status timed out; independent review also proved the screen issued-prediction read bypassed the formal pool and used standard",
     "safeState": "Render and Worker stopped; all unresolved v106 issuances terminalized; active outbox zero; production restored to sole Active v105 exact proxy/worker commit 6bdd39e8; ten tables connected/authenticated/joined; historical dead-letter remained 273",
     "formal11Fix": "use four independent physical pools capped at 4 standard, 4 formal, 1 raw durable ingest, and 1 outbox lifecycle control connection; route every formal issuance/read/settlement to formal; route raw envelope persistence only to raw and claim/complete/fail/health only to control; total remains 10; bound SQL deadlines below HTTP and lease deadlines"
+  },
+  "formal11Incident": {
+    "observedAt": "2026-08-19T22:39:53Z",
+    "productionEvidence": "exact formal.11 advanced v106 immutable issuance while settlement_final remained zero; Worker durable ACK did not advance, Queue rose, Proxy returned 502 invalid acknowledgement and health degraded; physical raw/control separation did not bound the Raw SQL transaction itself",
+    "safeState": "all producers stopped; unresolved v106 issuance and active outbox terminalized without deleting evidence; production restored to sole Active v105 exact proxy/worker commit 6bdd39e8; ten tables connected/authenticated/joined; active outbox zero; historical dead-letter 273 preserved",
+    "formal12Fix": "Raw ACK transaction retains only source fence, immutable rounds, durable outbox payload and monotonic session cursor; latest snapshot/status move to coalesced restart-recoverable ancillary scheduling; same-source sessions use shared source fencing while epoch takeover remains exclusive and fail-fast; DB pools are 3 standard, 4 formal, 2 raw, 1 control (total 10) with Raw 12/10-second query/statement bounds and a 15-second HTTP deadline"
   }
 }

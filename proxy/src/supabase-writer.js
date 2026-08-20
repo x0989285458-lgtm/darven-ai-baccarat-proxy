@@ -2087,7 +2087,7 @@ export function createSupabaseIngestionClient({
     idleTimeoutMillis: 30000,
   })
   const rawStrategyDb = strategyPool ?? (dbConnectionString
-    ? createPool(physicalLaneIsolation ? 4 : resolvedStrategyPoolMax, physicalLaneIsolation
+    ? createPool(physicalLaneIsolation ? 3 : resolvedStrategyPoolMax, physicalLaneIsolation
       ? { connectionTimeoutMillis: 10000, queryTimeoutMs: 30000, statementTimeoutMs: 25000 }
       : {})
     : null)
@@ -2095,7 +2095,7 @@ export function createSupabaseIngestionClient({
     ? createPool(4, { connectionTimeoutMillis: 10000, queryTimeoutMs: 40000, statementTimeoutMs: 35000 })
     : rawStrategyDb
   const rawCriticalStrategyDb = physicalLaneIsolation
-    ? createPool(1, { connectionTimeoutMillis: 10000, queryTimeoutMs: 25000, statementTimeoutMs: 20000 })
+    ? createPool(2, { connectionTimeoutMillis: 5000, queryTimeoutMs: 12000, statementTimeoutMs: 10000 })
     : rawStrategyDb
   const rawControlStrategyDb = physicalLaneIsolation
     ? createPool(1, { connectionTimeoutMillis: 10000, queryTimeoutMs: 10000, statementTimeoutMs: 8000 })
@@ -2122,6 +2122,8 @@ export function createSupabaseIngestionClient({
         priorityDb: rawPriorityStrategyDb,
         criticalDb: rawCriticalStrategyDb,
         controlDb: rawControlStrategyDb,
+        maxStandardConcurrent: physicalLaneIsolation ? 3 : 4,
+        maxCriticalConcurrent: physicalLaneIsolation ? 2 : 1,
         queueTimeoutMs: durableWriteTimeoutMs,
       })
     : null

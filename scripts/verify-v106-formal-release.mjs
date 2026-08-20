@@ -20,6 +20,7 @@ const REQUIRED_RELEASE_BINDINGS = Object.freeze([
 const REQUIRED_DATABASE_ARTIFACTS = Object.freeze([
   'supabase/migrations/20260818010000_v106_formal_v10_main.sql',
   'supabase/migrations/20260820003500_v106_formal8_final_time_fence.sql',
+  'supabase/migrations/20260820010000_v106_formal12_bounded_raw_ack.sql',
   'supabase/operations/fence_v105_new_issuance.sql',
   'supabase/operations/terminalize_v105_cutover.sql',
   'supabase/operations/activate_v106_promotion.sql',
@@ -30,12 +31,13 @@ const REQUIRED_DATABASE_ARTIFACTS = Object.freeze([
 const REQUIRED_DATABASE_CONTRACTS = Object.freeze({
   migration: { path: REQUIRED_DATABASE_ARTIFACTS[0], deploymentStep: 'database-additive' },
   finalTimeFence: { path: REQUIRED_DATABASE_ARTIFACTS[1], deploymentStep: 'database-final-time-fence' },
-  fence: { path: REQUIRED_DATABASE_ARTIFACTS[2], deploymentStep: 'fence-v105-new-issuance' },
-  terminalize: { path: REQUIRED_DATABASE_ARTIFACTS[3], deploymentStep: 'terminalize-v105-cutover' },
-  activate: { path: REQUIRED_DATABASE_ARTIFACTS[4], deploymentStep: 'activate-v106' },
-  finalize: { path: REQUIRED_DATABASE_ARTIFACTS[5], deploymentStep: 'finalize' },
-  rollbackTerminalize: { path: REQUIRED_DATABASE_ARTIFACTS[6], deploymentStep: 'rollback-terminalize' },
-  rollback: { path: REQUIRED_DATABASE_ARTIFACTS[7], deploymentStep: 'rollback-only' },
+  boundedRawAck: { path: REQUIRED_DATABASE_ARTIFACTS[2], deploymentStep: 'database-bounded-raw-ack' },
+  fence: { path: REQUIRED_DATABASE_ARTIFACTS[3], deploymentStep: 'fence-v105-new-issuance' },
+  terminalize: { path: REQUIRED_DATABASE_ARTIFACTS[4], deploymentStep: 'terminalize-v105-cutover' },
+  activate: { path: REQUIRED_DATABASE_ARTIFACTS[5], deploymentStep: 'activate-v106' },
+  finalize: { path: REQUIRED_DATABASE_ARTIFACTS[6], deploymentStep: 'finalize' },
+  rollbackTerminalize: { path: REQUIRED_DATABASE_ARTIFACTS[7], deploymentStep: 'rollback-terminalize' },
+  rollback: { path: REQUIRED_DATABASE_ARTIFACTS[8], deploymentStep: 'rollback-only' },
 })
 const REQUIRED_ROLLBACK_ORDER = Object.freeze([
   'stop producer admission',
@@ -50,7 +52,7 @@ const DEPLOYABLE_BINDING_RULES = Object.freeze([
   { pattern: /^frontend\/(?:package(?:-lock)?\.json|src\/)/, bindings: ['implementationTree', 'frontendBuildInput'] },
   { pattern: /^cloud-browser-worker\/(?:Dockerfile|package(?:-lock)?\.json|src\/)/, bindings: ['implementationTree', 'workerBuildInput'] },
   { pattern: /^shared\//, bindings: ['implementationTree', 'proxyBuildInput', 'workerBuildInput'] },
-  { pattern: /^supabase\/(?:migrations\/(?:20260818010000_v106_formal_v10_main|20260820003500_v106_formal8_final_time_fence)\.sql|operations\/(?:fence_v105_new_issuance|terminalize_v105_cutover|activate_v106_promotion|finalize_v106_promotion|terminalize_v106_rollback|rollback_v106_to_v105)\.sql)$/, bindings: ['implementationTree', 'databaseCutoverInput'] },
+  { pattern: /^supabase\/(?:migrations\/(?:20260818010000_v106_formal_v10_main|20260820003500_v106_formal8_final_time_fence|20260820010000_v106_formal12_bounded_raw_ack)\.sql|operations\/(?:fence_v105_new_issuance|terminalize_v105_cutover|activate_v106_promotion|finalize_v106_promotion|terminalize_v106_rollback|rollback_v106_to_v105)\.sql)$/, bindings: ['implementationTree', 'databaseCutoverInput'] },
   { pattern: /^scripts\/(?:verify-v106-formal-release|run-worker-tests-scrubbed|test-env-scrub)\.mjs$/, bindings: ['implementationTree'] },
 ])
 
