@@ -18,7 +18,7 @@ export function loadTrustedPythonInterpreter({ root = repoRoot } = {}) {
     throw new Error('external_python_trust_policy_required')
   }
   const policy = JSON.parse(readFileSync(policyPath, 'utf8'))
-  if (policy.pythonIsolatedModeRequired !== true || !/^[a-f0-9]{64}$/.test(policy.pythonInterpreterSha256 ?? '')) {
+  if (policy.pythonIsolatedModeRequired !== true || policy.pythonNoSiteRequired !== true || !/^[a-f0-9]{64}$/.test(policy.pythonInterpreterSha256 ?? '')) {
     throw new Error('trusted_python_policy_invalid')
   }
   const interpreterPath = realpathSync(policy.pythonInterpreterPath)
@@ -194,7 +194,7 @@ async function main() {
     onProbe: (probe) => process.stdout.write(`${JSON.stringify({ type: 'public-readiness-probe', ...probe })}\n`),
     verifyProductionDb: async (identity) => {
       assertTrustedPythonUnchanged()
-      const child = spawnSync(trustedPython.path, ['-I', '-c', productionDbGateSource], {
+      const child = spawnSync(trustedPython.path, ['-I', '-S', '-c', productionDbGateSource], {
         cwd: repoRoot, encoding: 'utf8', env: {
           ...boundPythonEnvironment,
           V106_RELEASE_VERSION: identity.releaseVersion,
@@ -209,7 +209,7 @@ async function main() {
     },
     startProducer: async (identity) => {
       assertTrustedPythonUnchanged()
-      const child = spawnSync(trustedPython.path, ['-I', '-c', producerStartSource], {
+      const child = spawnSync(trustedPython.path, ['-I', '-S', '-c', producerStartSource], {
         cwd: repoRoot, encoding: 'utf8', env: {
           ...boundPythonEnvironment,
           V106_RELEASE_VERSION: identity.releaseVersion,
@@ -226,7 +226,7 @@ async function main() {
     },
     stopProducer: async (identity) => {
       assertTrustedPythonUnchanged()
-      const child = spawnSync(trustedPython.path, ['-I', '-c', producerStopSource], {
+      const child = spawnSync(trustedPython.path, ['-I', '-S', '-c', producerStopSource], {
         cwd: repoRoot, encoding: 'utf8', env: {
           ...boundPythonEnvironment,
           V106_RELEASE_VERSION: identity.releaseVersion,

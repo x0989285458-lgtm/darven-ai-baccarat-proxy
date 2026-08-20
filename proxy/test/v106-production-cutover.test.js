@@ -27,12 +27,21 @@ test('Formal.23 binds an external trusted Python interpreter and strips import i
   assert.equal(env.PYTHONNOUSERSITE, '1')
 })
 
+test('Formal.24 DB gate is stdlib-only and calls one fixed service-role RPC', () => {
+  const candidateIndexTree = tree()
+  const source = execFileSync('git', ['show', `${candidateIndexTree}:scripts/verify-v106-production-db-gate.py`], { cwd: root, encoding: 'utf8' })
+  assert.doesNotMatch(source, /import psycopg|psycopg\./)
+  assert.match(source, /verify_v106_production_cutover_gate/)
+  assert.match(source, /urllib\.request/)
+  assert.match(source, /Authorization/)
+})
+
 test('Formal.23 production CLI cannot use PATH Python or injected Python environment', () => {
   const candidateIndexTree = tree()
   const source = execFileSync('git', ['show', `${candidateIndexTree}:scripts/run-v106-production-cutover.mjs`], { cwd: root, encoding: 'utf8' })
   assert.match(source, /const trustedPython = loadTrustedPythonInterpreter/)
   assert.match(source, /const boundPythonEnvironment = buildBoundPythonEnvironment\(process\.env\)/)
-  assert.equal((source.match(/spawnSync\(trustedPython\.path, \['-I', '-c'/g) ?? []).length, 3)
+  assert.equal((source.match(/spawnSync\(trustedPython\.path, \['-I', '-S', '-c'/g) ?? []).length, 3)
   assert.doesNotMatch(source, /spawnSync\('python'/)
 })
 
@@ -42,9 +51,9 @@ test('Formal.22 production CLI executes all Python launchers from exact-tree sou
   assert.match(source, /const producerStartSource = loadBoundPythonSource/)
   assert.match(source, /const producerStopSource = loadBoundPythonSource/)
   assert.match(source, /const productionDbGateSource = loadBoundPythonSource/)
-  assert.match(source, /spawnSync\(trustedPython\.path, \['-I', '-c', producerStartSource\]/)
-  assert.match(source, /spawnSync\(trustedPython\.path, \['-I', '-c', producerStopSource\]/)
-  assert.match(source, /spawnSync\(trustedPython\.path, \['-I', '-c', productionDbGateSource\]/)
+  assert.match(source, /spawnSync\(trustedPython\.path, \['-I', '-S', '-c', producerStartSource\]/)
+  assert.match(source, /spawnSync\(trustedPython\.path, \['-I', '-S', '-c', producerStopSource\]/)
+  assert.match(source, /spawnSync\(trustedPython\.path, \['-I', '-S', '-c', productionDbGateSource\]/)
 })
 
 test('Formal.22 production launcher source is loaded from the exact candidate Git tree', async () => {

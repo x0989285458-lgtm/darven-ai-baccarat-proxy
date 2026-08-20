@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.23",
+  "releaseVersion": "v106.0.0-formal.24",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.80",
-  "status": "formal23_candidate_tests_passed_pending_fresh_review",
+  "applicationVersion": "1.0.81",
+  "status": "formal24_candidate_tests_passed_pending_fresh_review",
   "productionE2E": "not-run-production-remains-v105",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.80",
+      "packageVersion": "1.0.81",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,11 +27,11 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "ef419aa58460e2eaabcf552fba6b35b7cf4a5bf88d2b96743203c69592aa9c31",
-    "proxyBuildInput": "9a1887663f65569699b2a601a660979f0402459e0216001a0f203cf9148a2b51",
+    "implementationTree": "9562d063da8061c1008710ef2933fd4cdc5e9abd58d4f54fe02f78a179f1af04",
+    "proxyBuildInput": "95a740599b037524490d5e93925fe35d0fdeb2ec3784c967c8cd5f2f02a51566",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "bd507af7e70c675e6605f8aeb76a7aa0183c6ca64989c7a73e01d51cd8dc6edb"
+    "databaseCutoverInput": "2e59de5560b43cd6e1c5077c26fda804266e928fe5b3ad4ff8ceab5bbe1229e8"
   },
   "rollbackComponents": {
     "proxy": {
@@ -139,11 +139,11 @@
       ]
     },
     "digests": {
-      "implementationTree": "ef419aa58460e2eaabcf552fba6b35b7cf4a5bf88d2b96743203c69592aa9c31",
-      "proxyBuildInput": "9a1887663f65569699b2a601a660979f0402459e0216001a0f203cf9148a2b51",
+      "implementationTree": "9562d063da8061c1008710ef2933fd4cdc5e9abd58d4f54fe02f78a179f1af04",
+      "proxyBuildInput": "95a740599b037524490d5e93925fe35d0fdeb2ec3784c967c8cd5f2f02a51566",
       "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
       "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-      "databaseCutoverInput": "bd507af7e70c675e6605f8aeb76a7aa0183c6ca64989c7a73e01d51cd8dc6edb"
+      "databaseCutoverInput": "2e59de5560b43cd6e1c5077c26fda804266e928fe5b3ad4ff8ceab5bbe1229e8"
     },
     "formal16PostgresRehearsal": {
       "migrationTransactionRollback": "PASS",
@@ -172,11 +172,20 @@
       "safePath": true,
       "sha256": "c5f556ec6491af96e925f149c8e81701103862ca4d686af5788ad3e1954ca081",
       "psycopg": "3.3.4"
-    }
+    },
+    "formal23FreshReview": "BLOCK: -I loaded mutable .pth/site-packages before exact-tree Python callback source.",
+    "formal24Fix": "All callbacks use -I -S; DB gate uses only stdlib HTTPS to one service-role-only PostgreSQL provenance RPC.",
+    "pythonNoSiteRuntime": {
+      "isolated": 1,
+      "noSite": 1,
+      "siteLoaded": false,
+      "sitePackagesOnPath": false
+    },
+    "databaseRehearsal": "PASS: migration + fence + terminalize + activate + service-role RPC proof, all rolled back in one transaction."
   },
   "pending": [
-    "formal.23 exact commit/tree, full suite, two explicit Fresh Reviews and external-trust-policy signed-tag attestation",
-    "formal.23 controlled production cutover through canonical bound runner, DB provenance gate, core Final gate and live E2E"
+    "formal.24 exact commit/tree, full suite, two explicit Fresh Reviews and external-trust-policy signed-tag attestation",
+    "formal.24 controlled production cutover through canonical bound runner, DB provenance RPC gate, core Final gate and live E2E"
   ],
   "productionTrialFormal13": {
     "verdict": "BLOCK_AND_ROLLBACK",
@@ -255,7 +264,7 @@
   "canonicalTests": {
     "proxy": {
       "command": "cd proxy && npm test",
-      "passed": 1045,
+      "passed": 1047,
       "failed": 0
     },
     "worker": {

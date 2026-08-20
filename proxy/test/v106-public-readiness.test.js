@@ -4,8 +4,8 @@ import { verifyV106PublicReadiness } from '../../scripts/verify-v106-public-read
 
 const expected = {
   url: 'https://example.test',
-  expectedRelease: 'v106.0.0-formal.23',
-  expectedPackage: '1.0.80',
+  expectedRelease: 'v106.0.0-formal.24',
+  expectedPackage: '1.0.81',
   expectedCommit: 'a'.repeat(40),
   intervalMs: 0,
   requestTimeoutMs: 100,
@@ -23,7 +23,7 @@ test('Formal.21 readiness blocks an older v106 release even when public health i
     ...expected, attempts: 2,
     fetchImpl: async () => response({
       ok: true, version: 'v106', buildVersion: 'v106',
-      releaseVersion: 'v106.0.0-formal.23', packageVersion: '1.0.80', commit: 'b'.repeat(40),
+      releaseVersion: 'v106.0.0-formal.24', packageVersion: '1.0.81', commit: 'b'.repeat(40),
     }),
     onProbe: (probe) => probes.push(probe),
   }), (error) => error?.code === 'PUBLIC_PROXY_READINESS_BLOCK')

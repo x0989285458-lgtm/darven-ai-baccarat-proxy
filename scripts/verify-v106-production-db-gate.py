@@ -2,13 +2,26 @@ import json
 import os
 import pathlib
 import re
-from urllib.parse import urlparse
-
-import psycopg
+import urllib.error
+import urllib.parse
+import urllib.request
 
 EXPECTED_PROJECT_REF = 'gscfexhsqxvtpyxudtza'
-EXPECTED_RELEASE = 'v106.0.0-formal.23'
-EXPECTED_PACKAGE = '1.0.80'
+EXPECTED_RELEASE = 'v106.0.0-formal.24'
+EXPECTED_PACKAGE = '1.0.81'
+EXPECTED_MIGRATIONS = [
+    '20260820030000', '20260820040000', '20260820050000',
+    '20260820060000', '20260821010000',
+]
+EXPECTED_WRITER_ACL = {
+    'issueV105': False,
+    'issueV106': True,
+    'settleV105': True,
+    'settleV106': True,
+    'rawDirect': False,
+    'rawFenced': True,
+}
+
 
 def read_env_file(path):
     values = {}
@@ -19,10 +32,11 @@ def read_env_file(path):
             values[key.strip()] = value.strip().strip('"').strip("'")
     return values
 
-def scalar(cur, sql, params=()):
-    cur.execute(sql, params)
-    row = cur.fetchone()
-    return row[0] if row else None
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
 
 def main():
     phase = os.environ.get('V106_DB_GATE_PHASE', 'pre')
@@ -30,58 +44,56 @@ def main():
         raise SystemExit('production DB gate phase mismatch')
     if os.environ.get('V106_RELEASE_VERSION') != EXPECTED_RELEASE or os.environ.get('V106_PACKAGE_VERSION') != EXPECTED_PACKAGE:
         raise SystemExit('production DB gate release identity mismatch')
+
     env = read_env_file(r'D:/AI Hermes/local-capture-secret.env')
-    dsn = env.get('SUPABASE_DB_CONNECTION_STRING', '')
-    parsed = urlparse(dsn)
-    authority = f'{parsed.username or ""}@{parsed.hostname or ""}'
-    if EXPECTED_PROJECT_REF not in authority:
+    base_url = env.get('SUPABASE_URL', '').rstrip('/')
+    service_key = env.get('SUPABASE_SERVICE_ROLE_KEY', '')
+    parsed = urllib.parse.urlparse(base_url)
+    if parsed.scheme != 'https' or parsed.hostname != f'{EXPECTED_PROJECT_REF}.supabase.co' or parsed.path not in ('', '/'):
         raise SystemExit('production DB gate Supabase project mismatch')
-    with psycopg.connect(dsn, connect_timeout=15) as conn:
-        conn.execute("set statement_timeout = '20s'")
-        with conn.cursor() as cur:
-            required_migrations = {
-                '20260820030000', '20260820040000', '20260820050000', '20260820060000'
-            }
-            cur.execute("select version from supabase_migrations.schema_migrations where version = any(%s)", (list(required_migrations),))
-            applied = {row[0] for row in cur.fetchall()}
-            if applied != required_migrations:
-                raise SystemExit('production DB gate migration provenance mismatch')
-            cur.execute("select version,status,cutover_generation::text from public.ai_strategy_versions where status='active' order by version")
-            active = cur.fetchall()
-            if len(active) != 1 or active[0][0] != 'v106' or active[0][1] != 'active' or not re.fullmatch(r'[0-9a-f-]{36}', active[0][2] or ''):
-                raise SystemExit('production DB gate active generation mismatch')
-            generation = active[0][2]
-            cur.execute("""
-                select column_name,is_nullable
-                from information_schema.columns
-                where table_schema='public' and table_name='v106_rollback_terminalization_receipts'
-                  and column_name in ('strategy_activated_at','cutover_generation','started_at','completed_at','consumed_at')
-            """)
-            receipt_columns = dict(cur.fetchall())
-            if receipt_columns.get('strategy_activated_at') != 'NO' or receipt_columns.get('cutover_generation') != 'NO':
-                raise SystemExit('production DB gate receipt provenance mismatch')
-            inner_definition = scalar(cur, "select pg_get_functiondef('public.persist_v105_capture_envelope(jsonb)'::regprocedure)") or ''
-            if "pg_advisory_xact_lock_shared" not in inner_definition or "v105_capture_source_fence:capture" not in inner_definition:
-                raise SystemExit('production DB gate Raw barrier mismatch')
-            privileges = {
-                'issueV105': scalar(cur, "select has_function_privilege('service_role','public.issue_v105_prediction(jsonb)','EXECUTE')"),
-                'issueV106': scalar(cur, "select has_function_privilege('service_role','public.issue_v106_prediction(jsonb)','EXECUTE')"),
-                'settleV105': scalar(cur, "select has_function_privilege('service_role','public.settle_v105_prediction(jsonb,jsonb)','EXECUTE')"),
-                'settleV106': scalar(cur, "select has_function_privilege('service_role','public.settle_v106_prediction(jsonb,jsonb)','EXECUTE')"),
-                'rawDirect': scalar(cur, "select has_function_privilege('service_role','public.persist_v105_capture_envelope(jsonb)','EXECUTE')"),
-                'rawFenced': scalar(cur, "select has_function_privilege('service_role','public.persist_v105_fenced_capture_envelope(jsonb)','EXECUTE')"),
-            }
-            if privileges != {'issueV105': False, 'issueV106': True, 'settleV105': True, 'settleV106': True, 'rawDirect': False, 'rawFenced': True}:
-                raise SystemExit('production DB gate writer ACL mismatch')
-            health = scalar(cur, 'select public.get_v105_capture_outbox_health()') or {}
-            pending = int(health.get('pending', 0) or 0)
-            processing = int(health.get('processing', 0) or 0)
-            error = int(health.get('error', 0) or 0)
-            if phase == 'pre' and (pending != 0 or processing != 0 or error != 0):
-                raise SystemExit('production DB gate active Outbox is not drained')
-            if phase == 'post' and (pending + processing > 1 or error != 0):
-                raise SystemExit('production DB gate post-start Outbox is not bounded')
-    print(json.dumps({'ok': True, 'phase': phase, 'projectRef': EXPECTED_PROJECT_REF, 'release': EXPECTED_RELEASE, 'generation': generation, 'migrations': sorted(applied), 'writerAcl': privileges, 'activeOutbox': {key: int(health.get(key, 0) or 0) for key in ('pending','processing','error','dead_letter')}}, ensure_ascii=False))
+    if not service_key or any(char.isspace() for char in service_key):
+        raise SystemExit('production DB gate service credential missing')
+
+    body = json.dumps({
+        'p_phase': phase,
+        'p_release_version': EXPECTED_RELEASE,
+        'p_package_version': EXPECTED_PACKAGE,
+    }, separators=(',', ':')).encode('utf-8')
+    request = urllib.request.Request(
+        f'{base_url}/rest/v1/rpc/verify_v106_production_cutover_gate',
+        data=body,
+        method='POST',
+        headers={
+            'apikey': service_key,
+            'Authorization': f'Bearer {service_key}',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        },
+    )
+    try:
+        with urllib.request.build_opener(NoRedirect).open(request, timeout=25) as response:
+            if response.status != 200:
+                raise SystemExit('production DB gate RPC status mismatch')
+            payload = json.loads(response.read(65537).decode('utf-8'))
+    except urllib.error.HTTPError as error:
+        raise SystemExit(f'production DB gate RPC rejected ({error.code})') from None
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        raise SystemExit('production DB gate RPC unavailable') from None
+
+    if not isinstance(payload, dict) or payload.get('ok') is not True:
+        raise SystemExit('production DB gate proof missing')
+    if payload.get('phase') != phase or payload.get('projectRef') != EXPECTED_PROJECT_REF or payload.get('release') != EXPECTED_RELEASE:
+        raise SystemExit('production DB gate proof identity mismatch')
+    if not re.fullmatch(r'[0-9a-f-]{36}', payload.get('generation') or ''):
+        raise SystemExit('production DB gate generation missing')
+    if payload.get('migrations') != EXPECTED_MIGRATIONS or payload.get('writerAcl') != EXPECTED_WRITER_ACL:
+        raise SystemExit('production DB gate provenance mismatch')
+    active_outbox = payload.get('activeOutbox')
+    if not isinstance(active_outbox, dict) or any(type(active_outbox.get(key)) is not int for key in ('pending', 'processing', 'error', 'dead_letter')):
+        raise SystemExit('production DB gate Outbox proof malformed')
+
+    print(json.dumps(payload, ensure_ascii=False, separators=(',', ':')))
+
 
 if __name__ == '__main__':
     main()
