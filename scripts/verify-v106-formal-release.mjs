@@ -22,6 +22,7 @@ const REQUIRED_DATABASE_ARTIFACTS = Object.freeze([
   'supabase/migrations/20260820003500_v106_formal8_final_time_fence.sql',
   'supabase/migrations/20260820010000_v106_formal12_bounded_raw_ack.sql',
   'supabase/migrations/20260820020000_v106_formal13_monotonic_projection.sql',
+  'supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql',
   'supabase/operations/fence_v105_new_issuance.sql',
   'supabase/operations/terminalize_v105_cutover.sql',
   'supabase/operations/activate_v106_promotion.sql',
@@ -34,12 +35,13 @@ const REQUIRED_DATABASE_CONTRACTS = Object.freeze({
   finalTimeFence: { path: REQUIRED_DATABASE_ARTIFACTS[1], deploymentStep: 'database-final-time-fence' },
   boundedRawAck: { path: REQUIRED_DATABASE_ARTIFACTS[2], deploymentStep: 'database-bounded-raw-ack' },
   monotonicProjection: { path: REQUIRED_DATABASE_ARTIFACTS[3], deploymentStep: 'database-monotonic-projection' },
-  fence: { path: REQUIRED_DATABASE_ARTIFACTS[4], deploymentStep: 'fence-v105-new-issuance' },
-  terminalize: { path: REQUIRED_DATABASE_ARTIFACTS[5], deploymentStep: 'terminalize-v105-cutover' },
-  activate: { path: REQUIRED_DATABASE_ARTIFACTS[6], deploymentStep: 'activate-v106' },
-  finalize: { path: REQUIRED_DATABASE_ARTIFACTS[7], deploymentStep: 'finalize' },
-  rollbackTerminalize: { path: REQUIRED_DATABASE_ARTIFACTS[8], deploymentStep: 'rollback-terminalize' },
-  rollback: { path: REQUIRED_DATABASE_ARTIFACTS[9], deploymentStep: 'rollback-only' },
+  rollbackReceipt: { path: REQUIRED_DATABASE_ARTIFACTS[4], deploymentStep: 'database-rollback-receipt' },
+  fence: { path: REQUIRED_DATABASE_ARTIFACTS[5], deploymentStep: 'fence-v105-new-issuance' },
+  terminalize: { path: REQUIRED_DATABASE_ARTIFACTS[6], deploymentStep: 'terminalize-v105-cutover' },
+  activate: { path: REQUIRED_DATABASE_ARTIFACTS[7], deploymentStep: 'activate-v106' },
+  finalize: { path: REQUIRED_DATABASE_ARTIFACTS[8], deploymentStep: 'finalize' },
+  rollbackTerminalize: { path: REQUIRED_DATABASE_ARTIFACTS[9], deploymentStep: 'rollback-terminalize' },
+  rollback: { path: REQUIRED_DATABASE_ARTIFACTS[10], deploymentStep: 'rollback-only' },
 })
 const REQUIRED_ROLLBACK_ORDER = Object.freeze([
   'stop producer admission',
@@ -54,8 +56,8 @@ const DEPLOYABLE_BINDING_RULES = Object.freeze([
   { pattern: /^frontend\/(?:package(?:-lock)?\.json|src\/)/, bindings: ['implementationTree', 'frontendBuildInput'] },
   { pattern: /^cloud-browser-worker\/(?:Dockerfile|package(?:-lock)?\.json|src\/)/, bindings: ['implementationTree', 'workerBuildInput'] },
   { pattern: /^shared\//, bindings: ['implementationTree', 'proxyBuildInput', 'workerBuildInput'] },
-  { pattern: /^supabase\/(?:migrations\/(?:20260818010000_v106_formal_v10_main|20260820003500_v106_formal8_final_time_fence|20260820010000_v106_formal12_bounded_raw_ack|20260820020000_v106_formal13_monotonic_projection)\.sql|operations\/(?:fence_v105_new_issuance|terminalize_v105_cutover|activate_v106_promotion|finalize_v106_promotion|terminalize_v106_rollback|rollback_v106_to_v105)\.sql)$/, bindings: ['implementationTree', 'databaseCutoverInput'] },
-  { pattern: /^scripts\/(?:verify-v106-formal-release|verify-v106-public-readiness|run-worker-tests-scrubbed|test-env-scrub)\.mjs$/, bindings: ['implementationTree'] },
+  { pattern: /^supabase\/(?:migrations\/(?:20260818010000_v106_formal_v10_main|20260820003500_v106_formal8_final_time_fence|20260820010000_v106_formal12_bounded_raw_ack|20260820020000_v106_formal13_monotonic_projection|20260820030000_v106_formal16_rollback_receipt)\.sql|operations\/(?:fence_v105_new_issuance|terminalize_v105_cutover|activate_v106_promotion|finalize_v106_promotion|terminalize_v106_rollback|rollback_v106_to_v105)\.sql)$/, bindings: ['implementationTree', 'databaseCutoverInput'] },
+  { pattern: /^scripts\/(?:verify-v106-formal-release|verify-v106-public-readiness|run-v106-production-cutover|run-worker-tests-scrubbed|test-env-scrub)\.mjs$/, bindings: ['implementationTree'] },
   { pattern: /^release\/evidence\/v106-formal13-production-block\.json$/, bindings: ['implementationTree'] },
 ])
 
@@ -152,31 +154,45 @@ export function verifyV106DatabaseArtifactContracts({ manifest, candidateIndexTr
 export function verifyV106PublicReadinessContract({ manifest, candidateIndexTree, root = repoRoot } = {}) {
   const gate = manifest?.publicReadinessGate
   const script = 'scripts/verify-v106-public-readiness.mjs'
+  const runner = 'scripts/run-v106-production-cutover.mjs'
   const evidence = 'release/evidence/v106-formal13-production-block.json'
-  if (!gate || gate.script !== script || gate.deploymentStep !== 'verify-external-proxy-health-200'
-      || gate.producerStartStep !== 'producer-start-after-external-health') throw new Error('public_readiness_gate_contract_missing')
+  if (!gate || gate.script !== script || gate.deploymentStep !== 'run-bound-production-cutover'
+      || gate.producerStartStep !== gate.deploymentStep) throw new Error('public_readiness_gate_contract_missing')
   if (gate.requiredConsecutive !== 2 || gate.boundedAttempts !== 30 || gate.requestTimeoutMs !== 20000
       || gate.intervalMs !== 15000 || gate.failClosedExitCode !== 2) throw new Error('public_readiness_gate_bounds_mismatch')
   const identity = gate.requiredIdentity
   if (identity?.version !== 'v106' || identity?.buildVersion !== 'v106'
       || identity?.releaseVersion !== manifest.releaseVersion || identity?.packageVersion !== manifest.applicationVersion
-      || identity?.commit !== 'exact-release-commit-cli-argument') throw new Error('public_readiness_gate_identity_mismatch')
+      || identity?.commit !== 'annotated-tag-attested-commit') throw new Error('public_readiness_gate_identity_mismatch')
+  const cutover = manifest?.productionCutoverRunner
+  if (cutover?.script !== runner || cutover?.deploymentStep !== gate.deploymentStep
+      || cutover?.requiresExternalAttestation !== true || cutover?.resolvesCommitFromAnnotatedTag !== true
+      || cutover?.requiresExactCheckedOutHead !== true || cutover?.startsProducerOnlyAfterReadinessPass !== true
+      || cutover?.producerStartScriptMustBeAbsolute !== true) throw new Error('production_cutover_runner_contract_missing')
   const order = manifest.deploymentOrder
-  const required = ['proxy', gate.deploymentStep, gate.producerStartStep, 'frontend', 'live-e2e', 'finalize']
+  const required = ['proxy', gate.deploymentStep, 'frontend', 'live-e2e', 'finalize']
   const indexes = required.map((step) => order.indexOf(step))
   if (indexes.some((index) => index < 0) || indexes.some((index, position) => position > 0 && index <= indexes[position - 1])) {
     throw new Error('public_readiness_gate_order_mismatch')
   }
-  if (manifest?.testRunners?.publicReadiness !== script
+  if (manifest?.testRunners?.publicReadiness !== script || manifest?.testRunners?.productionCutover !== runner
       || !pathIsBound(manifest?.releaseBinding?.implementationTree, script)
+      || !pathIsBound(manifest?.releaseBinding?.implementationTree, runner)
       || manifest?.incidentEvidence?.formal13 !== evidence
       || !pathIsBound(manifest?.releaseBinding?.implementationTree, evidence)) throw new Error('public_readiness_gate_binding_mismatch')
-  for (const artifact of [script, evidence]) execFileSync('git', ['cat-file', '-e', `${candidateIndexTree}:${artifact}`], { cwd: root })
+  for (const artifact of [script, runner, evidence]) execFileSync('git', ['cat-file', '-e', `${candidateIndexTree}:${artifact}`], { cwd: root })
   const source = execFileSync('git', ['show', `${candidateIndexTree}:${script}`], { cwd: root, encoding: 'utf8' })
-  for (const requiredText of ['requiredStreak = Math.max(2', 'body?.releaseVersion === expectedRelease', 'body?.packageVersion === expectedPackage', 'body?.commit === expectedCommit', "blocked.code = 'PUBLIC_PROXY_READINESS_BLOCK'"]) {
+  for (const requiredText of ['requiredStreak = Math.max(2', 'maxAttempts = Math.min(30', 'body?.releaseVersion === expectedRelease', 'body?.packageVersion === expectedPackage', 'body?.commit === expectedCommit', "blocked.code = 'PUBLIC_PROXY_READINESS_BLOCK'"]) {
     if (!source.includes(requiredText)) throw new Error('public_readiness_gate_executable_mismatch')
   }
-  return { ok: true, script, evidence, required }
+  const runnerSource = execFileSync('git', ['show', `${candidateIndexTree}:${runner}`], { cwd: root, encoding: 'utf8' })
+  for (const requiredText of ['verifyV106Attestation', 'resolveAnnotatedTagCommit', "if (head !== authorization.commit)", 'const readiness = await verifyReadiness', 'const producer = await startProducer']) {
+    if (!runnerSource.includes(requiredText)) throw new Error('production_cutover_runner_executable_mismatch')
+  }
+  if (runnerSource.indexOf('const producer = await startProducer') < runnerSource.indexOf('const readiness = await verifyReadiness')) {
+    throw new Error('production_cutover_runner_order_mismatch')
+  }
+  return { ok: true, script, runner, evidence, required }
 }
 
 export async function verifyV106ManifestDigests({ manifest, candidateIndexTree, root = repoRoot } = {}) {

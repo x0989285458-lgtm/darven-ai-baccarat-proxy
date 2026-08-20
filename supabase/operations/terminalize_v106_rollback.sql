@@ -10,9 +10,15 @@ revoke execute on function public.issue_v106_prediction(jsonb) from service_role
 
 do $$
 declare
+  terminalization_started_at timestamptz := clock_timestamp();
+  quiet_before_at timestamptz;
+  max_v106_issued_at timestamptz;
   terminalized_count integer := 0;
   isolated_outbox_count integer := 0;
+  unresolved_after_count integer := 0;
+  active_outbox_after_count integer := 0;
 begin
+  quiet_before_at := terminalization_started_at - interval '15 seconds';
   if has_function_privilege('service_role', 'public.issue_v106_prediction(jsonb)', 'EXECUTE') then
     raise exception 'v106 issuance RPC is not fenced';
   end if;
@@ -31,19 +37,22 @@ begin
     from public.daily_prediction_results
     where strategy_version = 'v106'
       and prediction_issued_at is not null
-      and prediction_issued_at > now() - interval '15 seconds'
+      and prediction_issued_at > quiet_before_at
   ) then
     raise exception 'v106 producer quiet period is not proven';
   end if;
 
   update public.daily_prediction_results
   set issuance_status = 'expired_no_final',
-      issuance_status_updated_at = now(),
-      issuance_status_reason = 'formal_v106_rollback_after_producer_stop'
+      issuance_status_updated_at = terminalization_started_at,
+      issuance_status_reason = case
+        when issuance_status_reason like 'formal_v106_rollback_after_producer_stop%' then issuance_status_reason
+        else 'formal_v106_rollback_after_producer_stop|previous:' || coalesce(issuance_status_reason, '')
+      end
   where strategy_version = 'v106'
     and prediction_issued_at is not null
     and settlement_final is not true
-    and coalesce(issuance_status, 'pending') not in ('expired_no_final', 'abandoned_shoe_change');
+    and coalesce(issuance_status, 'pending') <> 'abandoned_shoe_change';
   get diagnostics terminalized_count = row_count;
 
   update public.v105_capture_settlement_outbox
@@ -56,6 +65,25 @@ begin
       updated_at = now()
   where status in ('pending', 'processing', 'error');
   get diagnostics isolated_outbox_count = row_count;
+
+  select max(prediction_issued_at)
+  into max_v106_issued_at
+  from public.daily_prediction_results
+  where strategy_version = 'v106'
+    and prediction_issued_at is not null;
+
+  select count(*)
+  into unresolved_after_count
+  from public.daily_prediction_results
+  where strategy_version = 'v106'
+    and prediction_issued_at is not null
+    and settlement_final is not true
+    and coalesce(issuance_status, 'pending') not in ('expired_no_final', 'abandoned_shoe_change');
+
+  select count(*)
+  into active_outbox_after_count
+  from public.v105_capture_settlement_outbox
+  where status in ('pending', 'processing', 'error');
 
   if exists (
     select 1
@@ -75,6 +103,17 @@ begin
   ) then
     raise exception 'active outbox remains after rollback terminalization';
   end if;
+
+  insert into public.v106_rollback_terminalization_receipts (
+    reason, started_at, quiet_before, completed_at, max_v106_issued_at,
+    terminalized_issuance_count, isolated_outbox_count,
+    unresolved_after_count, active_outbox_after_count
+  ) values (
+    'formal_v106_rollback_after_producer_stop', terminalization_started_at,
+    quiet_before_at, clock_timestamp(), max_v106_issued_at,
+    terminalized_count, isolated_outbox_count,
+    unresolved_after_count, active_outbox_after_count
+  );
 
   raise notice 'terminalized v106 rollback issuances: %, isolated active outbox: %',
     terminalized_count, isolated_outbox_count;

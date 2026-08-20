@@ -21,7 +21,7 @@ export async function verifyV106PublicReadiness({
   if (!/^[a-f0-9]{40}$/.test(String(expectedCommit ?? ''))) throw new Error('public_readiness_commit_required')
   if (typeof fetchImpl !== 'function') throw new Error('public_readiness_fetch_required')
   const requiredStreak = Math.max(2, Number(consecutive) || 0)
-  const maxAttempts = Math.max(requiredStreak, Number(attempts) || 0)
+  const maxAttempts = Math.min(30, Math.max(requiredStreak, Number(attempts) || 0))
   let streak = 0
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     let response = null
@@ -71,9 +71,8 @@ async function main() {
   try {
     const result = await verifyV106PublicReadiness({
       url: get('--url'), expectedRelease: get('--expected-release'), expectedPackage: get('--expected-package'),
-      expectedCommit: get('--expected-commit'), consecutive: Number(get('--consecutive') ?? 2),
-      attempts: Number(get('--attempts') ?? 30), intervalMs: Number(get('--interval-ms') ?? 15000),
-      requestTimeoutMs: Number(get('--request-timeout-ms') ?? 20000),
+      expectedCommit: get('--expected-commit'), consecutive: 2,
+      attempts: 30, intervalMs: 15000, requestTimeoutMs: 20000,
       onProbe: (probe) => process.stdout.write(`${JSON.stringify(probe)}\n`),
     })
     process.stdout.write(`${JSON.stringify(result)}\n`)

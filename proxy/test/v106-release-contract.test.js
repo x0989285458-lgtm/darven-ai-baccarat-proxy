@@ -13,7 +13,7 @@ const extractSqlFunction = (sql, name) => {
 }
 
 test('v106 release identity is coherent while the updated capture worker retains protocol v105', () => {
-  assert.equal(json('proxy/package.json').version, '1.0.72')
+  assert.equal(json('proxy/package.json').version, '1.0.73')
   assert.equal(json('frontend/package.json').version, '1.0.63')
   assert.equal(json('cloud-browser-worker/package.json').version, '1.0.63')
   assert.match(read('proxy/src/build-version.js'), /BUILD_VERSION = 'v106'/)
@@ -145,25 +145,25 @@ test('v106 frontend version gate fails closed and formal writer/hydration use v1
 
 test('v106 manifest encodes DB-first through finalize order and exact rollback', () => {
   const manifest = json('release/v106-formal-v10-main-release-manifest.json')
-  assert.equal(manifest.applicationVersion, '1.0.72')
+  assert.equal(manifest.applicationVersion, '1.0.73')
   assert.equal(manifest.strategyVersion, 'v106')
   assert.equal(manifest.mainStrategy.source, 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized')
   assert.equal(manifest.sideStrategy.source, 'v105')
   assert.equal(manifest.mainStrategy.activationGate, 'structureDiagnostics.eligible === true')
   assert.equal(manifest.mainStrategy.fallback, 'exact formal v105 main projection')
-  assert.equal(manifest.gitTag, 'v106.0.0-formal.15')
-  assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'database-final-time-fence', 'database-bounded-raw-ack', 'database-monotonic-projection', 'deploy-worker-1.0.63-protocol-v105', 'verify-worker-v105-compatibility', 'fence-v105-new-issuance', 'producer-stop', 'terminalize-v105-cutover', 'drain-v105-and-queue', 'activate-v106', 'proxy', 'verify-external-proxy-health-200', 'producer-start-after-external-health', 'frontend', 'live-e2e', 'finalize'])
+  assert.equal(manifest.gitTag, 'v106.0.0-formal.16')
+  assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'database-final-time-fence', 'database-bounded-raw-ack', 'database-monotonic-projection', 'database-rollback-receipt', 'deploy-worker-1.0.63-protocol-v105', 'verify-worker-v105-compatibility', 'fence-v105-new-issuance', 'producer-stop', 'terminalize-v105-cutover', 'drain-v105-and-queue', 'activate-v106', 'proxy', 'run-bound-production-cutover', 'frontend', 'live-e2e', 'finalize'])
   assert.deepEqual(manifest.publicReadinessGate, {
     script: 'scripts/verify-v106-public-readiness.mjs',
-    deploymentStep: 'verify-external-proxy-health-200',
-    producerStartStep: 'producer-start-after-external-health',
+    deploymentStep: 'run-bound-production-cutover',
+    producerStartStep: 'run-bound-production-cutover',
     requiredConsecutive: 2,
     boundedAttempts: 30,
     requestTimeoutMs: 20000,
     intervalMs: 15000,
     requiredIdentity: {
-      version: 'v106', buildVersion: 'v106', releaseVersion: 'v106.0.0-formal.15',
-      packageVersion: '1.0.72', commit: 'exact-release-commit-cli-argument',
+      version: 'v106', buildVersion: 'v106', releaseVersion: 'v106.0.0-formal.16',
+      packageVersion: '1.0.73', commit: 'annotated-tag-attested-commit',
     },
     failClosedExitCode: 2,
   })
@@ -188,16 +188,25 @@ test('v106 manifest encodes DB-first through finalize order and exact rollback',
 
 test('formal rollback terminalization fences v106, proves quiet, preserves evidence, and isolates active outbox', () => {
   const sql = read('supabase/operations/terminalize_v106_rollback.sql')
+  const rollback = read('supabase/operations/rollback_v106_to_v105.sql')
+  const receipt = read('supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql')
   const manifest = json('release/v106-formal-v10-main-release-manifest.json')
   assert.match(sql, /revoke execute on function public\.issue_v106_prediction\(jsonb\) from service_role/i)
   assert.match(sql, /version\s*=\s*'v106'[\s\S]*status\s*=\s*'active'/i)
-  assert.match(sql, /prediction_issued_at\s*>\s*now\(\)\s*-\s*interval\s*'15 seconds'/i)
+  assert.match(sql, /quiet_before_at\s*:=\s*terminalization_started_at\s*-\s*interval\s*'15 seconds'/i)
   assert.match(sql, /issuance_status\s*=\s*'expired_no_final'/i)
   assert.match(sql, /status\s*=\s*'dead_letter'[\s\S]*claim_token\s*=\s*null[\s\S]*isolated_at\s*=\s*now\(\)/i)
   assert.match(sql, /last_error\s*=\s*coalesce\(\s*nullif\(last_error,\s*''\),\s*'formal_v106_rollback_after_producer_stop'\s*\)/i)
   assert.match(sql, /status\s+in\s*\(\s*'pending'\s*,\s*'processing'\s*,\s*'error'\s*\)/i)
   assert.match(sql, /v106 non-terminal issuance remains after rollback terminalization/i)
   assert.match(sql, /active outbox remains after rollback terminalization/i)
+  assert.match(sql, /insert into public\.v106_rollback_terminalization_receipts/i)
+  assert.match(receipt, /unresolved_after_count integer not null check \(unresolved_after_count = 0\)/i)
+  assert.match(receipt, /active_outbox_after_count integer not null check \(active_outbox_after_count = 0\)/i)
+  assert.match(rollback, /durable v106 rollback terminalization receipt is missing or incomplete/i)
+  assert.match(rollback, /issuance_status_updated_at < latest_receipt\.started_at/i)
+  assert.match(rollback, /active outbox appeared after rollback terminalization receipt/i)
+  assert.equal(manifest.databaseArtifacts.rollbackReceipt.path, 'supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql')
   assert.equal(manifest.databaseArtifacts.rollbackTerminalize.path, 'supabase/operations/terminalize_v106_rollback.sql')
   assert.equal(manifest.rollback.terminalizeScript, 'supabase/operations/terminalize_v106_rollback.sql')
   assert.equal(manifest.rollback.order[1], 'run bound v106 rollback terminalization and isolate active outbox evidence')

@@ -1,7 +1,10 @@
--- Non-destructive rollback. Run only after producer stop and every non-terminal v106 immutable issuance is Final.
+-- Non-destructive rollback. Run only after producer stop and a durable Formal.16
+-- terminalization receipt proves quiet, bounded lifecycle closure and zero active outbox.
 begin;
 
 do $$
+declare
+  latest_receipt public.v106_rollback_terminalization_receipts%rowtype;
 begin
   perform 1
   from public.ai_strategy_versions
@@ -10,6 +13,45 @@ begin
   for update;
   if not exists (select 1 from public.ai_strategy_versions where version = 'v105') then
     raise exception 'v105 rollback target is missing';
+  end if;
+  select * into latest_receipt
+  from public.v106_rollback_terminalization_receipts
+  where reason = 'formal_v106_rollback_after_producer_stop'
+  order by completed_at desc
+  limit 1
+  for update;
+  if latest_receipt.receipt_id is null
+     or latest_receipt.unresolved_after_count <> 0
+     or latest_receipt.active_outbox_after_count <> 0 then
+    raise exception 'durable v106 rollback terminalization receipt is missing or incomplete';
+  end if;
+  if exists (
+    select 1 from public.daily_prediction_results
+    where strategy_version = 'v106'
+      and prediction_issued_at is not null
+      and prediction_issued_at > latest_receipt.quiet_before
+  ) then
+    raise exception 'v106 issuance exists after the receipt quiet cutoff';
+  end if;
+  if exists (
+    select 1 from public.daily_prediction_results
+    where strategy_version = 'v106'
+      and prediction_issued_at is not null
+      and settlement_final is not true
+      and issuance_status = 'expired_no_final'
+      and (
+        coalesce(issuance_status_reason, '') not like 'formal_v106_rollback_after_producer_stop%'
+        or issuance_status_updated_at < latest_receipt.started_at
+        or issuance_status_updated_at > latest_receipt.completed_at
+      )
+  ) then
+    raise exception 'expired v106 issuance is not covered by the durable rollback receipt';
+  end if;
+  if exists (
+    select 1 from public.v105_capture_settlement_outbox
+    where status in ('pending', 'processing', 'error')
+  ) then
+    raise exception 'active outbox appeared after rollback terminalization receipt';
   end if;
   if exists (
     select 1 from public.daily_prediction_results
