@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.22",
-  "gitTag": "v106.0.0-formal.22",
-  "applicationVersion": "1.0.79",
+  "releaseVersion": "v106.0.0-formal.23",
+  "gitTag": "v106.0.0-formal.23",
+  "applicationVersion": "1.0.80",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -313,7 +313,7 @@
         "scripts/verify-v106-production-db-gate.py"
       ],
       "excludedPaths": [],
-      "sha256": "e3b298f7016b5eacfce1939949e186a663d69c608f0ed578845e8735c2d9ab9b"
+      "sha256": "ef419aa58460e2eaabcf552fba6b35b7cf4a5bf88d2b96743203c69592aa9c31"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -324,7 +324,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "28c8b6cab19c86c56e8da449768f3a46d77a6765ea68cf44f8168f99fdf4054b"
+      "sha256": "9a1887663f65569699b2a601a660979f0402459e0216001a0f203cf9148a2b51"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -454,8 +454,8 @@
     "requiredIdentity": {
       "version": "v106",
       "buildVersion": "v106",
-      "releaseVersion": "v106.0.0-formal.22",
-      "packageVersion": "1.0.79",
+      "releaseVersion": "v106.0.0-formal.23",
+      "packageVersion": "1.0.80",
       "commit": "annotated-tag-attested-commit"
     },
     "failClosedExitCode": 2
@@ -469,7 +469,8 @@
     "formal18FreshReview": "BLOCK inherited Formal.17 authorization, producer binding and stale receipt generation defects; redirect following was fixed but release remained blocked.",
     "formal19FreshReview": "BLOCK: candidate-tree signer allowlist was self-authorizing; runner omitted production DB generation/ACL provenance; direct Raw RPC could commit across rollback barrier; worker admission matched mutable tag but not immutable image ID.",
     "formal20FreshReview": "BLOCK: a post-start database generation drift rejected the release without fail-stopping and positively reading back the producer as inactive. Formal.21 binds an exact stop launcher and requires compensation on every failure after the start attempt.",
-    "formal21FreshReview": "BLOCK: production runner verified only the working-tree start launcher before producer admission; the bound stop launcher and DB gate were not rehashed, and callbacks executed mutable working-tree paths. Formal.22 verifies all three working-tree blobs and executes exact source bytes loaded from the authorized Git tree."
+    "formal21FreshReview": "BLOCK: production runner verified only the working-tree start launcher before producer admission; the bound stop launcher and DB gate were not rehashed, and callbacks executed mutable working-tree paths. Formal.22 verifies all three working-tree blobs and executes exact source bytes loaded from the authorized Git tree.",
+    "formal22FreshReview": "BLOCK: release report retained stale Formal.20 digests/pending text, and production callbacks resolved python through PATH with ambient Python import variables. Formal.23 pins an external-policy Python path and SHA-256, rechecks it before every callback, runs -I, and strips Python injection variables."
   },
   "productionCutoverRunner": {
     "script": "scripts/run-v106-production-cutover.mjs",
@@ -483,14 +484,17 @@
     "requiresPreAndPostDatabaseGenerationGate": true,
     "requiresPostStartFailStopCompensation": true,
     "productionDbGateScript": "scripts/verify-v106-production-db-gate.py",
-    "productionDbGateScriptGitBlobSha1": "b8c7654fda6642d7873f518feb1ac8107b9e20f6",
+    "productionDbGateScriptGitBlobSha1": "522c0377614edfecac2d56b4ee10baca3ed57c51",
     "producerStartScript": "scripts/start-v106-formal-producer.py",
-    "producerStartScriptGitBlobSha1": "ee8779bde3c45035705bff1393699ba141f456d6",
+    "producerStartScriptGitBlobSha1": "4b04019659415a0043aaccb34e4ed61efcde03be",
     "producerStopScript": "scripts/stop-v106-formal-producer.py",
-    "producerStopScriptGitBlobSha1": "ff649c37816bc017f0363726c785101c00e91a04",
+    "producerStopScriptGitBlobSha1": "0b71ada247b4155490fced656c7ea0294db7fe3a",
     "producerImage": "darven-worker:v106-formal3-33f9dc6",
     "producerImageId": "sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2",
-    "executesLaunchersFromExactGitTree": true
+    "executesLaunchersFromExactGitTree": true,
+    "requiresExternallyPinnedPythonInterpreter": true,
+    "requiresPythonIsolatedMode": true,
+    "trustedPythonSha256": "c5f556ec6491af96e925f149c8e81701103862ca4d686af5788ad3e1954ca081"
   },
   "releaseAuthorization": {
     "trustPolicyVersion": "v106-release-trust-v1",

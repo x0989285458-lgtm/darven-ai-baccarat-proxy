@@ -1,11 +1,45 @@
 import path from 'node:path'
 import { readFile } from 'node:fs/promises'
+import { readFileSync, realpathSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { spawnSync, execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { verifyV106Attestation, verifyV106PublicReadinessContract, resolveAnnotatedTagCommit } from './verify-v106-formal-release.mjs'
 import { verifyV106PublicReadiness } from './verify-v106-public-readiness.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const EXTERNAL_TRUST_POLICY_PATH = 'D:/AI Hermes/release-trust/v106-production-policy.json'
+
+export function loadTrustedPythonInterpreter({ root = repoRoot } = {}) {
+  const candidateRoot = realpathSync(root)
+  const policyPath = realpathSync(EXTERNAL_TRUST_POLICY_PATH)
+  const policyRelative = path.relative(candidateRoot, policyPath)
+  if (policyRelative === '' || (!policyRelative.startsWith('..') && !path.isAbsolute(policyRelative))) {
+    throw new Error('external_python_trust_policy_required')
+  }
+  const policy = JSON.parse(readFileSync(policyPath, 'utf8'))
+  if (policy.pythonIsolatedModeRequired !== true || !/^[a-f0-9]{64}$/.test(policy.pythonInterpreterSha256 ?? '')) {
+    throw new Error('trusted_python_policy_invalid')
+  }
+  const interpreterPath = realpathSync(policy.pythonInterpreterPath)
+  const interpreterRelative = path.relative(candidateRoot, interpreterPath)
+  if (interpreterRelative === '' || (!interpreterRelative.startsWith('..') && !path.isAbsolute(interpreterRelative))) {
+    throw new Error('trusted_python_must_be_external')
+  }
+  const actualSha256 = createHash('sha256').update(readFileSync(interpreterPath)).digest('hex')
+  if (actualSha256 !== policy.pythonInterpreterSha256) throw new Error('trusted_python_sha256_mismatch')
+  return { path: interpreterPath, sha256: actualSha256, policyPath }
+}
+
+export function buildBoundPythonEnvironment(baseEnvironment = {}) {
+  const environment = {}
+  for (const [key, value] of Object.entries(baseEnvironment)) {
+    const upper = key.toUpperCase()
+    if (upper.startsWith('PYTHON') || upper === 'VIRTUAL_ENV') continue
+    environment[key] = value
+  }
+  return { ...environment, PYTHONNOUSERSITE: '1', PYTHONSAFEPATH: '1', PYTHONDONTWRITEBYTECODE: '1', PYTHONUTF8: '1' }
+}
 
 export function loadBoundPythonSource({ candidateIndexTree, relativePath, expectedBlob, root = repoRoot } = {}) {
   if (!/^[a-f0-9]{40}$/.test(candidateIndexTree ?? '') || !/^[a-f0-9]{40}$/.test(expectedBlob ?? '')) {
@@ -132,6 +166,12 @@ async function main() {
   if (!attestationPath) throw new Error('attestation_required')
   if (args.includes('--producer-start-script')) throw new Error('producer_start_script_override_forbidden')
   const manifest = JSON.parse(await readFile(path.join(repoRoot, 'release', 'v106-formal-v10-main-release-manifest.json'), 'utf8'))
+  const trustedPython = loadTrustedPythonInterpreter({ root: repoRoot })
+  const assertTrustedPythonUnchanged = () => {
+    const current = loadTrustedPythonInterpreter({ root: repoRoot })
+    if (current.path !== trustedPython.path || current.sha256 !== trustedPython.sha256) throw new Error('trusted_python_identity_drift')
+  }
+  const boundPythonEnvironment = buildBoundPythonEnvironment(process.env)
   const producerStartScript = path.resolve(repoRoot, manifest.productionCutoverRunner.producerStartScript)
   const producerStopScript = path.resolve(repoRoot, manifest.productionCutoverRunner.producerStopScript)
   const productionDbGateScript = path.resolve(repoRoot, manifest.productionCutoverRunner.productionDbGateScript)
@@ -153,9 +193,10 @@ async function main() {
     manifest, candidateIndexTree, attestationPath, root: repoRoot,
     onProbe: (probe) => process.stdout.write(`${JSON.stringify({ type: 'public-readiness-probe', ...probe })}\n`),
     verifyProductionDb: async (identity) => {
-      const child = spawnSync('python', ['-c', productionDbGateSource], {
+      assertTrustedPythonUnchanged()
+      const child = spawnSync(trustedPython.path, ['-I', '-c', productionDbGateSource], {
         cwd: repoRoot, encoding: 'utf8', env: {
-          ...process.env,
+          ...boundPythonEnvironment,
           V106_RELEASE_VERSION: identity.releaseVersion,
           V106_PACKAGE_VERSION: identity.packageVersion,
           V106_DB_GATE_PHASE: identity.phase,
@@ -167,9 +208,10 @@ async function main() {
       return child.status === 0 && payload ? payload : { ok: false, exitCode: child.status }
     },
     startProducer: async (identity) => {
-      const child = spawnSync('python', ['-c', producerStartSource], {
+      assertTrustedPythonUnchanged()
+      const child = spawnSync(trustedPython.path, ['-I', '-c', producerStartSource], {
         cwd: repoRoot, encoding: 'utf8', env: {
-          ...process.env,
+          ...boundPythonEnvironment,
           V106_RELEASE_VERSION: identity.releaseVersion,
           V106_PACKAGE_VERSION: identity.packageVersion,
           V106_RELEASE_COMMIT: identity.commit,
@@ -183,9 +225,10 @@ async function main() {
       return child.status === 0 && payload ? payload : { ok: false, exitCode: child.status }
     },
     stopProducer: async (identity) => {
-      const child = spawnSync('python', ['-c', producerStopSource], {
+      assertTrustedPythonUnchanged()
+      const child = spawnSync(trustedPython.path, ['-I', '-c', producerStopSource], {
         cwd: repoRoot, encoding: 'utf8', env: {
-          ...process.env,
+          ...boundPythonEnvironment,
           V106_RELEASE_VERSION: identity.releaseVersion,
           V106_PACKAGE_VERSION: identity.packageVersion,
           V106_RELEASE_COMMIT: identity.commit,

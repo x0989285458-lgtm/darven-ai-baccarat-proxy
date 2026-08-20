@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.22",
+  "releaseVersion": "v106.0.0-formal.23",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.79",
-  "status": "formal22_candidate_tests_pass_pending_exact_commit_fresh_review_and_production_gate",
+  "applicationVersion": "1.0.80",
+  "status": "formal23_candidate_tests_passed_pending_fresh_review",
   "productionE2E": "not-run-production-remains-v105",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.79",
+      "packageVersion": "1.0.80",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,8 +27,8 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "e3b298f7016b5eacfce1939949e186a663d69c608f0ed578845e8735c2d9ab9b",
-    "proxyBuildInput": "28c8b6cab19c86c56e8da449768f3a46d77a6765ea68cf44f8168f99fdf4054b",
+    "implementationTree": "ef419aa58460e2eaabcf552fba6b35b7cf4a5bf88d2b96743203c69592aa9c31",
+    "proxyBuildInput": "9a1887663f65569699b2a601a660979f0402459e0216001a0f203cf9148a2b51",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
     "databaseCutoverInput": "bd507af7e70c675e6605f8aeb76a7aa0183c6ca64989c7a73e01d51cd8dc6edb"
@@ -139,11 +139,11 @@
       ]
     },
     "digests": {
-      "implementationTree": "672d6ee8c70af12f610ec2bfa1368b25f5d17d55291e987a0169e0cf0c8f3434",
-      "proxyBuildInput": "44eabf0de6a72ee987a1d0c1349193c5c4d2ec9507ab5a8e892fe7d48ca52a60",
+      "implementationTree": "ef419aa58460e2eaabcf552fba6b35b7cf4a5bf88d2b96743203c69592aa9c31",
+      "proxyBuildInput": "9a1887663f65569699b2a601a660979f0402459e0216001a0f203cf9148a2b51",
       "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
       "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-      "databaseCutoverInput": "39877fec45e16f78c50c3d725635869ed98588de6815e0405dfe2c979f1151aa"
+      "databaseCutoverInput": "bd507af7e70c675e6605f8aeb76a7aa0183c6ca64989c7a73e01d51cd8dc6edb"
     },
     "formal16PostgresRehearsal": {
       "migrationTransactionRollback": "PASS",
@@ -164,11 +164,19 @@
     },
     "testHarness": "One parent-only staged-tree snapshot is injected into parallel Proxy tests; eliminates Git index.lock races without weakening candidate-tree binding.",
     "formal21FreshReview": "BLOCK: no valid PASS; independent attack found mutable working-tree stop launcher execution after exact-tree authorization.",
-    "formal22Fix": "Start, stop and DB-gate working-tree blobs are checked before producer admission; production callbacks execute Python source bytes loaded from the authorized candidate Git tree."
+    "formal22Fix": "Start, stop and DB-gate working-tree blobs are checked before producer admission; production callbacks execute Python source bytes loaded from the authorized candidate Git tree.",
+    "formal22FreshReview": "BLOCK: stale report identity plus PATH/ambient Python interpreter injection could forge callback payloads.",
+    "formal23Fix": "External policy pins Python absolute path and SHA-256; runner rehashes before every callback, uses -I exact-tree source and strips PYTHON*/VIRTUAL_ENV.",
+    "trustedPythonRuntime": {
+      "isolated": 1,
+      "safePath": true,
+      "sha256": "c5f556ec6491af96e925f149c8e81701103862ca4d686af5788ad3e1954ca081",
+      "psycopg": "3.3.4"
+    }
   },
   "pending": [
-    "formal.20 exact commit/tree, full suite, two explicit Fresh Reviews and external-trust-policy signed-tag attestation",
-    "formal.20 controlled production cutover through canonical bound runner, DB provenance gate, core Final gate and live E2E"
+    "formal.23 exact commit/tree, full suite, two explicit Fresh Reviews and external-trust-policy signed-tag attestation",
+    "formal.23 controlled production cutover through canonical bound runner, DB provenance gate, core Final gate and live E2E"
   ],
   "productionTrialFormal13": {
     "verdict": "BLOCK_AND_ROLLBACK",
@@ -243,5 +251,23 @@
     "candidateTree": "4b15fd292704c22dca1fb69474a1f8d89db1ba7e",
     "p1": "Post-start DB generation drift rejected release without stopping and positively reading back the producer as inactive.",
     "formal21Fix": "Every failure after a producer start attempt invokes the exact bound stop launcher; success requires systemd inactive and no running container, otherwise compensation itself fails closed."
+  },
+  "canonicalTests": {
+    "proxy": {
+      "command": "cd proxy && npm test",
+      "passed": 1045,
+      "failed": 0
+    },
+    "worker": {
+      "command": "node scripts/run-worker-tests-scrubbed.mjs",
+      "passed": 212,
+      "failed": 0
+    },
+    "frontend": {
+      "command": "cd frontend && npm test && npm run build",
+      "passed": 156,
+      "failed": 0,
+      "build": "PASS"
+    }
   }
 }

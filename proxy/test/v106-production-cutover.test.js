@@ -12,15 +12,39 @@ const generation = '11111111-1111-4111-8111-111111111111'
 const productionDbGate = async () => ({ ok: true, generation })
 const stoppedProducer = async () => ({ ok: true, stopped: true, activeState: 'inactive' })
 
+test('Formal.23 binds an external trusted Python interpreter and strips import injection', async () => {
+  const runner = await import('../../scripts/run-v106-production-cutover.mjs')
+  assert.equal(typeof runner.loadTrustedPythonInterpreter, 'function')
+  assert.equal(typeof runner.buildBoundPythonEnvironment, 'function')
+  const trusted = runner.loadTrustedPythonInterpreter({ root })
+  assert.equal(trusted.sha256, 'c5f556ec6491af96e925f149c8e81701103862ca4d686af5788ad3e1954ca081')
+  assert.match(trusted.path.replaceAll('\\', '/'), /\/hermes-agent\/venv\/Scripts\/python\.exe$/i)
+  const env = runner.buildBoundPythonEnvironment({ PYTHONPATH: 'attacker', PYTHONHOME: 'attacker', VIRTUAL_ENV: 'attacker', SAFE_VALUE: 'kept' })
+  assert.equal(env.PYTHONPATH, undefined)
+  assert.equal(env.PYTHONHOME, undefined)
+  assert.equal(env.VIRTUAL_ENV, undefined)
+  assert.equal(env.SAFE_VALUE, 'kept')
+  assert.equal(env.PYTHONNOUSERSITE, '1')
+})
+
+test('Formal.23 production CLI cannot use PATH Python or injected Python environment', () => {
+  const candidateIndexTree = tree()
+  const source = execFileSync('git', ['show', `${candidateIndexTree}:scripts/run-v106-production-cutover.mjs`], { cwd: root, encoding: 'utf8' })
+  assert.match(source, /const trustedPython = loadTrustedPythonInterpreter/)
+  assert.match(source, /const boundPythonEnvironment = buildBoundPythonEnvironment\(process\.env\)/)
+  assert.equal((source.match(/spawnSync\(trustedPython\.path, \['-I', '-c'/g) ?? []).length, 3)
+  assert.doesNotMatch(source, /spawnSync\('python'/)
+})
+
 test('Formal.22 production CLI executes all Python launchers from exact-tree source bytes', () => {
   const candidateIndexTree = tree()
   const source = execFileSync('git', ['show', `${candidateIndexTree}:scripts/run-v106-production-cutover.mjs`], { cwd: root, encoding: 'utf8' })
   assert.match(source, /const producerStartSource = loadBoundPythonSource/)
   assert.match(source, /const producerStopSource = loadBoundPythonSource/)
   assert.match(source, /const productionDbGateSource = loadBoundPythonSource/)
-  assert.match(source, /spawnSync\('python', \['-c', producerStartSource\]/)
-  assert.match(source, /spawnSync\('python', \['-c', producerStopSource\]/)
-  assert.match(source, /spawnSync\('python', \['-c', productionDbGateSource\]/)
+  assert.match(source, /spawnSync\(trustedPython\.path, \['-I', '-c', producerStartSource\]/)
+  assert.match(source, /spawnSync\(trustedPython\.path, \['-I', '-c', producerStopSource\]/)
+  assert.match(source, /spawnSync\(trustedPython\.path, \['-I', '-c', productionDbGateSource\]/)
 })
 
 test('Formal.22 production launcher source is loaded from the exact candidate Git tree', async () => {

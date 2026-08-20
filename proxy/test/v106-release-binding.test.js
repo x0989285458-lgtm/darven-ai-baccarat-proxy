@@ -56,6 +56,9 @@ test('Formal.21 verifier rejects deletion or weakening of the executable exact p
   const mutableLauncherSource = structuredClone(manifest)
   mutableLauncherSource.productionCutoverRunner.executesLaunchersFromExactGitTree = false
   assert.throws(() => verifyV106PublicReadinessContract({ manifest: mutableLauncherSource, candidateIndexTree, root: repoRoot }), /production_cutover_runner_contract_missing/)
+  const mutablePython = structuredClone(manifest)
+  mutablePython.productionCutoverRunner.requiresExternallyPinnedPythonInterpreter = false
+  assert.throws(() => verifyV106PublicReadinessContract({ manifest: mutablePython, candidateIndexTree, root: repoRoot }), /production_cutover_runner_contract_missing/)
 })
 
 test('v106 release-ticket CLI requires external attestation and rejects digest-only escape hatches', () => {
@@ -79,7 +82,7 @@ test('v106 full release manifest binds the exact staged implementation, build in
   const result = await verifyV106ManifestDigests({ manifest, candidateIndexTree, root: repoRoot })
   assert.equal(result.ok, true)
   assert.equal(report.releaseVersion, manifest.releaseVersion)
-  assert.match(report.status, /formal22/)
+  assert.match(report.status, /formal23/)
   assert.doesNotMatch(report.status, /formal5/)
   assert.deepEqual(Object.keys(result.digests).sort(), [
     'databaseCutoverInput', 'frontendBuildInput', 'implementationTree', 'proxyBuildInput', 'workerBuildInput',
