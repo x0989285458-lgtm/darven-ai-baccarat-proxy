@@ -1,8 +1,12 @@
-import { spawn } from 'node:child_process'
+import { spawn, execFileSync } from 'node:child_process'
 import { buildScrubbedTestEnv } from '../../scripts/test-env-scrub.mjs'
 
+const candidateIndexTree = execFileSync('git', ['write-tree'], { encoding: 'utf8' }).trim()
+const env = buildScrubbedTestEnv()
+env.V106_CANDIDATE_INDEX_TREE = candidateIndexTree
+
 const child = spawn(process.execPath, ['--test', ...process.argv.slice(2)], {
-  env: buildScrubbedTestEnv(),
+  env,
   stdio: 'inherit',
   shell: false,
 })

@@ -16,6 +16,7 @@ const TRUSTED_TAG_PRINCIPAL = 'v106-release'
 const EXTERNAL_TRUST_POLICY_PATH = 'D:/AI Hermes/release-trust/v106-production-policy.json'
 const EXTERNAL_TRUST_POLICY_VERSION = 'v106-release-trust-v1'
 const BOUND_PRODUCER_START_SCRIPT = 'scripts/start-v106-formal-producer.py'
+const BOUND_PRODUCER_STOP_SCRIPT = 'scripts/stop-v106-formal-producer.py'
 const BOUND_PRODUCTION_DB_GATE_SCRIPT = 'scripts/verify-v106-production-db-gate.py'
 const REQUIRED_RELEASE_BINDINGS = Object.freeze([
   'implementationTree',
@@ -288,11 +289,14 @@ export function verifyV106PublicReadinessContract({ manifest, candidateIndexTree
   if (cutover?.script !== runner || cutover?.deploymentStep !== gate.deploymentStep
       || cutover?.requiresExternalAttestation !== true || cutover?.requiresExternalTrustPolicy !== true
       || cutover?.requiresTrustedSignedTag !== true || cutover?.requiresPreAndPostDatabaseGenerationGate !== true
+      || cutover?.requiresPostStartFailStopCompensation !== true
       || cutover?.resolvesCommitFromAnnotatedTag !== true
       || cutover?.requiresExactCheckedOutHead !== true || cutover?.startsProducerOnlyAfterReadinessPass !== true
       || cutover?.producerStartScript !== BOUND_PRODUCER_START_SCRIPT
+      || cutover?.producerStopScript !== BOUND_PRODUCER_STOP_SCRIPT
       || cutover?.productionDbGateScript !== BOUND_PRODUCTION_DB_GATE_SCRIPT
       || !/^[a-f0-9]{40}$/.test(cutover?.producerStartScriptGitBlobSha1 ?? '')
+      || !/^[a-f0-9]{40}$/.test(cutover?.producerStopScriptGitBlobSha1 ?? '')
       || !/^[a-f0-9]{40}$/.test(cutover?.productionDbGateScriptGitBlobSha1 ?? '')
       || cutover?.producerImage !== 'darven-worker:v106-formal3-33f9dc6'
       || cutover?.producerImageId !== 'sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2') {
@@ -319,39 +323,46 @@ export function verifyV106PublicReadinessContract({ manifest, candidateIndexTree
       || !pathIsBound(manifest?.releaseBinding?.implementationTree, script)
       || !pathIsBound(manifest?.releaseBinding?.implementationTree, runner)
       || !pathIsBound(manifest?.releaseBinding?.implementationTree, BOUND_PRODUCER_START_SCRIPT)
+      || !pathIsBound(manifest?.releaseBinding?.implementationTree, BOUND_PRODUCER_STOP_SCRIPT)
       || !pathIsBound(manifest?.releaseBinding?.implementationTree, BOUND_PRODUCTION_DB_GATE_SCRIPT)
       || manifest?.incidentEvidence?.formal13 !== evidence
       || !pathIsBound(manifest?.releaseBinding?.implementationTree, evidence)) throw new Error('public_readiness_gate_binding_mismatch')
-  for (const artifact of [script, runner, BOUND_PRODUCER_START_SCRIPT, BOUND_PRODUCTION_DB_GATE_SCRIPT, evidence]) {
+  for (const artifact of [script, runner, BOUND_PRODUCER_START_SCRIPT, BOUND_PRODUCER_STOP_SCRIPT, BOUND_PRODUCTION_DB_GATE_SCRIPT, evidence]) {
     execFileSync('git', ['cat-file', '-e', `${candidateIndexTree}:${artifact}`], { cwd: root })
   }
   const producerBlob = execFileSync('git', ['rev-parse', `${candidateIndexTree}:${BOUND_PRODUCER_START_SCRIPT}`], { cwd: root, encoding: 'utf8' }).trim()
+  const producerStopBlob = execFileSync('git', ['rev-parse', `${candidateIndexTree}:${BOUND_PRODUCER_STOP_SCRIPT}`], { cwd: root, encoding: 'utf8' }).trim()
   const dbGateBlob = execFileSync('git', ['rev-parse', `${candidateIndexTree}:${BOUND_PRODUCTION_DB_GATE_SCRIPT}`], { cwd: root, encoding: 'utf8' }).trim()
   if (producerBlob !== cutover.producerStartScriptGitBlobSha1) throw new Error('producer_start_script_blob_mismatch')
+  if (producerStopBlob !== cutover.producerStopScriptGitBlobSha1) throw new Error('producer_stop_script_blob_mismatch')
   if (dbGateBlob !== cutover.productionDbGateScriptGitBlobSha1) throw new Error('production_db_gate_script_blob_mismatch')
   const source = execFileSync('git', ['show', `${candidateIndexTree}:${script}`], { cwd: root, encoding: 'utf8' })
   for (const requiredText of ['requiredStreak = Math.max(2', 'maxAttempts = Math.min(30', "redirect: 'error'", 'body?.releaseVersion === expectedRelease', 'body?.packageVersion === expectedPackage', 'body?.commit === expectedCommit', "blocked.code = 'PUBLIC_PROXY_READINESS_BLOCK'"]) {
     if (!source.includes(requiredText)) throw new Error('public_readiness_gate_executable_mismatch')
   }
   const runnerSource = execFileSync('git', ['show', `${candidateIndexTree}:${runner}`], { cwd: root, encoding: 'utf8' })
-  for (const requiredText of ['verifyV106Attestation', 'resolveAnnotatedTagCommit', "if (head !== authorization.commit)", 'url: manifest.canonicalPublicProxyUrl', 'const readiness = await verifyReadiness', 'const postReadinessHead', 'const postReadinessTree', 'production_cutover_post_readiness_identity_drift', 'production_cutover_producer_blob_drift', "verifyProductionDb({ phase: 'pre'", 'production_cutover_db_provenance_not_proven', 'generation: preDbGate.generation', "verifyProductionDb({ phase: 'post'", 'production_cutover_db_generation_drift', 'const producer = await startProducer', 'producer_start_script_override_forbidden', 'manifest.productionCutoverRunner.producerStartScript']) {
+  for (const requiredText of ['verifyV106Attestation', 'resolveAnnotatedTagCommit', "if (head !== authorization.commit)", 'url: manifest.canonicalPublicProxyUrl', 'const readiness = await verifyReadiness', 'const postReadinessHead', 'const postReadinessTree', 'production_cutover_post_readiness_identity_drift', 'production_cutover_producer_blob_drift', "verifyProductionDb({ phase: 'pre'", 'production_cutover_db_provenance_not_proven', 'generation: preDbGate.generation', "verifyProductionDb({ phase: 'post'", 'production_cutover_db_generation_drift', 'producer = await startProducer', 'const postDbGate = await verifyProductionDb', 'stopped = await stopProducer', 'production_cutover_post_start_compensation_failed', 'producer_start_script_override_forbidden', 'manifest.productionCutoverRunner.producerStartScript']) {
     if (!runnerSource.includes(requiredText)) throw new Error('production_cutover_runner_executable_mismatch')
   }
-  if (runnerSource.indexOf('const producer = await startProducer') < runnerSource.indexOf('const readiness = await verifyReadiness')) {
+  if (runnerSource.indexOf('producer = await startProducer') < runnerSource.indexOf('const readiness = await verifyReadiness')) {
     throw new Error('production_cutover_runner_order_mismatch')
   }
   if (runnerSource.includes("get('--url')") || runnerSource.includes("get('--producer-start-script')")) {
     throw new Error('production_cutover_runner_override_forbidden')
   }
   const producerSource = execFileSync('git', ['show', `${candidateIndexTree}:${BOUND_PRODUCER_START_SCRIPT}`], { cwd: root, encoding: 'utf8' })
-  for (const requiredText of ["EXPECTED_RELEASE = 'v106.0.0-formal.20'", "EXPECTED_PACKAGE = '1.0.77'", "EXPECTED_IMAGE = 'darven-worker:v106-formal3-33f9dc6'", "EXPECTED_IMAGE_ID = 'sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2'", 'identity_parts != [EXPECTED_IMAGE, EXPECTED_IMAGE_ID', 'V106_CUTOVER_GENERATION', 'systemctl start darven-worker.service', "'tenTables':", "'exactImage':"]) {
+  for (const requiredText of ["EXPECTED_RELEASE = 'v106.0.0-formal.21'", "EXPECTED_PACKAGE = '1.0.78'", "EXPECTED_IMAGE = 'darven-worker:v106-formal3-33f9dc6'", "EXPECTED_IMAGE_ID = 'sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2'", 'identity_parts != [EXPECTED_IMAGE, EXPECTED_IMAGE_ID', 'V106_CUTOVER_GENERATION', 'systemctl start darven-worker.service', "'tenTables':", "'exactImage':"]) {
     if (!producerSource.includes(requiredText)) throw new Error('producer_start_script_executable_mismatch')
   }
+  const producerStopSource = execFileSync('git', ['show', `${candidateIndexTree}:${BOUND_PRODUCER_STOP_SCRIPT}`], { cwd: root, encoding: 'utf8' })
+  for (const requiredText of ["EXPECTED_RELEASE = 'v106.0.0-formal.21'", "EXPECTED_PACKAGE = '1.0.78'", 'V106_CUTOVER_GENERATION', 'systemctl stop darven-worker.service', 'systemctl is-active darven-worker.service', "'stopped': True", "parts[0] != 'inactive'", "parts[2].lower() == 'true'"]) {
+    if (!producerStopSource.includes(requiredText)) throw new Error('producer_stop_script_executable_mismatch')
+  }
   const dbGateSource = execFileSync('git', ['show', `${candidateIndexTree}:${BOUND_PRODUCTION_DB_GATE_SCRIPT}`], { cwd: root, encoding: 'utf8' })
-  for (const requiredText of ["EXPECTED_PROJECT_REF = 'gscfexhsqxvtpyxudtza'", "EXPECTED_RELEASE = 'v106.0.0-formal.20'", "status='active'", 'cutover_generation::text', 'production DB gate migration provenance mismatch', 'pg_advisory_xact_lock_shared', "'rawDirect': False", "'rawFenced': True", "phase == 'pre'", "phase == 'post'"]) {
+  for (const requiredText of ["EXPECTED_PROJECT_REF = 'gscfexhsqxvtpyxudtza'", "EXPECTED_RELEASE = 'v106.0.0-formal.21'", "status='active'", 'cutover_generation::text', 'production DB gate migration provenance mismatch', 'pg_advisory_xact_lock_shared', "'rawDirect': False", "'rawFenced': True", "phase == 'pre'", "phase == 'post'"]) {
     if (!dbGateSource.includes(requiredText)) throw new Error('production_db_gate_script_executable_mismatch')
   }
-  return { ok: true, script, runner, producerStartScript: BOUND_PRODUCER_START_SCRIPT, productionDbGateScript: BOUND_PRODUCTION_DB_GATE_SCRIPT, evidence, required }
+  return { ok: true, script, runner, producerStartScript: BOUND_PRODUCER_START_SCRIPT, producerStopScript: BOUND_PRODUCER_STOP_SCRIPT, productionDbGateScript: BOUND_PRODUCTION_DB_GATE_SCRIPT, evidence, required }
 }
 
 export async function verifyV106ManifestDigests({ manifest, candidateIndexTree, root = repoRoot } = {}) {

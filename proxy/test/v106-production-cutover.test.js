@@ -7,15 +7,17 @@ import { runV106ProductionCutover } from '../../scripts/run-v106-production-cuto
 
 const root = path.resolve(import.meta.dirname, '../..')
 const head = () => execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
-const tree = () => execFileSync('git', ['write-tree'], { cwd: root, encoding: 'utf8' }).trim()
+const tree = () => process.env.V106_CANDIDATE_INDEX_TREE || execFileSync('git', ['write-tree'], { cwd: root, encoding: 'utf8' }).trim()
 const generation = '11111111-1111-4111-8111-111111111111'
 const productionDbGate = async () => ({ ok: true, generation })
+const stoppedProducer = async () => ({ ok: true, stopped: true, activeState: 'inactive' })
 
-test('Formal.20 bound cutover authorizes exact HEAD, proves public identity, then and only then starts producer', async () => {
+test('Formal.21 bound cutover authorizes exact HEAD, proves public identity, then and only then starts producer', async () => {
   const events = []
   const result = await runV106ProductionCutover({
     manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', url: 'https://example.test', root,
     resolveCurrentTree: () => tree(),
+    stopProducer: stoppedProducer,
     authorizeRelease: async () => ({ releaseAuthorized: true, commit: head() }),
     verifyReadiness: async (options) => {
       events.push(['readiness', options.url, options.expectedCommit, options.attempts])
@@ -39,11 +41,12 @@ test('Formal.20 bound cutover authorizes exact HEAD, proves public identity, the
   ])
 })
 
-test('Formal.20 bound cutover blocks producer when production DB provenance is missing', async () => {
+test('Formal.21 bound cutover blocks producer when production DB provenance is missing', async () => {
   let producerCalls = 0
   await assert.rejects(runV106ProductionCutover({
     manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', root,
     resolveCurrentTree: () => tree(),
+    stopProducer: stoppedProducer,
     authorizeRelease: async () => ({ releaseAuthorized: true, commit: head() }),
     verifyReadiness: async () => ({ verdict: 'PASS', consecutive: 2 }),
     verifyProductionDb: async () => ({ ok: false }),
@@ -52,10 +55,11 @@ test('Formal.20 bound cutover blocks producer when production DB provenance is m
   assert.equal(producerCalls, 0)
 })
 
-test('Formal.20 bound cutover rejects mutable-tag image substitution and generation drift', async () => {
+test('Formal.21 bound cutover rejects mutable-tag image substitution and generation drift', async () => {
   await assert.rejects(runV106ProductionCutover({
     manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', root,
     resolveCurrentTree: () => tree(),
+    stopProducer: stoppedProducer,
     authorizeRelease: async () => ({ releaseAuthorized: true, commit: head() }),
     verifyReadiness: async () => ({ verdict: 'PASS', consecutive: 2 }),
     verifyProductionDb: productionDbGate,
@@ -66,6 +70,7 @@ test('Formal.20 bound cutover rejects mutable-tag image substitution and generat
   await assert.rejects(runV106ProductionCutover({
     manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', root,
     resolveCurrentTree: () => tree(),
+    stopProducer: stoppedProducer,
     authorizeRelease: async () => ({ releaseAuthorized: true, commit: head() }),
     verifyReadiness: async () => ({ verdict: 'PASS', consecutive: 2 }),
     verifyProductionDb: async ({ phase }) => ({ ok: true, generation: phase === 'pre' ? generation : '22222222-2222-4222-8222-222222222222' }),
@@ -74,11 +79,52 @@ test('Formal.20 bound cutover rejects mutable-tag image substitution and generat
   assert.equal(calls, 1)
 })
 
-test('Formal.20 bound cutover never calls producer when exact public readiness blocks', async () => {
+test('Formal.21 post-start DB generation drift fail-stops and verifies producer shutdown before rejecting', async () => {
+  const events = []
+  await assert.rejects(runV106ProductionCutover({
+    manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', root,
+    resolveCurrentTree: () => tree(),
+    authorizeRelease: async () => ({ releaseAuthorized: true, commit: head() }),
+    verifyReadiness: async () => ({ verdict: 'PASS', consecutive: 2 }),
+    verifyProductionDb: async ({ phase }) => ({ ok: true, generation: phase === 'pre' ? generation : '22222222-2222-4222-8222-222222222222' }),
+    startProducer: async () => { events.push('start'); return { ok: true, generation, workerImageId: manifest.productionCutoverRunner.producerImageId } },
+    stopProducer: async () => { events.push('stop'); return { ok: true, stopped: true, activeState: 'inactive' } },
+  }), /production_cutover_db_generation_drift/)
+  assert.deepEqual(events, ['start', 'stop'])
+})
+
+test('Formal.21 producer start exception still triggers fail-stop compensation', async () => {
+  let stops = 0
+  await assert.rejects(runV106ProductionCutover({
+    manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', root,
+    resolveCurrentTree: () => tree(),
+    authorizeRelease: async () => ({ releaseAuthorized: true, commit: head() }),
+    verifyReadiness: async () => ({ verdict: 'PASS', consecutive: 2 }),
+    verifyProductionDb: productionDbGate,
+    startProducer: async () => { throw new Error('remote_start_failed_after_systemd_start') },
+    stopProducer: async () => { stops += 1; return { ok: true, stopped: true, activeState: 'inactive' } },
+  }), /remote_start_failed_after_systemd_start/)
+  assert.equal(stops, 1)
+})
+
+test('Formal.21 rejects the compensation itself unless shutdown is positively read back', async () => {
+  await assert.rejects(runV106ProductionCutover({
+    manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', root,
+    resolveCurrentTree: () => tree(),
+    authorizeRelease: async () => ({ releaseAuthorized: true, commit: head() }),
+    verifyReadiness: async () => ({ verdict: 'PASS', consecutive: 2 }),
+    verifyProductionDb: productionDbGate,
+    startProducer: async () => ({ ok: false }),
+    stopProducer: async () => ({ ok: true, stopped: false, activeState: 'active' }),
+  }), /production_cutover_post_start_compensation_failed/)
+})
+
+test('Formal.21 bound cutover never calls producer when exact public readiness blocks', async () => {
   let producerCalls = 0
   await assert.rejects(runV106ProductionCutover({
     manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', url: 'https://example.test', root,
     resolveCurrentTree: () => tree(),
+    stopProducer: stoppedProducer,
     authorizeRelease: async () => ({ releaseAuthorized: true, commit: head() }),
     verifyReadiness: async () => { const error = new Error('blocked'); error.code = 'PUBLIC_PROXY_READINESS_BLOCK'; throw error },
     verifyProductionDb: productionDbGate,
@@ -87,11 +133,12 @@ test('Formal.20 bound cutover never calls producer when exact public readiness b
   assert.equal(producerCalls, 0)
 })
 
-test('Formal.20 bound cutover rejects post-readiness tree drift before producer start', async () => {
+test('Formal.21 bound cutover rejects post-readiness tree drift before producer start', async () => {
   let producerCalls = 0
   await assert.rejects(runV106ProductionCutover({
     manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', root,
     resolveCurrentTree: () => '0'.repeat(40),
+    stopProducer: stoppedProducer,
     authorizeRelease: async () => ({ releaseAuthorized: true, commit: head() }),
     verifyReadiness: async () => ({ verdict: 'PASS', consecutive: 2 }),
     verifyProductionDb: productionDbGate,
@@ -100,11 +147,12 @@ test('Formal.20 bound cutover rejects post-readiness tree drift before producer 
   assert.equal(producerCalls, 0)
 })
 
-test('Formal.20 bound cutover rejects an authorized commit that is not exact checked-out HEAD before probing or producer start', async () => {
+test('Formal.21 bound cutover rejects an authorized commit that is not exact checked-out HEAD before probing or producer start', async () => {
   let sideEffects = 0
   await assert.rejects(runV106ProductionCutover({
     manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', url: 'https://example.test', root,
     resolveCurrentTree: () => tree(),
+    stopProducer: stoppedProducer,
     authorizeRelease: async () => ({ releaseAuthorized: true, commit: 'f'.repeat(40) }),
     verifyReadiness: async () => { sideEffects += 1; return { verdict: 'PASS', consecutive: 2 } },
     verifyProductionDb: async () => { sideEffects += 1; return { ok: true, generation } },

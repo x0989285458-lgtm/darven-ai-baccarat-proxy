@@ -6,8 +6,8 @@ import shutil
 import subprocess
 import tempfile
 
-EXPECTED_RELEASE = 'v106.0.0-formal.20'
-EXPECTED_PACKAGE = '1.0.77'
+EXPECTED_RELEASE = 'v106.0.0-formal.21'
+EXPECTED_PACKAGE = '1.0.78'
 EXPECTED_IMAGE = 'darven-worker:v106-formal3-33f9dc6'
 EXPECTED_IMAGE_ID = 'sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2'
 EXPECTED_COMMIT = os.environ.get('V106_RELEASE_COMMIT', '')
@@ -16,7 +16,7 @@ EXPECTED_GENERATION = os.environ.get('V106_CUTOVER_GENERATION', '')
 release = os.environ.get('V106_RELEASE_VERSION', '')
 package = os.environ.get('V106_PACKAGE_VERSION', '')
 if not re.fullmatch(r'[a-f0-9]{40}', EXPECTED_COMMIT) or not re.fullmatch(r'[0-9a-f-]{36}', EXPECTED_GENERATION) or release != EXPECTED_RELEASE or package != EXPECTED_PACKAGE:
-    raise SystemExit('bound Formal.20 identity environment is missing')
+    raise SystemExit('bound Formal.21 identity environment is missing')
 
 subst = r'C:\Windows\System32\subst.exe'
 maps = [('Q:', r'D:\AI Hermes\hermes\cache\tooling\gcloud-portable'), ('R:', r'C:\Users\童威仁')]

@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.20",
-  "gitTag": "v106.0.0-formal.20",
-  "applicationVersion": "1.0.77",
+  "releaseVersion": "v106.0.0-formal.21",
+  "gitTag": "v106.0.0-formal.21",
+  "applicationVersion": "1.0.78",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -309,10 +309,11 @@
         "supabase/migrations/20260820050000_v106_formal19_cutover_generation.sql",
         "supabase/migrations/20260820060000_v106_formal20_raw_ingest_barrier.sql",
         "scripts/start-v106-formal-producer.py",
+        "scripts/stop-v106-formal-producer.py",
         "scripts/verify-v106-production-db-gate.py"
       ],
       "excludedPaths": [],
-      "sha256": "4b7c7bed4f6ea034f05875ae9779b2792fed6971d9fb02b117fcc4fe5536d9bf"
+      "sha256": "89acb6774812e83f8248cdf298242ac470b94ef93cf26ec6f0d03daf5a565d9c"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -323,7 +324,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "2f269df52cfe47728a5fdbab26473330aba7ecf3cb86182d66ff8e977562c6b2"
+      "sha256": "cb9d8a00b9b944b48a7180ac0510da094e7b01515735e43d04bf0e65321c76c7"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -453,8 +454,8 @@
     "requiredIdentity": {
       "version": "v106",
       "buildVersion": "v106",
-      "releaseVersion": "v106.0.0-formal.20",
-      "packageVersion": "1.0.77",
+      "releaseVersion": "v106.0.0-formal.21",
+      "packageVersion": "1.0.78",
       "commit": "annotated-tag-attested-commit"
     },
     "failClosedExitCode": 2
@@ -466,7 +467,8 @@
     "formal16FreshReview": "BLOCK: canonical URL was caller-controlled; receipt could be replayed and did not cover abandoned status; capture-source ingest was not exclusively fenced through rollback.",
     "formal17FreshReview": "BLOCK: external JSON and unsigned tag were self-authorizing; producer starter path/blob was not release-bound; stale receipts could be rebound to a later activation.",
     "formal18FreshReview": "BLOCK inherited Formal.17 authorization, producer binding and stale receipt generation defects; redirect following was fixed but release remained blocked.",
-    "formal19FreshReview": "BLOCK: candidate-tree signer allowlist was self-authorizing; runner omitted production DB generation/ACL provenance; direct Raw RPC could commit across rollback barrier; worker admission matched mutable tag but not immutable image ID."
+    "formal19FreshReview": "BLOCK: candidate-tree signer allowlist was self-authorizing; runner omitted production DB generation/ACL provenance; direct Raw RPC could commit across rollback barrier; worker admission matched mutable tag but not immutable image ID.",
+    "formal20FreshReview": "BLOCK: a post-start database generation drift rejected the release without fail-stopping and positively reading back the producer as inactive. Formal.21 binds an exact stop launcher and requires compensation on every failure after the start attempt."
   },
   "productionCutoverRunner": {
     "script": "scripts/run-v106-production-cutover.mjs",
@@ -478,10 +480,13 @@
     "requiresExactCheckedOutHead": true,
     "startsProducerOnlyAfterReadinessPass": true,
     "requiresPreAndPostDatabaseGenerationGate": true,
+    "requiresPostStartFailStopCompensation": true,
     "productionDbGateScript": "scripts/verify-v106-production-db-gate.py",
-    "productionDbGateScriptGitBlobSha1": "603d468010b8e07f411072a3694a8529c0384943",
+    "productionDbGateScriptGitBlobSha1": "a1fe19664bc7e82f54b371fcd4e23a02cee9c537",
     "producerStartScript": "scripts/start-v106-formal-producer.py",
-    "producerStartScriptGitBlobSha1": "294271bb68244fdb02ea3a97f84a31cd0d3d70f7",
+    "producerStartScriptGitBlobSha1": "c34600c43448c954851a0a7055da8476f251caf0",
+    "producerStopScript": "scripts/stop-v106-formal-producer.py",
+    "producerStopScriptGitBlobSha1": "edbf12c877131c6080f2568825ad510184fed754",
     "producerImage": "darven-worker:v106-formal3-33f9dc6",
     "producerImageId": "sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2"
   },

@@ -4,8 +4,8 @@ import { verifyV106PublicReadiness } from '../../scripts/verify-v106-public-read
 
 const expected = {
   url: 'https://example.test',
-  expectedRelease: 'v106.0.0-formal.20',
-  expectedPackage: '1.0.77',
+  expectedRelease: 'v106.0.0-formal.21',
+  expectedPackage: '1.0.78',
   expectedCommit: 'a'.repeat(40),
   intervalMs: 0,
   requestTimeoutMs: 100,
@@ -17,13 +17,13 @@ const exact = () => response({
   releaseVersion: expected.expectedRelease, packageVersion: expected.expectedPackage, commit: expected.expectedCommit,
 })
 
-test('Formal.20 readiness blocks an older v106 release even when public health is HTTP 200', async () => {
+test('Formal.21 readiness blocks an older v106 release even when public health is HTTP 200', async () => {
   const probes = []
   await assert.rejects(verifyV106PublicReadiness({
     ...expected, attempts: 2,
     fetchImpl: async () => response({
       ok: true, version: 'v106', buildVersion: 'v106',
-      releaseVersion: 'v106.0.0-formal.20', packageVersion: '1.0.77', commit: 'b'.repeat(40),
+      releaseVersion: 'v106.0.0-formal.21', packageVersion: '1.0.78', commit: 'b'.repeat(40),
     }),
     onProbe: (probe) => probes.push(probe),
   }), (error) => error?.code === 'PUBLIC_PROXY_READINESS_BLOCK')
@@ -32,7 +32,7 @@ test('Formal.20 readiness blocks an older v106 release even when public health i
   ])
 })
 
-test('Formal.20 readiness requires two consecutive exact public identities and resets after any mismatch', async () => {
+test('Formal.21 readiness requires two consecutive exact public identities and resets after any mismatch', async () => {
   const responses = [exact(), response({ ok: false }), exact(), exact()]
   const probes = []
   const result = await verifyV106PublicReadiness({
@@ -48,7 +48,7 @@ test('Formal.20 readiness requires two consecutive exact public identities and r
   ])
 })
 
-test('Formal.20 readiness caps even direct caller attempts at the bound maximum of 30', async () => {
+test('Formal.21 readiness caps even direct caller attempts at the bound maximum of 30', async () => {
   let calls = 0
   await assert.rejects(verifyV106PublicReadiness({
     ...expected, attempts: 31, intervalMs: 0,
@@ -57,7 +57,7 @@ test('Formal.20 readiness caps even direct caller attempts at the bound maximum 
   assert.equal(calls, 30)
 })
 
-test('Formal.20 readiness rejects redirects instead of following a counterfeit health responder', async () => {
+test('Formal.21 readiness rejects redirects instead of following a counterfeit health responder', async () => {
   const redirects = []
   await assert.rejects(verifyV106PublicReadiness({
     ...expected, attempts: 2,
@@ -72,7 +72,7 @@ test('Formal.20 readiness rejects redirects instead of following a counterfeit h
   assert.deepEqual(redirects, ['error', 'error'])
 })
 
-test('Formal.20 readiness rejects an unbounded or incomplete identity contract before network access', async () => {
+test('Formal.21 readiness rejects an unbounded or incomplete identity contract before network access', async () => {
   let calls = 0
   await assert.rejects(verifyV106PublicReadiness({
     ...expected, expectedCommit: '', fetchImpl: async () => { calls += 1; return exact() },

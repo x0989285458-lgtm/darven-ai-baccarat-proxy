@@ -199,7 +199,7 @@ test('implementation digest explicitly excludes self-referential manifest and at
 
 test('Reviewer P1 attestation exact binding rejects old tag and wrong tree while accepting the dynamic candidate index tree', () => {
   const repoRoot = new URL('../../', import.meta.url)
-  const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
+  const candidateIndexTree = process.env.V106_CANDIDATE_INDEX_TREE || execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
   const attestation = {
     commit: '1'.repeat(40), tree: candidateIndexTree, tagObject: 'a'.repeat(40), tag: manifest.gitTag,
     implementationTreeSha256: '3'.repeat(64), migrationSha256: '4'.repeat(64),

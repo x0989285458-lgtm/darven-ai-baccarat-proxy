@@ -19,9 +19,10 @@ import {
 } from '../../scripts/verify-v106-formal-release.mjs'
 
 const repoRoot = path.resolve(import.meta.dirname, '../..')
+const candidateTree = () => process.env.V106_CANDIDATE_INDEX_TREE || execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
 
-test('Formal.20 verifier rejects deletion or weakening of the executable exact public readiness gate', () => {
-  const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
+test('Formal.21 verifier rejects deletion or weakening of the executable exact public readiness gate', () => {
+  const candidateIndexTree = candidateTree()
   assert.deepEqual(verifyV106PublicReadinessContract({ manifest, candidateIndexTree, root: repoRoot }).required, [
     'proxy', 'run-bound-production-cutover', 'frontend', 'live-e2e', 'finalize',
   ])
@@ -37,6 +38,9 @@ test('Formal.20 verifier rejects deletion or weakening of the executable exact p
   const wrongProducerBlob = structuredClone(manifest)
   wrongProducerBlob.productionCutoverRunner.producerStartScriptGitBlobSha1 = '0'.repeat(40)
   assert.throws(() => verifyV106PublicReadinessContract({ manifest: wrongProducerBlob, candidateIndexTree, root: repoRoot }), /producer_start_script_blob_mismatch/)
+  const wrongStopBlob = structuredClone(manifest)
+  wrongStopBlob.productionCutoverRunner.producerStopScriptGitBlobSha1 = '0'.repeat(40)
+  assert.throws(() => verifyV106PublicReadinessContract({ manifest: wrongStopBlob, candidateIndexTree, root: repoRoot }), /producer_stop_script_blob_mismatch/)
   const arbitrarySigner = structuredClone(manifest)
   arbitrarySigner.releaseAuthorization.trustedSignerFingerprint = `SHA256:${'0'.repeat(43)}`
   assert.throws(() => verifyV106PublicReadinessContract({ manifest: arbitrarySigner, candidateIndexTree, root: repoRoot }), /trusted_release_authorization_contract_missing/)
@@ -52,7 +56,7 @@ test('Formal.20 verifier rejects deletion or weakening of the executable exact p
 })
 
 test('v106 release-ticket CLI requires external attestation and rejects digest-only escape hatches', () => {
-  const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
+  const candidateIndexTree = candidateTree()
   const missing = spawnSync(process.execPath, ['scripts/verify-v106-formal-release.mjs', '--candidate-index-tree', candidateIndexTree], {
     cwd: repoRoot,
     encoding: 'utf8',
@@ -68,11 +72,11 @@ test('v106 release-ticket CLI requires external attestation and rejects digest-o
 })
 
 test('v106 full release manifest binds the exact staged implementation, build inputs, and database cutover', async () => {
-  const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
+  const candidateIndexTree = candidateTree()
   const result = await verifyV106ManifestDigests({ manifest, candidateIndexTree, root: repoRoot })
   assert.equal(result.ok, true)
   assert.equal(report.releaseVersion, manifest.releaseVersion)
-  assert.match(report.status, /formal20/)
+  assert.match(report.status, /formal21/)
   assert.doesNotMatch(report.status, /formal5/)
   assert.deepEqual(Object.keys(result.digests).sort(), [
     'databaseCutoverInput', 'frontendBuildInput', 'implementationTree', 'proxyBuildInput', 'workerBuildInput',
@@ -163,7 +167,7 @@ test('v106 coverage fails closed when any mandatory database cutover artifact is
 })
 
 test('v106 database contracts bind every cutover step to one exact Git blob', () => {
-  const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
+  const candidateIndexTree = candidateTree()
   assert.equal(verifyV106DatabaseArtifactContracts({ manifest, candidateIndexTree, root: repoRoot }).ok, true)
 
   const missing = structuredClone(manifest)
@@ -261,7 +265,7 @@ test('v106 candidate-added signer cannot self-authorize against the repository-e
 })
 
 test('v106 external attestation requires the exact complete release digest set before tag readback', async () => {
-  const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
+  const candidateIndexTree = candidateTree()
   const verified = await verifyV106ManifestDigests({ manifest, candidateIndexTree, root: repoRoot })
   const directory = await mkdtemp(path.join(os.tmpdir(), 'v106-attestation-negative-'))
   const attestationPath = path.join(directory, 'attestation.json')

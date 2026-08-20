@@ -13,7 +13,7 @@ const extractSqlFunction = (sql, name) => {
 }
 
 test('v106 release identity is coherent while the updated capture worker retains protocol v105', () => {
-  assert.equal(json('proxy/package.json').version, '1.0.77')
+  assert.equal(json('proxy/package.json').version, '1.0.78')
   assert.equal(json('frontend/package.json').version, '1.0.63')
   assert.equal(json('cloud-browser-worker/package.json').version, '1.0.63')
   assert.match(read('proxy/src/build-version.js'), /BUILD_VERSION = 'v106'/)
@@ -146,13 +146,13 @@ test('v106 frontend version gate fails closed and formal writer/hydration use v1
 
 test('v106 manifest encodes DB-first through finalize order and exact rollback', () => {
   const manifest = json('release/v106-formal-v10-main-release-manifest.json')
-  assert.equal(manifest.applicationVersion, '1.0.77')
+  assert.equal(manifest.applicationVersion, '1.0.78')
   assert.equal(manifest.strategyVersion, 'v106')
   assert.equal(manifest.mainStrategy.source, 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized')
   assert.equal(manifest.sideStrategy.source, 'v105')
   assert.equal(manifest.mainStrategy.activationGate, 'structureDiagnostics.eligible === true')
   assert.equal(manifest.mainStrategy.fallback, 'exact formal v105 main projection')
-  assert.equal(manifest.gitTag, 'v106.0.0-formal.20')
+  assert.equal(manifest.gitTag, 'v106.0.0-formal.21')
   assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'database-final-time-fence', 'database-bounded-raw-ack', 'database-monotonic-projection', 'database-rollback-receipt', 'database-single-use-rollback-receipt', 'database-cutover-generation', 'database-raw-ingest-barrier', 'deploy-worker-1.0.63-protocol-v105', 'verify-worker-v105-compatibility', 'fence-v105-new-issuance', 'producer-stop', 'terminalize-v105-cutover', 'drain-v105-and-queue', 'activate-v106', 'proxy', 'run-bound-production-cutover', 'frontend', 'live-e2e', 'finalize'])
   assert.equal(manifest.canonicalPublicProxyUrl, 'https://darven-ai-baccarat-proxy.onrender.com')
   assert.deepEqual(manifest.publicReadinessGate, {
@@ -164,8 +164,8 @@ test('v106 manifest encodes DB-first through finalize order and exact rollback',
     requestTimeoutMs: 20000,
     intervalMs: 15000,
     requiredIdentity: {
-      version: 'v106', buildVersion: 'v106', releaseVersion: 'v106.0.0-formal.20',
-      packageVersion: '1.0.77', commit: 'annotated-tag-attested-commit',
+      version: 'v106', buildVersion: 'v106', releaseVersion: 'v106.0.0-formal.21',
+      packageVersion: '1.0.78', commit: 'annotated-tag-attested-commit',
     },
     failClosedExitCode: 2,
   })
@@ -174,6 +174,9 @@ test('v106 manifest encodes DB-first through finalize order and exact rollback',
   assert.equal(manifest.inheritedProductionSafety.preserveQueue, true)
   assert.equal(manifest.inheritedProductionSafety.preserveAckCursor, true)
   assert.equal(manifest.inheritedProductionSafety.exactAckRequired, true)
+  assert.equal(manifest.productionCutoverRunner.requiresPostStartFailStopCompensation, true)
+  assert.equal(manifest.productionCutoverRunner.producerStopScript, 'scripts/stop-v106-formal-producer.py')
+  assert.match(manifest.productionCutoverRunner.producerStopScriptGitBlobSha1, /^[a-f0-9]{40}$/)
   assert.equal(manifest.productionReplay.overlapRows, 36856)
   assert.equal(manifest.productionReplay.netHitDelta, 29)
   assert.equal(manifest.rollback.script, 'supabase/operations/rollback_v106_to_v105.sql')

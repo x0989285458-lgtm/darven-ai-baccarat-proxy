@@ -7,8 +7,8 @@ from urllib.parse import urlparse
 import psycopg
 
 EXPECTED_PROJECT_REF = 'gscfexhsqxvtpyxudtza'
-EXPECTED_RELEASE = 'v106.0.0-formal.20'
-EXPECTED_PACKAGE = '1.0.77'
+EXPECTED_RELEASE = 'v106.0.0-formal.21'
+EXPECTED_PACKAGE = '1.0.78'
 
 def read_env_file(path):
     values = {}
