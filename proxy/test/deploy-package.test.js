@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 test('v106 proxy package exposes cloud deployment smoke and mock worker commands', () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   assert.equal(pkg.name, 'draven-mt-data-proxy-v106')
-  assert.equal(pkg.version, '1.0.75')
+  assert.equal(pkg.version, '1.0.76')
   assert.equal(pkg.scripts.test, 'node scripts/run-tests.mjs')
   assert.equal(pkg.scripts['smoke:cloud'], 'node scripts/smoke-cloud-deploy.mjs')
   assert.equal(pkg.scripts['mock:cloud-worker'], 'node scripts/mock-cloud-worker.mjs')

@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import {
   assertCandidateIndexClean,
@@ -10,6 +10,10 @@ import {
 } from './verify-v105-mt-api-release.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const TRUSTED_TAG_SIGNER_FINGERPRINT = 'SHA256:y0VSR6o6x7g/c/PM2vrBeFGtDHELAVODN95N7N7eZAQ'
+const TRUSTED_TAG_PRINCIPAL = 'v106-release'
+const TRUSTED_SIGNERS_PATH = 'release/trusted-v106-release-signers'
+const BOUND_PRODUCER_START_SCRIPT = 'scripts/start-v106-formal-producer.py'
 const REQUIRED_RELEASE_BINDINGS = Object.freeze([
   'implementationTree',
   'proxyBuildInput',
@@ -24,6 +28,7 @@ const REQUIRED_DATABASE_ARTIFACTS = Object.freeze([
   'supabase/migrations/20260820020000_v106_formal13_monotonic_projection.sql',
   'supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql',
   'supabase/migrations/20260820040000_v106_formal17_single_use_rollback_receipt.sql',
+  'supabase/migrations/20260820050000_v106_formal19_cutover_generation.sql',
   'supabase/operations/fence_v105_new_issuance.sql',
   'supabase/operations/terminalize_v105_cutover.sql',
   'supabase/operations/activate_v106_promotion.sql',
@@ -38,12 +43,13 @@ const REQUIRED_DATABASE_CONTRACTS = Object.freeze({
   monotonicProjection: { path: REQUIRED_DATABASE_ARTIFACTS[3], deploymentStep: 'database-monotonic-projection' },
   rollbackReceipt: { path: REQUIRED_DATABASE_ARTIFACTS[4], deploymentStep: 'database-rollback-receipt' },
   rollbackReceiptSingleUse: { path: REQUIRED_DATABASE_ARTIFACTS[5], deploymentStep: 'database-single-use-rollback-receipt' },
-  fence: { path: REQUIRED_DATABASE_ARTIFACTS[6], deploymentStep: 'fence-v105-new-issuance' },
-  terminalize: { path: REQUIRED_DATABASE_ARTIFACTS[7], deploymentStep: 'terminalize-v105-cutover' },
-  activate: { path: REQUIRED_DATABASE_ARTIFACTS[8], deploymentStep: 'activate-v106' },
-  finalize: { path: REQUIRED_DATABASE_ARTIFACTS[9], deploymentStep: 'finalize' },
-  rollbackTerminalize: { path: REQUIRED_DATABASE_ARTIFACTS[10], deploymentStep: 'rollback-terminalize' },
-  rollback: { path: REQUIRED_DATABASE_ARTIFACTS[11], deploymentStep: 'rollback-only' },
+  cutoverGeneration: { path: REQUIRED_DATABASE_ARTIFACTS[6], deploymentStep: 'database-cutover-generation' },
+  fence: { path: REQUIRED_DATABASE_ARTIFACTS[7], deploymentStep: 'fence-v105-new-issuance' },
+  terminalize: { path: REQUIRED_DATABASE_ARTIFACTS[8], deploymentStep: 'terminalize-v105-cutover' },
+  activate: { path: REQUIRED_DATABASE_ARTIFACTS[9], deploymentStep: 'activate-v106' },
+  finalize: { path: REQUIRED_DATABASE_ARTIFACTS[10], deploymentStep: 'finalize' },
+  rollbackTerminalize: { path: REQUIRED_DATABASE_ARTIFACTS[11], deploymentStep: 'rollback-terminalize' },
+  rollback: { path: REQUIRED_DATABASE_ARTIFACTS[12], deploymentStep: 'rollback-only' },
 })
 const REQUIRED_ROLLBACK_ORDER = Object.freeze([
   'stop producer admission',
@@ -58,8 +64,10 @@ const DEPLOYABLE_BINDING_RULES = Object.freeze([
   { pattern: /^frontend\/(?:package(?:-lock)?\.json|src\/)/, bindings: ['implementationTree', 'frontendBuildInput'] },
   { pattern: /^cloud-browser-worker\/(?:Dockerfile|package(?:-lock)?\.json|src\/)/, bindings: ['implementationTree', 'workerBuildInput'] },
   { pattern: /^shared\//, bindings: ['implementationTree', 'proxyBuildInput', 'workerBuildInput'] },
-  { pattern: /^supabase\/(?:migrations\/(?:20260818010000_v106_formal_v10_main|20260820003500_v106_formal8_final_time_fence|20260820010000_v106_formal12_bounded_raw_ack|20260820020000_v106_formal13_monotonic_projection|20260820030000_v106_formal16_rollback_receipt|20260820040000_v106_formal17_single_use_rollback_receipt)\.sql|operations\/(?:fence_v105_new_issuance|terminalize_v105_cutover|activate_v106_promotion|finalize_v106_promotion|terminalize_v106_rollback|rollback_v106_to_v105)\.sql)$/, bindings: ['implementationTree', 'databaseCutoverInput'] },
+  { pattern: /^supabase\/(?:migrations\/(?:20260818010000_v106_formal_v10_main|20260820003500_v106_formal8_final_time_fence|20260820010000_v106_formal12_bounded_raw_ack|20260820020000_v106_formal13_monotonic_projection|20260820030000_v106_formal16_rollback_receipt|20260820040000_v106_formal17_single_use_rollback_receipt|20260820050000_v106_formal19_cutover_generation)\.sql|operations\/(?:fence_v105_new_issuance|terminalize_v105_cutover|activate_v106_promotion|finalize_v106_promotion|terminalize_v106_rollback|rollback_v106_to_v105)\.sql)$/, bindings: ['implementationTree', 'databaseCutoverInput'] },
   { pattern: /^scripts\/(?:verify-v106-formal-release|verify-v106-public-readiness|run-v106-production-cutover|run-worker-tests-scrubbed|test-env-scrub)\.mjs$/, bindings: ['implementationTree'] },
+  { pattern: /^scripts\/start-v106-formal-producer\.py$/, bindings: ['implementationTree'] },
+  { pattern: /^release\/trusted-v106-release-signers$/, bindings: ['implementationTree'] },
   { pattern: /^release\/evidence\/v106-formal13-production-block\.json$/, bindings: ['implementationTree'] },
 ])
 
@@ -90,6 +98,27 @@ export function resolveAnnotatedTagCommit({ tagName, root = repoRoot } = {}) {
   const objectType = execFileSync('git', ['cat-file', '-t', tagRef], { cwd: root, encoding: 'utf8' }).trim()
   if (objectType !== 'tag') throw new Error('annotated_tag_required')
   return execFileSync('git', ['rev-parse', `${tagRef}^{commit}`], { cwd: root, encoding: 'utf8' }).trim()
+}
+
+export function verifyV106TrustedSignedTag({ tagName, attestationSha256, root = repoRoot } = {}) {
+  if (!/^[a-f0-9]{64}$/.test(attestationSha256 ?? '')) throw new Error('attestation_sha256_invalid')
+  const tagRef = `refs/tags/${tagName}`
+  const allowedSigners = path.join(root, TRUSTED_SIGNERS_PATH)
+  const verification = spawnSync('git', [
+    '-c', `gpg.ssh.allowedSignersFile=${allowedSigners}`,
+    'verify-tag', tagRef,
+  ], { cwd: root, encoding: 'utf8' })
+  const evidence = `${verification.stdout ?? ''}\n${verification.stderr ?? ''}`
+  if (verification.status !== 0
+      || !evidence.includes(TRUSTED_TAG_SIGNER_FINGERPRINT)
+      || !evidence.includes(`Good \"git\" signature for ${TRUSTED_TAG_PRINCIPAL}`)) {
+    throw new Error('trusted_signed_tag_required')
+  }
+  const tagObject = execFileSync('git', ['cat-file', '-p', tagRef], { cwd: root, encoding: 'utf8' })
+  if (!tagObject.includes(`Attestation-SHA256: ${attestationSha256}`)) {
+    throw new Error('signed_tag_attestation_digest_mismatch')
+  }
+  return { ok: true, signerFingerprint: TRUSTED_TAG_SIGNER_FINGERPRINT, principal: TRUSTED_TAG_PRINCIPAL, attestationSha256 }
 }
 
 export function verifyV106StagedDeployableCoverage({ manifest, root = repoRoot, stagedPaths } = {}) {
@@ -153,6 +182,62 @@ export function verifyV106DatabaseArtifactContracts({ manifest, candidateIndexTr
   return { ok: true, contracts: Object.keys(REQUIRED_DATABASE_CONTRACTS) }
 }
 
+export function verifyV106RollbackComponents({ manifest, root = repoRoot } = {}) {
+  const rollback = manifest?.rollback
+  const base = rollback?.componentVerification?.releaseBaseCommit
+  if (!/^[a-f0-9]{40}$/.test(base ?? '')) throw new Error('rollback_release_base_invalid')
+  const specifications = {
+    proxy: {
+      packagePath: 'proxy/package.json',
+      identityPaths: ['proxy/src/build-version.js', 'proxy/src/server.js'],
+      verify(sources, expected) {
+        if (!sources[0].includes(`BUILD_VERSION = '${expected.buildVersion}'`)
+            || !sources[1].includes(`WORKER_PROTOCOL_VERSION = '${expected.workerProtocol}'`)
+            || expected.strategyVersion !== expected.buildVersion) throw new Error('rollback_component_identity_mismatch:proxy')
+      },
+    },
+    frontend: {
+      packagePath: 'frontend/package.json',
+      identityPaths: ['frontend/src/lib/buildVersion.ts'],
+      verify(sources, expected) {
+        if (!sources[0].includes(`buildVersion: '${expected.buildVersion}'`)
+            || !sources[0].includes(`strategyVersion: '${expected.strategyVersion}'`)
+            || expected.workerProtocol !== expected.strategyVersion) throw new Error('rollback_component_identity_mismatch:frontend')
+      },
+    },
+    worker: {
+      packagePath: 'cloud-browser-worker/package.json',
+      identityPaths: ['cloud-browser-worker/src/runtime-config.js', 'cloud-browser-worker/src/snapshot-pusher.js'],
+      verify(sources, expected) {
+        if (!sources[0].includes(`BUILD_VERSION = '${expected.buildVersion}'`)
+            || !sources[1].includes(`protocolVersion: '${expected.workerProtocol}'`)
+            || expected.strategyVersion !== expected.workerProtocol) throw new Error('rollback_component_identity_mismatch:worker')
+      },
+    },
+  }
+  for (const [name, specification] of Object.entries(specifications)) {
+    const commit = rollback?.componentCommits?.[name]
+    const expectedPackage = rollback?.componentPackages?.[name]
+    const expectedBuild = rollback?.componentBuilds?.[name]
+    if (!/^[a-f0-9]{40}$/.test(commit ?? '') || !expectedPackage || !expectedBuild) throw new Error(`rollback_component_contract_missing:${name}`)
+    const type = execFileSync('git', ['cat-file', '-t', commit], { cwd: root, encoding: 'utf8' }).trim()
+    if (type !== 'commit') throw new Error(`rollback_component_commit_invalid:${name}`)
+    const ancestry = spawnSync('git', ['merge-base', '--is-ancestor', commit, base], { cwd: root })
+    if (ancestry.status !== 0) throw new Error(`rollback_component_not_ancestor:${name}`)
+    const packageJson = JSON.parse(execFileSync('git', ['show', `${commit}:${specification.packagePath}`], { cwd: root, encoding: 'utf8' }))
+    if (packageJson.name !== expectedPackage.name || packageJson.version !== expectedPackage.version) {
+      throw new Error(`rollback_component_package_mismatch:${name}`)
+    }
+    const sources = specification.identityPaths.map((candidatePath) => execFileSync('git', ['show', `${commit}:${candidatePath}`], { cwd: root, encoding: 'utf8' }))
+    specification.verify(sources, expectedBuild)
+  }
+  if (rollback.componentVerification.allCommitsAreAncestorsOfReleaseBase !== true
+      || rollback.componentVerification.packageAndBuildIdentityReadFromExactCommit !== true) {
+    throw new Error('rollback_component_verification_claim_mismatch')
+  }
+  return { ok: true, releaseBaseCommit: base, components: Object.keys(specifications) }
+}
+
 export function verifyV106PublicReadinessContract({ manifest, candidateIndexTree, root = repoRoot } = {}) {
   const gate = manifest?.publicReadinessGate
   const script = 'scripts/verify-v106-public-readiness.mjs'
@@ -171,9 +256,20 @@ export function verifyV106PublicReadinessContract({ manifest, candidateIndexTree
       || identity?.commit !== 'annotated-tag-attested-commit') throw new Error('public_readiness_gate_identity_mismatch')
   const cutover = manifest?.productionCutoverRunner
   if (cutover?.script !== runner || cutover?.deploymentStep !== gate.deploymentStep
-      || cutover?.requiresExternalAttestation !== true || cutover?.resolvesCommitFromAnnotatedTag !== true
+      || cutover?.requiresExternalAttestation !== true || cutover?.requiresTrustedSignedTag !== true
+      || cutover?.resolvesCommitFromAnnotatedTag !== true
       || cutover?.requiresExactCheckedOutHead !== true || cutover?.startsProducerOnlyAfterReadinessPass !== true
-      || cutover?.producerStartScriptMustBeAbsolute !== true) throw new Error('production_cutover_runner_contract_missing')
+      || cutover?.producerStartScript !== BOUND_PRODUCER_START_SCRIPT
+      || !/^[a-f0-9]{40}$/.test(cutover?.producerStartScriptGitBlobSha1 ?? '')) {
+    throw new Error('production_cutover_runner_contract_missing')
+  }
+  const authorization = manifest?.releaseAuthorization
+  if (authorization?.trustedSignerFingerprint !== TRUSTED_TAG_SIGNER_FINGERPRINT
+      || authorization?.trustedSignerPrincipal !== TRUSTED_TAG_PRINCIPAL
+      || authorization?.allowedSignersFile !== TRUSTED_SIGNERS_PATH
+      || authorization?.signedTagBindsAttestationSha256 !== true) {
+    throw new Error('trusted_release_authorization_contract_missing')
+  }
   const order = manifest.deploymentOrder
   const required = ['proxy', gate.deploymentStep, 'frontend', 'live-e2e', 'finalize']
   const indexes = required.map((step) => order.indexOf(step))
@@ -183,22 +279,34 @@ export function verifyV106PublicReadinessContract({ manifest, candidateIndexTree
   if (manifest?.testRunners?.publicReadiness !== script || manifest?.testRunners?.productionCutover !== runner
       || !pathIsBound(manifest?.releaseBinding?.implementationTree, script)
       || !pathIsBound(manifest?.releaseBinding?.implementationTree, runner)
+      || !pathIsBound(manifest?.releaseBinding?.implementationTree, BOUND_PRODUCER_START_SCRIPT)
+      || !pathIsBound(manifest?.releaseBinding?.implementationTree, TRUSTED_SIGNERS_PATH)
       || manifest?.incidentEvidence?.formal13 !== evidence
       || !pathIsBound(manifest?.releaseBinding?.implementationTree, evidence)) throw new Error('public_readiness_gate_binding_mismatch')
-  for (const artifact of [script, runner, evidence]) execFileSync('git', ['cat-file', '-e', `${candidateIndexTree}:${artifact}`], { cwd: root })
+  for (const artifact of [script, runner, BOUND_PRODUCER_START_SCRIPT, TRUSTED_SIGNERS_PATH, evidence]) {
+    execFileSync('git', ['cat-file', '-e', `${candidateIndexTree}:${artifact}`], { cwd: root })
+  }
+  const producerBlob = execFileSync('git', ['rev-parse', `${candidateIndexTree}:${BOUND_PRODUCER_START_SCRIPT}`], { cwd: root, encoding: 'utf8' }).trim()
+  if (producerBlob !== cutover.producerStartScriptGitBlobSha1) throw new Error('producer_start_script_blob_mismatch')
   const source = execFileSync('git', ['show', `${candidateIndexTree}:${script}`], { cwd: root, encoding: 'utf8' })
   for (const requiredText of ['requiredStreak = Math.max(2', 'maxAttempts = Math.min(30', "redirect: 'error'", 'body?.releaseVersion === expectedRelease', 'body?.packageVersion === expectedPackage', 'body?.commit === expectedCommit', "blocked.code = 'PUBLIC_PROXY_READINESS_BLOCK'"]) {
     if (!source.includes(requiredText)) throw new Error('public_readiness_gate_executable_mismatch')
   }
   const runnerSource = execFileSync('git', ['show', `${candidateIndexTree}:${runner}`], { cwd: root, encoding: 'utf8' })
-  for (const requiredText of ['verifyV106Attestation', 'resolveAnnotatedTagCommit', "if (head !== authorization.commit)", 'url: manifest.canonicalPublicProxyUrl', 'const readiness = await verifyReadiness', 'const producer = await startProducer']) {
+  for (const requiredText of ['verifyV106Attestation', 'resolveAnnotatedTagCommit', "if (head !== authorization.commit)", 'url: manifest.canonicalPublicProxyUrl', 'const readiness = await verifyReadiness', 'const postReadinessHead', 'const postReadinessTree', 'production_cutover_post_readiness_identity_drift', 'production_cutover_producer_blob_drift', 'const producer = await startProducer', 'producer_start_script_override_forbidden', 'manifest.productionCutoverRunner.producerStartScript']) {
     if (!runnerSource.includes(requiredText)) throw new Error('production_cutover_runner_executable_mismatch')
   }
   if (runnerSource.indexOf('const producer = await startProducer') < runnerSource.indexOf('const readiness = await verifyReadiness')) {
     throw new Error('production_cutover_runner_order_mismatch')
   }
-  if (runnerSource.includes("get('--url')")) throw new Error('production_cutover_runner_url_override_forbidden')
-  return { ok: true, script, runner, evidence, required }
+  if (runnerSource.includes("get('--url')") || runnerSource.includes("get('--producer-start-script')")) {
+    throw new Error('production_cutover_runner_override_forbidden')
+  }
+  const producerSource = execFileSync('git', ['show', `${candidateIndexTree}:${BOUND_PRODUCER_START_SCRIPT}`], { cwd: root, encoding: 'utf8' })
+  for (const requiredText of ["EXPECTED_RELEASE = 'v106.0.0-formal.19'", "EXPECTED_PACKAGE = '1.0.76'", "EXPECTED_IMAGE = 'darven-worker:v106-formal3-33f9dc6'", 'systemctl start darven-worker.service', "'tenTables':", "'exactImage':"]) {
+    if (!producerSource.includes(requiredText)) throw new Error('producer_start_script_executable_mismatch')
+  }
+  return { ok: true, script, runner, producerStartScript: BOUND_PRODUCER_START_SCRIPT, evidence, required }
 }
 
 export async function verifyV106ManifestDigests({ manifest, candidateIndexTree, root = repoRoot } = {}) {
@@ -210,6 +318,7 @@ export async function verifyV106ManifestDigests({ manifest, candidateIndexTree, 
     if (!Object.hasOwn(binding, name)) throw new Error(`release_binding_missing:${name}`)
   }
   verifyV106DatabaseArtifactContracts({ manifest, candidateIndexTree, root })
+  verifyV106RollbackComponents({ manifest, root })
   verifyV106PublicReadinessContract({ manifest, candidateIndexTree, root })
   verifyV106StagedDeployableCoverage({ manifest, root })
   const result = {}
@@ -227,7 +336,9 @@ export async function verifyV106ManifestDigests({ manifest, candidateIndexTree, 
 export async function verifyV106Attestation({ manifest, candidateIndexTree, attestationPath, root = repoRoot } = {}) {
   const digests = await verifyV106ManifestDigests({ manifest, candidateIndexTree, root })
   const externalPath = await assertExternalAttestationPath({ repoRoot: root, attestationPath })
-  const attestation = JSON.parse(await readFile(externalPath, 'utf8'))
+  const attestationBytes = await readFile(externalPath)
+  const attestationSha256 = createHash('sha256').update(attestationBytes).digest('hex')
+  const attestation = JSON.parse(attestationBytes.toString('utf8'))
   if (attestation.releaseVersion !== manifest.releaseVersion) throw new Error('attestation_release_mismatch')
   if (attestation.tagName !== manifest.gitTag) throw new Error('attestation_tag_mismatch')
   if (attestation.publicProxyUrl !== manifest.canonicalPublicProxyUrl) throw new Error('attestation_public_proxy_url_mismatch')
@@ -241,10 +352,11 @@ export async function verifyV106Attestation({ manifest, candidateIndexTree, atte
   for (const name of expectedDigestKeys) {
     if (attestedDigests[name] !== expectedDigests[name]) throw new Error(`attestation_digest_mismatch:${name}`)
   }
+  const signedAuthorization = verifyV106TrustedSignedTag({ tagName: manifest.gitTag, attestationSha256, root })
   const commit = resolveAnnotatedTagCommit({ tagName: manifest.gitTag, root })
   const tree = execFileSync('git', ['rev-parse', `${commit}^{tree}`], { cwd: root, encoding: 'utf8' }).trim()
   if (attestation.commit !== commit || tree !== candidateIndexTree) throw new Error('attestation_commit_tree_mismatch')
-  return { ...digests, mode: 'external-attestation', releaseAuthorized: true, commit, tagName: manifest.gitTag }
+  return { ...digests, mode: 'external-attestation', releaseAuthorized: true, commit, tagName: manifest.gitTag, signedAuthorization }
 }
 
 async function main() {

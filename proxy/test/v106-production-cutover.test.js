@@ -9,10 +9,11 @@ const root = path.resolve(import.meta.dirname, '../..')
 const head = () => execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
 const tree = () => execFileSync('git', ['write-tree'], { cwd: root, encoding: 'utf8' }).trim()
 
-test('Formal.18 bound cutover authorizes exact HEAD, proves public identity, then and only then starts producer', async () => {
+test('Formal.19 bound cutover authorizes exact HEAD, proves public identity, then and only then starts producer', async () => {
   const events = []
   const result = await runV106ProductionCutover({
     manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', url: 'https://example.test', root,
+    resolveCurrentTree: () => tree(),
     authorizeRelease: async () => ({ releaseAuthorized: true, commit: head() }),
     verifyReadiness: async (options) => {
       events.push(['readiness', options.url, options.expectedCommit, options.attempts])
@@ -30,10 +31,11 @@ test('Formal.18 bound cutover authorizes exact HEAD, proves public identity, the
   ])
 })
 
-test('Formal.18 bound cutover never calls producer when exact public readiness blocks', async () => {
+test('Formal.19 bound cutover never calls producer when exact public readiness blocks', async () => {
   let producerCalls = 0
   await assert.rejects(runV106ProductionCutover({
     manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', url: 'https://example.test', root,
+    resolveCurrentTree: () => tree(),
     authorizeRelease: async () => ({ releaseAuthorized: true, commit: head() }),
     verifyReadiness: async () => { const error = new Error('blocked'); error.code = 'PUBLIC_PROXY_READINESS_BLOCK'; throw error },
     startProducer: async () => { producerCalls += 1; return { ok: true } },
@@ -41,10 +43,23 @@ test('Formal.18 bound cutover never calls producer when exact public readiness b
   assert.equal(producerCalls, 0)
 })
 
-test('Formal.18 bound cutover rejects an authorized commit that is not exact checked-out HEAD before probing or producer start', async () => {
+test('Formal.19 bound cutover rejects post-readiness tree drift before producer start', async () => {
+  let producerCalls = 0
+  await assert.rejects(runV106ProductionCutover({
+    manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', root,
+    resolveCurrentTree: () => '0'.repeat(40),
+    authorizeRelease: async () => ({ releaseAuthorized: true, commit: head() }),
+    verifyReadiness: async () => ({ verdict: 'PASS', consecutive: 2 }),
+    startProducer: async () => { producerCalls += 1; return { ok: true } },
+  }), /production_cutover_post_readiness_identity_drift/)
+  assert.equal(producerCalls, 0)
+})
+
+test('Formal.19 bound cutover rejects an authorized commit that is not exact checked-out HEAD before probing or producer start', async () => {
   let sideEffects = 0
   await assert.rejects(runV106ProductionCutover({
     manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', url: 'https://example.test', root,
+    resolveCurrentTree: () => tree(),
     authorizeRelease: async () => ({ releaseAuthorized: true, commit: 'f'.repeat(40) }),
     verifyReadiness: async () => { sideEffects += 1; return { verdict: 'PASS', consecutive: 2 } },
     startProducer: async () => { sideEffects += 1; return { ok: true } },

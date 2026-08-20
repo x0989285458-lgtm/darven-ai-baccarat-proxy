@@ -14,6 +14,7 @@ export async function runV106ProductionCutover({
   authorizeRelease = (options) => verifyV106Attestation(options),
   verifyReadiness = verifyV106PublicReadiness,
   startProducer,
+  resolveCurrentTree = ({ root: currentRoot }) => execFileSync('git', ['rev-parse', 'HEAD^{tree}'], { cwd: currentRoot, encoding: 'utf8' }).trim(),
   onProbe = () => {},
   root = repoRoot,
 } = {}) {
@@ -40,6 +41,16 @@ export async function runV106ProductionCutover({
   if (readiness?.verdict !== 'PASS' || readiness?.consecutive < gate.requiredConsecutive) {
     throw new Error('production_cutover_public_readiness_not_proven')
   }
+  const postReadinessHead = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
+  const postReadinessTree = resolveCurrentTree({ root })
+  const producerScript = manifest.productionCutoverRunner.producerStartScript
+  const producerBlob = execFileSync('git', ['hash-object', producerScript], { cwd: root, encoding: 'utf8' }).trim()
+  if (postReadinessHead !== authorization.commit || postReadinessTree !== candidateIndexTree) {
+    throw new Error('production_cutover_post_readiness_identity_drift')
+  }
+  if (producerBlob !== manifest.productionCutoverRunner.producerStartScriptGitBlobSha1) {
+    throw new Error('production_cutover_producer_blob_drift')
+  }
   const producer = await startProducer({
     releaseVersion: manifest.releaseVersion,
     packageVersion: manifest.applicationVersion,
@@ -57,10 +68,13 @@ async function main() {
     return index >= 0 ? args[index + 1] : undefined
   }
   const attestationPath = get('--attestation')
-  const producerStartScript = get('--producer-start-script')
-  if (!attestationPath || !producerStartScript) throw new Error('attestation_and_producer_start_script_required')
-  if (!path.isAbsolute(producerStartScript)) throw new Error('producer_start_script_must_be_absolute')
+  if (!attestationPath) throw new Error('attestation_required')
+  if (args.includes('--producer-start-script')) throw new Error('producer_start_script_override_forbidden')
   const manifest = JSON.parse(await readFile(path.join(repoRoot, 'release', 'v106-formal-v10-main-release-manifest.json'), 'utf8'))
+  const producerStartScript = path.resolve(repoRoot, manifest.productionCutoverRunner.producerStartScript)
+  if (producerStartScript !== path.join(repoRoot, 'scripts', 'start-v106-formal-producer.py')) {
+    throw new Error('bound_producer_start_script_mismatch')
+  }
   const tagCommit = resolveAnnotatedTagCommit({ tagName: manifest.gitTag, root: repoRoot })
   const candidateIndexTree = execFileSync('git', ['rev-parse', `${tagCommit}^{tree}`], { cwd: repoRoot, encoding: 'utf8' }).trim()
   const result = await runV106ProductionCutover({

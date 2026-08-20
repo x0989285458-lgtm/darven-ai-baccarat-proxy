@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.18",
-  "gitTag": "v106.0.0-formal.18",
-  "applicationVersion": "1.0.75",
+  "releaseVersion": "v106.0.0-formal.19",
+  "gitTag": "v106.0.0-formal.19",
+  "applicationVersion": "1.0.76",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -115,6 +115,12 @@
       "contract": "Receipt is bound to the active v106 activation generation, unique, unconsumed and atomically consumed by rollback.",
       "gitBlobSha1": "1b8f7972f6734dd7a1b37f7618ac4f6d3478f308"
     },
+    "cutoverGeneration": {
+      "path": "supabase/migrations/20260820050000_v106_formal19_cutover_generation.sql",
+      "deploymentStep": "database-cutover-generation",
+      "contract": "Every strategy activation receives a database-owned immutable generation UUID; terminalization and rollback must match the exact active v106 generation.",
+      "gitBlobSha1": "b108628a8f6b3a6da888e323e3103e773ac6659a"
+    },
     "fence": {
       "path": "supabase/operations/fence_v105_new_issuance.sql",
       "deploymentStep": "fence-v105-new-issuance",
@@ -128,7 +134,7 @@
     "activate": {
       "path": "supabase/operations/activate_v106_promotion.sql",
       "deploymentStep": "activate-v106",
-      "gitBlobSha1": "2008bf05f07255cbf6589a3dc87c1265661e5a0e"
+      "gitBlobSha1": "1ba0b20f53f36dd1cb91d5fe40e009780f5d4309"
     },
     "finalize": {
       "path": "supabase/operations/finalize_v106_promotion.sql",
@@ -138,12 +144,12 @@
     "rollbackTerminalize": {
       "path": "supabase/operations/terminalize_v106_rollback.sql",
       "deploymentStep": "rollback-terminalize",
-      "gitBlobSha1": "aed0e7062179477ddcf88c37504ab66bfa3a5cda"
+      "gitBlobSha1": "ec8d476515604faba0b78605ad831e8909d73574"
     },
     "rollback": {
       "path": "supabase/operations/rollback_v106_to_v105.sql",
       "deploymentStep": "rollback-only",
-      "gitBlobSha1": "55598fcdc852e64e99761114844483c1da3e98b8"
+      "gitBlobSha1": "69b61ad2d856bca77211e37d75c6d829acd020e4"
     }
   },
   "activation": "supabase/operations/activate_v106_promotion.sql",
@@ -164,6 +170,7 @@
     "database-monotonic-projection",
     "database-rollback-receipt",
     "database-single-use-rollback-receipt",
+    "database-cutover-generation",
     "deploy-worker-1.0.63-protocol-v105",
     "verify-worker-v105-compatibility",
     "fence-v105-new-issuance",
@@ -291,10 +298,13 @@
         "release/evidence/v106-formal13-production-block.json",
         "scripts/run-v106-production-cutover.mjs",
         "supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql",
-        "supabase/migrations/20260820040000_v106_formal17_single_use_rollback_receipt.sql"
+        "supabase/migrations/20260820040000_v106_formal17_single_use_rollback_receipt.sql",
+        "supabase/migrations/20260820050000_v106_formal19_cutover_generation.sql",
+        "scripts/start-v106-formal-producer.py",
+        "release/trusted-v106-release-signers"
       ],
       "excludedPaths": [],
-      "sha256": "97be30abc99edc20a052c1c5637f567f4cdd6b4f6a289562148f09474913473d"
+      "sha256": "672d6ee8c70af12f610ec2bfa1368b25f5d17d55291e987a0169e0cf0c8f3434"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -305,7 +315,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "9e5e11534a84591d22506f268cc6f7248ce47959a264758ce5caeba70aca4794"
+      "sha256": "44eabf0de6a72ee987a1d0c1349193c5c4d2ec9507ab5a8e892fe7d48ca52a60"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -343,10 +353,11 @@
         "supabase/operations/terminalize_v106_rollback.sql",
         "supabase/operations/rollback_v106_to_v105.sql",
         "supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql",
-        "supabase/migrations/20260820040000_v106_formal17_single_use_rollback_receipt.sql"
+        "supabase/migrations/20260820040000_v106_formal17_single_use_rollback_receipt.sql",
+        "supabase/migrations/20260820050000_v106_formal19_cutover_generation.sql"
       ],
       "excludedPaths": [],
-      "sha256": "03acc82ff5d90429c1b86edfec88cd18ce19955f29032d04e1f8e9e404c4c129"
+      "sha256": "39877fec45e16f78c50c3d725635869ed98588de6815e0405dfe2c979f1151aa"
     }
   },
   "historicalArtifactsPreserved": true,
@@ -433,8 +444,8 @@
     "requiredIdentity": {
       "version": "v106",
       "buildVersion": "v106",
-      "releaseVersion": "v106.0.0-formal.18",
-      "packageVersion": "1.0.75",
+      "releaseVersion": "v106.0.0-formal.19",
+      "packageVersion": "1.0.76",
       "commit": "annotated-tag-attested-commit"
     },
     "failClosedExitCode": 2
@@ -443,16 +454,26 @@
     "formal13": "release/evidence/v106-formal13-production-block.json",
     "formal14FreshReview": "BLOCK: declarative readiness did not bind executable exact identity gate",
     "formal15FreshReview": "BLOCK: readiness was not invoked by a bound deployment runner; expected commit and 30-attempt cap were caller-controlled; rollback lacked a durable terminalization receipt.",
-    "formal16FreshReview": "BLOCK: canonical URL was caller-controlled; receipt could be replayed and did not cover abandoned status; capture-source ingest was not exclusively fenced through rollback."
+    "formal16FreshReview": "BLOCK: canonical URL was caller-controlled; receipt could be replayed and did not cover abandoned status; capture-source ingest was not exclusively fenced through rollback.",
+    "formal17FreshReview": "BLOCK: external JSON and unsigned tag were self-authorizing; producer starter path/blob was not release-bound; stale receipts could be rebound to a later activation.",
+    "formal18FreshReview": "BLOCK inherited Formal.17 authorization, producer binding and stale receipt generation defects; redirect following was fixed but release remained blocked."
   },
   "productionCutoverRunner": {
     "script": "scripts/run-v106-production-cutover.mjs",
     "deploymentStep": "run-bound-production-cutover",
     "requiresExternalAttestation": true,
+    "requiresTrustedSignedTag": true,
     "resolvesCommitFromAnnotatedTag": true,
     "requiresExactCheckedOutHead": true,
     "startsProducerOnlyAfterReadinessPass": true,
-    "producerStartScriptMustBeAbsolute": true
+    "producerStartScript": "scripts/start-v106-formal-producer.py",
+    "producerStartScriptGitBlobSha1": "2b969183ca1d32af2bdbc133fa70ce352868025a"
+  },
+  "releaseAuthorization": {
+    "trustedSignerFingerprint": "SHA256:y0VSR6o6x7g/c/PM2vrBeFGtDHELAVODN95N7N7eZAQ",
+    "trustedSignerPrincipal": "v106-release",
+    "allowedSignersFile": "release/trusted-v106-release-signers",
+    "signedTagBindsAttestationSha256": true
   },
   "canonicalPublicProxyUrl": "https://darven-ai-baccarat-proxy.onrender.com"
 }

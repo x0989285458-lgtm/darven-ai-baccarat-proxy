@@ -56,7 +56,7 @@ set status = 'archived'
 where status = 'active' and version <> 'v106';
 
 update public.ai_strategy_versions
-set status = 'active', activated_at = now()
+set status = 'active', activated_at = now(), cutover_generation = gen_random_uuid()
 where version = 'v106';
 
 do $$

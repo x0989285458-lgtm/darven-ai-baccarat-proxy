@@ -13,12 +13,14 @@ import {
   verifyV106ManifestDigests,
   verifyV106PredecessorRegression,
   verifyV106PublicReadinessContract,
+  verifyV106RollbackComponents,
   verifyV106StagedDeployableCoverage,
+  verifyV106TrustedSignedTag,
 } from '../../scripts/verify-v106-formal-release.mjs'
 
 const repoRoot = path.resolve(import.meta.dirname, '../..')
 
-test('Formal.18 verifier rejects deletion or weakening of the executable exact public readiness gate', () => {
+test('Formal.19 verifier rejects deletion or weakening of the executable exact public readiness gate', () => {
   const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
   assert.deepEqual(verifyV106PublicReadinessContract({ manifest, candidateIndexTree, root: repoRoot }).required, [
     'proxy', 'run-bound-production-cutover', 'frontend', 'live-e2e', 'finalize',
@@ -29,6 +31,15 @@ test('Formal.18 verifier rejects deletion or weakening of the executable exact p
   const sharedIdentity = structuredClone(manifest)
   sharedIdentity.publicReadinessGate.requiredIdentity.releaseVersion = 'v106'
   assert.throws(() => verifyV106PublicReadinessContract({ manifest: sharedIdentity, candidateIndexTree, root: repoRoot }), /public_readiness_gate_identity_mismatch/)
+  const arbitraryProducer = structuredClone(manifest)
+  arbitraryProducer.productionCutoverRunner.producerStartScript = 'C:/tmp/noop.py'
+  assert.throws(() => verifyV106PublicReadinessContract({ manifest: arbitraryProducer, candidateIndexTree, root: repoRoot }), /production_cutover_runner_contract_missing/)
+  const wrongProducerBlob = structuredClone(manifest)
+  wrongProducerBlob.productionCutoverRunner.producerStartScriptGitBlobSha1 = '0'.repeat(40)
+  assert.throws(() => verifyV106PublicReadinessContract({ manifest: wrongProducerBlob, candidateIndexTree, root: repoRoot }), /producer_start_script_blob_mismatch/)
+  const arbitrarySigner = structuredClone(manifest)
+  arbitrarySigner.releaseAuthorization.trustedSignerFingerprint = `SHA256:${'0'.repeat(43)}`
+  assert.throws(() => verifyV106PublicReadinessContract({ manifest: arbitrarySigner, candidateIndexTree, root: repoRoot }), /trusted_release_authorization_contract_missing/)
 })
 
 test('v106 verifier CLI requires external attestation unless explicit pre-commit digest-only mode is selected', () => {
@@ -55,7 +66,7 @@ test('v106 full release manifest binds the exact staged implementation, build in
   const result = await verifyV106ManifestDigests({ manifest, candidateIndexTree, root: repoRoot })
   assert.equal(result.ok, true)
   assert.equal(report.releaseVersion, manifest.releaseVersion)
-  assert.match(report.status, /formal18/)
+  assert.match(report.status, /formal19/)
   assert.doesNotMatch(report.status, /formal5/)
   assert.deepEqual(Object.keys(result.digests).sort(), [
     'databaseCutoverInput', 'frontendBuildInput', 'implementationTree', 'proxyBuildInput', 'workerBuildInput',
@@ -121,6 +132,9 @@ test('v106 coverage fails closed when any mandatory database cutover artifact is
     'supabase/migrations/20260820003500_v106_formal8_final_time_fence.sql',
     'supabase/migrations/20260820010000_v106_formal12_bounded_raw_ack.sql',
     'supabase/migrations/20260820020000_v106_formal13_monotonic_projection.sql',
+    'supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql',
+    'supabase/migrations/20260820040000_v106_formal17_single_use_rollback_receipt.sql',
+    'supabase/migrations/20260820050000_v106_formal19_cutover_generation.sql',
     'supabase/operations/fence_v105_new_issuance.sql',
     'supabase/operations/terminalize_v105_cutover.sql',
     'supabase/operations/activate_v106_promotion.sql',
@@ -186,6 +200,23 @@ test('v106 database contracts bind every cutover step to one exact Git blob', ()
   )
 })
 
+test('v106 verifier derives rollback package, build, strategy, protocol and ancestry from exact commits', () => {
+  const result = verifyV106RollbackComponents({ manifest, root: repoRoot })
+  assert.deepEqual(result.components, ['proxy', 'frontend', 'worker'])
+  const wrongPackage = structuredClone(manifest)
+  wrongPackage.rollback.componentPackages.proxy.version = '9.9.9'
+  assert.throws(() => verifyV106RollbackComponents({ manifest: wrongPackage, root: repoRoot }), /rollback_component_package_mismatch:proxy/)
+  const wrongBuild = structuredClone(manifest)
+  wrongBuild.rollback.componentBuilds.frontend.strategyVersion = 'v106'
+  assert.throws(() => verifyV106RollbackComponents({ manifest: wrongBuild, root: repoRoot }), /rollback_component_identity_mismatch:frontend/)
+  const wrongProtocol = structuredClone(manifest)
+  wrongProtocol.rollback.componentBuilds.worker.workerProtocol = 'v104'
+  assert.throws(() => verifyV106RollbackComponents({ manifest: wrongProtocol, root: repoRoot }), /rollback_component_identity_mismatch:worker/)
+  const wrongCommit = structuredClone(manifest)
+  wrongCommit.rollback.componentCommits.proxy = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim()
+  assert.throws(() => verifyV106RollbackComponents({ manifest: wrongCommit, root: repoRoot }), /rollback_component_not_ancestor:proxy/)
+})
+
 test('v106 release authorization rejects lightweight tags and resolves annotated tags', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'v106-annotated-tag-'))
   try {
@@ -198,6 +229,7 @@ test('v106 release authorization rejects lightweight tags and resolves annotated
     execFileSync('git', ['tag', '-d', 'v-test'], { cwd: directory, stdio: 'ignore' })
     execFileSync('git', ['-c', 'user.name=Hermes Verify', '-c', 'user.email=verify@example.invalid', 'tag', '-am', 'verified release', 'v-test'], { cwd: directory })
     assert.match(resolveAnnotatedTagCommit({ tagName: 'v-test', root: directory }), /^[a-f0-9]{40}$/)
+    assert.throws(() => verifyV106TrustedSignedTag({ tagName: 'v-test', attestationSha256: 'a'.repeat(64), root: directory }), /trusted_signed_tag_required/)
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

@@ -8,6 +8,7 @@ do $$
 declare
   latest_receipt public.v106_rollback_terminalization_receipts%rowtype;
   active_strategy_activated_at timestamptz;
+  active_cutover_generation uuid;
 begin
   perform 1
   from public.ai_strategy_versions
@@ -17,16 +18,20 @@ begin
   if not exists (select 1 from public.ai_strategy_versions where version = 'v105') then
     raise exception 'v105 rollback target is missing';
   end if;
-  select activated_at into active_strategy_activated_at
+  select activated_at, cutover_generation
+  into active_strategy_activated_at, active_cutover_generation
   from public.ai_strategy_versions
   where version = 'v106' and status = 'active';
-  if active_strategy_activated_at is null then
-    raise exception 'active v106 activation generation is missing';
+  if active_strategy_activated_at is null or active_cutover_generation is null then
+    raise exception 'active v106 activation generation identity is missing';
   end if;
   select * into latest_receipt
   from public.v106_rollback_terminalization_receipts
   where reason = 'formal_v106_rollback_after_producer_stop'
     and strategy_activated_at = active_strategy_activated_at
+    and cutover_generation = active_cutover_generation
+    and started_at >= active_strategy_activated_at
+    and completed_at >= started_at
     and consumed_at is null
   order by completed_at desc
   limit 1
@@ -94,6 +99,7 @@ grant execute on function public.settle_v105_prediction(jsonb, jsonb) to service
 grant execute on function public.persist_v105_settled_round(jsonb, jsonb) to service_role;
 grant execute on function public.reconcile_v105_prediction_lifecycle(text, text, text, integer) to service_role;
 grant execute on function public.get_v105_prediction_lifecycle_stats() to service_role;
+grant execute on function public.persist_v105_capture_envelope(jsonb) to service_role;
 grant execute on function public.persist_v105_fenced_capture_envelope(jsonb) to service_role;
 
 update public.ai_strategy_versions
@@ -105,7 +111,7 @@ set status = 'archived'
 where status = 'active' and version <> 'v105';
 
 update public.ai_strategy_versions
-set status = 'active', activated_at = now()
+set status = 'active', activated_at = now(), cutover_generation = gen_random_uuid()
 where version = 'v105';
 
 update public.v105_shadow_v10_rank_sync_runtime_settings

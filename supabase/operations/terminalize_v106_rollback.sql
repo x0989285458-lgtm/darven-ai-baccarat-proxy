@@ -10,6 +10,7 @@ select pg_advisory_xact_lock(hashtext('formal_v106_rollback_terminalize_v106'));
 select pg_advisory_xact_lock(hashtextextended('v105_capture_source_fence:capture', 0));
 
 revoke execute on function public.issue_v106_prediction(jsonb) from service_role;
+revoke execute on function public.persist_v105_capture_envelope(jsonb) from service_role;
 revoke execute on function public.persist_v105_fenced_capture_envelope(jsonb) from service_role;
 
 do $$
@@ -18,7 +19,8 @@ declare
   quiet_before_at timestamptz;
   max_v106_issued_at timestamptz;
   active_strategy_activated_at timestamptz;
-  receipt_generation uuid := gen_random_uuid();
+  active_cutover_generation uuid;
+  receipt_generation uuid;
   terminalized_count integer := 0;
   isolated_outbox_count integer := 0;
   unresolved_after_count integer := 0;
@@ -37,13 +39,15 @@ begin
      ) then
     raise exception 'v106 must remain the sole Active successor during rollback terminalization';
   end if;
-  select activated_at into active_strategy_activated_at
+  select activated_at, cutover_generation
+  into active_strategy_activated_at, active_cutover_generation
   from public.ai_strategy_versions
   where version = 'v106' and status = 'active'
   for update;
-  if active_strategy_activated_at is null then
-    raise exception 'v106 activation generation timestamp is missing';
+  if active_strategy_activated_at is null or active_cutover_generation is null then
+    raise exception 'v106 activation generation identity is missing';
   end if;
+  receipt_generation := active_cutover_generation;
 
   if exists (
     select 1
