@@ -125,6 +125,48 @@ test('restart drains a pending durable outbox item only after durable projection
   assert.deepEqual(completed, [{ sessionId: 'outbox-worker', sequence: 7, claimToken: 'lease-7', attempt: 1 }])
 })
 
+test('older durable outbox projection retry cannot overwrite a newer sequence', async () => {
+  const completed = []
+  let latestProjection = null
+  const newer = envelope().snapshot
+  newer.status = { ...newer.status, statusText: 'newer-sequence-2' }
+  const older = envelope().snapshot
+  older.status = { ...older.status, statusText: 'older-sequence-1-retry' }
+  const claimedRows = [
+    claimedRow(2, { payload: { work: { ...newer, sequence: 2, capturedAt: '2026-08-20T00:00:02.000Z' } } }),
+    claimedRow(1, { payload: { work: { ...older, sequence: 1, capturedAt: '2026-08-20T00:00:01.000Z' } } }),
+  ]
+  const app = createApp({
+    autoConnect: false,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        const row = claimedRows.shift()
+        return row ? [row] : []
+      },
+      async persistCaptureAncillaryProjection(payload) {
+        assert.equal(payload.sequence === 2 || payload.sequence === 1, true)
+        assert.match(payload.capturedAt, /^2026-08-20T00:00:0[12]\.000Z$/)
+        if (!latestProjection || payload.sequence >= latestProjection.sequence) latestProjection = structuredClone(payload)
+        return { persisted: latestProjection.sequence === payload.sequence, skipped: latestProjection.sequence !== payload.sequence }
+      },
+      async writeCloudCaptureStatus() { assert.fail('projection recovery must use the atomic monotonic RPC') },
+      async writeCloudTableSnapshot() { assert.fail('projection recovery must use the atomic monotonic RPC') },
+      async completeCaptureOutbox(identity) { completed.push(identity.sequence); return { completed: true } },
+      async failCaptureOutbox() { assert.fail('monotonic projection skip remains a successful durable recovery') },
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot({ tables }) { return { tables } } },
+  })
+
+  const first = await app.drainCaptureOutbox()
+  const second = await app.drainCaptureOutbox()
+  assert.deepEqual(first, { processed: 1, failed: 0 })
+  assert.deepEqual(second, { processed: 1, failed: 0 })
+  assert.deepEqual(completed, [2, 1])
+  assert.equal(latestProjection.sequence, 2)
+  assert.equal(latestProjection.status.statusText, 'newer-sequence-2')
+})
+
 test('shadow work must settle before a timed-out lease is failed for retry', async () => {
   let claimed = false
   let completed = 0
@@ -889,6 +931,7 @@ test('durable outbox preserves Final receive time and rejects a post-result issu
       },
       async readAuthoritativeFinalReceivedAt() { return '2026-08-19T15:28:11.952Z' },
       async persistRound() { settlements += 1; return { prediction: { settlement_final: true } } },
+      async persistCaptureAncillaryProjection({ sequence }) { return { persisted: true, skipped: false, sequence } },
       async completeCaptureOutbox() { completed += 1; return { completed: true } },
       async failCaptureOutbox() { assert.fail('post-result issuance must be a bounded skip, not a retry') },
     },

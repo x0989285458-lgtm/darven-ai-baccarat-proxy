@@ -33,7 +33,7 @@ test('Formal.12 raw lane and HTTP deadline fail before the upstream edge while a
   assert.match(writer, /createPool\(2, \{ connectionTimeoutMillis: 5000, queryTimeoutMs: 12000, statementTimeoutMs: 10000 \}\)/)
   const ackStart = server.indexOf("const rawAcknowledgement = await supabaseClient.persistCaptureEnvelope")
   const ackReturn = server.indexOf('return jsonResponse(200, ack, frontendOrigin)', ackStart)
-  const ancillarySchedule = server.indexOf('scheduleCaptureAncillaryPersistence(parsed)', ackStart)
+  const ancillarySchedule = server.indexOf('scheduleCaptureAncillaryPersistence({', ackStart)
   assert.ok(ackStart >= 0 && ancillarySchedule > ackStart && ancillarySchedule < ackReturn)
   assert.doesNotMatch(server.slice(ackStart, ackReturn), /await scheduleCaptureAncillaryPersistence/)
   assert.match(server, /async function persistCaptureAncillaryProjection\(parsed\)[\s\S]*writeCloudCaptureStatus[\s\S]*writeCloudTableSnapshot/)

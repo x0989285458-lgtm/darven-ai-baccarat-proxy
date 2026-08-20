@@ -786,6 +786,16 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   async function persistCaptureAncillaryProjection(parsed) {
     const sessionId = String(parsed?.sessionId ?? 'cloud-browser')
     if (!supabaseClient?.configured) return { skipped: true, reason: 'writer_not_configured' }
+    if (typeof supabaseClient.persistCaptureAncillaryProjection === 'function') {
+      return supabaseClient.persistCaptureAncillaryProjection({
+        sessionId,
+        sequence: parsed.sequence,
+        capturedAt: parsed.capturedAt,
+        status: parsed.status,
+        tables: parsed.tables,
+      })
+    }
+    if (production) throw new Error('atomic monotonic capture projection writer is required')
     await Promise.all([
       supabaseClient.writeCloudCaptureStatus?.({
         sessionId,
@@ -903,9 +913,14 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               const receivedAt = round?.receivedAt ?? persistedRoundTimes.get(predictionTargetKey(round?.tableId ?? round?.table_id, round?.shoe ?? round?.shoe_no, round?.round ?? round?.round_no)) ?? null
               return receivedAt ? { ...round, receivedAt } : { ...round }
             }) : []
-            const parsed = work.status && Array.isArray(work.tables) && Array.isArray(work.rounds)
+            const parsedPayload = work.status && Array.isArray(work.tables) && Array.isArray(work.rounds)
               ? { sessionId: work.sessionId ?? sessionId, status: work.status, tables: work.tables, rounds: timedWorkRounds }
               : parseCloudCapturePayload({ ...work, rounds: timedWorkRounds, buildVersion: work.buildVersion ?? WORKER_PROTOCOL_BUILD_VERSION })
+            const parsed = {
+              ...parsedPayload,
+              sequence: Number(work.sequence ?? sequence),
+              capturedAt: work.capturedAt ?? row?.payload?.snapshot?.snapshot_at ?? row?.payload?.status?.last_message_at ?? null,
+            }
             const applied = await runLeasePhase('formal', () => (
               applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Formal, persistAncillary: false })
             ))
@@ -1272,7 +1287,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                 state.setTables(parsed.tables, { notify: parsed.rounds.length === 0 })
               }
               captureResult = { durableTimings: { rawOutboxMs: Math.max(0, Date.now() - rawOutboxStartedAt) } }
-              void scheduleCaptureAncillaryPersistence(parsed)
+              void scheduleCaptureAncillaryPersistence({
+                ...parsed,
+                sequence: Number(envelope.sequence),
+                capturedAt: stableCapturedAt,
+              })
               if (!duplicateCapture) {
                 void drainCaptureOutbox().catch((error) => {
                   state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })

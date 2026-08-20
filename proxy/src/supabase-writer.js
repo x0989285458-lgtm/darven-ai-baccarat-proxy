@@ -2256,6 +2256,10 @@ export function createSupabaseIngestionClient({
           text: 'select public.persist_latest_cloud_table_snapshot($1::jsonb) as persist_latest_cloud_table_snapshot',
           values: [body?.p_snapshot],
         },
+        'rpc/persist_v105_capture_ancillary_projection': {
+          text: 'select public.persist_v105_capture_ancillary_projection($1::jsonb) as persist_v105_capture_ancillary_projection',
+          values: [body?.p_projection],
+        },
         'rpc/apply_v105_rank_ledger_event': {
           text: 'select public.apply_v105_rank_ledger_event($1::jsonb, $2::jsonb) as apply_v105_rank_ledger_event',
           values: [body?.p_event, body?.p_ledger],
@@ -3563,7 +3567,14 @@ export function createSupabaseIngestionClient({
           status: statusRow,
           snapshot: snapshotRow,
           rounds: roundRows,
-          work: { sessionId: normalizedSessionId, status, tables, rounds },
+          work: {
+            sessionId: normalizedSessionId,
+            sequence: normalizedSequence,
+            capturedAt: captureTime,
+            status,
+            tables,
+            rounds,
+          },
           ...(source == null ? {} : { source: structuredClone(source) }),
         },
       }, undefined, { requireObject: true, critical: true })
@@ -3618,6 +3629,45 @@ export function createSupabaseIngestionClient({
       return postDurableRest('rpc/get_v105_capture_outbox_health', {}, undefined, {
         requireObject: true, control: true,
       })
+    },
+    async persistCaptureAncillaryProjection({ sessionId, sequence, capturedAt, status = {}, tables = [] } = {}) {
+      const normalizedSessionId = String(sessionId ?? '')
+      const normalizedSequence = Number(sequence)
+      const normalizedCapturedAt = String(capturedAt ?? '')
+      if (!normalizedSessionId || !Number.isSafeInteger(normalizedSequence) || normalizedSequence < 1
+          || !Number.isFinite(Date.parse(normalizedCapturedAt))) {
+        throw new Error('capture ancillary projection identity is required')
+      }
+      const statusRow = buildCloudCaptureStatusRow({
+        sessionId: normalizedSessionId,
+        captureSource: 'cloud_browser',
+        status,
+        metadata: { sequence: normalizedSequence, capturedAt: normalizedCapturedAt },
+      })
+      statusRow.last_message_at = normalizedCapturedAt
+      const snapshotRow = {
+        ...buildCloudTableSnapshotRow({
+          sessionId: normalizedSessionId,
+          tables,
+          status,
+          metadata: { sequence: normalizedSequence, capturedAt: normalizedCapturedAt },
+        }),
+        snapshot_at: normalizedCapturedAt,
+      }
+      const acknowledgement = await postDurableRest('rpc/persist_v105_capture_ancillary_projection', {
+        p_projection: {
+          session_id: normalizedSessionId,
+          sequence: normalizedSequence,
+          captured_at: normalizedCapturedAt,
+          status: statusRow,
+          snapshot: snapshotRow,
+        },
+      }, undefined, { requireObject: true })
+      if ((acknowledgement?.persisted !== true && acknowledgement?.skipped !== true)
+          || Number(acknowledgement?.sequence) !== normalizedSequence) {
+        throw new Error('capture ancillary projection acknowledgement failed')
+      }
+      return acknowledgement
     },
     async writeCloudCaptureStatus(payload) {
       const row = buildCloudCaptureStatusRow(payload)

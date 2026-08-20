@@ -563,3 +563,31 @@ test('client reads latest cloud capture status and table snapshot from Supabase 
   assert.deepEqual(requests.map((request) => new URL(request.url).searchParams.get('order')), ['snapshot_at.desc', 'updated_at.desc'])
   assert.deepEqual(requests.map((request) => new URL(request.url).searchParams.get('table_count')), [null, null], 'zero-table tombstones must remain visible to cold-start readers')
 })
+
+test('Formal.13 ancillary projection uses one direct monotonic RPC with immutable sequence and capture time', async () => {
+  const queries = []
+  const client = createSupabaseIngestionClient({
+    strategyPool: {
+      async query(query) {
+        queries.push(query)
+        return { rows: [{ persist_v105_capture_ancillary_projection: { persisted: true, skipped: false, sequence: 2 } }] }
+      },
+    },
+  })
+  const result = await client.persistCaptureAncillaryProjection({
+    sessionId: 'projection-session',
+    sequence: 2,
+    capturedAt: '2026-08-20T00:00:02.000Z',
+    status: { connected: true, authenticated: true, statusText: 'newer' },
+    tables: [{ tableId: 'BAG01' }],
+  })
+  assert.equal(result.persisted, true)
+  assert.equal(queries.length, 1)
+  assert.match(queries[0].text, /persist_v105_capture_ancillary_projection\(\$1::jsonb\)/)
+  assert.equal(queries[0].values[0].session_id, 'projection-session')
+  assert.equal(queries[0].values[0].sequence, 2)
+  assert.equal(queries[0].values[0].captured_at, '2026-08-20T00:00:02.000Z')
+  assert.equal(queries[0].values[0].status.metadata.sequence, 2)
+  assert.equal(queries[0].values[0].snapshot.metadata.sequence, 2)
+  assert.equal(queries[0].values[0].snapshot.tables[0].tableId, 'BAG01')
+})

@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.12",
+  "releaseVersion": "v106.0.0-formal.13",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.69",
-  "status": "formal12-bounded-raw-ack-candidate",
+  "applicationVersion": "1.0.70",
+  "status": "formal13_candidate_pending_fresh_review_and_production_gate",
   "productionE2E": "not-run-production-remains-v105",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.69",
+      "packageVersion": "1.0.70",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,11 +27,11 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "0090ca2f8702f770bc28dd246dc7eca1b044738f0c3e96988e1f35b659f08feb",
-    "proxyBuildInput": "55a279313dc86a49d7cee09dbac012c003be5aca9c63ff9c427e0e17a5ae3f8d",
+    "implementationTree": "66bb4ed55d2dc5af452322e959ee90bae590eb1df781911b7604b435f6beeea7",
+    "proxyBuildInput": "865fac75d83242ed7a3c440e4399df878c4a4b485913bd27dfd6382134473425",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "1d1bca0bd3d82c3311648c712c5ec3eba6472df37f78ee297603907879451a14"
+    "databaseCutoverInput": "68025baa823b533c11f066ff8262c7c9be2121a16100ff5bfb8503d9975a8abd"
   },
   "rollbackComponents": {
     "proxy": {
@@ -82,14 +82,14 @@
     "note": "Tie/PUSH excluded from directional hit-rate denominator. Full-output V10 candidate was rejected after producing net -15 hits; eligible-only promotion is the reviewed candidate."
   },
   "verified": {
-    "proxy": "1019/1019 PASS for Formal.12 exact staged candidate",
+    "proxy": "1023/1023 PASS for Formal.13 exact staged candidate",
     "releaseBinding": "five mandatory staged-tree digests plus seven ordered database artifact contracts with exact Git blob SHA-1 verified in precommit mode; release authorization remains false until external attestation and annotated tag",
     "testEnvironmentFence": "shared proxy/worker scrubber removes DB, service-role, proxy-control, member/admin session, MT token/session/portal path, worker, ingest, Render and Cloudflare authority before child tests; focused 2/2 pass",
-    "focusedTests": "Formal.12 Raw ACK, pool routing, ancillary recovery, release identity and binding focused suite 90/90 PASS before full suite",
+    "focusedTests": "Formal.13 monotonic projection static/runtime, direct RPC, complete capture Outbox and release binding focused tests PASS.",
     "predecessorRegression": "8/8 v105 predecessor regressions derived from release base 6bdd39e8 pass against the candidate server; the base source SHA-256 is verifier-bound and 13/13 dedicated v106 server tests pass separately",
     "outboxFailureAckIsolation": "25/25 outbox tests pass; a permanently stalled Formal promise enters FORMAL_SETTLEMENT_STALLED fatal with exit 70, sends no failure ACK, and retains the exact lease for stale-lease recovery",
-    "frontend": "156/156 PASS; exact production build PASS; frontend unchanged",
-    "worker": "212/212 scrubbed PASS; unchanged worker package 1.0.63/build 105/protocol v105",
+    "frontend": "156/156 PASS and production build PASS",
+    "worker": "212/212 PASS",
     "databaseMigration": "PASS on production schema inside one stripped-outer-boundary transaction and fully rolled back: both SECURITY DEFINER functions compiled, two service_role EXECUTE grants read back, shared source fence present, mutable projections absent, function definitions and sole Active v105 restored byte-for-byte by hash",
     "diffCheck": "git diff --check pass",
     "secretScan": "gitleaks 8.30.1 exact staged blobs; 19 files; zero leaks; exit 0",
@@ -124,7 +124,20 @@
     "gitleaksFinalOrderFix": "0 findings across 4 staged rollback-order verifier files",
     "formal12Fix": "Raw ACK durable transaction is bounded to immutable evidence/outbox/cursor; mutable snapshot/status writes are coalesced outside the HTTP ACK await path; same-source DB work uses shared source fencing, epoch takeover remains exclusive; pools are 3/4/2/1 with total 10 and Raw 12/10-second query/statement bounds",
     "formal12DatabaseBarrier": "PASS in a disposable isolated schema on production PostgreSQL: two same-source different sessions progressed concurrently while one immutable insert was blocked; same-session contention failed fast without cursor advance; epoch takeover failed while shared work was active, succeeded after drain, and rejected stale epoch; schema removed afterward",
-    "formal11ProductionResult": "exact formal.11 advanced v106 issuance but settlement_final stayed zero; ACK stayed zero, Queue rose, Worker received 502 invalid acknowledgement, and Proxy health degraded; controlled rollback restored sole Active v105 exact proxy/worker 6bdd39e8, ten tables, active outbox zero, dead-letter baseline 273"
+    "formal11ProductionResult": "exact formal.11 advanced v106 issuance but settlement_final stayed zero; ACK stayed zero, Queue rose, Worker received 502 invalid acknowledgement, and Proxy health degraded; controlled rollback restored sole Active v105 exact proxy/worker 6bdd39e8, ten tables, active outbox zero, dead-letter baseline 273",
+    "formal13MonotonicProjection": {
+      "staticContract": "PASS",
+      "focusedRuntime": "PASS",
+      "productionSchemaRollbackRehearsal": "PASS",
+      "sequence2ThenSequence1": "stale_sequence",
+      "newerSequenceOlderCapture": "stale_capture_time",
+      "concurrentSameSessionSerialized": true,
+      "concurrentWaitMs": 441.0,
+      "rollbackRows": [
+        0,
+        0
+      ]
+    }
   },
   "pending": [
     "formal.12 refreshed final commit/tree, full suite, two explicit Fresh Reviews and external attestation",

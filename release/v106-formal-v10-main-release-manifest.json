@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.12",
-  "gitTag": "v106.0.0-formal.12",
-  "applicationVersion": "1.0.69",
+  "releaseVersion": "v106.0.0-formal.13",
+  "gitTag": "v106.0.0-formal.13",
+  "applicationVersion": "1.0.70",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -97,6 +97,12 @@
       "deploymentStep": "database-bounded-raw-ack",
       "gitBlobSha1": "414290db7134adcfedfa56563492233088964905"
     },
+    "monotonicProjection": {
+      "path": "supabase/migrations/20260820020000_v106_formal13_monotonic_projection.sql",
+      "deploymentStep": "database-monotonic-projection",
+      "contract": "Atomic per-session status/snapshot projection persists only monotonic durable sequence and capturedAt; stale retries skip without regression.",
+      "gitBlobSha1": "bdf9c7dd193852d38ac0163ebd06a5de1b87a98d"
+    },
     "fence": {
       "path": "supabase/operations/fence_v105_new_issuance.sql",
       "deploymentStep": "fence-v105-new-issuance",
@@ -143,6 +149,7 @@
     "database-additive",
     "database-final-time-fence",
     "database-bounded-raw-ack",
+    "database-monotonic-projection",
     "deploy-worker-1.0.63-protocol-v105",
     "verify-worker-v105-compatibility",
     "fence-v105-new-issuance",
@@ -256,6 +263,7 @@
         "supabase/migrations/20260818010000_v106_formal_v10_main.sql",
         "supabase/migrations/20260820003500_v106_formal8_final_time_fence.sql",
         "supabase/migrations/20260820010000_v106_formal12_bounded_raw_ack.sql",
+        "supabase/migrations/20260820020000_v106_formal13_monotonic_projection.sql",
         "supabase/operations/fence_v105_new_issuance.sql",
         "supabase/operations/terminalize_v105_cutover.sql",
         "supabase/operations/activate_v106_promotion.sql",
@@ -264,7 +272,7 @@
         "supabase/operations/rollback_v106_to_v105.sql"
       ],
       "excludedPaths": [],
-      "sha256": "0090ca2f8702f770bc28dd246dc7eca1b044738f0c3e96988e1f35b659f08feb"
+      "sha256": "66bb4ed55d2dc5af452322e959ee90bae590eb1df781911b7604b435f6beeea7"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -275,7 +283,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "55a279313dc86a49d7cee09dbac012c003be5aca9c63ff9c427e0e17a5ae3f8d"
+      "sha256": "865fac75d83242ed7a3c440e4399df878c4a4b485913bd27dfd6382134473425"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -305,6 +313,7 @@
         "supabase/migrations/20260818010000_v106_formal_v10_main.sql",
         "supabase/migrations/20260820003500_v106_formal8_final_time_fence.sql",
         "supabase/migrations/20260820010000_v106_formal12_bounded_raw_ack.sql",
+        "supabase/migrations/20260820020000_v106_formal13_monotonic_projection.sql",
         "supabase/operations/fence_v105_new_issuance.sql",
         "supabase/operations/terminalize_v105_cutover.sql",
         "supabase/operations/activate_v106_promotion.sql",
@@ -313,7 +322,7 @@
         "supabase/operations/rollback_v106_to_v105.sql"
       ],
       "excludedPaths": [],
-      "sha256": "1d1bca0bd3d82c3311648c712c5ec3eba6472df37f78ee297603907879451a14"
+      "sha256": "68025baa823b533c11f066ff8262c7c9be2121a16100ff5bfb8503d9975a8abd"
     }
   },
   "historicalArtifactsPreserved": true,
@@ -375,5 +384,12 @@
     "productionEvidence": "exact formal.11 advanced v106 immutable issuance while settlement_final remained zero; Worker durable ACK did not advance, Queue rose, Proxy returned 502 invalid acknowledgement and health degraded; physical raw/control separation did not bound the Raw SQL transaction itself",
     "safeState": "all producers stopped; unresolved v106 issuance and active outbox terminalized without deleting evidence; production restored to sole Active v105 exact proxy/worker commit 6bdd39e8; ten tables connected/authenticated/joined; active outbox zero; historical dead-letter 273 preserved",
     "formal12Fix": "Raw ACK transaction retains only source fence, immutable rounds, durable outbox payload and monotonic session cursor; latest snapshot/status move to coalesced restart-recoverable ancillary scheduling; same-source sessions use shared source fencing while epoch takeover remains exclusive and fail-fast; DB pools are 3 standard, 4 formal, 2 raw, 1 control (total 10) with Raw 12/10-second query/statement bounds and a 15-second HTTP deadline"
+  },
+  "formal12ReviewBlock": {
+    "status": "BLOCK",
+    "reason": "Fresh review proved an older durable Outbox retry could overwrite newer mutable status/snapshot because retry work omitted immutable sequence and capturedAt.",
+    "candidateCommit": "fc140ff4b56bc873c5170cfa00d8a1f8b25bd1ef",
+    "candidateTree": "a88b2f428bc0fef8f7921c13182d786ff8926b29",
+    "formal13Fix": "Outbox work carries immutable sequence/capturedAt and a single atomic monotonic RPC skips stale sequence or capture time before writing either projection."
   }
 }
