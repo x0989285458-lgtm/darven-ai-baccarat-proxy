@@ -7,11 +7,11 @@ import urllib.parse
 import urllib.request
 
 EXPECTED_PROJECT_REF = 'gscfexhsqxvtpyxudtza'
-EXPECTED_RELEASE = 'v106.0.0-formal.24'
-EXPECTED_PACKAGE = '1.0.81'
+EXPECTED_RELEASE = 'v106.0.0-formal.25'
+EXPECTED_PACKAGE = '1.0.82'
 EXPECTED_MIGRATIONS = [
     '20260820030000', '20260820040000', '20260820050000',
-    '20260820060000', '20260821010000',
+    '20260820060000', '20260821010000', '20260821020000',
 ]
 EXPECTED_WRITER_ACL = {
     'issueV105': False,
@@ -88,6 +88,8 @@ def main():
         raise SystemExit('production DB gate generation missing')
     if payload.get('migrations') != EXPECTED_MIGRATIONS or payload.get('writerAcl') != EXPECTED_WRITER_ACL:
         raise SystemExit('production DB gate provenance mismatch')
+    if payload.get('issuanceAdmission') != {'v105': False, 'v106': True}:
+        raise SystemExit('production DB gate issuance admission mismatch')
     active_outbox = payload.get('activeOutbox')
     if not isinstance(active_outbox, dict) or any(type(active_outbox.get(key)) is not int for key in ('pending', 'processing', 'error', 'dead_letter')):
         raise SystemExit('production DB gate Outbox proof malformed')

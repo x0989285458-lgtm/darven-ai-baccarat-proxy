@@ -12,6 +12,22 @@ const extractSqlFunction = (sql, name) => {
   return match[0]
 }
 
+test('Formal.25 v105 issuance fence is a row-lock concurrency barrier while late settlement remains authorized', () => {
+  const migration = read('supabase/migrations/20260821020000_v106_formal25_issuance_barrier.sql')
+  const fence = read('supabase/operations/fence_v105_new_issuance.sql')
+  const activate = read('supabase/operations/activate_v106_promotion.sql')
+  const rollback = read('supabase/operations/rollback_v106_to_v105.sql')
+  const finalize = read('supabase/operations/finalize_v106_promotion.sql')
+  assert.match(migration, /add column if not exists issuance_enabled boolean/)
+  assert.match(migration, /version = 'v105'[\s\S]*issuance_enabled is true[\s\S]*for share/i)
+  assert.match(fence, /update public\.ai_strategy_versions[\s\S]*issuance_enabled = false[\s\S]*version = 'v105'/i)
+  assert.ok(fence.indexOf('issuance_enabled = false') < fence.indexOf('revoke execute'))
+  assert.match(activate, /version = 'v106'[\s\S]*issuance_enabled = true/i)
+  assert.match(rollback, /version = 'v105'[\s\S]*issuance_enabled = true/i)
+  assert.match(finalize, /grant execute on function public\.settle_v105_prediction/)
+  assert.doesNotMatch(finalize, /revoke execute on function public\.settle_v105_prediction/)
+})
+
 test('Formal.24 isolated runtime DB gate is service-role-only and proves exact cutover provenance', () => {
   const sql = read('supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql')
   assert.match(sql, /create or replace function public\.verify_v106_production_cutover_gate/)
@@ -25,7 +41,7 @@ test('Formal.24 isolated runtime DB gate is service-role-only and proves exact c
 })
 
 test('v106 release identity is coherent while the updated capture worker retains protocol v105', () => {
-  assert.equal(json('proxy/package.json').version, '1.0.81')
+  assert.equal(json('proxy/package.json').version, '1.0.82')
   assert.equal(json('frontend/package.json').version, '1.0.63')
   assert.equal(json('cloud-browser-worker/package.json').version, '1.0.63')
   assert.match(read('proxy/src/build-version.js'), /BUILD_VERSION = 'v106'/)
@@ -158,14 +174,14 @@ test('v106 frontend version gate fails closed and formal writer/hydration use v1
 
 test('v106 manifest encodes DB-first through finalize order and exact rollback', () => {
   const manifest = json('release/v106-formal-v10-main-release-manifest.json')
-  assert.equal(manifest.applicationVersion, '1.0.81')
+  assert.equal(manifest.applicationVersion, '1.0.82')
   assert.equal(manifest.strategyVersion, 'v106')
   assert.equal(manifest.mainStrategy.source, 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized')
   assert.equal(manifest.sideStrategy.source, 'v105')
   assert.equal(manifest.mainStrategy.activationGate, 'structureDiagnostics.eligible === true')
   assert.equal(manifest.mainStrategy.fallback, 'exact formal v105 main projection')
-  assert.equal(manifest.gitTag, 'v106.0.0-formal.24')
-  assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'database-final-time-fence', 'database-bounded-raw-ack', 'database-monotonic-projection', 'database-rollback-receipt', 'database-single-use-rollback-receipt', 'database-cutover-generation', 'database-raw-ingest-barrier', 'database-isolated-runtime-gate', 'deploy-worker-1.0.63-protocol-v105', 'verify-worker-v105-compatibility', 'fence-v105-new-issuance', 'producer-stop', 'terminalize-v105-cutover', 'drain-v105-and-queue', 'activate-v106', 'proxy', 'run-bound-production-cutover', 'frontend', 'live-e2e', 'finalize'])
+  assert.equal(manifest.gitTag, 'v106.0.0-formal.25')
+  assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'database-final-time-fence', 'database-bounded-raw-ack', 'database-monotonic-projection', 'database-rollback-receipt', 'database-single-use-rollback-receipt', 'database-cutover-generation', 'database-raw-ingest-barrier', 'database-isolated-runtime-gate', 'database-issuance-admission-barrier', 'deploy-worker-1.0.63-protocol-v105', 'verify-worker-v105-compatibility', 'fence-v105-new-issuance', 'producer-stop', 'terminalize-v105-cutover', 'drain-v105-and-queue', 'activate-v106', 'proxy', 'run-bound-production-cutover', 'frontend', 'live-e2e', 'finalize'])
   assert.equal(manifest.canonicalPublicProxyUrl, 'https://darven-ai-baccarat-proxy.onrender.com')
   assert.deepEqual(manifest.publicReadinessGate, {
     script: 'scripts/verify-v106-public-readiness.mjs',
@@ -176,8 +192,8 @@ test('v106 manifest encodes DB-first through finalize order and exact rollback',
     requestTimeoutMs: 20000,
     intervalMs: 15000,
     requiredIdentity: {
-      version: 'v106', buildVersion: 'v106', releaseVersion: 'v106.0.0-formal.24',
-      packageVersion: '1.0.81', commit: 'annotated-tag-attested-commit',
+      version: 'v106', buildVersion: 'v106', releaseVersion: 'v106.0.0-formal.25',
+      packageVersion: '1.0.82', commit: 'annotated-tag-attested-commit',
     },
     failClosedExitCode: 2,
   })
@@ -238,7 +254,7 @@ test('formal rollback terminalization fences v106, proves quiet, preserves evide
   assert.match(rawIngestBarrier, /revoke execute on function public\.persist_v105_capture_envelope\(jsonb\) from public, anon, authenticated, service_role/i)
   assert.match(rawIngestBarrier, /grant execute on function public\.persist_v105_fenced_capture_envelope\(jsonb\) to service_role/i)
   assert.match(activation, /revoke execute on function public\.persist_v105_capture_envelope\(jsonb\) from service_role/i)
-  assert.match(activation, /status = 'active', activated_at = now\(\), cutover_generation = gen_random_uuid\(\)/i)
+  assert.match(activation, /status = 'active', issuance_enabled = true, activated_at = now\(\), cutover_generation = gen_random_uuid\(\)/i)
   assert.match(sql, /select activated_at, cutover_generation[\s\S]*receipt_generation := active_cutover_generation/i)
   assert.match(rollback, /cutover_generation = active_cutover_generation/i)
   assert.match(rollback, /started_at >= active_strategy_activated_at/i)

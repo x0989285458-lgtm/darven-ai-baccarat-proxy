@@ -27,7 +27,7 @@ test('Formal.23 binds an external trusted Python interpreter and strips import i
   assert.equal(env.PYTHONNOUSERSITE, '1')
 })
 
-test('Formal.24 DB gate is stdlib-only and calls one fixed service-role RPC', () => {
+test('Formal.25 DB gate is stdlib-only and calls one fixed service-role RPC', () => {
   const candidateIndexTree = tree()
   const source = execFileSync('git', ['show', `${candidateIndexTree}:scripts/verify-v106-production-db-gate.py`], { cwd: root, encoding: 'utf8' })
   assert.doesNotMatch(source, /import psycopg|psycopg\./)

@@ -6,8 +6,8 @@ import shutil
 import subprocess
 import tempfile
 
-EXPECTED_RELEASE = 'v106.0.0-formal.24'
-EXPECTED_PACKAGE = '1.0.81'
+EXPECTED_RELEASE = 'v106.0.0-formal.25'
+EXPECTED_PACKAGE = '1.0.82'
 EXPECTED_IMAGE = 'darven-worker:v106-formal3-33f9dc6'
 EXPECTED_IMAGE_ID = 'sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2'
 EXPECTED_COMMIT = os.environ.get('V106_RELEASE_COMMIT', '')

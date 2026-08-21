@@ -102,15 +102,15 @@ grant execute on function public.get_v105_prediction_lifecycle_stats() to servic
 grant execute on function public.persist_v105_fenced_capture_envelope(jsonb) to service_role;
 
 update public.ai_strategy_versions
-set status = 'archived'
+set status = 'archived', issuance_enabled = false
 where version = 'v106';
 
 update public.ai_strategy_versions
-set status = 'archived'
+set status = 'archived', issuance_enabled = false
 where status = 'active' and version <> 'v105';
 
 update public.ai_strategy_versions
-set status = 'active', activated_at = now(), cutover_generation = gen_random_uuid()
+set status = 'active', issuance_enabled = true, activated_at = now(), cutover_generation = gen_random_uuid()
 where version = 'v105';
 
 update public.v105_shadow_v10_rank_sync_runtime_settings

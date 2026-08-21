@@ -9,6 +9,13 @@ do $$
 declare
   terminalized_count integer := 0;
 begin
+  if not exists (
+    select 1 from public.ai_strategy_versions
+    where version = 'v105' and issuance_enabled is false
+  ) then
+    raise exception 'v105 issuance row barrier is not closed';
+  end if;
+
   if has_function_privilege('service_role', 'public.issue_v105_prediction(jsonb)', 'EXECUTE') then
     raise exception 'v105 issuance RPC is not fenced';
   end if;

@@ -53,11 +53,11 @@ set enabled = false, status = 'shadow_disabled', updated_at = now()
 where release_candidate = 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized';
 
 update public.ai_strategy_versions
-set status = 'archived'
+set status = 'archived', issuance_enabled = false
 where status = 'active' and version <> 'v106';
 
 update public.ai_strategy_versions
-set status = 'active', activated_at = now(), cutover_generation = gen_random_uuid()
+set status = 'active', issuance_enabled = true, activated_at = now(), cutover_generation = gen_random_uuid()
 where version = 'v106';
 
 do $$
