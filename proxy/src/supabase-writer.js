@@ -1976,7 +1976,7 @@ export function resolveBackendReadConnectionString(connectionString) {
   return raw
 }
 
-function createStrategyQueryScheduler(strategyDb, { priorityDb = strategyDb, criticalDb = strategyDb, controlDb = strategyDb, maxConcurrent = 10, maxStandardConcurrent = 4, maxPriorityConcurrent = 4, maxCriticalConcurrent = 1, maxControlConcurrent = 1, queueTimeoutMs = 30000 } = {}) {
+function createStrategyQueryScheduler(strategyDb, { priorityDb = strategyDb, criticalDb = strategyDb, controlDb = strategyDb, maxConcurrent = 10, maxStandardConcurrent = 4, maxPriorityConcurrent = 4, maxCriticalConcurrent = 1, maxControlConcurrent = 1, criticalQueryTimeoutMs = 9000, controlQueryTimeoutMs = 8000, queueTimeoutMs = 30000 } = {}) {
   const criticalQueue = []
   const controlQueue = []
   const priorityQueue = []
@@ -2006,8 +2006,18 @@ function createStrategyQueryScheduler(strategyDb, { priorityDb = strategyDb, cri
       else if (item.priority) priorityActive += 1
       else standardActive += 1
       const laneDb = item.critical ? criticalDb : item.control ? controlDb : item.priority ? priorityDb : strategyDb
+      const laneTimeoutMs = item.critical ? criticalQueryTimeoutMs : item.control ? controlQueryTimeoutMs : 0
+      const queryArgs = laneTimeoutMs > 0 && item.args?.[0] && typeof item.args[0] === 'object' && !Array.isArray(item.args[0])
+        ? [{
+            ...item.args[0],
+            query_timeout: Math.min(
+              laneTimeoutMs,
+              Number(item.args[0].query_timeout) > 0 ? Number(item.args[0].query_timeout) : laneTimeoutMs,
+            ),
+          }, ...item.args.slice(1)]
+        : item.args
       Promise.resolve()
-        .then(() => laneDb.query(...item.args))
+        .then(() => laneDb.query(...queryArgs))
         .then(item.resolve, item.reject)
         .finally(() => {
           active -= 1
@@ -2094,7 +2104,7 @@ export function createSupabaseIngestionClient({
   })
   const rawStrategyDb = strategyPool ?? (dbConnectionString
     ? createPool(resolvedStrategyPoolMax, sharedBackendPool
-      ? { connectionTimeoutMillis: 10000, queryTimeoutMs: 40000, statementTimeoutMs: 35000 }
+      ? { connectionTimeoutMillis: 5000, queryTimeoutMs: 40000, statementTimeoutMs: 35000 }
       : {})
     : null)
   // Scheduler lanes reserve execution capacity. They intentionally share one pg.Pool so an

@@ -153,7 +153,7 @@ test('backend transaction lanes share one reusable ten-connection pool while sch
   assert.deepEqual(configs.map((config) => config.query_timeout), [40000])
   assert.deepEqual(configs.map((config) => config.statement_timeout), [35000])
   assert.equal(configs.reduce((sum, config) => sum + config.max, 0), 10)
-  assert.deepEqual(configs.map((config) => config.connectionTimeoutMillis), [10000])
+  assert.deepEqual(configs.map((config) => config.connectionTimeoutMillis), [5000])
   for (const config of configs) {
     assert.equal(new URL(config.connectionString).port, '6543')
     assert.equal(config.idleTimeoutMillis, 30000)
@@ -170,7 +170,7 @@ test('backend transaction scheduler routes standard, formal, raw, and control wo
     strategyPoolFactory: (config) => ({
       async query(query) {
         const text = String(query?.text ?? query)
-        laneCalls.push({ max: config.max, text })
+        laneCalls.push({ max: config.max, queryTimeout: query?.query_timeout, text })
         if (/persist_latest_cloud_table_snapshot/i.test(text)) {
           return { rows: [{ persist_latest_cloud_table_snapshot: { persisted: true, skipped: false } }] }
         }
@@ -199,6 +199,7 @@ test('backend transaction scheduler routes standard, formal, raw, and control wo
   })
   await client.getCaptureOutboxHealth()
   assert.deepEqual(laneCalls.map((call) => call.max), [10, 10, 10, 10])
+  assert.deepEqual(laneCalls.map((call) => call.queryTimeout), [undefined, 3500, 9000, 8000])
 })
 
 test('two physical raw connections prevent one stalled session from head-of-line blocking another session', async () => {
