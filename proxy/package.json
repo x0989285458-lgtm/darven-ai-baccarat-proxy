@@ -1,6 +1,6 @@
 {
   "name": "draven-mt-data-proxy-v106",
-  "version": "1.0.100",
+  "version": "1.0.101",
   "private": true,
   "type": "module",
   "description": "Draven MT百家資料代理伺服器 v106：V10非常見大路結構僅在eligible時接管主項，其餘精確回退v105，六項副預測維持v105正式契約。",

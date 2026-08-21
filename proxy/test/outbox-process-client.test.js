@@ -7,6 +7,8 @@ import { createOutboxProcessClient } from '../src/outbox-process-client.js'
 test('production parent delegates startup drain and worker self-drains', () => {
   const server = readFileSync(new URL('../src/server.js', import.meta.url), 'utf8')
   const worker = readFileSync(new URL('../src/outbox-process-worker.js', import.meta.url), 'utf8')
+  assert.match(server, /if \(!outboxProcessClient && isolatedShadowProcess\)/)
+  assert.match(server, /if \(!outboxProcessClient\) \{[\s\S]*v103Shadow[\s\S]*v105ShadowV10/)
   assert.match(server, /if \(outboxProcessClient\) \{[\s\S]*outboxProcessClient\.wake\(\)[\s\S]*\} else \{[\s\S]*drainCaptureOutbox\(\)/)
   assert.match(worker, /process\.send\?\.\(\{ type: 'ready' \}\)[\s\S]*void drain\(\)/)
 })

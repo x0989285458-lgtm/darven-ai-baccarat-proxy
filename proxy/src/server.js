@@ -2393,7 +2393,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
         }
       }
-      if (isolatedShadowProcess) {
+      if (!outboxProcessClient && isolatedShadowProcess) {
         if (FORMAL_STRATEGY_VERSION === 'v106' && typeof isolatedShadowProcess.stopV10 === 'function') {
           try {
             await isolatedShadowProcess.stopV10()
@@ -2447,11 +2447,13 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         else if (captureUrl) chromeClient.start()
         else mtClient.connect()
       }
-      if (v103Shadow?.enabled === true && typeof v103Shadow.start === 'function') void v103Shadow.start().catch(() => {})
-      if (v104Shadow?.enabled === true && typeof v104Shadow.start === 'function') void v104Shadow.start().catch(() => {})
-      if (v104IterationShadow?.enabled === true && typeof v104IterationShadow.start === 'function') void v104IterationShadow.start().catch(() => {})
-      if (v105ShadowV9?.enabled === true && typeof v105ShadowV9.start === 'function') void Promise.resolve().then(() => v105ShadowV9.start()).catch(() => {})
-      if (v105ShadowV10?.enabled === true && typeof v105ShadowV10.start === 'function') void Promise.resolve().then(() => v105ShadowV10.start()).catch(() => {})
+      if (!outboxProcessClient) {
+        if (v103Shadow?.enabled === true && typeof v103Shadow.start === 'function') void v103Shadow.start().catch(() => {})
+        if (v104Shadow?.enabled === true && typeof v104Shadow.start === 'function') void v104Shadow.start().catch(() => {})
+        if (v104IterationShadow?.enabled === true && typeof v104IterationShadow.start === 'function') void v104IterationShadow.start().catch(() => {})
+        if (v105ShadowV9?.enabled === true && typeof v105ShadowV9.start === 'function') void Promise.resolve().then(() => v105ShadowV9.start()).catch(() => {})
+        if (v105ShadowV10?.enabled === true && typeof v105ShadowV10.start === 'function') void Promise.resolve().then(() => v105ShadowV10.start()).catch(() => {})
+      }
       if (outboxProcessClient) {
         if (!outboxProcessClient.wake()) throw new Error('isolated outbox process is unavailable')
       } else {

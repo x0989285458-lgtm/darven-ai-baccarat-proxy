@@ -37,8 +37,8 @@ begin
     raise exception 'v106 production DB gate requires service_role';
   end if;
   if p_phase not in ('pre', 'post')
-     or p_release_version <> 'v106.0.0-formal.43'
-     or p_package_version <> '1.0.100' then
+     or p_release_version <> 'v106.0.0-formal.44'
+     or p_package_version <> '1.0.101' then
     raise exception 'v106 production DB gate identity mismatch';
   end if;
 
