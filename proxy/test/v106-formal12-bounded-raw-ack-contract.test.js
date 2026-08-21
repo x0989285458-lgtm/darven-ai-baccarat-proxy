@@ -40,7 +40,7 @@ test('Formal.12 raw lane and HTTP deadline fail before the upstream edge while a
   const flushBinding = server.indexOf('res.end(result.body, () => result.afterResponse?.())', ackResponse)
   assert.ok(ackStart >= 0 && deferredTask > ackStart && ancillarySchedule > deferredTask && ackResponse > ancillarySchedule && flushBinding > ackResponse)
   assert.doesNotMatch(server.slice(ackStart, ackResponse), /await scheduleCaptureAncillaryPersistence/)
-  assert.match(server, /if \(afterResponseTask\) response\.afterResponse = \(\) => postAckScheduler\(afterResponseTask\)/)
+  assert.match(server, /let afterResponseConsumed = false[\s\S]*if \(afterResponseConsumed\) return[\s\S]*afterResponseConsumed = true[\s\S]*postAckScheduler\(afterResponseTask\)/)
   assert.match(server, /async function persistCaptureAncillaryProjection\(parsed\)[\s\S]*writeCloudCaptureStatus[\s\S]*writeCloudTableSnapshot/)
   assert.match(server, /runLeasePhase\('ancillary_projection'[\s\S]*persistCaptureAncillaryProjection[\s\S]*completeCaptureOutbox/)
 })

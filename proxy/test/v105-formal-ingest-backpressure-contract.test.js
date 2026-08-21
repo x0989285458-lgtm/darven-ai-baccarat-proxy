@@ -1327,10 +1327,55 @@ test('same durable ingest identity is single-flight across timed-out worker retr
   assert.equal(persistCalls, 2, 'one later retry may perform the authoritative durable duplicate readback')
 })
 
+test('successful overlapping retries consume shared post-ACK fan-out once', async () => {
+  let releasePersist
+  const persistGate = new Promise((resolve) => { releasePersist = resolve })
+  let persistCalls = 0
+  let postAckSchedules = 0
+  const writer = {
+    configured: true,
+    async writeCloudTableSnapshot() {},
+    async persistCaptureEnvelope({ sessionId, sequence, roundKeys }) {
+      persistCalls += 1
+      await persistGate
+      return { persisted: true, duplicate: false, session_id: sessionId, sequence, acceptedRoundKeys: roundKeys }
+    },
+  }
+  const app = createApp({
+    autoConnect: false,
+    ingestKey: 'worker-key',
+    now: () => 1_000_000,
+    ingestDeadlineMs: 1_000,
+    supabaseClient: writer,
+    postAckScheduler(task) { postAckSchedules += 1; task() },
+  })
+  const request = () => app.inject({
+    method: 'POST',
+    url: '/api/cloud-ingest/snapshot',
+    headers: { 'x-worker-key': 'worker-key' },
+    body: JSON.stringify({
+      protocolVersion: 'v105', timestamp: 1_000_000, sequence: 3, roundKeys: [],
+      snapshot: {
+        buildVersion: '105', sessionId: 'durable-single-consumer-worker', connected: true, authenticated: true,
+        tables: [{ tableId: 'BAG01', shoe: 'S3', round: 3 }], rounds: [],
+      },
+    }),
+  })
+
+  const first = request()
+  const retry = request()
+  await delay(0)
+  assert.equal(persistCalls, 1)
+  releasePersist()
+  const responses = await Promise.all([first, retry])
+  assert.deepEqual(responses.map(({ statusCode }) => statusCode), [200, 200])
+  assert.equal(postAckSchedules, 1, 'one shared successful result must schedule post-ACK fan-out once')
+})
+
 test('durable ACK flushes before local table prediction fan-out is scheduled', async () => {
   const serverSource = readFileSync(new URL('../src/server.js', import.meta.url), 'utf8')
   assert.match(serverSource, /res\.end\(result\.body, \(\) => result\.afterResponse\?\.\(\)\)/)
-  assert.match(serverSource, /if \(afterResponseTask\) response\.afterResponse = \(\) => postAckScheduler\(afterResponseTask\)/)
+  assert.match(serverSource, /let afterResponseConsumed = false[\s\S]*if \(afterResponseConsumed\) return[\s\S]*afterResponseConsumed = true[\s\S]*postAckScheduler\(afterResponseTask\)/)
   let deferredPostAck = null
   const writer = {
     configured: true,

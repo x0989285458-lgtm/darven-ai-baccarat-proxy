@@ -1361,7 +1361,14 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             eventMessage: null, eventStatusCode: null, eventKind: null, eventAt: null,
           })
           const response = jsonResponse(200, ack, frontendOrigin)
-          if (afterResponseTask) response.afterResponse = () => postAckScheduler(afterResponseTask)
+          if (afterResponseTask) {
+            let afterResponseConsumed = false
+            response.afterResponse = () => {
+              if (afterResponseConsumed) return
+              afterResponseConsumed = true
+              postAckScheduler(afterResponseTask)
+            }
+          }
           return response
         })
         if (usesDurableOutbox && !existingIngest) {
