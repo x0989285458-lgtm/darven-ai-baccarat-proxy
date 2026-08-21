@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { createOutboxProcessClient } from '../src/outbox-process-client.js'
+import { createOutboxProcessClient, DEFAULT_OUTBOX_PROCESS_STARTUP_TIMEOUT_MS } from '../src/outbox-process-client.js'
 
 test('production parent delegates startup drain and worker self-drains', () => {
   const server = readFileSync(new URL('../src/server.js', import.meta.url), 'utf8')
@@ -18,6 +18,7 @@ test('production parent delegates startup drain and worker self-drains', () => {
 })
 
 test('real delayed child can finish bounded initialization before readiness timeout', async () => {
+  assert.ok(DEFAULT_OUTBOX_PROCESS_STARTUP_TIMEOUT_MS > 245000)
   const client = createOutboxProcessClient({
     workerPath: fileURLToPath(new URL('./fixtures/delayed-outbox-ready-worker.js', import.meta.url)),
     startupTimeoutMs: 1000,

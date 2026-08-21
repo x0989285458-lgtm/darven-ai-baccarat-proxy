@@ -1,6 +1,8 @@
 import { fork } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
+export const DEFAULT_OUTBOX_PROCESS_STARTUP_TIMEOUT_MS = 300000
+
 const CHILD_ENV_KEYS = [
   'NODE_ENV', 'TZ',
   'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SUPABASE_DB_CONNECTION_STRING',
@@ -23,7 +25,7 @@ export function createOutboxProcessClient({
   forkImpl = fork,
   workerPath = fileURLToPath(new URL('./outbox-process-worker.js', import.meta.url)),
   env = process.env,
-  startupTimeoutMs = Number(process.env.OUTBOX_PROCESS_STARTUP_TIMEOUT_MS ?? 180000),
+  startupTimeoutMs = Number(process.env.OUTBOX_PROCESS_STARTUP_TIMEOUT_MS ?? DEFAULT_OUTBOX_PROCESS_STARTUP_TIMEOUT_MS),
   stopTimeoutMs = 5000,
   restartBaseDelayMs = 250,
   restartMaxDelayMs = 5000,
