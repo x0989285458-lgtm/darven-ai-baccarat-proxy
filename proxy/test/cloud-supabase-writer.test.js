@@ -139,7 +139,7 @@ test('backend formal reads use Supabase transaction pooler without rewriting unr
   assert.equal(resolveBackendReadConnectionString(direct), direct)
 })
 
-test('backend transaction pools physically reserve three standard, four formal, two raw, and one control connection', () => {
+test('backend transaction lanes share one reusable ten-connection pool while scheduler reserves lane capacity', () => {
   const configs = []
   createSupabaseIngestionClient({
     dbConnectionString: 'postgresql://user:secret@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres',
@@ -148,19 +148,19 @@ test('backend transaction pools physically reserve three standard, four formal, 
       return { query: async () => ({ rows: [] }) }
     },
   })
-  assert.equal(configs.length, 4)
-  assert.deepEqual(configs.map((config) => config.max), [3, 4, 2, 1])
-  assert.deepEqual(configs.map((config) => config.query_timeout), [30000, 40000, 12000, 10000])
-  assert.deepEqual(configs.map((config) => config.statement_timeout), [25000, 35000, 10000, 8000])
+  assert.equal(configs.length, 1, 'pool-local idle connections must be reusable by every scheduler lane')
+  assert.deepEqual(configs.map((config) => config.max), [10])
+  assert.deepEqual(configs.map((config) => config.query_timeout), [40000])
+  assert.deepEqual(configs.map((config) => config.statement_timeout), [35000])
   assert.equal(configs.reduce((sum, config) => sum + config.max, 0), 10)
-  assert.deepEqual(configs.map((config) => config.connectionTimeoutMillis), [10000, 10000, 5000, 10000])
+  assert.deepEqual(configs.map((config) => config.connectionTimeoutMillis), [10000])
   for (const config of configs) {
     assert.equal(new URL(config.connectionString).port, '6543')
     assert.equal(config.idleTimeoutMillis, 30000)
   }
 })
 
-test('backend transaction pools route standard, formal, raw, and control work through physical reservations', async () => {
+test('backend transaction scheduler routes standard, formal, raw, and control work through one reusable pool', async () => {
   const laneCalls = []
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co',
@@ -198,7 +198,7 @@ test('backend transaction pools route standard, formal, raw, and control work th
     source: { role: 'canonical_api', ownerId: 'physical-owner', epoch: 1 },
   })
   await client.getCaptureOutboxHealth()
-  assert.deepEqual(laneCalls.map((call) => call.max), [3, 4, 2, 1])
+  assert.deepEqual(laneCalls.map((call) => call.max), [10, 10, 10, 10])
 })
 
 test('two physical raw connections prevent one stalled session from head-of-line blocking another session', async () => {

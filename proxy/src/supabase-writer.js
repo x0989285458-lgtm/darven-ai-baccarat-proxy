@@ -2078,7 +2078,7 @@ export function createSupabaseIngestionClient({
   const resolvedStrategyPoolMax = Number.isInteger(strategyPoolMax) && strategyPoolMax >= 1 && strategyPoolMax <= 10
     ? strategyPoolMax
     : 10
-  const physicalLaneIsolation = !strategyPool && Boolean(dbConnectionString) && resolvedStrategyPoolMax === 10
+  const sharedBackendPool = !strategyPool && Boolean(dbConnectionString) && resolvedStrategyPoolMax === 10
   const createPool = (max, {
     connectionTimeoutMillis = 60000,
     queryTimeoutMs = 65000,
@@ -2093,19 +2093,17 @@ export function createSupabaseIngestionClient({
     idleTimeoutMillis: 30000,
   })
   const rawStrategyDb = strategyPool ?? (dbConnectionString
-    ? createPool(physicalLaneIsolation ? 3 : resolvedStrategyPoolMax, physicalLaneIsolation
-      ? { connectionTimeoutMillis: 10000, queryTimeoutMs: 30000, statementTimeoutMs: 25000 }
+    ? createPool(resolvedStrategyPoolMax, sharedBackendPool
+      ? { connectionTimeoutMillis: 10000, queryTimeoutMs: 40000, statementTimeoutMs: 35000 }
       : {})
     : null)
-  const rawPriorityStrategyDb = physicalLaneIsolation
-    ? createPool(4, { connectionTimeoutMillis: 10000, queryTimeoutMs: 40000, statementTimeoutMs: 35000 })
-    : rawStrategyDb
-  const rawCriticalStrategyDb = physicalLaneIsolation
-    ? createPool(2, { connectionTimeoutMillis: 5000, queryTimeoutMs: 12000, statementTimeoutMs: 10000 })
-    : rawStrategyDb
-  const rawControlStrategyDb = physicalLaneIsolation
-    ? createPool(1, { connectionTimeoutMillis: 10000, queryTimeoutMs: 10000, statementTimeoutMs: 8000 })
-    : rawStrategyDb
+  // Scheduler lanes reserve execution capacity. They intentionally share one pg.Pool so an
+  // idle connection opened by standard/formal work remains immediately reusable by raw ACKs.
+  // Splitting the same ten-connection budget into four pools stranded idle connections in
+  // production while a newly-created critical pool waited for another backend connection.
+  const rawPriorityStrategyDb = rawStrategyDb
+  const rawCriticalStrategyDb = rawStrategyDb
+  const rawControlStrategyDb = rawStrategyDb
   const completedRoundKeys = new Set()
   const inFlightRoundWrites = new Map()
   const preparedRoundWrites = new Map()
@@ -2128,8 +2126,8 @@ export function createSupabaseIngestionClient({
         priorityDb: rawPriorityStrategyDb,
         criticalDb: rawCriticalStrategyDb,
         controlDb: rawControlStrategyDb,
-        maxStandardConcurrent: physicalLaneIsolation ? 3 : 4,
-        maxCriticalConcurrent: physicalLaneIsolation ? 2 : 1,
+        maxStandardConcurrent: sharedBackendPool ? 3 : 4,
+        maxCriticalConcurrent: sharedBackendPool ? 2 : 1,
         queueTimeoutMs: durableWriteTimeoutMs,
       })
     : null

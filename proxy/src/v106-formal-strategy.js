@@ -2,7 +2,7 @@ import { buildV105FormalPrediction } from './v105-formal-strategy.js'
 import { buildV105ShadowV10Prediction } from './v105-shadow-v10-contract.js'
 
 export const V106_FORMAL_STRATEGY_VERSION = 'v106'
-export const V106_FORMAL_RELEASE_VERSION = 'v106.0.0-formal.34'
+export const V106_FORMAL_RELEASE_VERSION = 'v106.0.0-formal.35'
 
 export function buildV106FormalPrediction(table = {}, historyRows = [], issuanceContext = {}) {
   // The formal v105 call receives the untouched source and remains the sole authority

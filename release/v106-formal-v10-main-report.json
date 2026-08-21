@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.34",
+  "releaseVersion": "v106.0.0-formal.35",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.91",
-  "status": "formal34_candidate_all_tests_pass_exact_release_pending",
+  "applicationVersion": "1.0.92",
+  "status": "formal35_candidate_all_tests_pass_exact_release_pending",
   "productionE2E": "not-run-production-remains-v105",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.91",
+      "packageVersion": "1.0.92",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,11 +27,11 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "ce3ba1fa471797f7ff7c4cdf3ee11f539a4acd5c5282f4fc97278296efc50f4f",
-    "proxyBuildInput": "ac43911d05e8373955e63044c0c1e97ac9c7721e243ef21a9d0999326a9fe7e0",
+    "implementationTree": "adbc32c2e3df2d1e34a62f67eb95f72b5f46c21a21eb2708e4f1633b1922ea63",
+    "proxyBuildInput": "29f1d4ecb76322a86a8655a39f28a0fd8b275f6a54f0ccda34c6c222cc1c0b6c",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "965078b50f92f600ef25e1ab64c0ebe35ac1980f73b3c15f1dbc53d9b222e9ac"
+    "databaseCutoverInput": "a7aaf33e8b2c7b3c70e781ccc7d3d1e40e11e60316224b07b5ffe2ab534ac29b"
   },
   "rollbackComponents": {
     "proxy": {
@@ -82,10 +82,10 @@
     "note": "Tie/PUSH excluded from directional hit-rate denominator. Full-output V10 candidate was rejected after producing net -15 hits; eligible-only promotion is the reviewed candidate."
   },
   "verified": {
-    "proxy": "1056/1056 PASS for Formal.34 candidate; isolated shadow-process 19/19 plus canonical lane 1037/1037.",
+    "proxy": "1056/1056 PASS for Formal.35 candidate; isolated shadow-process 19/19 plus canonical lane 1037/1037.",
     "releaseBinding": "five mandatory staged-tree digests plus thirteen ordered database artifact contracts with exact Git blob SHA-1, exact rollback component commit ancestry/package/build/protocol derivation, manifest-bound producer blob and trusted signed-tag authorization",
     "testEnvironmentFence": "shared proxy/worker scrubber removes DB, service-role, proxy-control, member/admin session, MT token/session/portal path, worker, ingest, Render and Cloudflare authority before child tests; focused 2/2 pass",
-    "focusedTests": "133/133 post-ACK/ingest/outbox/release/cutover/readiness/database contracts PASS.",
+    "focusedTests": "139/139 shared-pool/ingest/outbox/release/cutover/readiness/database contracts PASS.",
     "predecessorRegression": "8/8 v105 predecessor regressions derived from release base 6bdd39e8 pass against the candidate server; the base source SHA-256 is verifier-bound and 13/13 dedicated v106 server tests pass separately",
     "outboxFailureAckIsolation": "25/25 outbox tests pass; a permanently stalled Formal promise enters FORMAL_SETTLEMENT_STALLED fatal with exit 70, sends no failure ACK, and retains the exact lease for stale-lease recovery",
     "frontend": "156/156 PASS and production build PASS.",
@@ -194,11 +194,11 @@
     "formal31CanonicalSummary": "RED reproduced MT sourceAction summary vs DB-required /summary; GREEN canonicalizes all summary variants to /summary.",
     "formal32BoundedGrace": "RED reproduced slow work resolving after 5s shutdown grace but within one full lease; GREEN retries without fatal while permanent stall still exits 70.",
     "formal33SingleFlight": "RED reproduced four DB calls from one timed-out durable identity plus three retries; GREEN keeps one in-flight call, rejects payload conflict 409, then permits one later authoritative duplicate readback.",
-    "formal34PostAckFanout": "RED proved durable response still observed local table fan-out before return; GREEN returns exact DB ACK first and schedules local state/prediction/ancillary/Outbox work on setImmediate, while single-flight and conflict fencing remain PASS."
+    "formal34PostAckFanout": "RED proved durable response still observed local table fan-out before return; GREEN returns exact DB ACK first and schedules local state/prediction/ancillary/Outbox work on setImmediate, while single-flight and conflict fencing remain PASS.",
+    "formal35SharedPoolTdd": "RED: four physical pools [3,4,2,1] stranded idle per-pool connections; GREEN: all standard/formal/raw/control lanes route through one max=10 pool while scheduler still reserves 3 standard, 4 formal, 2 raw, 1 control execution slots."
   },
   "pending": [
-    "Formal.34 full tests, exact release, Fresh Review",
-    "Archive Formal.33 backlog, deploy Formal.34, exact cutover, sustained Final/ACK/Queue/10-table/frontend E2E"
+    "Formal.35 full suites, exact release binding, Fresh Review, production cutover, sustained Production E2E with Queue=0, new Final, fast health/admin, no 502/503/exit70."
   ],
   "productionTrialFormal13": {
     "verdict": "BLOCK_AND_ROLLBACK",

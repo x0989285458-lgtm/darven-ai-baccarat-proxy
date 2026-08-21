@@ -13,7 +13,7 @@ const candidate = {
 }
 const response = (payload) => ({ ok: true, status: 200, text: async () => JSON.stringify(payload), json: async () => payload })
 
-test('createSupabaseIngestionClient eagerly constructs all four physically isolated Direct DB pools when configured', () => {
+test('createSupabaseIngestionClient constructs one reusable Direct DB pool with scheduler lane reservations', () => {
   const poolConfigs = []
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co',
@@ -26,7 +26,7 @@ test('createSupabaseIngestionClient eagerly constructs all four physically isola
     },
   })
 
-  assert.deepEqual(poolConfigs.map((config) => config.max), [3, 4, 2, 1])
+  assert.deepEqual(poolConfigs.map((config) => config.max), [10])
   assert.equal(poolConfigs.reduce((sum, config) => sum + config.max, 0), 10)
   assert.equal(client.configured, true)
 })
