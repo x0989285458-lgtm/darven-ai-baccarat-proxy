@@ -1,7 +1,15 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
+import { readFileSync } from 'node:fs'
 import { createOutboxProcessClient } from '../src/outbox-process-client.js'
+
+test('production parent delegates startup drain and worker self-drains', () => {
+  const server = readFileSync(new URL('../src/server.js', import.meta.url), 'utf8')
+  const worker = readFileSync(new URL('../src/outbox-process-worker.js', import.meta.url), 'utf8')
+  assert.match(server, /if \(outboxProcessClient\) \{[\s\S]*outboxProcessClient\.wake\(\)[\s\S]*\} else \{[\s\S]*drainCaptureOutbox\(\)/)
+  assert.match(worker, /process\.send\?\.\(\{ type: 'ready' \}\)[\s\S]*void drain\(\)/)
+})
 
 function fakeChild() {
   const child = new EventEmitter()
@@ -36,7 +44,7 @@ test('isolated outbox client starts, coalesces wakes in child, and stops with re
   assert.equal(client.status().running, false)
 })
 
-test('wake fail-closes into one restart path after the isolated child exits', async () => {
+test('isolated child exit restarts and drains without another producer wake', async () => {
   const children = [fakeChild(), fakeChild()]
   let index = 0
   const client = createOutboxProcessClient({
@@ -46,13 +54,17 @@ test('wake fail-closes into one restart path after the isolated child exits', as
       return child
     },
     startupTimeoutMs: 100,
+    restartBaseDelayMs: 1,
+    restartMaxDelayMs: 1,
   })
   await client.start()
   children[0].connected = false
   children[0].exitCode = 70
   children[0].emit('exit', 70, null)
-  assert.equal(client.wake(), true)
-  await new Promise((resolve) => setImmediate(resolve))
+  await new Promise((resolve) => setTimeout(resolve, 10))
   assert.equal(index, 2)
   assert.deepEqual(children[1].sent, [{ type: 'wake' }])
+  const stopping = client.stop()
+  children[1].emit('exit', 0, null)
+  await stopping
 })

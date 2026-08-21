@@ -25,11 +25,27 @@ export function createOutboxProcessClient({
   env = process.env,
   startupTimeoutMs = 10000,
   stopTimeoutMs = 5000,
+  restartBaseDelayMs = 250,
+  restartMaxDelayMs = 5000,
 } = {}) {
   let child = null
   let ready = false
   let starting = null
   let lastError = null
+  let stopping = false
+  let restartTimer = null
+  let restartAttempts = 0
+
+  function scheduleRestart() {
+    if (stopping || restartTimer) return
+    restartAttempts += 1
+    const delayMs = Math.min(restartMaxDelayMs, restartBaseDelayMs * (2 ** Math.min(restartAttempts - 1, 5)))
+    restartTimer = setTimeout(() => {
+      restartTimer = null
+      void start().then(() => wake()).catch(() => scheduleRestart())
+    }, Math.max(1, delayMs))
+    restartTimer.unref?.()
+  }
 
   function status() {
     return {
@@ -41,6 +57,7 @@ export function createOutboxProcessClient({
   }
 
   function start() {
+    if (stopping) return Promise.reject(new Error('outbox process client is stopping'))
     if (ready && child?.connected) return Promise.resolve(status())
     if (starting) return starting
     starting = new Promise((resolve, reject) => {
@@ -66,6 +83,7 @@ export function createOutboxProcessClient({
         } else {
           ready = true
           lastError = null
+          restartAttempts = 0
           resolve(status())
         }
       }
@@ -74,6 +92,7 @@ export function createOutboxProcessClient({
         if (message?.type === 'fatal') {
           lastError = String(message.error ?? 'outbox process failed')
           ready = false
+          try { spawned.kill('SIGKILL') } catch {}
         }
       })
       spawned.once('error', finish)
@@ -83,6 +102,7 @@ export function createOutboxProcessClient({
         const error = new Error(`outbox process exited (${code ?? signal ?? 'unknown'})`)
         lastError = error.message
         if (!settled) finish(error)
+        if (!stopping) scheduleRestart()
       })
     })
     return starting
@@ -104,6 +124,11 @@ export function createOutboxProcessClient({
   }
 
   async function stop() {
+    stopping = true
+    if (restartTimer) {
+      clearTimeout(restartTimer)
+      restartTimer = null
+    }
     const target = child
     if (!target) return { stopped: true }
     ready = false

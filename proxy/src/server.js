@@ -2452,9 +2452,13 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       if (v104IterationShadow?.enabled === true && typeof v104IterationShadow.start === 'function') void v104IterationShadow.start().catch(() => {})
       if (v105ShadowV9?.enabled === true && typeof v105ShadowV9.start === 'function') void Promise.resolve().then(() => v105ShadowV9.start()).catch(() => {})
       if (v105ShadowV10?.enabled === true && typeof v105ShadowV10.start === 'function') void Promise.resolve().then(() => v105ShadowV10.start()).catch(() => {})
-      void drainCaptureOutbox().catch((error) => {
-        state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
-      })
+      if (outboxProcessClient) {
+        if (!outboxProcessClient.wake()) throw new Error('isolated outbox process is unavailable')
+      } else {
+        void drainCaptureOutbox().catch((error) => {
+          state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+        })
+      }
       return listeningServer
     },
     async stop() {
