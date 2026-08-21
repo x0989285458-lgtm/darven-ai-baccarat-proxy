@@ -381,6 +381,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const resolvedShadowShutdownDeadlineMs = Math.max(1, Number(shadowShutdownDeadlineMs) || 5000)
   const resolvedIngestDeadlineMs = Math.min(15000, Math.max(1, Number(ingestDeadlineMs) || 15000))
   const resolvedOutboxWorkDeadlineMs = Math.max(1, Number(outboxWorkDeadlineMs) || 45000)
+  const resolvedFormalSettlementGraceMs = Math.max(resolvedShadowShutdownDeadlineMs, resolvedOutboxWorkDeadlineMs)
   const resolvedOutboxBackoffMs = Math.max(1, Number(outboxBackoffMs) || 1000)
   const resolvedFatalHandler = fatalHandler ?? (production
     ? ({ exitCode }) => process.exit(exitCode)
@@ -891,7 +892,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                 try {
                   await withDeadline(
                     Promise.allSettled([underlying]),
-                    resolvedShadowShutdownDeadlineMs,
+                    resolvedFormalSettlementGraceMs,
                     `formal settlement did not settle after lease deadline for ${sessionId}:${sequence}`,
                   )
                 } catch {

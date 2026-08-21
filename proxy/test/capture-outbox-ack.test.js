@@ -248,6 +248,37 @@ test('permanently stalled formal work enters fatal without releasing the exact l
   assert.equal(app.state.snapshot().status.captureOutboxPhase?.code, 'FORMAL_SETTLEMENT_STALLED')
 })
 
+test('slow but bounded formal work settles during one full lease grace and releases the row for retry without fatal restart', async () => {
+  let claimed = false
+  let failureAcks = 0
+  const fatals = []
+  const app = createApp({
+    autoConnect: false,
+    outboxWorkDeadlineMs: 20,
+    shadowShutdownDeadlineMs: 5,
+    fatalHandler(value) { fatals.push(value) },
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: envelope().snapshot } })]
+      },
+      async completeCaptureOutbox() { assert.fail('timed-out formal work must retry') },
+      async failCaptureOutbox() { failureAcks += 1; return { failed: true, retryAfterMs: 10 } },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot() { await delay(30); return { tables: [] } },
+    },
+  })
+
+  const result = await app.drainCaptureOutbox()
+  assert.deepEqual(result, { processed: 0, failed: 1 })
+  assert.equal(failureAcks, 1)
+  assert.deepEqual(fatals, [])
+})
+
 test('same and older sequences always reach durable DB verification and conflicting payload returns 409', async () => {
   const persisted = []
   const app = createApp({

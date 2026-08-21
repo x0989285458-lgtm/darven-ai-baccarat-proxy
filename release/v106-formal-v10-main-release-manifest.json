@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.31",
-  "gitTag": "v106.0.0-formal.31",
-  "applicationVersion": "1.0.88",
+  "releaseVersion": "v106.0.0-formal.32",
+  "gitTag": "v106.0.0-formal.32",
+  "applicationVersion": "1.0.89",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -131,7 +131,7 @@
       "path": "supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql",
       "deploymentStep": "database-isolated-runtime-gate",
       "contract": "Service-role-only PostgreSQL provenance gate returns one bounded proof so no Python site package is needed during production cutover.",
-      "gitBlobSha1": "0a85a8e95c4c5f67b4df78daf340dc0ddd476abc"
+      "gitBlobSha1": "390f3fca069e1f685c83a35cbd143f3d2a8c76fc"
     },
     "fence": {
       "path": "supabase/operations/fence_v105_new_issuance.sql",
@@ -337,7 +337,7 @@
         "scripts/verify-v106-issuance-barrier-db.py"
       ],
       "excludedPaths": [],
-      "sha256": "1916b3a4dcf25b2a5bb39844558d46c0886a8d7769003e57d60b97452de5c9e5"
+      "sha256": "46ef9f246db5ae634e4f91f7602cef0fe9b8b70aeb8c60a65bb6561b2a9c4c4e"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -348,7 +348,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "bc30f0fc9d26a6696fd0194074301985bcfd0903ae9c7b020d57fc3fcbf57fea"
+      "sha256": "8e1967afe4aad73f1f067246cb3a201a37aa544bf178a7680f5820527db65711"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -395,7 +395,7 @@
         "scripts/verify-v106-issuance-barrier-db.py"
       ],
       "excludedPaths": [],
-      "sha256": "fbd0b64aa3dc78909a62fd65f9a7f9af72cba4fcd3e3e7be407cdc4b3e09dbbd"
+      "sha256": "132153035ccba3820cc001618444c6e555ef6c0f8afb24abead6089c0d426fd4"
     }
   },
   "historicalArtifactsPreserved": true,
@@ -482,8 +482,8 @@
     "requiredIdentity": {
       "version": "v106",
       "buildVersion": "v106",
-      "releaseVersion": "v106.0.0-formal.31",
-      "packageVersion": "1.0.88",
+      "releaseVersion": "v106.0.0-formal.32",
+      "packageVersion": "1.0.89",
       "commit": "annotated-tag-attested-commit"
     },
     "failClosedExitCode": 2,
@@ -524,7 +524,9 @@
     "formal29Production": "BLOCK_AND_ROLLBACK: identity gate passed, but gcloud/plink corrupted raw remote shell command substitutions; the unit drop-in still pinned V105 and launcher probed wrong port 8790. Worker remained inactive; DB and Render rolled back to V105.",
     "formal30Fix": "Start/stop launchers now base64-transport decoded root scripts, atomically update both release.env and the active systemd drop-in, probe real port 8787, separate process/image admission from strict post-start service readiness, and quote stop readback. The exact launcher was live-tested start then stop against the real VM with candidate immutable image ID.",
     "formal30Production": "Launcher and exact readiness ordering worked. Production then exposed a settlement canonicalization P1: MT Final sourceAction=summary was passed through unchanged while settle_v106_prediction requires canonical /summary, causing dead-letter outbox and service degradation.",
-    "formal31Fix": "Canonicalize every verified summary action variant to /summary before durable formal settlement; database retains strict exact /summary validation."
+    "formal31Fix": "Canonicalize every verified summary action variant to /summary before durable formal settlement; database retains strict exact /summary validation.",
+    "formal31Production": "Exact cutover runner PASS and canonical /summary settlements persisted, but bursts of up to five Finals saturated the four-client priority DB lane. The 45s lease expired while bounded queries were still queued; the separate 5s shadow shutdown grace falsely classified slow-but-bounded formal work as permanently stalled and exited 70.",
+    "formal32Fix": "Formal settlement receives one additional full outbox lease as bounded settle grace (max of lease and shadow shutdown). Truly permanent work still enters FORMAL_SETTLEMENT_STALLED; bounded late work settles, fails the exact row for retry, and preserves process availability."
   },
   "productionCutoverRunner": {
     "script": "scripts/run-v106-production-cutover.mjs",
@@ -538,11 +540,11 @@
     "requiresPreAndPostDatabaseGenerationGate": true,
     "requiresPostStartFailStopCompensation": true,
     "productionDbGateScript": "scripts/verify-v106-production-db-gate.py",
-    "productionDbGateScriptGitBlobSha1": "a640fdf19288612b95f9a48b15b3d96134a84cd8",
+    "productionDbGateScriptGitBlobSha1": "ea4ed1205677d898ea3b9c83fd6c56f3b93a59a6",
     "producerStartScript": "scripts/start-v106-formal-producer.py",
-    "producerStartScriptGitBlobSha1": "3a4822e543c7979c5907209ce44dab0dbe347665",
+    "producerStartScriptGitBlobSha1": "5788e7a6fc680f860aef737684eca9e9e76bb226",
     "producerStopScript": "scripts/stop-v106-formal-producer.py",
-    "producerStopScriptGitBlobSha1": "4272ceb0f6c1990170e3d222996a28210e5cf3d4",
+    "producerStopScriptGitBlobSha1": "c424940b5f6a939ad54e5e0e73f9bc5981d96c35",
     "producerImage": "darven-worker:v106-formal3-33f9dc6",
     "producerImageId": "sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2",
     "executesLaunchersFromExactGitTree": true,
