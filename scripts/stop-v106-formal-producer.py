@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import pathlib
@@ -6,8 +7,8 @@ import shutil
 import subprocess
 import tempfile
 
-EXPECTED_RELEASE = 'v106.0.0-formal.29'
-EXPECTED_PACKAGE = '1.0.86'
+EXPECTED_RELEASE = 'v106.0.0-formal.30'
+EXPECTED_PACKAGE = '1.0.87'
 EXPECTED_COMMIT = os.environ.get('V106_RELEASE_COMMIT', '')
 EXPECTED_GENERATION = os.environ.get('V106_CUTOVER_GENERATION', '')
 
@@ -33,15 +34,16 @@ try:
     env['CLOUDSDK_CONFIG'] = str(temp_config)
     env['CLOUDSDK_PYTHON'] = r'R:\AppData\Local\hermes\hermes-agent\venv\Scripts\python.exe'
     gcloud = r'Q:\google-cloud-sdk\bin\gcloud.cmd'
-    remote = (
-        "set -e; "
-        "sudo systemctl stop darven-worker.service; "
-        "sudo systemctl reset-failed darven-worker.service >/dev/null 2>&1 || true; "
-        "active=$(systemctl is-active darven-worker.service || true); "
-        "sub=$(systemctl show darven-worker.service -p SubState --value); "
-        "running=$(sudo docker inspect darven-worker --format '{{.State.Running}}' 2>/dev/null || echo false); "
-        "echo STOP_IDENTITY:${active}|${sub}|${running}"
-    )
+    remote_script = """set -euo pipefail
+systemctl stop darven-worker.service || true
+systemctl reset-failed darven-worker.service >/dev/null 2>&1 || true
+active=$(systemctl is-active darven-worker.service || true)
+sub=$(systemctl show darven-worker.service -p SubState --value)
+running=$(docker inspect darven-worker --format '{{.State.Running}}' 2>/dev/null || echo false)
+echo "STOP_IDENTITY:${active}|${sub}|${running}"
+"""
+    encoded = base64.b64encode(remote_script.encode('utf-8')).decode('ascii')
+    remote = f'echo {encoded} | base64 -d | sudo bash'
     command = [gcloud, 'compute', 'ssh', 'darven-mt-taiwan-worker-5', '--project=project-fdf510b8-6df7-494d-a36', '--zone=asia-east1-b', '--tunnel-through-iap', '--command', remote, '--quiet']
     result = subprocess.run(command, env=env, capture_output=True, text=True, errors='replace', timeout=180)
     if result.returncode:

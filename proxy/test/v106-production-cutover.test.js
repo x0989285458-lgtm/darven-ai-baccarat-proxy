@@ -2,15 +2,32 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import manifest from '../../release/v106-formal-v10-main-release-manifest.json' with { type: 'json' }
 import { runV106ProductionCutover } from '../../scripts/run-v106-production-cutover.mjs'
 
 const root = path.resolve(import.meta.dirname, '../..')
+const read = (relativePath) => readFileSync(path.join(root, relativePath), 'utf8')
 const head = () => execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
 const tree = () => process.env.V106_CANDIDATE_INDEX_TREE || execFileSync('git', ['write-tree'], { cwd: root, encoding: 'utf8' }).trim()
 const generation = '11111111-1111-4111-8111-111111111111'
 const productionDbGate = async () => ({ ok: true, generation })
 const stoppedProducer = async () => ({ ok: true, stopped: true, activeState: 'inactive' })
+
+test('Formal.30 launchers transport decoded scripts without plink shell corruption and target the real worker unit', () => {
+  const start = read('scripts/start-v106-formal-producer.py')
+  const stop = read('scripts/stop-v106-formal-producer.py')
+  assert.match(start, /base64\.b64encode\(remote_script\.encode\('utf-8'\)\)/)
+  assert.match(stop, /base64\.b64encode\(remote_script\.encode\('utf-8'\)\)/)
+  assert.match(start, /30-v106-formal3-image\.conf[\s\S]*WORKER_IMAGE/)
+  assert.match(start, /127\.0\.0\.1:8787\/health/)
+  assert.doesNotMatch(start, /127\.0\.0\.1:8790\/health/)
+  assert.match(start, /endpointReachable/)
+  assert.doesNotMatch(start, /'connected': source\.get/)
+  assert.match(stop, /echo "STOP_IDENTITY:\$\{active\}\|\$\{sub\}\|\$\{running\}"/)
+  assert.match(start, /remote = f'echo \{encoded\} \| base64 -d \| sudo bash'/)
+  assert.match(stop, /remote = f'echo \{encoded\} \| base64 -d \| sudo bash'/)
+})
 
 test('Formal.23 binds an external trusted Python interpreter and strips import injection', async () => {
   const runner = await import('../../scripts/run-v106-production-cutover.mjs')

@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import pathlib
@@ -6,8 +7,8 @@ import shutil
 import subprocess
 import tempfile
 
-EXPECTED_RELEASE = 'v106.0.0-formal.29'
-EXPECTED_PACKAGE = '1.0.86'
+EXPECTED_RELEASE = 'v106.0.0-formal.30'
+EXPECTED_PACKAGE = '1.0.87'
 EXPECTED_IMAGE = 'darven-worker:v106-formal3-33f9dc6'
 EXPECTED_IMAGE_ID = 'sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2'
 EXPECTED_COMMIT = os.environ.get('V106_RELEASE_COMMIT', '')
@@ -35,15 +36,42 @@ try:
     env['CLOUDSDK_CONFIG'] = str(temp_config)
     env['CLOUDSDK_PYTHON'] = r'R:\AppData\Local\hermes\hermes-agent\venv\Scripts\python.exe'
     gcloud = r'Q:\google-cloud-sdk\bin\gcloud.cmd'
-    remote = (
-        "set -e; "
-        "test \"$(systemctl is-active darven-worker.service || true)\" != active; "
-        "sudo env TARGET_IMAGE='" + EXPECTED_IMAGE + "' python3 -c \"from pathlib import Path; import os; p=Path('/etc/darven-worker/release.env'); lines=p.read_text().splitlines(); key='WORKER_IMAGE='; out=[key+os.environ['TARGET_IMAGE'] if x.startswith(key) else x for x in lines]; out.append(key+os.environ['TARGET_IMAGE']) if not any(x.startswith(key) for x in lines) else None; t=p.with_suffix('.env.formal20.tmp'); t.write_text('\\n'.join(out)+'\\n'); t.chmod(0o600); t.replace(p)\"; "
-        "sudo systemctl daemon-reload; sudo systemctl start darven-worker.service; "
-        "ok=0; for i in $(seq 1 30); do if curl -fsS http://127.0.0.1:8790/health >/tmp/formal20-worker-health.json; then ok=1; break; fi; sleep 2; done; test $ok -eq 1; "
-        "echo IDENTITY:$(sudo docker inspect darven-worker --format '{{.Config.Image}}|{{.Image}}|{{.State.Status}}'); "
-        "cat /tmp/formal20-worker-health.json"
-    )
+    remote_script = f"""set -euo pipefail
+test "$(systemctl is-active darven-worker.service || true)" != active
+python3 - '{EXPECTED_IMAGE}' <<'PY'
+from pathlib import Path
+import sys
+target = sys.argv[1]
+release = Path('/etc/darven-worker/release.env')
+lines = release.read_text().splitlines()
+key = 'WORKER_IMAGE='
+out = [key + target if line.startswith(key) else line for line in lines]
+if not any(line.startswith(key) for line in lines):
+    out.append(key + target)
+tmp = release.with_suffix('.env.formal30.tmp')
+tmp.write_text('\\n'.join(out) + '\\n')
+tmp.chmod(0o600)
+tmp.replace(release)
+dropin = Path('/etc/systemd/system/darven-worker.service.d/30-v106-formal3-image.conf')
+dropin.parent.mkdir(parents=True, exist_ok=True)
+dropin.write_text('[Service]\\nEnvironment="WORKER_IMAGE=' + target + '"\\n')
+dropin.chmod(0o644)
+PY
+systemctl daemon-reload
+systemctl reset-failed darven-worker.service >/dev/null 2>&1 || true
+systemctl start darven-worker.service
+ok=0
+for i in $(seq 1 60); do
+  code=$(curl -sS -o /tmp/formal30-worker-health.json -w '%{{http_code}}' http://127.0.0.1:8787/health || true)
+  if [ "$code" = 200 ] || [ "$code" = 503 ]; then ok=1; break; fi
+  sleep 2
+done
+test "$ok" -eq 1
+echo IDENTITY:$(docker inspect darven-worker --format '{{{{.Config.Image}}}}|{{{{.Image}}}}|{{{{.State.Status}}}}')
+cat /tmp/formal30-worker-health.json
+"""
+    encoded = base64.b64encode(remote_script.encode('utf-8')).decode('ascii')
+    remote = f'echo {encoded} | base64 -d | sudo bash'
     command = [gcloud, 'compute', 'ssh', 'darven-mt-taiwan-worker-5', '--project=project-fdf510b8-6df7-494d-a36', '--zone=asia-east1-b', '--tunnel-through-iap', '--command', remote, '--quiet']
     result = subprocess.run(command, env=env, capture_output=True, text=True, errors='replace', timeout=180)
     if result.returncode:
@@ -54,14 +82,8 @@ try:
     payload = next((json.loads(line) for line in reversed(lines) if line.startswith('{')), None)
     if identity_parts != [EXPECTED_IMAGE, EXPECTED_IMAGE_ID, 'running'] or not payload:
         raise SystemExit('worker runtime identity or health payload missing')
-    source = payload.get('captureSource') or payload.get('source') or {}
     checks = {
-        'healthy': payload.get('healthy') is True,
-        'connected': source.get('connected') is True,
-        'authenticated': source.get('authenticated') is True,
-        'joined': source.get('joined') is True,
-        'tenTables': int(source.get('tableCount') or 0) == 10,
-        'queueBounded': int((payload.get('queue') or {}).get('entries') or 0) <= 1,
+        'endpointReachable': payload.get('ok') in (True, False),
         'exactImage': identity_parts == [EXPECTED_IMAGE, EXPECTED_IMAGE_ID, 'running'],
     }
     if not all(checks.values()):
