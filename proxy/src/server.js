@@ -333,6 +333,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const adminSessionKey = deriveAdminSessionKey(adminSessionSecret)
   const legacyIngestSequences = new Map()
   const ingestSessionLocks = new Map()
+  const inFlightDurableIngest = new Map()
   let outboxDrainPromise = null
   let outboxWakeTimer = null
   let outboxWakeAtMs = null
@@ -1241,7 +1242,14 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           }
         }
         const sessionId = String(envelope.snapshot.sessionId ?? envelope.snapshot.session_id ?? 'cloud-browser')
-        const ingestOperation = withIngestSessionLock(sessionId, async () => {
+        const ingestIdentity = `${sessionId}:${Number(envelope.sequence)}`
+        const ingestFingerprint = rawBody
+        const existingIngest = usesDurableOutbox ? inFlightDurableIngest.get(ingestIdentity) : null
+        if (existingIngest && existingIngest.fingerprint !== ingestFingerprint) {
+          return jsonResponse(409, { ok: false, accepted: false, error: 'sequence_payload_conflict' }, frontendOrigin)
+        }
+        let ingestOperation = existingIngest?.promise
+        if (!ingestOperation) ingestOperation = withIngestSessionLock(sessionId, async () => {
           if (!usesDurableOutbox) {
             const previous = legacyIngestSequences.get(sessionId)
             if (previous != null && envelope.sequence <= previous.sequence) {
@@ -1346,6 +1354,15 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           })
           return jsonResponse(200, ack, frontendOrigin)
         })
+        if (usesDurableOutbox && !existingIngest) {
+          const trackedIngest = ingestOperation.finally(() => {
+            if (inFlightDurableIngest.get(ingestIdentity)?.promise === trackedIngest) {
+              inFlightDurableIngest.delete(ingestIdentity)
+            }
+          })
+          ingestOperation = trackedIngest
+          inFlightDurableIngest.set(ingestIdentity, { fingerprint: ingestFingerprint, promise: trackedIngest })
+        }
         return await withDeadline(ingestOperation, resolvedIngestDeadlineMs, 'durable ingest deadline exceeded')
       } catch (error) {
         if (error?.message === 'durable ingest deadline exceeded') {

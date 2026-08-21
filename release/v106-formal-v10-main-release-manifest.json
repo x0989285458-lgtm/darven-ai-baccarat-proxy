@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.32",
-  "gitTag": "v106.0.0-formal.32",
-  "applicationVersion": "1.0.89",
+  "releaseVersion": "v106.0.0-formal.33",
+  "gitTag": "v106.0.0-formal.33",
+  "applicationVersion": "1.0.90",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -131,7 +131,7 @@
       "path": "supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql",
       "deploymentStep": "database-isolated-runtime-gate",
       "contract": "Service-role-only PostgreSQL provenance gate returns one bounded proof so no Python site package is needed during production cutover.",
-      "gitBlobSha1": "390f3fca069e1f685c83a35cbd143f3d2a8c76fc"
+      "gitBlobSha1": "ad7f4d301487707d5a17dc3a50db3eaf41eccf32"
     },
     "fence": {
       "path": "supabase/operations/fence_v105_new_issuance.sql",
@@ -337,7 +337,7 @@
         "scripts/verify-v106-issuance-barrier-db.py"
       ],
       "excludedPaths": [],
-      "sha256": "46ef9f246db5ae634e4f91f7602cef0fe9b8b70aeb8c60a65bb6561b2a9c4c4e"
+      "sha256": "11bc6490c15470d8fb7662aa36a5ce80fa8965073992d070049b0eb874462845"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -348,7 +348,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "8e1967afe4aad73f1f067246cb3a201a37aa544bf178a7680f5820527db65711"
+      "sha256": "c1f93822ab592f3b20d24ac51c87ffde2dd7e6a89fd338f168d1478e294dfd9c"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -395,7 +395,7 @@
         "scripts/verify-v106-issuance-barrier-db.py"
       ],
       "excludedPaths": [],
-      "sha256": "132153035ccba3820cc001618444c6e555ef6c0f8afb24abead6089c0d426fd4"
+      "sha256": "1b50b3fcf47eecc9d11cd0b76c7d8e4ba7e6ca9bc9c8298c621ba3fb253fd978"
     }
   },
   "historicalArtifactsPreserved": true,
@@ -482,8 +482,8 @@
     "requiredIdentity": {
       "version": "v106",
       "buildVersion": "v106",
-      "releaseVersion": "v106.0.0-formal.32",
-      "packageVersion": "1.0.89",
+      "releaseVersion": "v106.0.0-formal.33",
+      "packageVersion": "1.0.90",
       "commit": "annotated-tag-attested-commit"
     },
     "failClosedExitCode": 2,
@@ -526,7 +526,9 @@
     "formal30Production": "Launcher and exact readiness ordering worked. Production then exposed a settlement canonicalization P1: MT Final sourceAction=summary was passed through unchanged while settle_v106_prediction requires canonical /summary, causing dead-letter outbox and service degradation.",
     "formal31Fix": "Canonicalize every verified summary action variant to /summary before durable formal settlement; database retains strict exact /summary validation.",
     "formal31Production": "Exact cutover runner PASS and canonical /summary settlements persisted, but bursts of up to five Finals saturated the four-client priority DB lane. The 45s lease expired while bounded queries were still queued; the separate 5s shadow shutdown grace falsely classified slow-but-bounded formal work as permanently stalled and exited 70.",
-    "formal32Fix": "Formal settlement receives one additional full outbox lease as bounded settle grace (max of lease and shadow shutdown). Truly permanent work still enters FORMAL_SETTLEMENT_STALLED; bounded late work settles, fails the exact row for retry, and preserves process availability."
+    "formal32Fix": "Formal settlement receives one additional full outbox lease as bounded settle grace (max of lease and shadow shutdown). Truly permanent work still enters FORMAL_SETTLEMENT_STALLED; bounded late work settles, fails the exact row for retry, and preserves process availability.",
+    "formal32Production": "Exact cutover PASS, but the same Worker head retried after each 15s HTTP deadline. Each retry appended another uncancelled task behind withIngestSessionLock; after the first durable write settled, four timed-out retries replayed the same DB call. Production Queue rose to 81/138, push returned six 503s, and new Final remained zero.",
+    "formal33Fix": "Coalesce the exact session+sequence+payload identity onto one in-flight durable ingest promise. Same identity retries join rather than append DB work; same identity with a different payload fails 409; one later retry may perform authoritative durable duplicate readback after the in-flight operation settles."
   },
   "productionCutoverRunner": {
     "script": "scripts/run-v106-production-cutover.mjs",
@@ -540,11 +542,11 @@
     "requiresPreAndPostDatabaseGenerationGate": true,
     "requiresPostStartFailStopCompensation": true,
     "productionDbGateScript": "scripts/verify-v106-production-db-gate.py",
-    "productionDbGateScriptGitBlobSha1": "ea4ed1205677d898ea3b9c83fd6c56f3b93a59a6",
+    "productionDbGateScriptGitBlobSha1": "38c15efff3d3fa17958de0f9a06a481c8886ce19",
     "producerStartScript": "scripts/start-v106-formal-producer.py",
-    "producerStartScriptGitBlobSha1": "5788e7a6fc680f860aef737684eca9e9e76bb226",
+    "producerStartScriptGitBlobSha1": "4816d8ee9408628f3494e03a2b090cc9831e26a6",
     "producerStopScript": "scripts/stop-v106-formal-producer.py",
-    "producerStopScriptGitBlobSha1": "c424940b5f6a939ad54e5e0e73f9bc5981d96c35",
+    "producerStopScriptGitBlobSha1": "d9341a261f5a826d6c08a76dd35d67ff401a4ba9",
     "producerImage": "darven-worker:v106-formal3-33f9dc6",
     "producerImageId": "sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2",
     "executesLaunchersFromExactGitTree": true,

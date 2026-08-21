@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.32",
+  "releaseVersion": "v106.0.0-formal.33",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.89",
-  "status": "formal32_candidate_all_tests_pass_exact_release_pending",
+  "applicationVersion": "1.0.90",
+  "status": "formal33_candidate_all_tests_pass_exact_release_pending",
   "productionE2E": "not-run-production-remains-v105",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.89",
+      "packageVersion": "1.0.90",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,11 +27,11 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "46ef9f246db5ae634e4f91f7602cef0fe9b8b70aeb8c60a65bb6561b2a9c4c4e",
-    "proxyBuildInput": "8e1967afe4aad73f1f067246cb3a201a37aa544bf178a7680f5820527db65711",
+    "implementationTree": "11bc6490c15470d8fb7662aa36a5ce80fa8965073992d070049b0eb874462845",
+    "proxyBuildInput": "c1f93822ab592f3b20d24ac51c87ffde2dd7e6a89fd338f168d1478e294dfd9c",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "132153035ccba3820cc001618444c6e555ef6c0f8afb24abead6089c0d426fd4"
+    "databaseCutoverInput": "1b50b3fcf47eecc9d11cd0b76c7d8e4ba7e6ca9bc9c8298c621ba3fb253fd978"
   },
   "rollbackComponents": {
     "proxy": {
@@ -82,10 +82,10 @@
     "note": "Tie/PUSH excluded from directional hit-rate denominator. Full-output V10 candidate was rejected after producing net -15 hits; eligible-only promotion is the reviewed candidate."
   },
   "verified": {
-    "proxy": "1054/1054 PASS for Formal.32 candidate; isolated shadow-process 19/19 plus canonical lane 1035/1035.",
+    "proxy": "1055/1055 PASS for Formal.33 candidate; isolated shadow-process 19/19 plus canonical lane 1036/1036.",
     "releaseBinding": "five mandatory staged-tree digests plus thirteen ordered database artifact contracts with exact Git blob SHA-1, exact rollback component commit ancestry/package/build/protocol derivation, manifest-bound producer blob and trusted signed-tag authorization",
     "testEnvironmentFence": "shared proxy/worker scrubber removes DB, service-role, proxy-control, member/admin session, MT token/session/portal path, worker, ingest, Render and Cloudflare authority before child tests; focused 2/2 pass",
-    "focusedTests": "78/78 outbox/release/cutover/readiness/database contracts PASS.",
+    "focusedTests": "113/113 ingest/outbox/release/cutover/readiness/database contracts PASS.",
     "predecessorRegression": "8/8 v105 predecessor regressions derived from release base 6bdd39e8 pass against the candidate server; the base source SHA-256 is verifier-bound and 13/13 dedicated v106 server tests pass separately",
     "outboxFailureAckIsolation": "25/25 outbox tests pass; a permanently stalled Formal promise enters FORMAL_SETTLEMENT_STALLED fatal with exit 70, sends no failure ACK, and retains the exact lease for stale-lease recovery",
     "frontend": "156/156 PASS and production build PASS.",
@@ -139,11 +139,11 @@
       ]
     },
     "digests": {
-      "implementationTree": "46ef9f246db5ae634e4f91f7602cef0fe9b8b70aeb8c60a65bb6561b2a9c4c4e",
-      "proxyBuildInput": "8e1967afe4aad73f1f067246cb3a201a37aa544bf178a7680f5820527db65711",
+      "implementationTree": "11bc6490c15470d8fb7662aa36a5ce80fa8965073992d070049b0eb874462845",
+      "proxyBuildInput": "c1f93822ab592f3b20d24ac51c87ffde2dd7e6a89fd338f168d1478e294dfd9c",
       "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
       "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-      "databaseCutoverInput": "132153035ccba3820cc001618444c6e555ef6c0f8afb24abead6089c0d426fd4"
+      "databaseCutoverInput": "1b50b3fcf47eecc9d11cd0b76c7d8e4ba7e6ca9bc9c8298c621ba3fb253fd978"
     },
     "formal16PostgresRehearsal": {
       "migrationTransactionRollback": "PASS",
@@ -192,11 +192,12 @@
     "formal29Readiness": "RED reproduced capture_status_unavailable bootstrap block; GREEN accepts every exact-identity HTTP 503 ok=false reason while service mode remains strict HTTP 200 ok=true.",
     "formal30LiveLauncherProbe": "PASS on real GCP VM under V105 DB safety: immutable V106 image started with endpoint reachable and exact image ID, then exact stop read back inactive/dead/container false.",
     "formal31CanonicalSummary": "RED reproduced MT sourceAction summary vs DB-required /summary; GREEN canonicalizes all summary variants to /summary.",
-    "formal32BoundedGrace": "RED reproduced slow work resolving after 5s shutdown grace but within one full lease; GREEN retries without fatal while permanent stall still exits 70."
+    "formal32BoundedGrace": "RED reproduced slow work resolving after 5s shutdown grace but within one full lease; GREEN retries without fatal while permanent stall still exits 70.",
+    "formal33SingleFlight": "RED reproduced four DB calls from one timed-out durable identity plus three retries; GREEN keeps one in-flight call, rejects payload conflict 409, then permits one later authoritative duplicate readback."
   },
   "pending": [
-    "Formal.32 full tests, exact release, Fresh Review",
-    "Archive current backlog, deploy Formal.32, exact cutover, sustained Final/ACK/Queue/10-table/frontend E2E"
+    "Formal.33 full tests, exact release, Fresh Review",
+    "Archive Formal.32 backlog, deploy Formal.33, exact cutover, sustained Final/ACK/Queue/10-table/frontend E2E"
   ],
   "productionTrialFormal13": {
     "verdict": "BLOCK_AND_ROLLBACK",
@@ -292,11 +293,11 @@
   },
   "formal24FreshReview": "BLOCK: true P1 was missing DB concurrency barrier for v105 issuance fence; expired rows remain settlement-capable by immutable ID and predecessor settlement ACL is intentionally retained.",
   "componentDigests": {
-    "implementationTree": "46ef9f246db5ae634e4f91f7602cef0fe9b8b70aeb8c60a65bb6561b2a9c4c4e",
-    "proxyBuildInput": "8e1967afe4aad73f1f067246cb3a201a37aa544bf178a7680f5820527db65711",
+    "implementationTree": "11bc6490c15470d8fb7662aa36a5ce80fa8965073992d070049b0eb874462845",
+    "proxyBuildInput": "c1f93822ab592f3b20d24ac51c87ffde2dd7e6a89fd338f168d1478e294dfd9c",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "132153035ccba3820cc001618444c6e555ef6c0f8afb24abead6089c0d426fd4"
+    "databaseCutoverInput": "1b50b3fcf47eecc9d11cd0b76c7d8e4ba7e6ca9bc9c8298c621ba3fb253fd978"
   },
   "formal25FreshReview": "BLOCK: successor issuance lacked the row-lock half of rollback fencing; late in-flight issuance could invalidate the only generation-bound receipt.",
   "formal26FreshReview": "BLOCK: exact candidate did not bind the real PostgreSQL two-connection probe and the report contradicted its pending list.",
@@ -306,5 +307,6 @@
   "formal29FreshReview": "PASS",
   "formal29Production": "BLOCK_AND_ROLLBACK: exact identity passed; raw plink remote command was corrupted, systemd drop-in pinned V105, and launcher used port 8790. Worker stayed inactive; DB/Render safely rolled back.",
   "formal30Production": "BLOCK_AND_SAFE_STOP: exact launcher succeeded and public health briefly reached 200, but durable V106 settlements dead-lettered because MT sourceAction summary was not canonicalized to DB-required /summary. Worker stopped inactive.",
-  "formal31Production": "BLOCK: canonical Final 14/14 persisted across attempts and exact cutover passed, but Render exited 70 after slow DB work exceeded 45s lease plus an unrelated 5s shutdown grace."
+  "formal31Production": "BLOCK: canonical Final 14/14 persisted across attempts and exact cutover passed, but Render exited 70 after slow DB work exceeded 45s lease plus an unrelated 5s shutdown grace.",
+  "formal32Production": "BLOCK_AND_SAFE_STOP: exact cutover PASS, then seven-minute audit showed Queue 81, round keys 138, six 503s, issuance 16 and Final 0. Worker stopped inactive before Formal.33."
 }

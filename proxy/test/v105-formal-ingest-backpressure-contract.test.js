@@ -1264,3 +1264,55 @@ test('timed-out ingest keeps the session lock until its underlying durable work 
   assert.equal(snapshotCalls, 1)
   assert.equal(maxActiveSnapshots, 1)
 })
+
+test('same durable ingest identity is single-flight across timed-out worker retries', async () => {
+  let releasePersist
+  const persistGate = new Promise((resolve) => { releasePersist = resolve })
+  let persistCalls = 0
+  const writer = {
+    configured: true,
+    async writeCloudTableSnapshot() {},
+    async persistCaptureEnvelope({ sessionId, sequence, roundKeys }) {
+      persistCalls += 1
+      await persistGate
+      return { persisted: true, duplicate: persistCalls > 1, session_id: sessionId, sequence, acceptedRoundKeys: roundKeys }
+    },
+  }
+  const app = createApp({
+    autoConnect: false,
+    ingestKey: 'worker-key',
+    now: () => 1_000_000,
+    ingestDeadlineMs: 20,
+    supabaseClient: writer,
+  })
+  const request = (shoe = 'S1') => app.inject({
+    method: 'POST',
+    url: '/api/cloud-ingest/snapshot',
+    headers: { 'x-worker-key': 'worker-key' },
+    body: JSON.stringify({
+      protocolVersion: 'v105', timestamp: 1_000_000, sequence: 1, roundKeys: [],
+      snapshot: {
+        buildVersion: '105', sessionId: 'durable-singleflight-worker', connected: true, authenticated: true,
+        tables: [{ tableId: 'BAG01', shoe, round: 1 }], rounds: [],
+      },
+    }),
+  })
+
+  const first = await request()
+  assert.equal(first.statusCode, 503)
+  const retries = [request(), request(), request()]
+  const conflict = await request('S2')
+  assert.equal(conflict.statusCode, 409)
+  assert.equal(JSON.parse(conflict.body).error, 'sequence_payload_conflict')
+  await delay(30)
+  assert.equal(persistCalls, 1, 'retries must join the exact in-flight durable write instead of appending DB work')
+  releasePersist()
+  await Promise.all(retries)
+  await delay(10)
+  assert.equal(persistCalls, 1, 'settling one exact write must not replay every timed-out retry')
+
+  const acknowledged = await request()
+  assert.equal(acknowledged.statusCode, 200)
+  assert.equal(JSON.parse(acknowledged.body).duplicate, true)
+  assert.equal(persistCalls, 2, 'one later retry may perform the authoritative durable duplicate readback')
+})
