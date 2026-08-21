@@ -85,7 +85,7 @@ test('v106 full release manifest binds the exact staged implementation, build in
   const result = await verifyV106ManifestDigests({ manifest, candidateIndexTree, root: repoRoot })
   assert.equal(result.ok, true)
   assert.equal(report.releaseVersion, manifest.releaseVersion)
-  assert.match(report.status, /formal45/)
+  assert.match(report.status, /formal46/)
   assert.doesNotMatch(report.status, /formal5/)
   assert.deepEqual(Object.keys(result.digests).sort(), [
     'databaseCutoverInput', 'frontendBuildInput', 'implementationTree', 'proxyBuildInput', 'workerBuildInput',

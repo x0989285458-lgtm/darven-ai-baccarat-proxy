@@ -13,6 +13,7 @@ test('production parent delegates startup drain and worker self-drains', () => {
   assert.match(server, /if \(!outboxProcessClient\) \{[\s\S]*v103Shadow[\s\S]*v105ShadowV10/)
   assert.match(server, /if \(outboxProcessClient\) \{[\s\S]*outboxProcessClient\.wake\(\)[\s\S]*\} else \{[\s\S]*drainCaptureOutbox\(\)/)
   assert.match(worker, /process\.send\?\.\(\{ type: 'ready' \}\)[\s\S]*void drain\(\)/)
+  assert.match(worker, /await app\.start\(\)[\s\S]*process\.send\?\.\(\{ type: 'ready' \}\)/)
 })
 
 function fakeChild() {
