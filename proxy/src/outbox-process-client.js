@@ -23,7 +23,7 @@ export function createOutboxProcessClient({
   forkImpl = fork,
   workerPath = fileURLToPath(new URL('./outbox-process-worker.js', import.meta.url)),
   env = process.env,
-  startupTimeoutMs = 10000,
+  startupTimeoutMs = Number(process.env.OUTBOX_PROCESS_STARTUP_TIMEOUT_MS ?? 180000),
   stopTimeoutMs = 5000,
   restartBaseDelayMs = 250,
   restartMaxDelayMs = 5000,

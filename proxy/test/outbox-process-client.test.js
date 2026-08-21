@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { createOutboxProcessClient } from '../src/outbox-process-client.js'
 
 test('production parent delegates startup drain and worker self-drains', () => {
@@ -14,6 +15,19 @@ test('production parent delegates startup drain and worker self-drains', () => {
   assert.match(server, /if \(outboxProcessClient\) \{[\s\S]*outboxProcessClient\.wake\(\)[\s\S]*\} else \{[\s\S]*drainCaptureOutbox\(\)/)
   assert.match(worker, /process\.send\?\.\(\{ type: 'ready' \}\)[\s\S]*void drain\(\)/)
   assert.match(worker, /await app\.start\(\)[\s\S]*process\.send\?\.\(\{ type: 'ready' \}\)/)
+})
+
+test('real delayed child can finish bounded initialization before readiness timeout', async () => {
+  const client = createOutboxProcessClient({
+    workerPath: fileURLToPath(new URL('./fixtures/delayed-outbox-ready-worker.js', import.meta.url)),
+    startupTimeoutMs: 1000,
+    stopTimeoutMs: 1000,
+  })
+  const startedAt = Date.now()
+  const status = await client.start()
+  assert.equal(status.ready, true)
+  assert.ok(Date.now() - startedAt >= 100)
+  assert.deepEqual(await client.stop(), { stopped: true })
 })
 
 function fakeChild() {
