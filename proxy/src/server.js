@@ -1322,7 +1322,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                       captureSequence: Number(envelope.sequence),
                       captureTimestamp: stableCapturedAt,
                     })
-                    state.setTables(parsed.tables, { notify: parsed.rounds.length === 0 })
+                    state.setTables(parsed.tables, outboxProcessClient
+                      ? { notify: false, inferRounds: false }
+                      : { notify: parsed.rounds.length === 0 })
                   }
                   if (outboxProcessClient) {
                     if (!outboxProcessClient.wake()) throw new Error('isolated outbox process is unavailable')
@@ -2386,7 +2388,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
         }
       }
-      if (v104Formal && typeof v104Formal.start === 'function') {
+      if (!outboxProcessClient && v104Formal && typeof v104Formal.start === 'function') {
         try {
           await v104Formal.start()
         } catch (error) {

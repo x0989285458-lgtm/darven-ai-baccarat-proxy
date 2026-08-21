@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.44",
-  "gitTag": "v106.0.0-formal.44",
-  "applicationVersion": "1.0.101",
+  "releaseVersion": "v106.0.0-formal.45",
+  "gitTag": "v106.0.0-formal.45",
+  "applicationVersion": "1.0.102",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -131,7 +131,7 @@
       "path": "supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql",
       "deploymentStep": "database-isolated-runtime-gate",
       "contract": "Service-role-only PostgreSQL provenance gate returns one bounded proof so no Python site package is needed during production cutover.",
-      "gitBlobSha1": "1ec86c1ca2d7094ee1907af2c535af1031e2b972"
+      "gitBlobSha1": "84a150fdcfdcf48c2e8955b6355cb5c8eca93970"
     },
     "fence": {
       "path": "supabase/operations/fence_v105_new_issuance.sql",
@@ -337,7 +337,7 @@
         "scripts/verify-v106-issuance-barrier-db.py"
       ],
       "excludedPaths": [],
-      "sha256": "f616829f15c12527ef7ea5817e699e3040bc2319fb107bf728de9f00c73e32a0"
+      "sha256": "dee4ab1264871e3e6be4e3c6ad49ec97291abb04212a4783256d27deddcb0cc3"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -348,7 +348,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "52dfca9b9ffcf6ef0489b6ceed4c419816a69746ff42fe77303da210a24dd0ed"
+      "sha256": "217ae71ae1694c72d1603c3225b1002815beb94f42b0169c0a8235fe8a87ad06"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -395,7 +395,7 @@
         "scripts/verify-v106-issuance-barrier-db.py"
       ],
       "excludedPaths": [],
-      "sha256": "b1c54f897d6dbad734cb48f75d93095cbbb25cdb0d67ab5eec3ffd5e4f1b760f"
+      "sha256": "e6aebe40b489a9c6ade7240628f85695e814a1a70ea493af6622c55346ca819e"
     }
   },
   "historicalArtifactsPreserved": true,
@@ -482,8 +482,8 @@
     "requiredIdentity": {
       "version": "v106",
       "buildVersion": "v106",
-      "releaseVersion": "v106.0.0-formal.44",
-      "packageVersion": "1.0.101",
+      "releaseVersion": "v106.0.0-formal.45",
+      "packageVersion": "1.0.102",
       "commit": "annotated-tag-attested-commit"
     },
     "failClosedExitCode": 2,
@@ -544,11 +544,11 @@
     "requiresPreAndPostDatabaseGenerationGate": true,
     "requiresPostStartFailStopCompensation": true,
     "productionDbGateScript": "scripts/verify-v106-production-db-gate.py",
-    "productionDbGateScriptGitBlobSha1": "e7ef9cb4f63f7eea8e541bdde69b0b3c0eb73aee",
+    "productionDbGateScriptGitBlobSha1": "6c614959207326e77c45259334fb6f1eac5425d0",
     "producerStartScript": "scripts/start-v106-formal-producer.py",
-    "producerStartScriptGitBlobSha1": "fcb1dbcaa3d904f686dc1bd3f4530182a2fe5b5b",
+    "producerStartScriptGitBlobSha1": "2f10daef463e83e2ae3ed82b73a3e387e191055f",
     "producerStopScript": "scripts/stop-v106-formal-producer.py",
-    "producerStopScriptGitBlobSha1": "afb8fa875918c661bc44dc2280043fc3e9daa2a2",
+    "producerStopScriptGitBlobSha1": "ae1bd7503d2d5ab11f10a018cdac8476514d3720",
     "producerImage": "darven-worker:v106-formal3-33f9dc6",
     "producerImageId": "sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2",
     "executesLaunchersFromExactGitTree": true,
@@ -561,8 +561,8 @@
     "predecessorLateSettlementRetained": true,
     "requiresIdentityReadinessBeforeStart": true,
     "requiresServiceReadinessAfterStart": true,
-    "databaseGateScriptGitBlobSha1": "e7ef9cb4f63f7eea8e541bdde69b0b3c0eb73aee",
-    "isolatedRuntimeMigrationGitBlobSha1": "1ec86c1ca2d7094ee1907af2c535af1031e2b972"
+    "databaseGateScriptGitBlobSha1": "6c614959207326e77c45259334fb6f1eac5425d0",
+    "isolatedRuntimeMigrationGitBlobSha1": "84a150fdcfdcf48c2e8955b6355cb5c8eca93970"
   },
   "releaseAuthorization": {
     "trustPolicyVersion": "v106-release-trust-v1",
@@ -594,6 +594,7 @@
     "formal41IsolatedOutboxProcess": "Formal.41 removes Direct PostgreSQL projection and Outbox drain work from the public HTTP process. A fail-closed child owns formal, shadow, ancillary and completion work; parent and child use bounded 4+6 backend pools while Raw ACK remains bounded HTTPS.",
     "formal42OutboxIsolationClosure": "Formal.42 closes Fresh Review P1: the HTTP parent never drains Outbox when isolation is present, and an exited/fatal child restarts with bounded backoff and immediately self-drains without requiring another producer wake.",
     "formal43StableRestartBackoff": "Formal.43 closes Fresh Review restart-storm P1: restart attempts reset only after a 30-second stable child window; repeated ready-then-crash failures retain bounded exponential backoff.",
-    "formal44HttpParentNoShadowWorkers": "Formal.44 closes post-cutover HTTP starvation: when the isolated Outbox child is present, the public HTTP parent does not prepare or start any V9/V10/legacy shadow workers. The parent owns HTTP and bounded Raw ACK only; child owns Outbox, formal, ancillary and shadow work."
+    "formal44HttpParentNoShadowWorkers": "Formal.44 closes post-cutover HTTP starvation: when the isolated Outbox child is present, the public HTTP parent does not prepare or start any V9/V10/legacy shadow workers. The parent owns HTTP and bounded Raw ACK only; child owns Outbox, formal, ancillary and shadow work.",
+    "formal45HttpParentAckOnly": "Formal.45 closes Fresh Review P1: isolated parent mounts pushed table/status state passively with notify=false and inferRounds=false, so it cannot infer rounds, reconcile, hydrate or issue predictions; it also skips formal runtime startup. Child remains sole Outbox/formal/ancillary/shadow owner."
   }
 }

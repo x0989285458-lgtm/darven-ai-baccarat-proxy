@@ -28,6 +28,20 @@ test('strict real-card mode does not emit inferred no-card rounds from table del
   assert.equal(emitted.length, 1)
 })
 
+test('passive table mounting updates UI state without inferred round or notification work', () => {
+  const emitted = []
+  const notified = []
+  const state = createProxyState({
+    onRoundEvent: (round) => emitted.push(round),
+    onTablesUpdated: (tables) => notified.push(tables),
+  })
+  state.setTables([{ tableId: 'BAG01', tableType: 'BAC', shoe: 1, round: 10, bankerCount: 5, playerCount: 5, tieCount: 0 }], { notify: false, inferRounds: false })
+  state.setTables([{ tableId: 'BAG01', tableType: 'BAC', shoe: 1, round: 11, bankerCount: 6, playerCount: 5, tieCount: 0 }], { notify: false, inferRounds: false })
+  assert.equal(state.snapshot().tables[0].round, 11)
+  assert.equal(emitted.length, 0)
+  assert.equal(notified.length, 0)
+})
+
 test('state store records errors without exposing token secrets', () => {
   const state = createProxyState()
   state.recordError('connect failed token=abc123 secret=hidden')
