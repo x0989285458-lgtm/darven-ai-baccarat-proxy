@@ -215,6 +215,12 @@ export function buildRoadmapEventRow(round = {}, table = {}) {
   }
 }
 
+function canonicalFormalSettlementAction(sourceAction) {
+  const value = String(sourceAction ?? '').trim().toLowerCase()
+  if (value === 'summary' || value.endsWith('/summary')) return '/summary'
+  return value || null
+}
+
 export function buildPredictionResultRow(round = {}, table = {}, precomputedPrediction = null) {
   const target = validatePredictionTarget(precomputedPrediction, round)
   if (!target) return null
@@ -239,7 +245,7 @@ export function buildPredictionResultRow(round = {}, table = {}, precomputedPred
     prediction_features: {
       ...predictionFeatures,
       settlement_final: isVerifiedFinalRoundAction(round.sourceAction),
-      settlement_source_action: round.sourceAction ?? null,
+      settlement_source_action: canonicalFormalSettlementAction(round.sourceAction),
       side_actual_results: sideActualResults,
       side_hits: buildSideHitsFromActions(sideActions, sideActualResults),
     },

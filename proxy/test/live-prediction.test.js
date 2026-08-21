@@ -39,11 +39,11 @@ test('settlement records the verified final action so provisional history can be
   const row = buildPredictionResultRow({
     tableId: 'BAG03', shoe: 9, round: 21, winner: 'banker',
     rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9],
-    sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
+    sourceAction: 'summary',
   }, table, precomputed)
 
   assert.equal(row.prediction_features.settlement_final, true)
-  assert.equal(row.prediction_features.settlement_source_action, '/api/v1/gametype/*/game/*/room/*/table/*/summary')
+  assert.equal(row.prediction_features.settlement_source_action, '/summary')
 })
 
 test('settlement persists the pre-result backend direction and confidence', () => {

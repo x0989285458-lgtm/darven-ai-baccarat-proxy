@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.30",
-  "gitTag": "v106.0.0-formal.30",
-  "applicationVersion": "1.0.87",
+  "releaseVersion": "v106.0.0-formal.31",
+  "gitTag": "v106.0.0-formal.31",
+  "applicationVersion": "1.0.88",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -131,7 +131,7 @@
       "path": "supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql",
       "deploymentStep": "database-isolated-runtime-gate",
       "contract": "Service-role-only PostgreSQL provenance gate returns one bounded proof so no Python site package is needed during production cutover.",
-      "gitBlobSha1": "609326967072ee7e8bbff3884959f98a6ff83b7b"
+      "gitBlobSha1": "0a85a8e95c4c5f67b4df78daf340dc0ddd476abc"
     },
     "fence": {
       "path": "supabase/operations/fence_v105_new_issuance.sql",
@@ -337,7 +337,7 @@
         "scripts/verify-v106-issuance-barrier-db.py"
       ],
       "excludedPaths": [],
-      "sha256": "f749fef1b288b6e83d777d677fccb989438df24d6e4e49a6db787d1806d1ede7"
+      "sha256": "1916b3a4dcf25b2a5bb39844558d46c0886a8d7769003e57d60b97452de5c9e5"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -348,7 +348,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "5eec57c11a8ff95109fd473b3861b23603ca7ad7f43ad372e860923078a633e4"
+      "sha256": "bc30f0fc9d26a6696fd0194074301985bcfd0903ae9c7b020d57fc3fcbf57fea"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -395,7 +395,7 @@
         "scripts/verify-v106-issuance-barrier-db.py"
       ],
       "excludedPaths": [],
-      "sha256": "a6857fddea42d34e5ab3087eed04e08869021a3f3c0ada3f0b89408cbad36545"
+      "sha256": "fbd0b64aa3dc78909a62fd65f9a7f9af72cba4fcd3e3e7be407cdc4b3e09dbbd"
     }
   },
   "historicalArtifactsPreserved": true,
@@ -482,8 +482,8 @@
     "requiredIdentity": {
       "version": "v106",
       "buildVersion": "v106",
-      "releaseVersion": "v106.0.0-formal.30",
-      "packageVersion": "1.0.87",
+      "releaseVersion": "v106.0.0-formal.31",
+      "packageVersion": "1.0.88",
       "commit": "annotated-tag-attested-commit"
     },
     "failClosedExitCode": 2,
@@ -522,7 +522,9 @@
     "formal29Fix": "Pre-producer identity mode now proves only immutable deployment identity and accepts any HTTP 503 ok=false reason. Strict post-producer service mode still requires HTTP 200 ok=true twice, and every post-start failure invokes exact stop compensation.",
     "formal29FreshReview": "PASS",
     "formal29Production": "BLOCK_AND_ROLLBACK: identity gate passed, but gcloud/plink corrupted raw remote shell command substitutions; the unit drop-in still pinned V105 and launcher probed wrong port 8790. Worker remained inactive; DB and Render rolled back to V105.",
-    "formal30Fix": "Start/stop launchers now base64-transport decoded root scripts, atomically update both release.env and the active systemd drop-in, probe real port 8787, separate process/image admission from strict post-start service readiness, and quote stop readback. The exact launcher was live-tested start then stop against the real VM with candidate immutable image ID."
+    "formal30Fix": "Start/stop launchers now base64-transport decoded root scripts, atomically update both release.env and the active systemd drop-in, probe real port 8787, separate process/image admission from strict post-start service readiness, and quote stop readback. The exact launcher was live-tested start then stop against the real VM with candidate immutable image ID.",
+    "formal30Production": "Launcher and exact readiness ordering worked. Production then exposed a settlement canonicalization P1: MT Final sourceAction=summary was passed through unchanged while settle_v106_prediction requires canonical /summary, causing dead-letter outbox and service degradation.",
+    "formal31Fix": "Canonicalize every verified summary action variant to /summary before durable formal settlement; database retains strict exact /summary validation."
   },
   "productionCutoverRunner": {
     "script": "scripts/run-v106-production-cutover.mjs",
@@ -536,11 +538,11 @@
     "requiresPreAndPostDatabaseGenerationGate": true,
     "requiresPostStartFailStopCompensation": true,
     "productionDbGateScript": "scripts/verify-v106-production-db-gate.py",
-    "productionDbGateScriptGitBlobSha1": "cb110b96633caa8e7f5a85800f552e5b747a3bdd",
+    "productionDbGateScriptGitBlobSha1": "a640fdf19288612b95f9a48b15b3d96134a84cd8",
     "producerStartScript": "scripts/start-v106-formal-producer.py",
-    "producerStartScriptGitBlobSha1": "827d0d64dae5051474caeaa88146a80b9b9e8426",
+    "producerStartScriptGitBlobSha1": "3a4822e543c7979c5907209ce44dab0dbe347665",
     "producerStopScript": "scripts/stop-v106-formal-producer.py",
-    "producerStopScriptGitBlobSha1": "a47d268b20409bd576b6548c6b31ef7d7e30346c",
+    "producerStopScriptGitBlobSha1": "4272ceb0f6c1990170e3d222996a28210e5cf3d4",
     "producerImage": "darven-worker:v106-formal3-33f9dc6",
     "producerImageId": "sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2",
     "executesLaunchersFromExactGitTree": true,
