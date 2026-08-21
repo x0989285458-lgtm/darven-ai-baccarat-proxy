@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.27",
+  "releaseVersion": "v106.0.0-formal.28",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.84",
-  "status": "formal27_candidate_all_tests_pass_exact_release_pending",
+  "applicationVersion": "1.0.85",
+  "status": "formal28_candidate_all_tests_pass_exact_release_pending",
   "productionE2E": "not-run-production-remains-v105",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.84",
+      "packageVersion": "1.0.85",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,11 +27,11 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "9d269ee655ee8a638f1ef7079f657fb5b300758de33b2573d667c9dfda406651",
-    "proxyBuildInput": "7cf892a4b7ace453a5ab7f6ef18c8a1e641a73b0e81826feafca9c4add501323",
+    "implementationTree": "03bb89006994b7963307147beea2dc1b6031c6564ba883f364e71bc96cf45a76",
+    "proxyBuildInput": "7c474e0ea8206aaf48f955167165c78d84028b8930d56213245e7b1487f5b833",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "9e1475a7f0b6106e998f433e4ae5d9eed4cf3dd6c3cbcdfb9749e9ef3997dbf4"
+    "databaseCutoverInput": "ee2a8901a926768aacbdaacaaf3fdd5b40d252dafdc0afc0167ae533e3ccf2e4"
   },
   "rollbackComponents": {
     "proxy": {
@@ -82,14 +82,14 @@
     "note": "Tie/PUSH excluded from directional hit-rate denominator. Full-output V10 candidate was rejected after producing net -15 hits; eligible-only promotion is the reviewed candidate."
   },
   "verified": {
-    "proxy": "1050/1050 PASS for Formal.27 candidate; isolated shadow-process 19/19 plus canonical lane 1031/1031.",
+    "proxy": "1052/1052 PASS for Formal.28 candidate; isolated shadow-process 19/19 plus canonical lane 1033/1033.",
     "releaseBinding": "five mandatory staged-tree digests plus thirteen ordered database artifact contracts with exact Git blob SHA-1, exact rollback component commit ancestry/package/build/protocol derivation, manifest-bound producer blob and trusted signed-tag authorization",
     "testEnvironmentFence": "shared proxy/worker scrubber removes DB, service-role, proxy-control, member/admin session, MT token/session/portal path, worker, ingest, Render and Cloudflare authority before child tests; focused 2/2 pass",
-    "focusedTests": "45/45 release/cutover/readiness/database contracts PASS, including the release-bound real PostgreSQL race probe contract.",
+    "focusedTests": "47/47 release/cutover/readiness/database contracts PASS, including two-phase bootstrap readiness and fail-stop compensation.",
     "predecessorRegression": "8/8 v105 predecessor regressions derived from release base 6bdd39e8 pass against the candidate server; the base source SHA-256 is verifier-bound and 13/13 dedicated v106 server tests pass separately",
     "outboxFailureAckIsolation": "25/25 outbox tests pass; a permanently stalled Formal promise enters FORMAL_SETTLEMENT_STALLED fatal with exit 70, sends no failure ACK, and retains the exact lease for stale-lease recovery",
-    "frontend": "156/156 PASS and production build PASS for Formal.27 candidate.",
-    "worker": "212/212 PASS for Formal.27 candidate under scrubbed environment.",
+    "frontend": "156/156 PASS and production build PASS for Formal.28 candidate.",
+    "worker": "212/212 PASS for Formal.28 candidate under scrubbed environment.",
     "databaseMigration": "PASS on production schema inside one stripped-outer-boundary transaction and fully rolled back: both SECURITY DEFINER functions compiled, two service_role EXECUTE grants read back, shared source fence present, mutable projections absent, function definitions and sole Active v105 restored byte-for-byte by hash",
     "diffCheck": "git diff --check pass",
     "secretScan": "gitleaks 8.30.1 exact staged blobs; zero leaks; exit 0",
@@ -139,11 +139,11 @@
       ]
     },
     "digests": {
-      "implementationTree": "9d269ee655ee8a638f1ef7079f657fb5b300758de33b2573d667c9dfda406651",
-      "proxyBuildInput": "7cf892a4b7ace453a5ab7f6ef18c8a1e641a73b0e81826feafca9c4add501323",
+      "implementationTree": "03bb89006994b7963307147beea2dc1b6031c6564ba883f364e71bc96cf45a76",
+      "proxyBuildInput": "7c474e0ea8206aaf48f955167165c78d84028b8930d56213245e7b1487f5b833",
       "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
       "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-      "databaseCutoverInput": "9e1475a7f0b6106e998f433e4ae5d9eed4cf3dd6c3cbcdfb9749e9ef3997dbf4"
+      "databaseCutoverInput": "ee2a8901a926768aacbdaacaaf3fdd5b40d252dafdc0afc0167ae533e3ccf2e4"
     },
     "formal16PostgresRehearsal": {
       "migrationTransactionRollback": "PASS",
@@ -186,11 +186,13 @@
     "formal25PostgresRace": "PASS in disposable production PostgreSQL schema: one admitted issuance held the row barrier, fence waited, post-fence issuance was rejected, fence rollback restored admission, and probe schema was removed.",
     "formal26Fix": "V106 issuance checks Active plus issuance_enabled=true under FOR SHARE; rollback terminalizer disables v106 admission by UPDATE before RPC revoke; Formal.25 initialization no longer rewrites established admission flags on rerun.",
     "formal26PostgresRace": "PASS in disposable production PostgreSQL schema: admitted successor SHARE lock forced rollback fence UPDATE to wait; post-fence admission false; migration rerun preserved state; rollback failure injection restored prior admission; schema removed.",
-    "formal27BoundDbProbe": "PASS from repository script scripts/verify-v106-issuance-barrier-db.py: actual issue_v106_prediction=1, concurrent rollback fence waited=1, post-fence rejected=1, migration rerun preserved=1, rollback restored=1, probe schema cleaned=1."
+    "formal27BoundDbProbe": "PASS from repository script scripts/verify-v106-issuance-barrier-db.py: actual issue_v106_prediction=1, concurrent rollback fence waited=1, post-fence rejected=1, migration rerun preserved=1, rollback restored=1, probe schema cleaned=1.",
+    "formal28Readiness": "PASS: exact identity phase accepts only HTTP 200 healthy or HTTP 503 source_unavailable with exact identity; strict post-producer phase requires HTTP 200 ok=true twice and compensates stop on failure.",
+    "formal28DbRehearsal": "PASS: production-schema migrations, v105 issuance fence, terminalization, activation, post-gate and rollback all executed in one transaction and rolled back; Outbox all zero."
   },
   "pending": [
-    "Formal.27 exact commit/tree, signed tag, external attestation and Fresh Review of the bound PostgreSQL probe",
-    "Formal.27 production push, cutover and Final/ACK/Queue/10-table/frontend E2E"
+    "Formal.28 focused/full tests, exact release, Fresh Review",
+    "Formal.28 production cutover and Final/ACK/Queue/10-table/frontend E2E"
   ],
   "productionTrialFormal13": {
     "verdict": "BLOCK_AND_ROLLBACK",
@@ -269,7 +271,7 @@
   "canonicalTests": {
     "proxy": {
       "command": "cd proxy && npm test",
-      "passed": 1050,
+      "passed": 1052,
       "failed": 0
     },
     "worker": {
@@ -286,12 +288,14 @@
   },
   "formal24FreshReview": "BLOCK: true P1 was missing DB concurrency barrier for v105 issuance fence; expired rows remain settlement-capable by immutable ID and predecessor settlement ACL is intentionally retained.",
   "componentDigests": {
-    "implementationTree": "9d269ee655ee8a638f1ef7079f657fb5b300758de33b2573d667c9dfda406651",
-    "proxyBuildInput": "7cf892a4b7ace453a5ab7f6ef18c8a1e641a73b0e81826feafca9c4add501323",
+    "implementationTree": "03bb89006994b7963307147beea2dc1b6031c6564ba883f364e71bc96cf45a76",
+    "proxyBuildInput": "7c474e0ea8206aaf48f955167165c78d84028b8930d56213245e7b1487f5b833",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "9e1475a7f0b6106e998f433e4ae5d9eed4cf3dd6c3cbcdfb9749e9ef3997dbf4"
+    "databaseCutoverInput": "ee2a8901a926768aacbdaacaaf3fdd5b40d252dafdc0afc0167ae533e3ccf2e4"
   },
   "formal25FreshReview": "BLOCK: successor issuance lacked the row-lock half of rollback fencing; late in-flight issuance could invalidate the only generation-bound receipt.",
-  "formal26FreshReview": "BLOCK: exact candidate did not bind the real PostgreSQL two-connection probe and the report contradicted its pending list."
+  "formal26FreshReview": "BLOCK: exact candidate did not bind the real PostgreSQL two-connection probe and the report contradicted its pending list.",
+  "formal27FreshReview": "PASS",
+  "formal27Production": "BLOCK_AND_ROLLBACK: pre-start strict health created a bootstrap cycle; exact Formal.27 identity returned 503 source_unavailable for 30 probes, so producer never started. DB/Render rolled back to V105."
 }

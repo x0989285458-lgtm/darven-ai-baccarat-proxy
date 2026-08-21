@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.27",
-  "gitTag": "v106.0.0-formal.27",
-  "applicationVersion": "1.0.84",
+  "releaseVersion": "v106.0.0-formal.28",
+  "gitTag": "v106.0.0-formal.28",
+  "applicationVersion": "1.0.85",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -131,7 +131,7 @@
       "path": "supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql",
       "deploymentStep": "database-isolated-runtime-gate",
       "contract": "Service-role-only PostgreSQL provenance gate returns one bounded proof so no Python site package is needed during production cutover.",
-      "gitBlobSha1": "95be954fc8e1f7cf4ab1abaf2cd0ad4fcfa504c2"
+      "gitBlobSha1": "503822fa43e65ae2949a44150062290b1ce6cd02"
     },
     "fence": {
       "path": "supabase/operations/fence_v105_new_issuance.sql",
@@ -337,7 +337,7 @@
         "scripts/verify-v106-issuance-barrier-db.py"
       ],
       "excludedPaths": [],
-      "sha256": "9d269ee655ee8a638f1ef7079f657fb5b300758de33b2573d667c9dfda406651"
+      "sha256": "03bb89006994b7963307147beea2dc1b6031c6564ba883f364e71bc96cf45a76"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -348,7 +348,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "7cf892a4b7ace453a5ab7f6ef18c8a1e641a73b0e81826feafca9c4add501323"
+      "sha256": "7c474e0ea8206aaf48f955167165c78d84028b8930d56213245e7b1487f5b833"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -395,7 +395,7 @@
         "scripts/verify-v106-issuance-barrier-db.py"
       ],
       "excludedPaths": [],
-      "sha256": "9e1475a7f0b6106e998f433e4ae5d9eed4cf3dd6c3cbcdfb9749e9ef3997dbf4"
+      "sha256": "ee2a8901a926768aacbdaacaaf3fdd5b40d252dafdc0afc0167ae533e3ccf2e4"
     }
   },
   "historicalArtifactsPreserved": true,
@@ -482,11 +482,21 @@
     "requiredIdentity": {
       "version": "v106",
       "buildVersion": "v106",
-      "releaseVersion": "v106.0.0-formal.27",
-      "packageVersion": "1.0.84",
+      "releaseVersion": "v106.0.0-formal.28",
+      "packageVersion": "1.0.85",
       "commit": "annotated-tag-attested-commit"
     },
-    "failClosedExitCode": 2
+    "failClosedExitCode": 2,
+    "phases": {
+      "preProducerIdentity": {
+        "accept": "HTTP 200 healthy or HTTP 503 source_unavailable only when exact signed release/package/commit identity matches twice",
+        "purpose": "prove the deployed immutable proxy before producer bootstrap"
+      },
+      "postProducerService": {
+        "accept": "HTTP 200 ok=true with the same exact identity twice",
+        "purpose": "prove source plus proxy service health before post DB gate"
+      }
+    }
   },
   "incidentEvidence": {
     "formal13": "release/evidence/v106-formal13-production-block.json",
@@ -504,7 +514,10 @@
     "formal25FreshReview": "BLOCK: v106 rollback terminalization revoked RPC privilege without a row-lock admission barrier, allowing an already-authorized concurrent successor issuance after the receipt quiet cutoff and creating a single-generation receipt dead-end.",
     "formal26Fix": "issue_v106_prediction now requires issuance_enabled=true under FOR SHARE; rollback terminalization first sets v106 issuance_enabled=false through the same row, waiting for admitted transactions before RPC revoke and receipt creation. Formal.25 initialization is rerun-safe.",
     "formal26FreshReview": "BLOCK: the report claimed a PostgreSQL race PASS but the exact candidate contained only static assertions and still listed the two-connection rehearsal as pending; the successful temp probe was not release-bound.",
-    "formal27Fix": "The exact candidate now binds a credential-free durable PostgreSQL probe script that runs actual issue_v106_prediction concurrently with the rollback fence and proves wait, rejection, rerun preservation, rollback restoration and cleanup."
+    "formal27Fix": "The exact candidate now binds a credential-free durable PostgreSQL probe script that runs actual issue_v106_prediction concurrently with the rollback fence and proves wait, rejection, rerun preservation, rollback restoration and cleanup.",
+    "formal27FreshReview": "PASS: exact release bound and executed the real two-connection PostgreSQL successor issuance race probe.",
+    "formal27Production": "BLOCK_AND_ROLLBACK: exact proxy identity was live, but pre-producer readiness demanded HTTP 200 service health while the producer was intentionally stopped; all 30 probes returned exact Formal.27 identity with HTTP 503 source_unavailable. DB and Render were rolled back to V105 and no V106 issuance occurred.",
+    "formal28Fix": "Split bounded readiness into exact identity before producer start and strict HTTP 200 service readiness after start. Any post-start readiness failure invokes the exact bound stop launcher before rejection."
   },
   "productionCutoverRunner": {
     "script": "scripts/run-v106-production-cutover.mjs",
@@ -518,11 +531,11 @@
     "requiresPreAndPostDatabaseGenerationGate": true,
     "requiresPostStartFailStopCompensation": true,
     "productionDbGateScript": "scripts/verify-v106-production-db-gate.py",
-    "productionDbGateScriptGitBlobSha1": "2229e12e520c5025e0479ba6af12e023bcd72926",
+    "productionDbGateScriptGitBlobSha1": "474760399a3c43f1cf509e16a8dd031d379d2960",
     "producerStartScript": "scripts/start-v106-formal-producer.py",
-    "producerStartScriptGitBlobSha1": "1bff112412b55b9f819b7beeed70f5af88cfafae",
+    "producerStartScriptGitBlobSha1": "9d3828a01d7bcf1e1c0c343435db3f2ff56c68c4",
     "producerStopScript": "scripts/stop-v106-formal-producer.py",
-    "producerStopScriptGitBlobSha1": "f0514030b5f9549c27228e6a2cba96cf96fa7924",
+    "producerStopScriptGitBlobSha1": "8ab00d7d272ccff261b11650a26db419a75e45f8",
     "producerImage": "darven-worker:v106-formal3-33f9dc6",
     "producerImageId": "sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2",
     "executesLaunchersFromExactGitTree": true,
@@ -532,7 +545,9 @@
     "requiresPythonNoSite": true,
     "productionDbGateRpc": "verify_v106_production_cutover_gate",
     "requiresDatabaseIssuanceAdmissionBarrier": true,
-    "predecessorLateSettlementRetained": true
+    "predecessorLateSettlementRetained": true,
+    "requiresIdentityReadinessBeforeStart": true,
+    "requiresServiceReadinessAfterStart": true
   },
   "releaseAuthorization": {
     "trustPolicyVersion": "v106-release-trust-v1",

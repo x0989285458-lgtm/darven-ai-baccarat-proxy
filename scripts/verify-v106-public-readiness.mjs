@@ -13,6 +13,7 @@ export async function verifyV106PublicReadiness({
   attempts = 30,
   intervalMs = 15000,
   requestTimeoutMs = 20000,
+  mode = 'service',
   onProbe = () => {},
 } = {}) {
   if (!/^https:\/\//.test(String(url ?? ''))) throw new Error('public_readiness_https_url_required')
@@ -20,6 +21,7 @@ export async function verifyV106PublicReadiness({
   if (!/^1\.0\.\d+$/.test(String(expectedPackage ?? ''))) throw new Error('public_readiness_package_required')
   if (!/^[a-f0-9]{40}$/.test(String(expectedCommit ?? ''))) throw new Error('public_readiness_commit_required')
   if (typeof fetchImpl !== 'function') throw new Error('public_readiness_fetch_required')
+  if (!['identity', 'service'].includes(mode)) throw new Error('public_readiness_mode_invalid')
   const requiredStreak = Math.max(2, Number(consecutive) || 0)
   const maxAttempts = Math.min(30, Math.max(requiredStreak, Number(attempts) || 0))
   let streak = 0
@@ -39,16 +41,18 @@ export async function verifyV106PublicReadiness({
     } finally {
       clearTimeout(timer)
     }
-    const passed = response?.status === 200
-      && body?.ok === true
-      && body?.version === 'v106'
+    const exactIdentity = body?.version === 'v106'
       && body?.buildVersion === 'v106'
       && body?.releaseVersion === expectedRelease
       && body?.packageVersion === expectedPackage
       && body?.commit === expectedCommit
+    const passed = exactIdentity && (mode === 'identity'
+      ? ((response?.status === 200 && body?.ok === true)
+        || (response?.status === 503 && body?.ok === false && body?.reason === 'source_unavailable'))
+      : response?.status === 200 && body?.ok === true)
     streak = passed ? streak + 1 : 0
     const probe = {
-      attempt, status: response?.status ?? null, ok: body?.ok ?? null,
+      attempt, mode, status: response?.status ?? null, ok: body?.ok ?? null, reason: body?.reason ?? null,
       version: body?.version ?? null, buildVersion: body?.buildVersion ?? null,
       releaseVersion: body?.releaseVersion ?? null, packageVersion: body?.packageVersion ?? null,
       commit: body?.commit ?? null, passed, streak, error,

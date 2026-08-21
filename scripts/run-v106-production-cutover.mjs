@@ -78,7 +78,7 @@ export async function runV106ProductionCutover({
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
   if (head !== authorization.commit) throw new Error('production_cutover_head_commit_mismatch')
   const gate = manifest.publicReadinessGate
-  const readiness = await verifyReadiness({
+  const identityReadiness = await verifyReadiness({
     url: manifest.canonicalPublicProxyUrl,
     expectedRelease: manifest.releaseVersion,
     expectedPackage: manifest.applicationVersion,
@@ -87,9 +87,10 @@ export async function runV106ProductionCutover({
     attempts: gate.boundedAttempts,
     intervalMs: gate.intervalMs,
     requestTimeoutMs: gate.requestTimeoutMs,
+    mode: 'identity',
     onProbe,
   })
-  if (readiness?.verdict !== 'PASS' || readiness?.consecutive < gate.requiredConsecutive) {
+  if (identityReadiness?.verdict !== 'PASS' || identityReadiness?.consecutive < gate.requiredConsecutive) {
     throw new Error('production_cutover_public_readiness_not_proven')
   }
   const postReadinessHead = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
@@ -123,18 +124,33 @@ export async function runV106ProductionCutover({
       packageVersion: manifest.applicationVersion,
       commit: authorization.commit,
       generation: preDbGate.generation,
-      readiness,
+      readiness: identityReadiness,
     })
     if (producer?.ok !== true
         || producer?.generation !== preDbGate.generation
         || producer?.workerImageId !== manifest.productionCutoverRunner.producerImageId) {
       throw new Error('production_cutover_producer_start_failed')
     }
+    const serviceReadiness = await verifyReadiness({
+      url: manifest.canonicalPublicProxyUrl,
+      expectedRelease: manifest.releaseVersion,
+      expectedPackage: manifest.applicationVersion,
+      expectedCommit: authorization.commit,
+      consecutive: gate.requiredConsecutive,
+      attempts: gate.boundedAttempts,
+      intervalMs: gate.intervalMs,
+      requestTimeoutMs: gate.requestTimeoutMs,
+      mode: 'service',
+      onProbe,
+    })
+    if (serviceReadiness?.verdict !== 'PASS' || serviceReadiness?.consecutive < gate.requiredConsecutive) {
+      throw new Error('production_cutover_public_service_readiness_not_proven')
+    }
     const postDbGate = await verifyProductionDb({ phase: 'post', releaseVersion: manifest.releaseVersion, packageVersion: manifest.applicationVersion })
     if (postDbGate?.ok !== true || postDbGate?.generation !== preDbGate.generation) {
       throw new Error('production_cutover_db_generation_drift')
     }
-    return { verdict: 'PASS', releaseAuthorized: true, commit: authorization.commit, readiness, preDbGate, producer, postDbGate }
+    return { verdict: 'PASS', releaseAuthorized: true, commit: authorization.commit, identityReadiness, serviceReadiness, preDbGate, producer, postDbGate }
   } catch (error) {
     let stopped
     try {

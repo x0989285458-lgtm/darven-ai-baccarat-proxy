@@ -89,7 +89,7 @@ test('Formal.22 blocks before producer start when the actual stop launcher blob 
   assert.equal(producerCalls, 0)
 })
 
-test('Formal.21 bound cutover authorizes exact HEAD, proves public identity, then and only then starts producer', async () => {
+test('Formal.28 proves exact identity before start and strict service readiness after start', async () => {
   const events = []
   const result = await runV106ProductionCutover({
     manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', url: 'https://example.test', root,
@@ -97,7 +97,7 @@ test('Formal.21 bound cutover authorizes exact HEAD, proves public identity, the
     stopProducer: stoppedProducer,
     authorizeRelease: async () => ({ releaseAuthorized: true, commit: head() }),
     verifyReadiness: async (options) => {
-      events.push(['readiness', options.url, options.expectedCommit, options.attempts])
+      events.push(['readiness', options.mode, options.url, options.expectedCommit, options.attempts])
       return { verdict: 'PASS', consecutive: 2 }
     },
     verifyProductionDb: async ({ phase }) => {
@@ -111,11 +111,30 @@ test('Formal.21 bound cutover authorizes exact HEAD, proves public identity, the
   })
   assert.equal(result.verdict, 'PASS')
   assert.deepEqual(events, [
-    ['readiness', manifest.canonicalPublicProxyUrl, head(), 30],
+    ['readiness', 'identity', manifest.canonicalPublicProxyUrl, head(), 30],
     ['db', 'pre'],
     ['producer', head(), generation],
+    ['readiness', 'service', manifest.canonicalPublicProxyUrl, head(), 30],
     ['db', 'post'],
   ])
+})
+
+test('Formal.28 post-start strict readiness failure stops producer before rejecting', async () => {
+  const events = []
+  await assert.rejects(runV106ProductionCutover({
+    manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', root,
+    resolveCurrentTree: () => tree(),
+    authorizeRelease: async () => ({ releaseAuthorized: true, commit: head() }),
+    verifyReadiness: async ({ mode }) => {
+      events.push(`readiness:${mode}`)
+      if (mode === 'service') throw new Error('service_not_ready')
+      return { verdict: 'PASS', consecutive: 2 }
+    },
+    verifyProductionDb: productionDbGate,
+    startProducer: async () => { events.push('start'); return { ok: true, generation, workerImageId: manifest.productionCutoverRunner.producerImageId } },
+    stopProducer: async () => { events.push('stop'); return { ok: true, stopped: true, activeState: 'inactive' } },
+  }), /service_not_ready/)
+  assert.deepEqual(events, ['readiness:identity', 'start', 'readiness:service', 'stop'])
 })
 
 test('Formal.21 bound cutover blocks producer when production DB provenance is missing', async () => {

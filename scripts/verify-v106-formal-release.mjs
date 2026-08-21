@@ -303,6 +303,8 @@ export function verifyV106PublicReadinessContract({ manifest, candidateIndexTree
       || cutover?.requiresPythonIsolatedMode !== true
       || cutover?.requiresPythonNoSite !== true
       || cutover?.requiresDatabaseIssuanceAdmissionBarrier !== true
+      || cutover?.requiresIdentityReadinessBeforeStart !== true
+      || cutover?.requiresServiceReadinessAfterStart !== true
       || cutover?.predecessorLateSettlementRetained !== true
       || cutover?.productionDbGateRpc !== 'verify_v106_production_cutover_gate'
       || cutover?.trustedPythonSha256 !== 'c5f556ec6491af96e925f149c8e81701103862ca4d686af5788ad3e1954ca081'
@@ -353,29 +355,34 @@ export function verifyV106PublicReadinessContract({ manifest, candidateIndexTree
   if (producerStopBlob !== cutover.producerStopScriptGitBlobSha1) throw new Error('producer_stop_script_blob_mismatch')
   if (dbGateBlob !== cutover.productionDbGateScriptGitBlobSha1) throw new Error('production_db_gate_script_blob_mismatch')
   const source = execFileSync('git', ['show', `${candidateIndexTree}:${script}`], { cwd: root, encoding: 'utf8' })
-  for (const requiredText of ['requiredStreak = Math.max(2', 'maxAttempts = Math.min(30', "redirect: 'error'", 'body?.releaseVersion === expectedRelease', 'body?.packageVersion === expectedPackage', 'body?.commit === expectedCommit', "blocked.code = 'PUBLIC_PROXY_READINESS_BLOCK'"]) {
+  for (const requiredText of ['requiredStreak = Math.max(2', 'maxAttempts = Math.min(30', "redirect: 'error'", "mode === 'identity'", "body?.reason === 'source_unavailable'", 'body?.releaseVersion === expectedRelease', 'body?.packageVersion === expectedPackage', 'body?.commit === expectedCommit', "blocked.code = 'PUBLIC_PROXY_READINESS_BLOCK'"]) {
     if (!source.includes(requiredText)) throw new Error('public_readiness_gate_executable_mismatch')
   }
   const runnerSource = execFileSync('git', ['show', `${candidateIndexTree}:${runner}`], { cwd: root, encoding: 'utf8' })
-  for (const requiredText of ['verifyV106Attestation', 'resolveAnnotatedTagCommit', "if (head !== authorization.commit)", 'url: manifest.canonicalPublicProxyUrl', 'const readiness = await verifyReadiness', 'const postReadinessHead', 'const postReadinessTree', 'production_cutover_post_readiness_identity_drift', 'production_cutover_producer_blob_drift', "verifyProductionDb({ phase: 'pre'", 'production_cutover_db_provenance_not_proven', 'generation: preDbGate.generation', "verifyProductionDb({ phase: 'post'", 'production_cutover_db_generation_drift', 'producer = await startProducer', 'const postDbGate = await verifyProductionDb', 'stopped = await stopProducer', 'production_cutover_post_start_compensation_failed', 'producer_start_script_override_forbidden', 'manifest.productionCutoverRunner.producerStartScript', 'production_cutover_producer_stop_blob_drift', 'production_cutover_db_gate_blob_drift', 'loadBoundPythonSource', "spawnSync(trustedPython.path, ['-I', '-S', '-c', producerStartSource]", "spawnSync(trustedPython.path, ['-I', '-S', '-c', producerStopSource]", "spawnSync(trustedPython.path, ['-I', '-S', '-c', productionDbGateSource]", 'loadTrustedPythonInterpreter', 'buildBoundPythonEnvironment(process.env)', 'assertTrustedPythonUnchanged']) {
+  for (const requiredText of ['verifyV106Attestation', 'resolveAnnotatedTagCommit', "if (head !== authorization.commit)", 'url: manifest.canonicalPublicProxyUrl', 'const identityReadiness = await verifyReadiness', "mode: 'identity'", 'const postReadinessHead', 'const postReadinessTree', 'production_cutover_post_readiness_identity_drift', 'production_cutover_producer_blob_drift', "verifyProductionDb({ phase: 'pre'", 'production_cutover_db_provenance_not_proven', 'generation: preDbGate.generation', 'const serviceReadiness = await verifyReadiness', "mode: 'service'", "verifyProductionDb({ phase: 'post'", 'production_cutover_db_generation_drift', 'producer = await startProducer', 'const postDbGate = await verifyProductionDb', 'stopped = await stopProducer', 'production_cutover_post_start_compensation_failed', 'producer_start_script_override_forbidden', 'manifest.productionCutoverRunner.producerStartScript', 'production_cutover_producer_stop_blob_drift', 'production_cutover_db_gate_blob_drift', 'loadBoundPythonSource', "spawnSync(trustedPython.path, ['-I', '-S', '-c', producerStartSource]", "spawnSync(trustedPython.path, ['-I', '-S', '-c', producerStopSource]", "spawnSync(trustedPython.path, ['-I', '-S', '-c', productionDbGateSource]", 'loadTrustedPythonInterpreter', 'buildBoundPythonEnvironment(process.env)', 'assertTrustedPythonUnchanged']) {
     if (!runnerSource.includes(requiredText)) throw new Error('production_cutover_runner_executable_mismatch')
   }
-  if (runnerSource.indexOf('producer = await startProducer') < runnerSource.indexOf('const readiness = await verifyReadiness')) {
+  const identityReadinessIndex = runnerSource.indexOf('const identityReadiness = await verifyReadiness')
+  const producerStartIndex = runnerSource.indexOf('producer = await startProducer')
+  const serviceReadinessIndex = runnerSource.indexOf('const serviceReadiness = await verifyReadiness')
+  const postDbGateIndex = runnerSource.indexOf('const postDbGate = await verifyProductionDb')
+  if (!(identityReadinessIndex >= 0 && identityReadinessIndex < producerStartIndex
+      && producerStartIndex < serviceReadinessIndex && serviceReadinessIndex < postDbGateIndex)) {
     throw new Error('production_cutover_runner_order_mismatch')
   }
   if (runnerSource.includes("get('--url')") || runnerSource.includes("get('--producer-start-script')")) {
     throw new Error('production_cutover_runner_override_forbidden')
   }
   const producerSource = execFileSync('git', ['show', `${candidateIndexTree}:${BOUND_PRODUCER_START_SCRIPT}`], { cwd: root, encoding: 'utf8' })
-  for (const requiredText of ["EXPECTED_RELEASE = 'v106.0.0-formal.27'", "EXPECTED_PACKAGE = '1.0.84'", "EXPECTED_IMAGE = 'darven-worker:v106-formal3-33f9dc6'", "EXPECTED_IMAGE_ID = 'sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2'", 'identity_parts != [EXPECTED_IMAGE, EXPECTED_IMAGE_ID', 'V106_CUTOVER_GENERATION', 'systemctl start darven-worker.service', "'tenTables':", "'exactImage':"]) {
+  for (const requiredText of ["EXPECTED_RELEASE = 'v106.0.0-formal.28'", "EXPECTED_PACKAGE = '1.0.85'", "EXPECTED_IMAGE = 'darven-worker:v106-formal3-33f9dc6'", "EXPECTED_IMAGE_ID = 'sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2'", 'identity_parts != [EXPECTED_IMAGE, EXPECTED_IMAGE_ID', 'V106_CUTOVER_GENERATION', 'systemctl start darven-worker.service', "'tenTables':", "'exactImage':"]) {
     if (!producerSource.includes(requiredText)) throw new Error('producer_start_script_executable_mismatch')
   }
   const producerStopSource = execFileSync('git', ['show', `${candidateIndexTree}:${BOUND_PRODUCER_STOP_SCRIPT}`], { cwd: root, encoding: 'utf8' })
-  for (const requiredText of ["EXPECTED_RELEASE = 'v106.0.0-formal.27'", "EXPECTED_PACKAGE = '1.0.84'", 'V106_CUTOVER_GENERATION', 'systemctl stop darven-worker.service', 'systemctl is-active darven-worker.service', "'stopped': True", "parts[0] != 'inactive'", "parts[2].lower() == 'true'"]) {
+  for (const requiredText of ["EXPECTED_RELEASE = 'v106.0.0-formal.28'", "EXPECTED_PACKAGE = '1.0.85'", 'V106_CUTOVER_GENERATION', 'systemctl stop darven-worker.service', 'systemctl is-active darven-worker.service', "'stopped': True", "parts[0] != 'inactive'", "parts[2].lower() == 'true'"]) {
     if (!producerStopSource.includes(requiredText)) throw new Error('producer_stop_script_executable_mismatch')
   }
   const dbGateSource = execFileSync('git', ['show', `${candidateIndexTree}:${BOUND_PRODUCTION_DB_GATE_SCRIPT}`], { cwd: root, encoding: 'utf8' })
-  for (const requiredText of ["EXPECTED_PROJECT_REF = 'gscfexhsqxvtpyxudtza'", "EXPECTED_RELEASE = 'v106.0.0-formal.27'", "EXPECTED_PACKAGE = '1.0.84'", '20260821010000', '20260821030000', 'verify_v106_production_cutover_gate', 'class NoRedirect', 'urllib.request', "'Authorization':", 'EXPECTED_WRITER_ACL', "payload.get('migrations')", "payload.get('activeOutbox')"]) {
+  for (const requiredText of ["EXPECTED_PROJECT_REF = 'gscfexhsqxvtpyxudtza'", "EXPECTED_RELEASE = 'v106.0.0-formal.28'", "EXPECTED_PACKAGE = '1.0.85'", '20260821010000', '20260821030000', 'verify_v106_production_cutover_gate', 'class NoRedirect', 'urllib.request', "'Authorization':", 'EXPECTED_WRITER_ACL', "payload.get('migrations')", "payload.get('activeOutbox')"]) {
     if (!dbGateSource.includes(requiredText)) throw new Error('production_db_gate_script_executable_mismatch')
   }
   if (dbGateSource.includes('psycopg') || dbGateSource.includes('import site')) throw new Error('production_db_gate_script_executable_mismatch')
