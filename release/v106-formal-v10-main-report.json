@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.37",
+  "releaseVersion": "v106.0.0-formal.38",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.94",
-  "status": "formal37_candidate_all_tests_pass_exact_release_pending",
-  "productionE2E": "not-run-formal36-stopped-safe",
+  "applicationVersion": "1.0.95",
+  "status": "formal38_candidate_all_tests_pass_exact_release_pending",
+  "productionE2E": "not-run-formal37-tag-rejected-before-worker-start",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.94",
+      "packageVersion": "1.0.95",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,11 +27,11 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "4eb2f07529a6a4e2077b55acdc6a6af63c8ddacd392ec03d3248100e99e51177",
-    "proxyBuildInput": "808c70bb4a7ebb20ac1871245b36d64193eafc82d6396f31e4af805270061f8b",
+    "implementationTree": "6c78b8f8badc28748fef1c1195122b1c6a74160404d681970f60ecc8b0800fa1",
+    "proxyBuildInput": "2fe1edca1ca452f8adecb4f222ae3677f89ae5f1c692fb21460cee2e4b866008",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "bf497345a434d9067487e34dfc175e8f631bb48a7da3b365e29cd583506fc7c2"
+    "databaseCutoverInput": "80624e20feaa05d00c3d7642286d53f3cea12a8a320f4ef81bf86e2d14aea73f"
   },
   "rollbackComponents": {
     "proxy": {
@@ -314,6 +314,7 @@
   "formal33Production": "BLOCK_AND_SAFE_STOP: exact cutover PASS only after 18 service probes; then Queue 29, one 502, health 19s and online-core >35s with Outbox zero. Worker stopped inactive before Formal.34.",
   "testEvidence": {
     "formal37RawAckPostgrestTdd": "RED: production Render Direct DB raw persistence committed but did not return before Worker HTTP deadline; local duplicate readback was HTTP 200 in 478ms. GREEN: fenced Raw ACK uses one 9s no-retry Supabase HTTPS RPC, concurrent sessions remain independent, and source-fence/backpressure contracts pass.",
-    "formal37FullSuite": "Proxy 1037/1037 plus release 28/28, Worker 212/212, Frontend 156/156 and production build PASS."
+    "formal37FullSuite": "Proxy 1037/1037 plus release 28/28, Worker 212/212, Frontend 156/156 and production build PASS.",
+    "formal38AttestationSchema": "Formal.37 failed closed at attestation_tree_mismatch before Worker start. Formal.38 exact verifier schema is candidateIndexTree + parent + nested digests + trusted Python + approval; Proxy 1037/1037 and release 28/28 PASS. Worker 212/212 and Frontend 156/156+build are inherited unchanged because their bound input digests are unchanged."
   }
 }
