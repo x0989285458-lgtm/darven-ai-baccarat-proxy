@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.40",
+  "releaseVersion": "v106.0.0-formal.41",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.97",
-  "status": "formal40_candidate_all_tests_pass_exact_release_pending",
-  "productionE2E": "not-run-formal38-stopped-safe-formal39-review-blocked-not-deployed",
+  "applicationVersion": "1.0.98",
+  "status": "formal41_candidate_all_tests_pass_exact_release_pending",
+  "productionE2E": "not-run-formal40-stopped-safe-after-queue7-http-stall",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.97",
+      "packageVersion": "1.0.98",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,11 +27,11 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "2b8d469e94e726644b1d975589467006bf21784d59291209d73400b33590daac",
-    "proxyBuildInput": "9ab8e78a843c3ef44b05d97bea76d48e1bf328d851ca88868a4474ae1bb4a50d",
+    "implementationTree": "8069650b34afa509dc4d75dc6766fe6d7d8a9e8eab1cde0708a5f88bdc360804",
+    "proxyBuildInput": "82c993679a9b8938120baf96499eb8f88a62be15c7fdce4f8734284b741710d0",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "a8819f1c1a94a3fbe80d04fa509941a06a825740d82f5168539f68f13da7fe86"
+    "databaseCutoverInput": "8759a65c0474e6acacde3deb13154a4c077a069fe579eda1f4bff550c9456133"
   },
   "rollbackComponents": {
     "proxy": {
@@ -317,6 +317,7 @@
     "formal37FullSuite": "Proxy 1037/1037 plus release 28/28, Worker 212/212, Frontend 156/156 and production build PASS.",
     "formal38AttestationSchema": "Formal.37 failed closed at attestation_tree_mismatch before Worker start. Formal.38 exact verifier schema is candidateIndexTree + parent + nested digests + trusted Python + approval; Proxy 1037/1037 and release 28/28 PASS. Worker 212/212 and Frontend 156/156+build are inherited unchanged because their bound input digests are unchanged.",
     "formal39AckFlush": "GREEN: response carries deferred work; Node HTTP invokes it only in res.end completion callback. Proxy 1037/1037 and release 28/28 PASS; Worker/Frontend bound inputs unchanged and retain prior 212/212, 156/156+build evidence.",
-    "formal40SingleConsumer": "RED 2 schedules vs expected 1; GREEN focused 3/3. Canonical Proxy 1038/1038 and Release 28/28 PASS. Worker/Frontend inputs unchanged and retain 212/212, 156/156 plus build evidence."
+    "formal40SingleConsumer": "RED 2 schedules vs expected 1; GREEN focused 3/3. Canonical Proxy 1038/1038 and Release 28/28 PASS. Worker/Frontend inputs unchanged and retain 212/212, 156/156 plus build evidence.",
+    "formal41Isolation": "Focused 39/39 PASS; real fork ready/wake/stop PASS; Proxy 1040/1040 and Release 28/28 PASS. HTTP parent pool 4 plus isolated Outbox child pool 6 preserves the total 10-connection budget."
   }
 }

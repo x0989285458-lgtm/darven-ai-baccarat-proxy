@@ -1377,6 +1377,7 @@ test('durable ACK flushes before local table prediction fan-out is scheduled', a
   assert.match(serverSource, /res\.end\(result\.body, \(\) => result\.afterResponse\?\.\(\)\)/)
   assert.match(serverSource, /let afterResponseConsumed = false[\s\S]*if \(afterResponseConsumed\) return[\s\S]*afterResponseConsumed = true[\s\S]*postAckScheduler\(afterResponseTask\)/)
   let deferredPostAck = null
+  let isolatedOutboxWakes = 0
   const writer = {
     configured: true,
     async writeCloudTableSnapshot() {},
@@ -1389,6 +1390,10 @@ test('durable ACK flushes before local table prediction fan-out is scheduled', a
     ingestKey: 'worker-key',
     now: () => 1_000_000,
     supabaseClient: writer,
+    outboxProcessClient: {
+      wake() { isolatedOutboxWakes += 1; return true },
+      async stop() {},
+    },
     postAckScheduler(task) { deferredPostAck = task },
   })
   const response = await app.inject({
@@ -1410,4 +1415,5 @@ test('durable ACK flushes before local table prediction fan-out is scheduled', a
   deferredPostAck()
   await delay(0)
   assert.equal(app.state.snapshot().tables.length, 1)
+  assert.equal(isolatedOutboxWakes, 1, 'formal projection and Outbox drain must wake the isolated process once')
 })
