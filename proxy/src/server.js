@@ -1270,6 +1270,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           const parsed = parseCloudCapturePayload(envelope.snapshot, stableCapturedAt)
           let captureResult = null
           let duplicateCapture = false
+          let afterResponseTask = null
           try {
             assertDurableIngestWriter(supabaseClient, parsed.rounds.length)
             if (production && typeof supabaseClient?.persistCaptureEnvelope !== 'function') {
@@ -1300,7 +1301,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               duplicateCapture = rawAcknowledgement?.duplicate === true
               captureResult = { durableTimings: { rawOutboxMs: Math.max(0, Date.now() - rawOutboxStartedAt) } }
               const committedDuplicate = duplicateCapture
-              postAckScheduler(() => {
+              afterResponseTask = () => {
                 try {
                   if (!committedDuplicate) {
                     state.setStatus({
@@ -1323,7 +1324,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                 } catch (error) {
                   state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
                 }
-              })
+              }
             } else {
               captureResult = await applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Formal })
               if (fencedSource) await ingestSourceFence.validateAndAdvance?.(fencedSource)
@@ -1359,7 +1360,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             eventLayer: null, eventSeverity: null, eventComponent: null,
             eventMessage: null, eventStatusCode: null, eventKind: null, eventAt: null,
           })
-          return jsonResponse(200, ack, frontendOrigin)
+          const response = jsonResponse(200, ack, frontendOrigin)
+          if (afterResponseTask) response.afterResponse = () => postAckScheduler(afterResponseTask)
+          return response
         })
         if (usesDurableOutbox && !existingIngest) {
           const trackedIngest = ingestOperation.finally(() => {
@@ -2248,7 +2251,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
     const result = await handle(req.method ?? 'GET', req.url ?? '/', rawBody, req.headers)
     res.writeHead(result.statusCode, result.headers)
-    res.end(result.body)
+    res.end(result.body, () => result.afterResponse?.())
   })
 
   const streamClients = new Set()
@@ -2504,7 +2507,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       await new Promise((resolve) => server.close(() => resolve()))
     },
     async inject({ method = 'GET', url = '/', body = '', headers = {} } = {}) {
-      return handle(method, url, body, headers)
+      const result = await handle(method, url, body, headers)
+      result.afterResponse?.()
+      return result
     },
     drainCaptureOutbox,
     waitForCaptureOutboxIdle,

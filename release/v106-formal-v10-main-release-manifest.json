@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.38",
-  "gitTag": "v106.0.0-formal.38",
-  "applicationVersion": "1.0.95",
+  "releaseVersion": "v106.0.0-formal.39",
+  "gitTag": "v106.0.0-formal.39",
+  "applicationVersion": "1.0.96",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -131,7 +131,7 @@
       "path": "supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql",
       "deploymentStep": "database-isolated-runtime-gate",
       "contract": "Service-role-only PostgreSQL provenance gate returns one bounded proof so no Python site package is needed during production cutover.",
-      "gitBlobSha1": "cec270a78f1a1d6ed0cce38945bfe85beddfdf4d"
+      "gitBlobSha1": "123e236fb80121a8ee0498c29723f5204b51a9e2"
     },
     "fence": {
       "path": "supabase/operations/fence_v105_new_issuance.sql",
@@ -337,7 +337,7 @@
         "scripts/verify-v106-issuance-barrier-db.py"
       ],
       "excludedPaths": [],
-      "sha256": "6c78b8f8badc28748fef1c1195122b1c6a74160404d681970f60ecc8b0800fa1"
+      "sha256": "b81522866a91733309a4f2a0a97ab8a38310100c13113ed8e1cdfab25a2a0f5c"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -348,7 +348,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "2fe1edca1ca452f8adecb4f222ae3677f89ae5f1c692fb21460cee2e4b866008"
+      "sha256": "fc72ee289bd975ed36ed95a422d7fa5ae61e3c73f1de01917c6a34984f495e1d"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -395,7 +395,7 @@
         "scripts/verify-v106-issuance-barrier-db.py"
       ],
       "excludedPaths": [],
-      "sha256": "80624e20feaa05d00c3d7642286d53f3cea12a8a320f4ef81bf86e2d14aea73f"
+      "sha256": "49db796447728b5ed5af7c6a04265ff82bdb008790471d0ac39188e59c1aaccc"
     }
   },
   "historicalArtifactsPreserved": true,
@@ -482,8 +482,8 @@
     "requiredIdentity": {
       "version": "v106",
       "buildVersion": "v106",
-      "releaseVersion": "v106.0.0-formal.38",
-      "packageVersion": "1.0.95",
+      "releaseVersion": "v106.0.0-formal.39",
+      "packageVersion": "1.0.96",
       "commit": "annotated-tag-attested-commit"
     },
     "failClosedExitCode": 2,
@@ -544,11 +544,11 @@
     "requiresPreAndPostDatabaseGenerationGate": true,
     "requiresPostStartFailStopCompensation": true,
     "productionDbGateScript": "scripts/verify-v106-production-db-gate.py",
-    "productionDbGateScriptGitBlobSha1": "6cf7a25d089b643c7f1b2ef7d644622bfbcab2ee",
+    "productionDbGateScriptGitBlobSha1": "8b26a996045daa62757bb6cc1b06567c6deab829",
     "producerStartScript": "scripts/start-v106-formal-producer.py",
-    "producerStartScriptGitBlobSha1": "c5a9e19f693f62a4d45fdb9a5ce896914636b416",
+    "producerStartScriptGitBlobSha1": "5510f289fadac9bd8e9216244a236cd7c957c39b",
     "producerStopScript": "scripts/stop-v106-formal-producer.py",
-    "producerStopScriptGitBlobSha1": "3b0ecfc578dcf9ee30c8fbe0e73eecb24a1db0ab",
+    "producerStopScriptGitBlobSha1": "eaa7be705ebcd240a32cbf1b8dffa8985218d2d3",
     "producerImage": "darven-worker:v106-formal3-33f9dc6",
     "producerImageId": "sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2",
     "executesLaunchersFromExactGitTree": true,
@@ -561,8 +561,8 @@
     "predecessorLateSettlementRetained": true,
     "requiresIdentityReadinessBeforeStart": true,
     "requiresServiceReadinessAfterStart": true,
-    "databaseGateScriptGitBlobSha1": "6cf7a25d089b643c7f1b2ef7d644622bfbcab2ee",
-    "isolatedRuntimeMigrationGitBlobSha1": "cec270a78f1a1d6ed0cce38945bfe85beddfdf4d"
+    "databaseGateScriptGitBlobSha1": "8b26a996045daa62757bb6cc1b06567c6deab829",
+    "isolatedRuntimeMigrationGitBlobSha1": "123e236fb80121a8ee0498c29723f5204b51a9e2"
   },
   "releaseAuthorization": {
     "trustPolicyVersion": "v106-release-trust-v1",
@@ -588,6 +588,7 @@
   },
   "releaseFixes": {
     "formal37RawAckPostgrest": "Formal.37 routes only fenced raw capture ACK through one bounded 9s Supabase HTTPS RPC with no internal retry, avoiding the Render Direct DB socket that committed rows but failed to deliver query completion before the 15s Worker HTTP deadline. Formal issuance, settlement, control, scheduler lanes, single-flight, source fences and rollback gates remain unchanged.",
-    "formal38AttestationSchema": "Formal.38 preserves the reviewed Formal.37 implementation and corrects the immutable external attestation to the verifier-required candidateIndexTree, parent, nested digests, trusted Python and approval schema; the already-pushed Formal.37 tag remains historical and is not moved."
+    "formal38AttestationSchema": "Formal.38 preserves the reviewed Formal.37 implementation and corrects the immutable external attestation to the verifier-required candidateIndexTree, parent, nested digests, trusted Python and approval schema; the already-pushed Formal.37 tag remains historical and is not moved.",
+    "formal39AckFlushBeforeFanout": "Formal.39 carries deferred post-ACK work on the response object and invokes it only from the Node HTTP res.end completion callback, so durable ACK bytes flush before local table, prediction, ancillary persistence and outbox drain work begins."
   }
 }

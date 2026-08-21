@@ -1327,7 +1327,10 @@ test('same durable ingest identity is single-flight across timed-out worker retr
   assert.equal(persistCalls, 2, 'one later retry may perform the authoritative durable duplicate readback')
 })
 
-test('durable ACK returns before local table prediction fan-out is scheduled', async () => {
+test('durable ACK flushes before local table prediction fan-out is scheduled', async () => {
+  const serverSource = readFileSync(new URL('../src/server.js', import.meta.url), 'utf8')
+  assert.match(serverSource, /res\.end\(result\.body, \(\) => result\.afterResponse\?\.\(\)\)/)
+  assert.match(serverSource, /if \(afterResponseTask\) response\.afterResponse = \(\) => postAckScheduler\(afterResponseTask\)/)
   let deferredPostAck = null
   const writer = {
     configured: true,

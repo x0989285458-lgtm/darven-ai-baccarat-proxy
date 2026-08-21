@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.38",
+  "releaseVersion": "v106.0.0-formal.39",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.95",
-  "status": "formal38_candidate_all_tests_pass_exact_release_pending",
-  "productionE2E": "not-run-formal37-tag-rejected-before-worker-start",
+  "applicationVersion": "1.0.96",
+  "status": "formal39_candidate_all_tests_pass_exact_release_pending",
+  "productionE2E": "not-run-formal38-stopped-safe-after-readiness-failed",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.95",
+      "packageVersion": "1.0.96",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,11 +27,11 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "6c78b8f8badc28748fef1c1195122b1c6a74160404d681970f60ecc8b0800fa1",
-    "proxyBuildInput": "2fe1edca1ca452f8adecb4f222ae3677f89ae5f1c692fb21460cee2e4b866008",
+    "implementationTree": "b81522866a91733309a4f2a0a97ab8a38310100c13113ed8e1cdfab25a2a0f5c",
+    "proxyBuildInput": "fc72ee289bd975ed36ed95a422d7fa5ae61e3c73f1de01917c6a34984f495e1d",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "80624e20feaa05d00c3d7642286d53f3cea12a8a320f4ef81bf86e2d14aea73f"
+    "databaseCutoverInput": "49db796447728b5ed5af7c6a04265ff82bdb008790471d0ac39188e59c1aaccc"
   },
   "rollbackComponents": {
     "proxy": {
@@ -315,6 +315,7 @@
   "testEvidence": {
     "formal37RawAckPostgrestTdd": "RED: production Render Direct DB raw persistence committed but did not return before Worker HTTP deadline; local duplicate readback was HTTP 200 in 478ms. GREEN: fenced Raw ACK uses one 9s no-retry Supabase HTTPS RPC, concurrent sessions remain independent, and source-fence/backpressure contracts pass.",
     "formal37FullSuite": "Proxy 1037/1037 plus release 28/28, Worker 212/212, Frontend 156/156 and production build PASS.",
-    "formal38AttestationSchema": "Formal.37 failed closed at attestation_tree_mismatch before Worker start. Formal.38 exact verifier schema is candidateIndexTree + parent + nested digests + trusted Python + approval; Proxy 1037/1037 and release 28/28 PASS. Worker 212/212 and Frontend 156/156+build are inherited unchanged because their bound input digests are unchanged."
+    "formal38AttestationSchema": "Formal.37 failed closed at attestation_tree_mismatch before Worker start. Formal.38 exact verifier schema is candidateIndexTree + parent + nested digests + trusted Python + approval; Proxy 1037/1037 and release 28/28 PASS. Worker 212/212 and Frontend 156/156+build are inherited unchanged because their bound input digests are unchanged.",
+    "formal39AckFlush": "GREEN: response carries deferred work; Node HTTP invokes it only in res.end completion callback. Proxy 1037/1037 and release 28/28 PASS; Worker/Frontend bound inputs unchanged and retain prior 212/212, 156/156+build evidence."
   }
 }
