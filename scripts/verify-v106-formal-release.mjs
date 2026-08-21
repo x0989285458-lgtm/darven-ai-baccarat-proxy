@@ -374,15 +374,15 @@ export function verifyV106PublicReadinessContract({ manifest, candidateIndexTree
     throw new Error('production_cutover_runner_override_forbidden')
   }
   const producerSource = execFileSync('git', ['show', `${candidateIndexTree}:${BOUND_PRODUCER_START_SCRIPT}`], { cwd: root, encoding: 'utf8' })
-  for (const requiredText of ["EXPECTED_RELEASE = 'v106.0.0-formal.33'", "EXPECTED_PACKAGE = '1.0.90'", "EXPECTED_IMAGE = 'darven-worker:v106-formal3-33f9dc6'", "EXPECTED_IMAGE_ID = 'sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2'", 'identity_parts != [EXPECTED_IMAGE, EXPECTED_IMAGE_ID', 'V106_CUTOVER_GENERATION', 'systemctl start darven-worker.service', 'base64.b64encode(remote_script.encode', '30-v106-formal3-image.conf', '127.0.0.1:8787/health', "'endpointReachable':", "'exactImage':"]) {
+  for (const requiredText of ["EXPECTED_RELEASE = 'v106.0.0-formal.34'", "EXPECTED_PACKAGE = '1.0.91'", "EXPECTED_IMAGE = 'darven-worker:v106-formal3-33f9dc6'", "EXPECTED_IMAGE_ID = 'sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2'", 'identity_parts != [EXPECTED_IMAGE, EXPECTED_IMAGE_ID', 'V106_CUTOVER_GENERATION', 'systemctl start darven-worker.service', 'base64.b64encode(remote_script.encode', '30-v106-formal3-image.conf', '127.0.0.1:8787/health', "'endpointReachable':", "'exactImage':"]) {
     if (!producerSource.includes(requiredText)) throw new Error('producer_start_script_executable_mismatch')
   }
   const producerStopSource = execFileSync('git', ['show', `${candidateIndexTree}:${BOUND_PRODUCER_STOP_SCRIPT}`], { cwd: root, encoding: 'utf8' })
-  for (const requiredText of ["EXPECTED_RELEASE = 'v106.0.0-formal.33'", "EXPECTED_PACKAGE = '1.0.90'", 'V106_CUTOVER_GENERATION', 'systemctl stop darven-worker.service', 'systemctl is-active darven-worker.service', "'stopped': True", "parts[0] != 'inactive'", "parts[2].lower() == 'true'"]) {
+  for (const requiredText of ["EXPECTED_RELEASE = 'v106.0.0-formal.34'", "EXPECTED_PACKAGE = '1.0.91'", 'V106_CUTOVER_GENERATION', 'systemctl stop darven-worker.service', 'systemctl is-active darven-worker.service', "'stopped': True", "parts[0] != 'inactive'", "parts[2].lower() == 'true'"]) {
     if (!producerStopSource.includes(requiredText)) throw new Error('producer_stop_script_executable_mismatch')
   }
   const dbGateSource = execFileSync('git', ['show', `${candidateIndexTree}:${BOUND_PRODUCTION_DB_GATE_SCRIPT}`], { cwd: root, encoding: 'utf8' })
-  for (const requiredText of ["EXPECTED_PROJECT_REF = 'gscfexhsqxvtpyxudtza'", "EXPECTED_RELEASE = 'v106.0.0-formal.33'", "EXPECTED_PACKAGE = '1.0.90'", '20260821010000', '20260821030000', 'verify_v106_production_cutover_gate', 'class NoRedirect', 'urllib.request', "'Authorization':", 'EXPECTED_WRITER_ACL', "payload.get('migrations')", "payload.get('activeOutbox')"]) {
+  for (const requiredText of ["EXPECTED_PROJECT_REF = 'gscfexhsqxvtpyxudtza'", "EXPECTED_RELEASE = 'v106.0.0-formal.34'", "EXPECTED_PACKAGE = '1.0.91'", '20260821010000', '20260821030000', 'verify_v106_production_cutover_gate', 'class NoRedirect', 'urllib.request', "'Authorization':", 'EXPECTED_WRITER_ACL', "payload.get('migrations')", "payload.get('activeOutbox')"]) {
     if (!dbGateSource.includes(requiredText)) throw new Error('production_db_gate_script_executable_mismatch')
   }
   if (dbGateSource.includes('psycopg') || dbGateSource.includes('import site')) throw new Error('production_db_gate_script_executable_mismatch')

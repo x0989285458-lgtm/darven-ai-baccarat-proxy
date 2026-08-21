@@ -1316,3 +1316,40 @@ test('same durable ingest identity is single-flight across timed-out worker retr
   assert.equal(JSON.parse(acknowledged.body).duplicate, true)
   assert.equal(persistCalls, 2, 'one later retry may perform the authoritative durable duplicate readback')
 })
+
+test('durable ACK returns before local table prediction fan-out is scheduled', async () => {
+  let deferredPostAck = null
+  const writer = {
+    configured: true,
+    async writeCloudTableSnapshot() {},
+    async persistCaptureEnvelope({ sessionId, sequence, roundKeys }) {
+      return { persisted: true, duplicate: false, session_id: sessionId, sequence, acceptedRoundKeys: roundKeys }
+    },
+  }
+  const app = createApp({
+    autoConnect: false,
+    ingestKey: 'worker-key',
+    now: () => 1_000_000,
+    supabaseClient: writer,
+    postAckScheduler(task) { deferredPostAck = task },
+  })
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/cloud-ingest/snapshot',
+    headers: { 'x-worker-key': 'worker-key' },
+    body: JSON.stringify({
+      protocolVersion: 'v105', timestamp: 1_000_000, sequence: 2, roundKeys: [],
+      snapshot: {
+        buildVersion: '105', sessionId: 'durable-post-ack-worker', connected: true, authenticated: true,
+        tables: [{ tableId: 'BAG01', shoe: 'S2', round: 2 }], rounds: [],
+      },
+    }),
+  })
+
+  assert.equal(response.statusCode, 200)
+  assert.equal(typeof deferredPostAck, 'function')
+  assert.equal(app.state.snapshot().tables.length, 0, 'local prediction fan-out must not precede durable HTTP ACK')
+  deferredPostAck()
+  await delay(0)
+  assert.equal(app.state.snapshot().tables.length, 1)
+})

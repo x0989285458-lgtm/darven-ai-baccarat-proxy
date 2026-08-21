@@ -732,6 +732,7 @@ test('Formal raw ingest and status stay responsive while child hydration remains
     app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': 'worker-key' }, body: JSON.stringify(envelope) }),
     delay(100).then(() => ({ statusCode: 599 })),
   ])
+  await new Promise((resolve) => setImmediate(resolve))
   const status = await Promise.race([
     app.inject({ url: '/api/status' }),
     delay(100).then(() => ({ statusCode: 599 })),

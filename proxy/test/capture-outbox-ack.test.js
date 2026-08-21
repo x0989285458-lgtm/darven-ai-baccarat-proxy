@@ -83,7 +83,7 @@ test('durable raw capture and outbox ACK do not wait for formal settlement', asy
     assert.equal(response.statusCode, 200)
     assert.deepEqual(JSON.parse(response.body).acceptedRoundKeys, ['BAG01:88:21'])
     assert.equal(order[0], 'raw-outbox')
-    await delay(0)
+    await new Promise((resolve) => setImmediate(resolve))
     assert.equal(order.includes('formal-start'), true)
     assert.equal(order.includes('formal-finish'), false)
   } finally {
@@ -300,6 +300,7 @@ test('same and older sequences always reach durable DB verification and conflict
     },
   })
   const first = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': 'worker-key' }, body: JSON.stringify(envelope()) })
+  await new Promise((resolve) => setImmediate(resolve))
   const conflicting = envelope()
   conflicting.snapshot.rounds[0].winner = 'player'
   conflicting.snapshot.connected = false
@@ -396,6 +397,7 @@ test('mutable snapshot and status persistence never delay raw durable ACK and co
     app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': 'worker-key' }, body: JSON.stringify(secondEnvelope) }),
     delay(50).then(() => assert.fail('second raw ACK waited for blocked ancillary projection')),
   ])
+  await new Promise((resolve) => setImmediate(resolve))
   assert.equal(first.statusCode, 200, first.body)
   assert.equal(second.statusCode, 200, second.body)
   assert.deepEqual(persisted, [firstEnvelope.sequence, secondEnvelope.sequence])
