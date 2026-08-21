@@ -27,6 +27,7 @@ export function createOutboxProcessClient({
   stopTimeoutMs = 5000,
   restartBaseDelayMs = 250,
   restartMaxDelayMs = 5000,
+  restartStableMs = 30000,
 } = {}) {
   let child = null
   let ready = false
@@ -34,6 +35,7 @@ export function createOutboxProcessClient({
   let lastError = null
   let stopping = false
   let restartTimer = null
+  let stabilityTimer = null
   let restartAttempts = 0
 
   function scheduleRestart() {
@@ -83,7 +85,11 @@ export function createOutboxProcessClient({
         } else {
           ready = true
           lastError = null
-          restartAttempts = 0
+          if (stabilityTimer) clearTimeout(stabilityTimer)
+          stabilityTimer = setTimeout(() => {
+            if (child === spawned && ready) restartAttempts = 0
+          }, Math.max(1, restartStableMs))
+          stabilityTimer.unref?.()
           resolve(status())
         }
       }
@@ -97,6 +103,10 @@ export function createOutboxProcessClient({
       })
       spawned.once('error', finish)
       spawned.once('exit', (code, signal) => {
+        if (stabilityTimer) {
+          clearTimeout(stabilityTimer)
+          stabilityTimer = null
+        }
         ready = false
         if (child === spawned) child = null
         const error = new Error(`outbox process exited (${code ?? signal ?? 'unknown'})`)
@@ -128,6 +138,10 @@ export function createOutboxProcessClient({
     if (restartTimer) {
       clearTimeout(restartTimer)
       restartTimer = null
+    }
+    if (stabilityTimer) {
+      clearTimeout(stabilityTimer)
+      stabilityTimer = null
     }
     const target = child
     if (!target) return { stopped: true }

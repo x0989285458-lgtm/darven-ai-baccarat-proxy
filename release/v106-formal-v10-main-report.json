@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.42",
+  "releaseVersion": "v106.0.0-formal.43",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.99",
-  "status": "formal42_candidate_all_tests_pass_exact_release_pending",
-  "productionE2E": "not-run-formal41-review-blocked-not-deployed",
+  "applicationVersion": "1.0.100",
+  "status": "formal43_candidate_all_tests_pass_exact_release_pending",
+  "productionE2E": "not-run-formal42-review-blocked-not-deployed",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.99",
+      "packageVersion": "1.0.100",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,11 +27,11 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "d1ae5d0a2a5369a29940ab6b9e44d97b09668163d44cd625bb3e3271aa9f8e53",
-    "proxyBuildInput": "8c4eef038de5ba95bce2cdce6748b1043bde037b9327a3b510bee5c26f0bfdb7",
+    "implementationTree": "6e3288c145a7ec944b0ca4b4ad1832a804e2b3d9ce49d1384e275057f65dc05d",
+    "proxyBuildInput": "10a08e34f7357b5c3d56e9669e64974825de4586b94457e529aa15ebc1b7811b",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "7e885893d4c1e9dba2b037bd3d6f853ded40dd9254346bbb1b99c48440567609"
+    "databaseCutoverInput": "a43ce71cc60c051c1ba7b42513c7dcc7be8ccc4158813ff9cc444000342888f2"
   },
   "rollbackComponents": {
     "proxy": {
@@ -319,6 +319,7 @@
     "formal39AckFlush": "GREEN: response carries deferred work; Node HTTP invokes it only in res.end completion callback. Proxy 1037/1037 and release 28/28 PASS; Worker/Frontend bound inputs unchanged and retain prior 212/212, 156/156+build evidence.",
     "formal40SingleConsumer": "RED 2 schedules vs expected 1; GREEN focused 3/3. Canonical Proxy 1038/1038 and Release 28/28 PASS. Worker/Frontend inputs unchanged and retain 212/212, 156/156 plus build evidence.",
     "formal41Isolation": "Focused 39/39 PASS; real fork ready/wake/stop PASS; Proxy 1040/1040 and Release 28/28 PASS. HTTP parent pool 4 plus isolated Outbox child pool 6 preserves the total 10-connection budget.",
-    "formal42IsolationClosure": "Focused 3/3 PASS; Proxy 1041/1041 and Release 28/28 PASS. Parent delegates startup drain; exited/fatal child restarts with bounded backoff and immediately self-drains without producer wake."
+    "formal42IsolationClosure": "Focused 3/3 PASS; Proxy 1041/1041 and Release 28/28 PASS. Parent delegates startup drain; exited/fatal child restarts with bounded backoff and immediately self-drains without producer wake.",
+    "formal43RestartBackoff": "Focused 4/4 PASS, including repeated ready-then-crash cumulative 20→40→80 backoff; Proxy 1042/1042 and Release 28/28 PASS."
   }
 }

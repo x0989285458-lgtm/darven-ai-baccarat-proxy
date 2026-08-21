@@ -68,3 +68,45 @@ test('isolated child exit restarts and drains without another producer wake', as
   children[1].emit('exit', 0, null)
   await stopping
 })
+
+
+test('repeated ready-then-crash failures retain exponential restart backoff until stable', async () => {
+  const keeper = setInterval(() => {}, 1000)
+  const startedAt = []
+  const children = []
+  let resolveFourth
+  const fourth = new Promise((resolve) => { resolveFourth = resolve })
+  const client = createOutboxProcessClient({
+    restartBaseDelayMs: 20,
+    restartMaxDelayMs: 80,
+    restartStableMs: 1000,
+    startupTimeoutMs: 100,
+    stopTimeoutMs: 100,
+    forkImpl() {
+      const child = fakeChild()
+      children.push(child)
+      startedAt.push(Date.now())
+      queueMicrotask(() => {
+        child.emit('message', { type: 'ready' })
+        if (children.length < 4) {
+          setTimeout(() => {
+            child.connected = false
+            child.exitCode = 70
+            child.emit('exit', 70, null)
+          }, 1)
+        } else resolveFourth()
+      })
+      return child
+    },
+  })
+  await client.start()
+  await fourth
+  const gaps = startedAt.slice(1).map((value, index) => value - startedAt[index])
+  assert.equal(gaps.length, 3)
+  assert.ok(gaps[1] - gaps[0] >= 10, `second backoff did not increase: ${gaps}`)
+  assert.ok(gaps[2] - gaps[1] >= 20, `third backoff did not increase: ${gaps}`)
+  const stopping = client.stop()
+  children.at(-1).emit('exit', 0, null)
+  await stopping
+  clearInterval(keeper)
+})
