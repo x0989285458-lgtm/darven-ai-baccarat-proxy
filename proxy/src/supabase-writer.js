@@ -2174,11 +2174,11 @@ export function createSupabaseIngestionClient({
     }
   }
 
-  async function postRest(path, body, conflict, { requireRepresentation = false, requireObject = false, allowSuppressedRepresentation = false, requestTimeoutMs = formalTimeoutMs } = {}) {
+  async function postRest(path, body, conflict, { requireRepresentation = false, requireObject = false, allowSuppressedRepresentation = false, requestTimeoutMs = formalTimeoutMs, singleAttempt = false } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase backend key is not configured' }
     const endpoint = new URL(`/rest/v1/${path}`, url)
     if (conflict) endpoint.searchParams.set('on_conflict', conflict)
-    return withRetry(async () => {
+    const executeRequest = async () => {
       const response = await fetchWithOptionalTimeout(endpoint, {
         method: 'POST',
         headers: {
@@ -2207,10 +2207,18 @@ export function createSupabaseIngestionClient({
         return payload
       }
       return { ok: true, status: response.status }
-    })
+    }
+    return singleAttempt ? executeRequest() : withRetry(executeRequest)
   }
 
   async function postDurableRest(path, body, conflict, options = {}) {
+    if (path === 'rpc/persist_v105_fenced_capture_envelope') {
+      return postRest(path, body, conflict, {
+        requireObject: true,
+        requestTimeoutMs: 9000,
+        singleAttempt: true,
+      })
+    }
     if (strategyDb && typeof strategyDb.query === 'function') {
       if (path === 'cloud_capture_status') {
         await strategyDb.query({

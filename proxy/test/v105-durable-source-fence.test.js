@@ -119,25 +119,21 @@ test('fenced writer never falls back to the unfenced RPC after a fence rejection
   assert.deepEqual(paths, ['/rest/v1/rpc/persist_v105_fenced_capture_envelope'])
 })
 
-test('fenced writer uses the new RPC through the preferred Direct DB path', async () => {
-  const queries = []
+test('fenced writer uses one bounded HTTPS RPC instead of the Render Direct DB socket', async () => {
+  const paths = []
+  let directQueries = 0
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
-    strategyPool: {
-      async query(query) {
-        queries.push(query)
-        return { rows: [{ persist_v105_fenced_capture_envelope: { persisted: true, accepted_round_keys: [] } }] }
-      },
+    strategyPool: { async query() { directQueries += 1; return { rows: [] } } },
+    fetchImpl: async (url) => {
+      paths.push(new URL(url).pathname)
+      return rpcResponse({ persisted: true, duplicate: false, accepted_round_keys: [] })
     },
-    fetchImpl: async () => assert.fail('fenced Direct DB persistence must not use REST'),
   })
   const candidate = source(9)
-
   await client.persistCaptureEnvelope({ sessionId: 'direct-9', sequence: 9, source: candidate })
-
-  assert.equal(queries.length, 1)
-  assert.match(queries[0].text, /public\.persist_v105_fenced_capture_envelope\(\$1::jsonb\)/)
-  assert.deepEqual(queries[0].values[0].source, candidate)
+  assert.equal(directQueries, 0)
+  assert.deepEqual(paths, ['/rest/v1/rpc/persist_v105_fenced_capture_envelope'])
 })
 
 test('unfenced compatibility writer keeps using the legacy RPC during DB-first transition', async () => {

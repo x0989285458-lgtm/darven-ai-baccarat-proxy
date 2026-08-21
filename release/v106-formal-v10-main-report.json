@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.36",
+  "releaseVersion": "v106.0.0-formal.37",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.93",
-  "status": "formal36_candidate_all_tests_pass_exact_release_pending",
-  "productionE2E": "not-run-production-remains-v105",
+  "applicationVersion": "1.0.94",
+  "status": "formal37_candidate_all_tests_pass_exact_release_pending",
+  "productionE2E": "not-run-formal36-stopped-safe",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.93",
+      "packageVersion": "1.0.94",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,11 +27,11 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "73290db465af359829133c2ae6a3664b5026dab56afad59ad2c47076d9fbd439",
-    "proxyBuildInput": "3e23c1b6f10d5f1f58f47cbc2ab3fc179054c9df831b65fc79a2410f564729c9",
+    "implementationTree": "4eb2f07529a6a4e2077b55acdc6a6af63c8ddacd392ec03d3248100e99e51177",
+    "proxyBuildInput": "808c70bb4a7ebb20ac1871245b36d64193eafc82d6396f31e4af805270061f8b",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "398163196dc94279723b52ea04dcecf463e53665ce818b472245a1436194a0cb"
+    "databaseCutoverInput": "bf497345a434d9067487e34dfc175e8f631bb48a7da3b365e29cd583506fc7c2"
   },
   "rollbackComponents": {
     "proxy": {
@@ -311,5 +311,9 @@
   "formal30Production": "BLOCK_AND_SAFE_STOP: exact launcher succeeded and public health briefly reached 200, but durable V106 settlements dead-lettered because MT sourceAction summary was not canonicalized to DB-required /summary. Worker stopped inactive.",
   "formal31Production": "BLOCK: canonical Final 14/14 persisted across attempts and exact cutover passed, but Render exited 70 after slow DB work exceeded 45s lease plus an unrelated 5s shutdown grace.",
   "formal32Production": "BLOCK_AND_SAFE_STOP: exact cutover PASS, then seven-minute audit showed Queue 81, round keys 138, six 503s, issuance 16 and Final 0. Worker stopped inactive before Formal.33.",
-  "formal33Production": "BLOCK_AND_SAFE_STOP: exact cutover PASS only after 18 service probes; then Queue 29, one 502, health 19s and online-core >35s with Outbox zero. Worker stopped inactive before Formal.34."
+  "formal33Production": "BLOCK_AND_SAFE_STOP: exact cutover PASS only after 18 service probes; then Queue 29, one 502, health 19s and online-core >35s with Outbox zero. Worker stopped inactive before Formal.34.",
+  "testEvidence": {
+    "formal37RawAckPostgrestTdd": "RED: production Render Direct DB raw persistence committed but did not return before Worker HTTP deadline; local duplicate readback was HTTP 200 in 478ms. GREEN: fenced Raw ACK uses one 9s no-retry Supabase HTTPS RPC, concurrent sessions remain independent, and source-fence/backpressure contracts pass.",
+    "formal37FullSuite": "Proxy 1037/1037 plus release 28/28, Worker 212/212, Frontend 156/156 and production build PASS."
+  }
 }

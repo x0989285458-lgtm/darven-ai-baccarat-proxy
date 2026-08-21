@@ -162,11 +162,17 @@ test('backend transaction lanes share one reusable ten-connection pool while sch
 
 test('backend transaction scheduler routes standard, formal, raw, and control work through one reusable pool', async () => {
   const laneCalls = []
+  const rawRestCalls = []
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co',
     serviceKey: 'test-only',
     requireVerifiedStrategy: false,
     dbConnectionString: 'postgresql://user:secret@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres',
+    fetchImpl: async (url, init) => {
+      rawRestCalls.push({ url: String(url), init })
+      const payload = { persisted: true, duplicate: false, accepted_round_keys: [] }
+      return { ok: true, status: 200, text: async () => JSON.stringify(payload), json: async () => payload }
+    },
     strategyPoolFactory: (config) => ({
       async query(query) {
         const text = String(query?.text ?? query)
@@ -198,27 +204,27 @@ test('backend transaction scheduler routes standard, formal, raw, and control wo
     source: { role: 'canonical_api', ownerId: 'physical-owner', epoch: 1 },
   })
   await client.getCaptureOutboxHealth()
-  assert.deepEqual(laneCalls.map((call) => call.max), [10, 10, 10, 10])
-  assert.deepEqual(laneCalls.map((call) => call.queryTimeout), [undefined, 3500, 9000, 8000])
+  assert.deepEqual(laneCalls.map((call) => call.max), [10, 10, 10])
+  assert.deepEqual(laneCalls.map((call) => call.queryTimeout), [undefined, 3500, 8000])
+  assert.equal(rawRestCalls.length, 1, 'fenced raw ACK must use one bounded HTTPS RPC instead of the Render Direct DB socket')
+  assert.match(rawRestCalls[0].url, /\/rest\/v1\/rpc\/persist_v105_fenced_capture_envelope$/)
 })
 
-test('two physical raw connections prevent one stalled session from head-of-line blocking another session', async () => {
+test('bounded raw HTTPS RPC lets a second session progress while the first request is stalled', async () => {
   let rawStarted = 0
   let releaseRaw
   const blocked = new Promise((resolve) => { releaseRaw = resolve })
+  const acknowledgement = { persisted: true, duplicate: false, accepted_round_keys: [] }
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
     dbConnectionString: 'postgresql://user:***@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres',
     durableWriteRequestTimeoutMs: 500,
-    strategyPoolFactory: (config) => ({
-      async query(query) {
-        const text = String(query?.text ?? query)
-        if (!/persist_v105_fenced_capture_envelope/i.test(text)) return { rows: [] }
-        rawStarted += 1
-        if (rawStarted === 1) await blocked
-        return { rows: [{ persist_v105_fenced_capture_envelope: { persisted: true, duplicate: false, accepted_round_keys: [] } }] }
-      },
-    }),
+    fetchImpl: async () => {
+      rawStarted += 1
+      if (rawStarted === 1) await blocked
+      return { ok: true, status: 200, text: async () => JSON.stringify(acknowledgement) }
+    },
+    strategyPoolFactory: () => ({ async query() { return { rows: [] } } }),
   })
   const payload = (sessionId, sequence) => ({
     sessionId, sequence, roundKeys: [], tables: [], rounds: [],
@@ -229,12 +235,13 @@ test('two physical raw connections prevent one stalled session from head-of-line
   const first = client.persistCaptureEnvelope(payload('raw-a', 1))
   while (rawStarted < 1) await new Promise((resolve) => setImmediate(resolve))
   const second = client.persistCaptureEnvelope(payload('raw-b', 1))
-  await new Promise((resolve) => setTimeout(resolve, 20))
   try {
-    assert.equal(rawStarted, 2, 'second raw session must enter its independently reserved connection')
+    const secondResult = await second
+    assert.equal(rawStarted, 2, 'second raw session must issue an independent bounded HTTPS RPC')
+    assert.equal(secondResult.persisted, true)
   } finally {
     releaseRaw()
-    await Promise.allSettled([first, second])
+    await Promise.allSettled([first])
   }
 })
 

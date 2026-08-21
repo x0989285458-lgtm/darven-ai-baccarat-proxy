@@ -953,6 +953,11 @@ test('raw ingest ACK keeps a dedicated slot when four standard and four formal q
   const writer = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
     requestTimeoutMs: 500, durableWriteRequestTimeoutMs: 500, strategyPool,
+    fetchImpl: async () => {
+      rawIngestStarted += 1
+      const payload = { persisted: true, duplicate: false, accepted_round_keys: [] }
+      return { ok: true, status: 200, text: async () => JSON.stringify(payload) }
+    },
   })
   const standardCalls = Array.from({ length: 4 }, (_, index) => writer.writeCloudTableSnapshot({
     sessionId: `raw-ack-standard-${index}`, tables: [{ tableId: `BAG${index}` }], status: { connected: true },
@@ -1003,6 +1008,11 @@ test('a stalled outbox claim cannot block the next raw envelope durable ACK', as
   const writer = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
     requestTimeoutMs: 500, durableWriteRequestTimeoutMs: 500, strategyPool,
+    fetchImpl: async () => {
+      rawIngestStarted += 1
+      const payload = { persisted: true, duplicate: false, accepted_round_keys: [] }
+      return { ok: true, status: 200, text: async () => JSON.stringify(payload) }
+    },
   })
   const claim = writer.claimCaptureOutbox({ limit: 1 })
   while (claimStarted < 1) await new Promise((resolve) => setImmediate(resolve))
