@@ -27,13 +27,15 @@ test('Formal.23 binds an external trusted Python interpreter and strips import i
   assert.equal(env.PYTHONNOUSERSITE, '1')
 })
 
-test('Formal.25 DB gate is stdlib-only and calls one fixed service-role RPC', () => {
+test('Formal.26 DB gate is stdlib-only and calls one fixed service-role RPC', () => {
   const candidateIndexTree = tree()
   const source = execFileSync('git', ['show', `${candidateIndexTree}:scripts/verify-v106-production-db-gate.py`], { cwd: root, encoding: 'utf8' })
   assert.doesNotMatch(source, /import psycopg|psycopg\./)
   assert.match(source, /verify_v106_production_cutover_gate/)
   assert.match(source, /urllib\.request/)
   assert.match(source, /Authorization/)
+  const gateSql = execFileSync('git', ['show', `${candidateIndexTree}:supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql`], { cwd: root, encoding: 'utf8' })
+  assert.match(gateSql, /20260821030000/)
 })
 
 test('Formal.23 production CLI cannot use PATH Python or injected Python environment', () => {

@@ -9,6 +9,13 @@ select pg_advisory_xact_lock(hashtext('formal_v106_rollback_terminalize_v106'));
 -- then the RPC revoke keeps late ingest fenced until rollback restores v105.
 select pg_advisory_xact_lock(hashtextextended('v105_capture_source_fence:capture', 0));
 
+-- The UPDATE takes the exclusive half of the successor issuance row barrier.
+-- It waits for every transaction that already passed issue_v106_prediction's
+-- FOR SHARE admission check, then keeps all later calls fail-closed.
+update public.ai_strategy_versions
+set issuance_enabled = false
+where version = 'v106';
+
 revoke execute on function public.issue_v106_prediction(jsonb) from service_role;
 revoke execute on function public.persist_v105_capture_envelope(jsonb) from service_role;
 revoke execute on function public.persist_v105_fenced_capture_envelope(jsonb) from service_role;

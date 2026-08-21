@@ -13,7 +13,8 @@ as $$
 declare
   required_migrations constant text[] := array[
     '20260820030000', '20260820040000', '20260820050000',
-    '20260820060000', '20260821010000', '20260821020000'
+    '20260820060000', '20260821010000', '20260821020000',
+    '20260821030000'
   ];
   applied_migrations text[];
   active_count integer;
@@ -36,8 +37,8 @@ begin
     raise exception 'v106 production DB gate requires service_role';
   end if;
   if p_phase not in ('pre', 'post')
-     or p_release_version <> 'v106.0.0-formal.25'
-     or p_package_version <> '1.0.82' then
+     or p_release_version <> 'v106.0.0-formal.26'
+     or p_package_version <> '1.0.83' then
     raise exception 'v106 production DB gate identity mismatch';
   end if;
 

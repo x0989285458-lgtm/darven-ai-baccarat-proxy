@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.25",
-  "gitTag": "v106.0.0-formal.25",
-  "applicationVersion": "1.0.82",
+  "releaseVersion": "v106.0.0-formal.26",
+  "gitTag": "v106.0.0-formal.26",
+  "applicationVersion": "1.0.83",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -131,7 +131,7 @@
       "path": "supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql",
       "deploymentStep": "database-isolated-runtime-gate",
       "contract": "Service-role-only PostgreSQL provenance gate returns one bounded proof so no Python site package is needed during production cutover.",
-      "gitBlobSha1": "0c3f0b0db9069752ab724eac7ab153003a24d795"
+      "gitBlobSha1": "1b62d71f1b32d81de4dfc8bdb927e6ecf6d30547"
     },
     "fence": {
       "path": "supabase/operations/fence_v105_new_issuance.sql",
@@ -156,7 +156,7 @@
     "rollbackTerminalize": {
       "path": "supabase/operations/terminalize_v106_rollback.sql",
       "deploymentStep": "rollback-terminalize",
-      "gitBlobSha1": "ec8d476515604faba0b78605ad831e8909d73574"
+      "gitBlobSha1": "83f8ba6f130e366988d20b29a8916069767fa616"
     },
     "rollback": {
       "path": "supabase/operations/rollback_v106_to_v105.sql",
@@ -167,7 +167,13 @@
       "path": "supabase/migrations/20260821020000_v106_formal25_issuance_barrier.sql",
       "deploymentStep": "database-issuance-admission-barrier",
       "contract": "v105 issuance admission is serialized by a row-lock barrier; fence waits for admitted transactions and later callers fail closed.",
-      "gitBlobSha1": "b99f5494daca2babafaafce406ebabcd227e2df6"
+      "gitBlobSha1": "3593836fd36a1c4f302d2104561b501f85f5723b"
+    },
+    "successorIssuanceBarrier": {
+      "path": "supabase/migrations/20260821030000_v106_formal26_successor_issuance_barrier.sql",
+      "deploymentStep": "database-successor-issuance-admission-barrier",
+      "contract": "v106 issuance admission holds a shared row lock; rollback terminalization disables admission through an UPDATE that waits for every admitted transaction before receipt creation.",
+      "gitBlobSha1": "22ff5100a48d6478914ced16f25fd103d14d5b16"
     }
   },
   "activation": "supabase/operations/activate_v106_promotion.sql",
@@ -326,10 +332,11 @@
         "scripts/stop-v106-formal-producer.py",
         "scripts/verify-v106-production-db-gate.py",
         "supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql",
-        "supabase/migrations/20260821020000_v106_formal25_issuance_barrier.sql"
+        "supabase/migrations/20260821020000_v106_formal25_issuance_barrier.sql",
+        "supabase/migrations/20260821030000_v106_formal26_successor_issuance_barrier.sql"
       ],
       "excludedPaths": [],
-      "sha256": "3124ad81485bfa4190c97c391904cdab714e49207003748a2a8d84fe80bd5e14"
+      "sha256": "441eb5819a2572a96af81aaab5a87741af6da3a523e03487fdb2dd5a1548ee68"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -340,7 +347,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "cccae2990845d16fbe1b45d45a9c35ca134ea13089cc006af72243e57d1a326f"
+      "sha256": "4fb466cd3475cf2ef0eb65b551aaa60b90ca4f0f6c1e1fb57c0e0ba1da7f411e"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -382,10 +389,11 @@
         "supabase/migrations/20260820050000_v106_formal19_cutover_generation.sql",
         "supabase/migrations/20260820060000_v106_formal20_raw_ingest_barrier.sql",
         "supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql",
-        "supabase/migrations/20260821020000_v106_formal25_issuance_barrier.sql"
+        "supabase/migrations/20260821020000_v106_formal25_issuance_barrier.sql",
+        "supabase/migrations/20260821030000_v106_formal26_successor_issuance_barrier.sql"
       ],
       "excludedPaths": [],
-      "sha256": "6ed6ab27f0064564a7450293e2b35496714536bbe93973cbfa95a2c1f887e936"
+      "sha256": "7366cc26f5d627aa1921c5e5150ec61a4ddfdeb8c7d9dfc800bcaa44d6c27063"
     }
   },
   "historicalArtifactsPreserved": true,
@@ -472,8 +480,8 @@
     "requiredIdentity": {
       "version": "v106",
       "buildVersion": "v106",
-      "releaseVersion": "v106.0.0-formal.25",
-      "packageVersion": "1.0.82",
+      "releaseVersion": "v106.0.0-formal.26",
+      "packageVersion": "1.0.83",
       "commit": "annotated-tag-attested-commit"
     },
     "failClosedExitCode": 2
@@ -490,7 +498,9 @@
     "formal21FreshReview": "BLOCK: production runner verified only the working-tree start launcher before producer admission; the bound stop launcher and DB gate were not rehashed, and callbacks executed mutable working-tree paths. Formal.22 verifies all three working-tree blobs and executes exact source bytes loaded from the authorized Git tree.",
     "formal22FreshReview": "BLOCK: release report retained stale Formal.20 digests/pending text, and production callbacks resolved python through PATH with ambient Python import variables. Formal.23 pins an external-policy Python path and SHA-256, rechecks it before every callback, runs -I, and strips Python injection variables.",
     "formal23FreshReview": "BLOCK: -I still loaded mutable venv site-packages and .pth before exact-tree callback code. Formal.24 requires -I -S and replaces psycopg with a fixed service-role-only DB Gate RPC called through Python stdlib HTTPS.",
-    "formal24FreshReview": "BLOCK: v105 issuance fencing used ACL REVOKE without a DB row-lock admission barrier, so a previously authorized concurrent transaction could escape the cutover fence. Formal.25 adds issuance_enabled with FOR SHARE/UPDATE serialization. The reviewer requests to revoke predecessor settlement were rejected because immutable late-Final settlement is an explicit release safety contract."
+    "formal24FreshReview": "BLOCK: v105 issuance fencing used ACL REVOKE without a DB row-lock admission barrier, so a previously authorized concurrent transaction could escape the cutover fence. Formal.25 adds issuance_enabled with FOR SHARE/UPDATE serialization. The reviewer requests to revoke predecessor settlement were rejected because immutable late-Final settlement is an explicit release safety contract.",
+    "formal25FreshReview": "BLOCK: v106 rollback terminalization revoked RPC privilege without a row-lock admission barrier, allowing an already-authorized concurrent successor issuance after the receipt quiet cutoff and creating a single-generation receipt dead-end.",
+    "formal26Fix": "issue_v106_prediction now requires issuance_enabled=true under FOR SHARE; rollback terminalization first sets v106 issuance_enabled=false through the same row, waiting for admitted transactions before RPC revoke and receipt creation. Formal.25 initialization is rerun-safe."
   },
   "productionCutoverRunner": {
     "script": "scripts/run-v106-production-cutover.mjs",
@@ -504,11 +514,11 @@
     "requiresPreAndPostDatabaseGenerationGate": true,
     "requiresPostStartFailStopCompensation": true,
     "productionDbGateScript": "scripts/verify-v106-production-db-gate.py",
-    "productionDbGateScriptGitBlobSha1": "6375ecf8ed4f6899fb97e1d38f18c41282f5b623",
+    "productionDbGateScriptGitBlobSha1": "f62e0bad44e22a3eb86c59139ec83fee10f54a78",
     "producerStartScript": "scripts/start-v106-formal-producer.py",
-    "producerStartScriptGitBlobSha1": "17f8d0cc83b083e8fa96638f2dc4ac1d34856492",
+    "producerStartScriptGitBlobSha1": "5ed376b0a86dc17c050e08d749708bb7cb6e879b",
     "producerStopScript": "scripts/stop-v106-formal-producer.py",
-    "producerStopScriptGitBlobSha1": "6f037371227745bb6fe7d7dcef99b230b2b042e4",
+    "producerStopScriptGitBlobSha1": "1024e7b577e752f171b4fb03de427d2583f20687",
     "producerImage": "darven-worker:v106-formal3-33f9dc6",
     "producerImageId": "sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2",
     "executesLaunchersFromExactGitTree": true,

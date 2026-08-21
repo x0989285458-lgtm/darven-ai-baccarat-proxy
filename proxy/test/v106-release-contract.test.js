@@ -28,12 +28,24 @@ test('Formal.25 v105 issuance fence is a row-lock concurrency barrier while late
   assert.doesNotMatch(finalize, /revoke execute on function public\.settle_v105_prediction/)
 })
 
+test('Formal.26 v106 rollback fence waits for every admitted successor issuance and migrations are rerun-safe', () => {
+  const predecessorBarrier = read('supabase/migrations/20260821020000_v106_formal25_issuance_barrier.sql')
+  const successorBarrier = read('supabase/migrations/20260821030000_v106_formal26_successor_issuance_barrier.sql')
+  const terminalize = read('supabase/operations/terminalize_v106_rollback.sql')
+  const successorIssue = extractSqlFunction(successorBarrier, 'issue_v106_prediction')
+  assert.match(predecessorBarrier, /where issuance_enabled is null/i)
+  assert.doesNotMatch(predecessorBarrier, /where issuance_enabled is null or version in/i)
+  assert.match(successorIssue, /version = 'v106'[\s\S]*status = 'active'[\s\S]*issuance_enabled is true[\s\S]*for share/i)
+  assert.match(terminalize, /update public\.ai_strategy_versions[\s\S]*issuance_enabled = false[\s\S]*version = 'v106'/i)
+  assert.ok(terminalize.indexOf('issuance_enabled = false') < terminalize.indexOf('revoke execute on function public.issue_v106_prediction'))
+})
+
 test('Formal.24 isolated runtime DB gate is service-role-only and proves exact cutover provenance', () => {
   const sql = read('supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql')
   assert.match(sql, /create or replace function public\.verify_v106_production_cutover_gate/)
   assert.match(sql, /security definer[\s\S]*set search_path = pg_catalog, public/i)
   assert.match(sql, /request\.jwt\.claims[\s\S]*service_role/)
-  assert.match(sql, /20260821010000/)
+  assert.match(sql, /20260821010000[\s\S]*20260821030000/)
   assert.match(sql, /has_function_privilege[\s\S]*issue_v105_prediction[\s\S]*issue_v106_prediction/)
   assert.match(sql, /get_v105_capture_outbox_health/)
   assert.match(sql, /revoke all on function public\.verify_v106_production_cutover_gate\(text, text, text\) from public, anon, authenticated/i)
@@ -41,7 +53,7 @@ test('Formal.24 isolated runtime DB gate is service-role-only and proves exact c
 })
 
 test('v106 release identity is coherent while the updated capture worker retains protocol v105', () => {
-  assert.equal(json('proxy/package.json').version, '1.0.82')
+  assert.equal(json('proxy/package.json').version, '1.0.83')
   assert.equal(json('frontend/package.json').version, '1.0.63')
   assert.equal(json('cloud-browser-worker/package.json').version, '1.0.63')
   assert.match(read('proxy/src/build-version.js'), /BUILD_VERSION = 'v106'/)
@@ -174,13 +186,13 @@ test('v106 frontend version gate fails closed and formal writer/hydration use v1
 
 test('v106 manifest encodes DB-first through finalize order and exact rollback', () => {
   const manifest = json('release/v106-formal-v10-main-release-manifest.json')
-  assert.equal(manifest.applicationVersion, '1.0.82')
+  assert.equal(manifest.applicationVersion, '1.0.83')
   assert.equal(manifest.strategyVersion, 'v106')
   assert.equal(manifest.mainStrategy.source, 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized')
   assert.equal(manifest.sideStrategy.source, 'v105')
   assert.equal(manifest.mainStrategy.activationGate, 'structureDiagnostics.eligible === true')
   assert.equal(manifest.mainStrategy.fallback, 'exact formal v105 main projection')
-  assert.equal(manifest.gitTag, 'v106.0.0-formal.25')
+  assert.equal(manifest.gitTag, 'v106.0.0-formal.26')
   assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'database-final-time-fence', 'database-bounded-raw-ack', 'database-monotonic-projection', 'database-rollback-receipt', 'database-single-use-rollback-receipt', 'database-cutover-generation', 'database-raw-ingest-barrier', 'database-isolated-runtime-gate', 'database-issuance-admission-barrier', 'deploy-worker-1.0.63-protocol-v105', 'verify-worker-v105-compatibility', 'fence-v105-new-issuance', 'producer-stop', 'terminalize-v105-cutover', 'drain-v105-and-queue', 'activate-v106', 'proxy', 'run-bound-production-cutover', 'frontend', 'live-e2e', 'finalize'])
   assert.equal(manifest.canonicalPublicProxyUrl, 'https://darven-ai-baccarat-proxy.onrender.com')
   assert.deepEqual(manifest.publicReadinessGate, {
@@ -192,8 +204,8 @@ test('v106 manifest encodes DB-first through finalize order and exact rollback',
     requestTimeoutMs: 20000,
     intervalMs: 15000,
     requiredIdentity: {
-      version: 'v106', buildVersion: 'v106', releaseVersion: 'v106.0.0-formal.25',
-      packageVersion: '1.0.82', commit: 'annotated-tag-attested-commit',
+      version: 'v106', buildVersion: 'v106', releaseVersion: 'v106.0.0-formal.26',
+      packageVersion: '1.0.83', commit: 'annotated-tag-attested-commit',
     },
     failClosedExitCode: 2,
   })
