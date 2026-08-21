@@ -1,7 +1,8 @@
+begin;
+
 -- Formal.26 closes the rollback TOCTOU for successor issuance.
 -- Every admitted v106 issuance holds a SHARE row lock until its transaction ends;
 -- the rollback terminalizer disables admission through an UPDATE on the same row.
-begin;
 
 create or replace function public.issue_v106_prediction(p_prediction jsonb)
 returns jsonb

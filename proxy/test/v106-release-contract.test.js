@@ -40,6 +40,21 @@ test('Formal.26 v106 rollback fence waits for every admitted successor issuance 
   assert.ok(terminalize.indexOf('issuance_enabled = false') < terminalize.indexOf('revoke execute on function public.issue_v106_prediction'))
 })
 
+test('Formal.27 exact release binds the real PostgreSQL successor issuance race probe', () => {
+  const manifest = json('release/v106-formal-v10-main-release-manifest.json')
+  const report = json('release/v106-formal-v10-main-report.json')
+  const probePath = 'scripts/verify-v106-issuance-barrier-db.py'
+  const probe = read(probePath)
+  assert.equal(manifest.verificationArtifacts.successorIssuanceBarrierDbProbe.path, probePath)
+  assert.ok(manifest.releaseBinding.implementationTree.paths.includes(probePath))
+  assert.ok(manifest.releaseBinding.databaseCutoverInput.paths.includes(probePath))
+  assert.match(probe, /psycopg\.connect[\s\S]*threading\.Thread[\s\S]*issue_v106_prediction\(%s::jsonb\)/i)
+  assert.match(probe, /fence_thread\.is_alive[\s\S]*post-fence actual issue_v106_prediction was not rejected/i)
+  assert.match(probe, /drop schema if exists[\s\S]*to_regnamespace/i)
+  assert.match(report.verified.formal27BoundDbProbe, /actual issue_v106_prediction=1[\s\S]*probe schema cleaned=1/i)
+  assert.doesNotMatch(report.pending.join('\n'), /two-connection rehearsal|PostgreSQL.*pending/i)
+})
+
 test('Formal.24 isolated runtime DB gate is service-role-only and proves exact cutover provenance', () => {
   const sql = read('supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql')
   assert.match(sql, /create or replace function public\.verify_v106_production_cutover_gate/)
@@ -53,7 +68,7 @@ test('Formal.24 isolated runtime DB gate is service-role-only and proves exact c
 })
 
 test('v106 release identity is coherent while the updated capture worker retains protocol v105', () => {
-  assert.equal(json('proxy/package.json').version, '1.0.83')
+  assert.equal(json('proxy/package.json').version, '1.0.84')
   assert.equal(json('frontend/package.json').version, '1.0.63')
   assert.equal(json('cloud-browser-worker/package.json').version, '1.0.63')
   assert.match(read('proxy/src/build-version.js'), /BUILD_VERSION = 'v106'/)
@@ -186,13 +201,13 @@ test('v106 frontend version gate fails closed and formal writer/hydration use v1
 
 test('v106 manifest encodes DB-first through finalize order and exact rollback', () => {
   const manifest = json('release/v106-formal-v10-main-release-manifest.json')
-  assert.equal(manifest.applicationVersion, '1.0.83')
+  assert.equal(manifest.applicationVersion, '1.0.84')
   assert.equal(manifest.strategyVersion, 'v106')
   assert.equal(manifest.mainStrategy.source, 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized')
   assert.equal(manifest.sideStrategy.source, 'v105')
   assert.equal(manifest.mainStrategy.activationGate, 'structureDiagnostics.eligible === true')
   assert.equal(manifest.mainStrategy.fallback, 'exact formal v105 main projection')
-  assert.equal(manifest.gitTag, 'v106.0.0-formal.26')
+  assert.equal(manifest.gitTag, 'v106.0.0-formal.27')
   assert.deepEqual(manifest.deploymentOrder, ['database-additive', 'database-final-time-fence', 'database-bounded-raw-ack', 'database-monotonic-projection', 'database-rollback-receipt', 'database-single-use-rollback-receipt', 'database-cutover-generation', 'database-raw-ingest-barrier', 'database-isolated-runtime-gate', 'database-issuance-admission-barrier', 'deploy-worker-1.0.63-protocol-v105', 'verify-worker-v105-compatibility', 'fence-v105-new-issuance', 'producer-stop', 'terminalize-v105-cutover', 'drain-v105-and-queue', 'activate-v106', 'proxy', 'run-bound-production-cutover', 'frontend', 'live-e2e', 'finalize'])
   assert.equal(manifest.canonicalPublicProxyUrl, 'https://darven-ai-baccarat-proxy.onrender.com')
   assert.deepEqual(manifest.publicReadinessGate, {
@@ -204,8 +219,8 @@ test('v106 manifest encodes DB-first through finalize order and exact rollback',
     requestTimeoutMs: 20000,
     intervalMs: 15000,
     requiredIdentity: {
-      version: 'v106', buildVersion: 'v106', releaseVersion: 'v106.0.0-formal.26',
-      packageVersion: '1.0.83', commit: 'annotated-tag-attested-commit',
+      version: 'v106', buildVersion: 'v106', releaseVersion: 'v106.0.0-formal.27',
+      packageVersion: '1.0.84', commit: 'annotated-tag-attested-commit',
     },
     failClosedExitCode: 2,
   })
