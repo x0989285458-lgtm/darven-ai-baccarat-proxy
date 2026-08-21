@@ -48,7 +48,7 @@ export async function verifyV106PublicReadiness({
       && body?.commit === expectedCommit
     const passed = exactIdentity && (mode === 'identity'
       ? ((response?.status === 200 && body?.ok === true)
-        || (response?.status === 503 && body?.ok === false && body?.reason === 'source_unavailable'))
+        || (response?.status === 503 && body?.ok === false))
       : response?.status === 200 && body?.ok === true)
     streak = passed ? streak + 1 : 0
     const probe = {

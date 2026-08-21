@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.28",
-  "gitTag": "v106.0.0-formal.28",
-  "applicationVersion": "1.0.85",
+  "releaseVersion": "v106.0.0-formal.29",
+  "gitTag": "v106.0.0-formal.29",
+  "applicationVersion": "1.0.86",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -131,7 +131,7 @@
       "path": "supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql",
       "deploymentStep": "database-isolated-runtime-gate",
       "contract": "Service-role-only PostgreSQL provenance gate returns one bounded proof so no Python site package is needed during production cutover.",
-      "gitBlobSha1": "503822fa43e65ae2949a44150062290b1ce6cd02"
+      "gitBlobSha1": "c35c1a586f4414e38602aed7782b62933bf31f28"
     },
     "fence": {
       "path": "supabase/operations/fence_v105_new_issuance.sql",
@@ -337,7 +337,7 @@
         "scripts/verify-v106-issuance-barrier-db.py"
       ],
       "excludedPaths": [],
-      "sha256": "03bb89006994b7963307147beea2dc1b6031c6564ba883f364e71bc96cf45a76"
+      "sha256": "38a3cc9b7089e88f0e71602a1a800f0b4e5eb268b0b3e9848b26fc0e75a3a86b"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -348,7 +348,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "7c474e0ea8206aaf48f955167165c78d84028b8930d56213245e7b1487f5b833"
+      "sha256": "8d83fa1e170a15c1f5e8bc6bbce18c3f8521d1f74c66bd7f6f7d5002aad08c49"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -395,7 +395,7 @@
         "scripts/verify-v106-issuance-barrier-db.py"
       ],
       "excludedPaths": [],
-      "sha256": "ee2a8901a926768aacbdaacaaf3fdd5b40d252dafdc0afc0167ae533e3ccf2e4"
+      "sha256": "85db12246699a1d9651c8532e247366be901d4426476e67b79a09ac77747b107"
     }
   },
   "historicalArtifactsPreserved": true,
@@ -482,14 +482,14 @@
     "requiredIdentity": {
       "version": "v106",
       "buildVersion": "v106",
-      "releaseVersion": "v106.0.0-formal.28",
-      "packageVersion": "1.0.85",
+      "releaseVersion": "v106.0.0-formal.29",
+      "packageVersion": "1.0.86",
       "commit": "annotated-tag-attested-commit"
     },
     "failClosedExitCode": 2,
     "phases": {
       "preProducerIdentity": {
-        "accept": "HTTP 200 healthy or HTTP 503 source_unavailable only when exact signed release/package/commit identity matches twice",
+        "accept": "HTTP 200 healthy or HTTP 503 ok=false only when exact signed release/package/commit identity matches twice; health reason is intentionally irrelevant before producer bootstrap",
         "purpose": "prove the deployed immutable proxy before producer bootstrap"
       },
       "postProducerService": {
@@ -517,7 +517,9 @@
     "formal27Fix": "The exact candidate now binds a credential-free durable PostgreSQL probe script that runs actual issue_v106_prediction concurrently with the rollback fence and proves wait, rejection, rerun preservation, rollback restoration and cleanup.",
     "formal27FreshReview": "PASS: exact release bound and executed the real two-connection PostgreSQL successor issuance race probe.",
     "formal27Production": "BLOCK_AND_ROLLBACK: exact proxy identity was live, but pre-producer readiness demanded HTTP 200 service health while the producer was intentionally stopped; all 30 probes returned exact Formal.27 identity with HTTP 503 source_unavailable. DB and Render were rolled back to V105 and no V106 issuance occurred.",
-    "formal28Fix": "Split bounded readiness into exact identity before producer start and strict HTTP 200 service readiness after start. Any post-start readiness failure invokes the exact bound stop launcher before rejection."
+    "formal28Fix": "Split bounded readiness into exact identity before producer start and strict HTTP 200 service readiness after start. Any post-start readiness failure invokes the exact bound stop launcher before rejection.",
+    "formal28FreshReview": "BLOCK: pre-producer identity mode accepted only source_unavailable, but exact proxy /health can return capture_unavailable, capture_progress_stale or capture_status_unavailable while producer is stopped, preserving the bootstrap cycle.",
+    "formal29Fix": "Pre-producer identity mode now proves only immutable deployment identity and accepts any HTTP 503 ok=false reason. Strict post-producer service mode still requires HTTP 200 ok=true twice, and every post-start failure invokes exact stop compensation."
   },
   "productionCutoverRunner": {
     "script": "scripts/run-v106-production-cutover.mjs",
@@ -531,11 +533,11 @@
     "requiresPreAndPostDatabaseGenerationGate": true,
     "requiresPostStartFailStopCompensation": true,
     "productionDbGateScript": "scripts/verify-v106-production-db-gate.py",
-    "productionDbGateScriptGitBlobSha1": "474760399a3c43f1cf509e16a8dd031d379d2960",
+    "productionDbGateScriptGitBlobSha1": "a27ffe49ccf5da103db0685226511db34fa127aa",
     "producerStartScript": "scripts/start-v106-formal-producer.py",
-    "producerStartScriptGitBlobSha1": "9d3828a01d7bcf1e1c0c343435db3f2ff56c68c4",
+    "producerStartScriptGitBlobSha1": "55d31c81a7292f25e93ddad38af794ab70aff185",
     "producerStopScript": "scripts/stop-v106-formal-producer.py",
-    "producerStopScriptGitBlobSha1": "8ab00d7d272ccff261b11650a26db419a75e45f8",
+    "producerStopScriptGitBlobSha1": "1a6e1bf4861d9647c93f67fd7fcc6c668fe9bafc",
     "producerImage": "darven-worker:v106-formal3-33f9dc6",
     "producerImageId": "sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2",
     "executesLaunchersFromExactGitTree": true,

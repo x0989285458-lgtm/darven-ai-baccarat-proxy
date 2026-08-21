@@ -4,8 +4,8 @@ import { verifyV106PublicReadiness } from '../../scripts/verify-v106-public-read
 
 const expected = {
   url: 'https://example.test',
-  expectedRelease: 'v106.0.0-formal.28',
-  expectedPackage: '1.0.85',
+  expectedRelease: 'v106.0.0-formal.29',
+  expectedPackage: '1.0.86',
   expectedCommit: 'a'.repeat(40),
   intervalMs: 0,
   requestTimeoutMs: 100,
@@ -17,18 +17,20 @@ const exact = () => response({
   releaseVersion: expected.expectedRelease, packageVersion: expected.expectedPackage, commit: expected.expectedCommit,
 })
 
-test('Formal.28 identity phase accepts exact deployed proxy during expected source-unavailable bootstrap, while service phase blocks', async () => {
-  const bootstrap = () => response({
-    ok: false, reason: 'source_unavailable', version: 'v106', buildVersion: 'v106',
-    releaseVersion: expected.expectedRelease, packageVersion: expected.expectedPackage, commit: expected.expectedCommit,
-  }, 503)
-  const identity = await verifyV106PublicReadiness({
-    ...expected, mode: 'identity', attempts: 2, fetchImpl: async () => bootstrap(),
-  })
-  assert.equal(identity.verdict, 'PASS')
-  await assert.rejects(verifyV106PublicReadiness({
-    ...expected, mode: 'service', attempts: 2, fetchImpl: async () => bootstrap(),
-  }), (error) => error?.code === 'PUBLIC_PROXY_READINESS_BLOCK')
+test('Formal.29 identity phase accepts exact deployed proxy across every unhealthy bootstrap reason, while service phase blocks', async () => {
+  for (const reason of ['source_unavailable', 'capture_unavailable', 'capture_progress_stale', 'capture_status_unavailable', 'unexpected_bootstrap_failure']) {
+    const bootstrap = () => response({
+      ok: false, reason, version: 'v106', buildVersion: 'v106',
+      releaseVersion: expected.expectedRelease, packageVersion: expected.expectedPackage, commit: expected.expectedCommit,
+    }, 503)
+    const identity = await verifyV106PublicReadiness({
+      ...expected, mode: 'identity', attempts: 2, fetchImpl: async () => bootstrap(),
+    })
+    assert.equal(identity.verdict, 'PASS')
+    await assert.rejects(verifyV106PublicReadiness({
+      ...expected, mode: 'service', attempts: 2, fetchImpl: async () => bootstrap(),
+    }), (error) => error?.code === 'PUBLIC_PROXY_READINESS_BLOCK')
+  }
 })
 
 test('Formal.21 readiness blocks an older v106 release even when public health is HTTP 200', async () => {
@@ -37,7 +39,7 @@ test('Formal.21 readiness blocks an older v106 release even when public health i
     ...expected, attempts: 2,
     fetchImpl: async () => response({
       ok: true, version: 'v106', buildVersion: 'v106',
-      releaseVersion: 'v106.0.0-formal.28', packageVersion: '1.0.85', commit: 'b'.repeat(40),
+      releaseVersion: 'v106.0.0-formal.29', packageVersion: '1.0.86', commit: 'b'.repeat(40),
     }),
     onProbe: (probe) => probes.push(probe),
   }), (error) => error?.code === 'PUBLIC_PROXY_READINESS_BLOCK')
