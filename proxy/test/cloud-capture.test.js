@@ -263,6 +263,47 @@ test('cloud capture retries a transient worker snapshot failure and replaces sta
   assert.equal(state.snapshot().status.connected, true)
 })
 
+test('Final rank-ledger work hydrates only identities present in the durable Final batch while preserving all ten live tables', async () => {
+  let formalInput = null
+  let mounted = null
+  const parsed = {
+    sessionId: 'bounded-final-rank',
+    status: { connected: true, authenticated: true, tableCount: 2 },
+    tables: [
+      { tableId: 'BAG01', shoe: 7, round: 12 },
+      { tableId: 'BAG02', shoe: 9, round: 30 },
+    ],
+    rounds: [{
+      tableId: 'BAG01', shoe: 7, round: 12, winner: 'banker',
+      sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
+      rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9],
+    }],
+  }
+  const result = await applyCloudCapturePayload({
+    parsed,
+    writer: { configured: false },
+    state: {
+      setStatus() {},
+      setTables(tables) { mounted = structuredClone(tables) },
+      async upsertRoundEvent() { return { ok: true } },
+    },
+    v100Formal: {
+      enabled: true,
+      async processSnapshot(input) {
+        formalInput = structuredClone(input)
+        return { tables: input.tables.map((table) => ({ ...table, v102RankLedger: { status: 'contiguous' } })) }
+      },
+    },
+  })
+
+  assert.deepEqual(formalInput.tables.map((table) => table.tableId), ['BAG01'])
+  assert.equal(formalInput.rounds.length, 1)
+  assert.deepEqual(mounted.map((table) => table.tableId), ['BAG01', 'BAG02'])
+  assert.equal(mounted[0].v102RankLedger.status, 'contiguous')
+  assert.equal(mounted[1].v102RankLedger, undefined)
+  assert.deepEqual(result.tables.map((table) => table.tableId), ['BAG01', 'BAG02'])
+})
+
 function createFakeState() {
   const data = { status: {}, tables: [] }
   return {

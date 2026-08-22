@@ -154,9 +154,19 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
   const durableTimings = {}
   let v100Result = null
   if (v100Formal?.enabled === true) {
+    const finalIdentityKeys = new Set(parsed.rounds.map((round) => JSON.stringify([
+      String(round?.tableId ?? ''),
+      String(round?.shoe ?? ''),
+    ])))
+    const rankTables = parsed.rounds.length === 0
+      ? parsed.tables
+      : parsed.tables.filter((table) => finalIdentityKeys.has(JSON.stringify([
+          String(table?.tableId ?? ''),
+          String(table?.shoe ?? ''),
+        ])))
     const startedAt = Date.now()
     try {
-      v100Result = await runDurableStage('durable_rank_ledger', () => v100Formal.processSnapshot({ tables: parsed.tables, rounds: parsed.rounds }))
+      v100Result = await runDurableStage('durable_rank_ledger', () => v100Formal.processSnapshot({ tables: rankTables, rounds: parsed.rounds }))
     } catch (error) {
       state?.setStatus?.({ v104RuntimeStatus: 'error', v104RuntimeError: String(error?.message ?? error) })
       throw error
@@ -164,7 +174,15 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
       durableTimings.rankLedgerMs = Date.now() - startedAt
     }
   }
-  const formalTables = Array.isArray(v100Result?.tables) ? v100Result.tables : parsed.tables
+  const rankedTables = Array.isArray(v100Result?.tables) ? v100Result.tables : []
+  const rankedByIdentity = new Map(rankedTables.map((table) => [
+    JSON.stringify([String(table?.tableId ?? ''), String(table?.shoe ?? '')]),
+    table,
+  ]))
+  const formalTables = parsed.tables.map((table) => structuredClone(rankedByIdentity.get(JSON.stringify([
+    String(table?.tableId ?? ''),
+    String(table?.shoe ?? ''),
+  ])) ?? table))
   state?.setStatus?.(parsed.status)
   state?.setTables?.(formalTables)
   const roundsByTable = new Map()
