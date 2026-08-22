@@ -90,7 +90,7 @@ test('formal identity fan-out is serialized to one durable operation', async () 
   assert.equal(maxActive, 1)
 })
 
-test('formal settlement preserves per-table order while serializing independent tables for service responsiveness', async () => {
+test('formal settlement preserves per-table order while running independent tables concurrently', async () => {
   const activeByTable = new Map()
   const settledByTable = new Map()
   let active = 0
@@ -121,7 +121,7 @@ test('formal settlement preserves per-table order while serializing independent 
   assert.deepEqual(settledByTable.get('BAG01'), [1, 2])
   assert.deepEqual(settledByTable.get('BAG02'), [1, 2])
   assert.equal(maxPerTable, 1)
-  assert.equal(maxActive, 1)
+  assert.equal(maxActive, 2)
 })
 
 test('service work scheduler serializes work and coalesces a pending table to its latest state', async () => {
