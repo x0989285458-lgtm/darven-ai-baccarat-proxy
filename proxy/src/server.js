@@ -951,6 +951,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               sequence: Number(work.sequence ?? sequence),
               capturedAt: work.capturedAt ?? row?.payload?.snapshot?.snapshot_at ?? row?.payload?.status?.last_message_at ?? null,
             }
+            const heartbeatOnly = parsed.rounds.length === 0
             const priorTables = Array.isArray(state.snapshot()?.tables) ? state.snapshot().tables : []
             const priorScreens = new Set(priorTables.map(captureScreenIdentity).filter(Boolean))
             const applied = await runLeasePhase('formal', () => (
@@ -986,15 +987,19 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               await runLeasePhase('shadow_service', () => shadowServiceWork.waitForIdle())
             }
             leaseDeadline.assertActive()
-            await runLeasePhase('ancillary_projection', () => persistCaptureAncillaryProjection({
+            const ancillaryProjection = {
               ...parsed,
               tables: Array.isArray(applied?.tables) ? applied.tables : parsed.tables,
-            }))
-            leaseDeadline.assertActive()
+            }
+            if (!heartbeatOnly) {
+              await runLeasePhase('ancillary_projection', () => persistCaptureAncillaryProjection(ancillaryProjection))
+              leaseDeadline.assertActive()
+            }
             await runLeasePhase('complete_ack', () => claims.length === 1
               ? supabaseClient.completeCaptureOutbox?.(claims[0])
               : supabaseClient.completeCaptureOutboxBatch?.(claims))
             processed += claims.length
+            if (heartbeatOnly) void scheduleCaptureAncillaryPersistence(ancillaryProjection)
           } catch (error) {
             failed += 1
             const shadowProcessStatus = isolatedShadowProcess?.status?.() ?? null

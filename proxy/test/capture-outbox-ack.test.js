@@ -1161,3 +1161,41 @@ test('empty cold-start heartbeat ACKs without starting an empty Shadow lease', a
   assert.equal(captures.length, 0)
   await app.stop()
 })
+
+test('table heartbeat ACK is not blocked by its coalesced ancillary projection', async () => {
+  let completed = 0
+  let projectionStarted = false
+  const never = new Promise(() => {})
+  const snapshot = envelope().snapshot
+  const shadowProcessClient = {
+    runtime() { return { enabled: false, async observeTable() {}, async settleRound() {}, snapshot() { return { status: 'disabled' } } } },
+    async prepareRequired() { return { enabled: 0, prepared: 0, pending: 0, queued: 0, failed: 0 } },
+    async processCaptureWithoutV10() { return {} },
+    status() { return { running: true, ready: true } },
+    async stop() {},
+  }
+  const app = createApp({
+    autoConnect: false,
+    isolateShadowProcess: true,
+    shadowProcessClient,
+    shadowShutdownDeadlineMs: 10,
+    v100FormalRuntime: { enabled: false },
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() { return completed ? [] : [claimedRow(902, { payload: { work: { ...snapshot, rounds: [] } } })] },
+      async persistCaptureAncillaryProjection() { projectionStarted = true; return never },
+      async completeCaptureOutbox() { completed += 1; return { completed: true } },
+      async failCaptureOutbox() { assert.fail('heartbeat must ACK before ancillary projection') },
+      async readIssuedPrediction() { return null },
+    },
+  })
+  const result = await Promise.race([
+    app.drainCaptureOutbox(),
+    delay(100).then(() => assert.fail('heartbeat ACK waited for ancillary projection')),
+  ])
+  assert.deepEqual(result, { processed: 1, failed: 0 })
+  assert.equal(completed, 1)
+  await delay(0)
+  assert.equal(projectionStarted, true)
+  await app.stop()
+})

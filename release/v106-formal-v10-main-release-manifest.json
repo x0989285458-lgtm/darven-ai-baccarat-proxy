@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.61",
-  "gitTag": "v106.0.0-formal.61",
-  "applicationVersion": "1.0.118",
+  "releaseVersion": "v106.0.0-formal.62",
+  "gitTag": "v106.0.0-formal.62",
+  "applicationVersion": "1.0.119",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -131,7 +131,7 @@
       "path": "supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql",
       "deploymentStep": "database-isolated-runtime-gate",
       "contract": "Service-role-only PostgreSQL provenance gate returns one bounded proof so no Python site package is needed during production cutover.",
-      "gitBlobSha1": "ee6a692fbfb57222392fc1ee2d9b772b17985d3d"
+      "gitBlobSha1": "b13e66a609147a8cd1bd0432fcf029b5662c93ad"
     },
     "fence": {
       "path": "supabase/operations/fence_v105_new_issuance.sql",
@@ -179,7 +179,7 @@
       "path": "supabase/migrations/20260822010000_v106_formal53_atomic_outbox_batch.sql",
       "deploymentStep": "database-atomic-outbox-batch",
       "contract": "One transaction claims a bounded contiguous batch for exactly one durable session; exact batch ACK/failure prevalidates every lease and updates all-or-none.",
-      "gitBlobSha1": "774f9a73c5ed8a1ded68ce6ac06517303b5ac78a"
+      "gitBlobSha1": "ee1a2a82285c0700d857a9e74bf54e46f3ad3f3f"
     }
   },
   "activation": "supabase/operations/activate_v106_promotion.sql",
@@ -346,7 +346,7 @@
         "supabase/migrations/20260822010000_v106_formal53_atomic_outbox_batch.sql"
       ],
       "excludedPaths": [],
-      "sha256": "de2963751b9a0b7eafedeb27c6fe1263c1d4fead213a3ffb6135ffa4ae2a5424"
+      "sha256": "900b0f1dbe51a41c4d8615e77ac946fce8bc958406a2981911ce865672d82291"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -357,7 +357,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "ae93af52f33827ec9c2c1fb80022cb75880d76b4c3c6f4c00bb5e86a44e33c19"
+      "sha256": "eacf0226bb6b62c148072f21f20742e6bc16c7f2505610ba5a5949a101bd347b"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -405,7 +405,7 @@
         "supabase/migrations/20260822010000_v106_formal53_atomic_outbox_batch.sql"
       ],
       "excludedPaths": [],
-      "sha256": "c94a7d151b5ff6db3bbed217905b99de0af92d027f1375acd056110e92fabb69"
+      "sha256": "b8cddd1f989901581c27c118b728af63906e726fd3ed9c2ec668bdbad1a89751"
     }
   },
   "historicalArtifactsPreserved": true,
@@ -493,8 +493,8 @@
     "requiredIdentity": {
       "version": "v106",
       "buildVersion": "v106",
-      "releaseVersion": "v106.0.0-formal.61",
-      "packageVersion": "1.0.118",
+      "releaseVersion": "v106.0.0-formal.62",
+      "packageVersion": "1.0.119",
       "commit": "annotated-tag-attested-commit"
     },
     "failClosedExitCode": 2,
@@ -555,11 +555,11 @@
     "requiresPreAndPostDatabaseGenerationGate": true,
     "requiresPostStartFailStopCompensation": true,
     "productionDbGateScript": "scripts/verify-v106-production-db-gate.py",
-    "productionDbGateScriptGitBlobSha1": "b677ccf4ebf9722402c9c1150a9e32a8963ec5ec",
+    "productionDbGateScriptGitBlobSha1": "8417974fd99d7fc68051c750824164284ebb4175",
     "producerStartScript": "scripts/start-v106-formal-producer.py",
-    "producerStartScriptGitBlobSha1": "da0fbf57de11e93cc26050e12d3b54be1d8a4812",
+    "producerStartScriptGitBlobSha1": "44a76939ae1f7e91698ad45aa7159d7a8c15deee",
     "producerStopScript": "scripts/stop-v106-formal-producer.py",
-    "producerStopScriptGitBlobSha1": "12223abb7b86b81cd33a36c99e4ff301e5bb99be",
+    "producerStopScriptGitBlobSha1": "50e9a4aca89a91acd82a5c4be38082d68ac8b3f8",
     "producerImage": "darven-worker:v106-formal3-33f9dc6",
     "producerImageId": "sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2",
     "executesLaunchersFromExactGitTree": true,
