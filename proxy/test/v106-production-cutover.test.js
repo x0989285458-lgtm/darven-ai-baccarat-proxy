@@ -131,7 +131,7 @@ test('Formal.28 proves exact identity before start and strict service readiness 
     ['readiness', 'identity', manifest.canonicalPublicProxyUrl, head(), 30],
     ['db', 'pre'],
     ['producer', head(), generation],
-    ['readiness', 'service', manifest.canonicalPublicProxyUrl, head(), 30],
+    ['readiness', 'service', manifest.canonicalPublicProxyUrl, head(), 60],
     ['db', 'post'],
   ])
 })

@@ -139,7 +139,7 @@ export async function runV106ProductionCutover({
       expectedPackage: manifest.applicationVersion,
       expectedCommit: authorization.commit,
       consecutive: gate.requiredConsecutive,
-      attempts: gate.boundedAttempts,
+      attempts: gate.serviceBoundedAttempts,
       intervalMs: gate.intervalMs,
       requestTimeoutMs: gate.requestTimeoutMs,
       mode: 'service',

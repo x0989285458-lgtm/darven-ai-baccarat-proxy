@@ -1,13 +1,13 @@
 {
-  "releaseVersion": "v106.0.0-formal.57",
+  "releaseVersion": "v106.0.0-formal.58",
   "artifacts": [
     {
       "path": "proxy/package.json",
-      "blob": "a3f3b984092dc61ba7a1864c6213ec285eb5b2b9"
+      "blob": "81c427b2d16ddb77daf42d5fe64454589886634b"
     },
     {
       "path": "proxy/package-lock.json",
-      "blob": "255f1b306d160e125b92db3354483276d0a7a7a1"
+      "blob": "0fbeec393f474b6c29ed585c4d20e609384fda6a"
     },
     {
       "path": "proxy/scripts/run-tests.mjs",
@@ -35,7 +35,7 @@
     },
     {
       "path": "scripts/verify-v106-formal-release.mjs",
-      "blob": "a49ac703ef1a8cfde9375a48a938970edc0c67c8"
+      "blob": "85735d6755a0f0c7057abb597d07880bf0b2fcf7"
     },
     {
       "path": "scripts/run-worker-tests-scrubbed.mjs",
@@ -95,7 +95,7 @@
     },
     {
       "path": "scripts/run-v106-production-cutover.mjs",
-      "blob": "5131641e75da85b8001844cbd18c7df1d4ba31dc"
+      "blob": "b6d91bc0b087fd16176dd9c4232803b75e35e97c"
     },
     {
       "path": "supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql",
@@ -115,19 +115,19 @@
     },
     {
       "path": "scripts/start-v106-formal-producer.py",
-      "blob": "4a12e5d5edacd8b8bf5d5341b353ab2459bb1f2f"
+      "blob": "8082ab7f7cd8e755ad8d2396aaabfe3ccf9bc90b"
     },
     {
       "path": "scripts/stop-v106-formal-producer.py",
-      "blob": "3a8533dab5919c1c3f2224d65bc6a0b670b4a237"
+      "blob": "259b6781193d439b425cdd362070ffb72e274543"
     },
     {
       "path": "scripts/verify-v106-production-db-gate.py",
-      "blob": "155aa37f32b34cb926cf95a63ac484f523cbca57"
+      "blob": "de9ec9d7e619db42d8ee33e8671423b4cb04f1f2"
     },
     {
       "path": "supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql",
-      "blob": "88fb1510b69a72d63384d88ef4b1b8f69fce4b89"
+      "blob": "1b8b4ad16362f412dd4ed8924145a37e8676e79e"
     },
     {
       "path": "supabase/migrations/20260821020000_v106_formal25_issuance_barrier.sql",
@@ -143,7 +143,7 @@
     },
     {
       "path": "supabase/migrations/20260822010000_v106_formal53_atomic_outbox_batch.sql",
-      "blob": "21e0a338901e84e319c6e65583bd091d9a9af0ba"
+      "blob": "c266e79af99da574668e53e0cb1ff49419677387"
     }
   ]
 }
