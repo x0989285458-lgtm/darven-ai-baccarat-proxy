@@ -22,6 +22,26 @@ describe('onlineLicenseClient ', () => {
       .rejects.toThrow('連線逾時，請稍後再試')
   })
 
+  it('keeps production member and agent login requests alive for the bounded 30-second backend window', async () => {
+    vi.useFakeTimers()
+    const fetchImpl = vi.fn((_url, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+    })) as unknown as typeof fetch
+    try {
+      const member = memberLogin({ memberAccount: 'User001', verificationPassword: 'DVAI1788_001' }, fetchImpl)
+      const agent = agentLogin({ agentAccount: 'DV1788' }, fetchImpl)
+      let settled = false
+      void Promise.allSettled([member, agent]).then(() => { settled = true })
+      await vi.advanceTimersByTimeAsync(10_001)
+      expect(settled).toBe(false)
+      await vi.advanceTimersByTimeAsync(19_999)
+      await expect(member).rejects.toThrow('連線逾時，請稍後再試')
+      await expect(agent).rejects.toThrow('連線逾時，請稍後再試')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('validates the short-lived member session through the backend bearer token flow', async () => {
     const fetchImpl = vi.fn(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, sessionExpiresAt: '2026-07-13T20:30:00.000Z' }) })) as unknown as typeof fetch
     const result = await validateMemberSession('member-session-1', fetchImpl)

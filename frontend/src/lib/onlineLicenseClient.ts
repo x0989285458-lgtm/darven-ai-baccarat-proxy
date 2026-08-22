@@ -15,7 +15,7 @@ export type OnlineLicenseStatus = {
 
 type AdminSessionPayload = { adminSessionToken?: string }
 
-export async function memberLogin(payload: { memberAccount: string; verificationPassword: string; turnstileToken?: string }, fetchImpl = fetch, timeoutMs = 10000) {
+export async function memberLogin(payload: { memberAccount: string; verificationPassword: string; turnstileToken?: string }, fetchImpl = fetch, timeoutMs = 30000) {
   return postJson('/api/online-license/member-login', payload, fetchImpl, timeoutMs)
 }
 
@@ -42,8 +42,8 @@ export async function validateMemberSession(memberSessionToken: string, fetchImp
   }
 }
 
-export async function agentLogin(payload: { agentAccount: string; turnstileToken?: string }, fetchImpl = fetch) {
-  return postJson('/api/online-license/agent-login', payload, fetchImpl)
+export async function agentLogin(payload: { agentAccount: string; turnstileToken?: string }, fetchImpl = fetch, timeoutMs = 30000) {
+  return postJson('/api/online-license/agent-login', payload, fetchImpl, timeoutMs)
 }
 
 export async function createOnlineAgent(payload: { code: string; name?: string; role?: string; parentCode?: string; permission?: string; adminAccount?: string } & AdminSessionPayload, fetchImpl = fetch) {
