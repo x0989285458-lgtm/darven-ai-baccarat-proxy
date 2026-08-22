@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.53",
+  "releaseVersion": "v106.0.0-formal.54",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.110",
-  "status": "formal53_candidate_all_tests_pass_exact_release_pending",
+  "applicationVersion": "1.0.111",
+  "status": "formal54_candidate_all_tests_pass_exact_release_pending",
   "productionE2E": "formal45-failed-no-issuance-growth-stopped;formal46-48-review-blocked-not-deployed",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.110",
+      "packageVersion": "1.0.111",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,11 +27,11 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "6c9ba88281cea5aebc4bfe51d8c15ab1bae9e6cdcd4dca2f328722f8fce1b876",
-    "proxyBuildInput": "88dad67946752e5d368afb5093bcd651dfd91ddb7d9d7c52a70067d453ec4e14",
+    "implementationTree": "7606a9c3e7c851496c6f15bc515d3f80275a8d2293b2b9fb7ae8fe4673ec5798",
+    "proxyBuildInput": "e47567c00351507a1574e4f25b4da77a0afb2c170e7d9f61d01f100ff500cc34",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "10140c8106faaa0065c700bf8cbbf126275dedb1f700712fbe0ea402a27238bd"
+    "databaseCutoverInput": "2f144a09dde7bdb1e083e29894261100a0fd1e2eb019a9bed241c0cb3d12dd65"
   },
   "rollbackComponents": {
     "proxy": {
@@ -330,6 +330,7 @@
     "formal50ShadowDelta": "Focused 57/57 PASS. Duplicate zero-round screen exact-ACKs without repeated Shadow fan-out; changed screen and Final remain included.",
     "formal51PostDbConvergence": "Focused/Release 84/84 and Proxy 1049/1049 PASS. Production uses bounded 120x5s post DB convergence; tests default to one attempt unless explicitly configured; successful wrong generation remains immediate BLOCK.",
     "formal52BatchOutbox": "Focused/Release 85/85 and Proxy 1050/1050 PASS. Claim max20 same-session rows, merge every unique Final in source sequence, mount latest status/tables once, and complete/fail every exact lease.",
-    "formal53AtomicBatch": "Focused/Release 87/87 and Proxy 1051/1051 PASS; production transaction probe claimed 3/3 contiguous same-session rows and atomically completed 3/3, then ROLLBACK. SQL parse PASS."
+    "formal53AtomicBatch": "Focused/Release 87/87 and Proxy 1051/1051 PASS; production transaction probe claimed 3/3 contiguous same-session rows and atomically completed 3/3, then ROLLBACK. SQL parse PASS.",
+    "formal54ReleaseBinding": "Ad-hoc DB-first closure PASS (temporary hermes-verify script removed); Focused/Release 87/87; Proxy 1051/1051; production-schema full migration/gate rehearsal PASS with exact 8 migrations and transaction ROLLED BACK."
   }
 }

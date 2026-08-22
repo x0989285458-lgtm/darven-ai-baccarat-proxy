@@ -1,13 +1,13 @@
 {
-  "releaseVersion": "v106.0.0-formal.53",
+  "releaseVersion": "v106.0.0-formal.54",
   "artifacts": [
     {
       "path": "proxy/package.json",
-      "blob": "d813eb19c8cbbb80186b11b698c2603be039ba72"
+      "blob": "203d4e2a96adccab1794ac886bf2ae6020be0373"
     },
     {
       "path": "proxy/package-lock.json",
-      "blob": "e9a3c237278f4d01786c28ce548fd3d8404be7dc"
+      "blob": "cb60a4cd1597af28594428f73ddd1ad053c26e4d"
     },
     {
       "path": "proxy/scripts/run-tests.mjs",
@@ -35,7 +35,7 @@
     },
     {
       "path": "scripts/verify-v106-formal-release.mjs",
-      "blob": "7b7ecb031f6ccddb894971a2989f073d0b70ab6b"
+      "blob": "27d594704e7acd9722ba916f8df927a10378fcbd"
     },
     {
       "path": "scripts/run-worker-tests-scrubbed.mjs",
@@ -115,19 +115,19 @@
     },
     {
       "path": "scripts/start-v106-formal-producer.py",
-      "blob": "01688524ad4c2f36d90ff27d977ebebf18ec5bea"
+      "blob": "51facabdffcf24b6f231500703ce90ea278f7af5"
     },
     {
       "path": "scripts/stop-v106-formal-producer.py",
-      "blob": "f47e9c17131fb798bec3138ff44fa829d3ff10d4"
+      "blob": "a89d6e85bf8b7d46fe8df74ef2c711cde10d45cc"
     },
     {
       "path": "scripts/verify-v106-production-db-gate.py",
-      "blob": "02e74272e41615d1adcec804d5b3bb210e73fe9d"
+      "blob": "942f51bbf800b00acf73b66228e464451460caf7"
     },
     {
       "path": "supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql",
-      "blob": "2e39a3dc0d31f4307ed1015614e53dd27045f49b"
+      "blob": "82cd1c5e7ac12081dcf230f98c615a3cd090f754"
     },
     {
       "path": "supabase/migrations/20260821020000_v106_formal25_issuance_barrier.sql",
@@ -140,6 +140,10 @@
     {
       "path": "scripts/verify-v106-issuance-barrier-db.py",
       "blob": "c6ca3bc767b73ae7e9a24ab095f0a444091bfbe2"
+    },
+    {
+      "path": "supabase/migrations/20260822010000_v106_formal53_atomic_outbox_batch.sql",
+      "blob": "8f71531a462aa7abedfc33e4bba9e43b9c2e6c4b"
     }
   ]
 }
