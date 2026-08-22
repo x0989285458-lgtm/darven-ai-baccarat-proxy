@@ -441,7 +441,7 @@ test('bounded outbox passes automatically continue beyond 100 rows without monop
   await app.drainCaptureOutbox()
   await app.waitForCaptureOutboxIdle()
   assert.equal(completed, 101)
-  assert.ok(claimLimits.every((limit) => limit === 1), 'each pass must claim exactly one durable row')
+  assert.ok(claimLimits.every((limit) => limit === 20), 'each pass must claim one bounded durable batch')
 })
 
 test('drain publishes dead-letter health for alerts and operations gates', async () => {
@@ -1081,5 +1081,45 @@ test('duplicate zero-round screens skip isolated shadow fan-out while exact outb
   assert.deepEqual(completed, [701, 702])
   assert.equal(captures.length, 1)
   assert.deepEqual(captures[0].tables.map((table) => table.tableId), ['BAG01'])
+  await app.stop()
+})
+
+
+test('one claimed outbox batch preserves every Final and completes every exact lease', async () => {
+  const claimed = [
+    claimedRow(801, { payload: { work: { ...envelope().snapshot, tables: [{ tableId: 'BAG01', shoe: 88, round: 21 }], rounds: [{ ...envelope().snapshot.rounds[0], round: 21 }] } } }),
+    claimedRow(802, { payload: { work: { ...envelope().snapshot, tables: [{ tableId: 'BAG01', shoe: 88, round: 22 }], rounds: [{ ...envelope().snapshot.rounds[0], round: 22 }] } } }),
+    claimedRow(803, { payload: { work: { ...envelope().snapshot, tables: [{ tableId: 'BAG01', shoe: 88, round: 23 }], rounds: [] } } }),
+  ]
+  const completed = []
+  const captures = []
+  let claimLimit = 0
+  const shadowProcessClient = {
+    runtime() { return { enabled: false, async observeTable() {}, async settleRound() {}, snapshot() { return { status: 'disabled' } } } },
+    async prepareRequired() { return { enabled: 0, prepared: 0, pending: 0, queued: 0, failed: 0 } },
+    async processCaptureWithoutV10(payload) { captures.push(payload); return {} },
+    status() { return { running: true, ready: true } },
+    async stop() {},
+  }
+  const app = createApp({
+    autoConnect: false,
+    isolateShadowProcess: true,
+    shadowProcessClient,
+    v100FormalRuntime: { enabled: false },
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox({ limit }) { claimLimit = limit; return claimed },
+      async completeCaptureOutbox(identity) { completed.push(identity.sequence); return { completed: true } },
+      async failCaptureOutbox() { assert.fail('valid batch must not fail') },
+      async readIssuedPrediction() { return null },
+    },
+  })
+
+  assert.deepEqual(await app.drainCaptureOutbox(), { processed: 3, failed: 0 })
+  assert.equal(claimLimit, 20)
+  assert.deepEqual(completed.sort((a, b) => a - b), [801, 802, 803])
+  assert.equal(captures.length, 1)
+  assert.deepEqual(captures[0].rounds.map((round) => round.round), [21, 22])
+  assert.deepEqual(captures[0].tables.map((table) => table.round), [23])
   await app.stop()
 })

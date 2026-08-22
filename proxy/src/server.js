@@ -877,14 +877,22 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           }
         }
         setCaptureOutboxPhase('claim')
-        const rows = await supabaseClient.claimCaptureOutbox({ limit: 1 })
+        const rows = await supabaseClient.claimCaptureOutbox({ limit: 20 })
         outboxRetryCount = 0
         if (Array.isArray(rows) && rows.length > 0) {
-          const row = rows[0]
+          const batchRows = [...rows].sort((left, right) => Number(left?.sequence) - Number(right?.sequence))
+          const row = batchRows.at(-1)
           const sessionId = String(row?.session_id ?? '')
           const sequence = Number(row?.sequence)
           const claimToken = String(row?.claim_token ?? '')
           const attempt = Number(row?.attempts)
+          const claims = batchRows.map((candidate) => ({
+            sessionId: String(candidate?.session_id ?? ''),
+            sequence: Number(candidate?.sequence),
+            claimToken: String(candidate?.claim_token ?? ''),
+            attempt: Number(candidate?.attempts),
+          }))
+          const batchSessionCompatible = claims.every((claim) => claim.sessionId === sessionId)
           const leaseDeadline = createLeaseDeadline(
             resolvedOutboxWorkDeadlineMs,
             `capture outbox work deadline exceeded for ${sessionId}:${sequence}`,
@@ -915,16 +923,26 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             }
           }
           try {
+            if (!batchSessionCompatible) throw new Error('capture outbox batch crossed durable sessions')
             const work = row?.payload?.work
             if (!work || typeof work !== 'object') throw new Error('capture outbox work payload is missing')
-            const persistedRoundTimes = new Map((Array.isArray(row?.payload?.rounds) ? row.payload.rounds : []).map((round) => [
-              predictionTargetKey(round?.table_id ?? round?.tableId, round?.shoe_no ?? round?.shoe, round?.round_no ?? round?.round),
-              round?.received_at ?? round?.receivedAt ?? round?.raw_event?.receivedAt ?? null,
-            ]))
-            const timedWorkRounds = Array.isArray(work.rounds) ? work.rounds.map((round) => {
-              const receivedAt = round?.receivedAt ?? persistedRoundTimes.get(predictionTargetKey(round?.tableId ?? round?.table_id, round?.shoe ?? round?.shoe_no, round?.round ?? round?.round_no)) ?? null
-              return receivedAt ? { ...round, receivedAt } : { ...round }
-            }) : []
+            const timedWorkRounds = []
+            const roundIdentities = new Set()
+            for (const batchRow of batchRows) {
+              const batchWork = batchRow?.payload?.work
+              if (!batchWork || typeof batchWork !== 'object') throw new Error('capture outbox batch work payload is missing')
+              const persistedRoundTimes = new Map((Array.isArray(batchRow?.payload?.rounds) ? batchRow.payload.rounds : []).map((round) => [
+                predictionTargetKey(round?.table_id ?? round?.tableId, round?.shoe_no ?? round?.shoe, round?.round_no ?? round?.round),
+                round?.received_at ?? round?.receivedAt ?? round?.raw_event?.receivedAt ?? null,
+              ]))
+              for (const round of (Array.isArray(batchWork.rounds) ? batchWork.rounds : [])) {
+                const identity = predictionTargetKey(round?.tableId ?? round?.table_id, round?.shoe ?? round?.shoe_no, round?.round ?? round?.round_no)
+                if (roundIdentities.has(identity)) continue
+                roundIdentities.add(identity)
+                const receivedAt = round?.receivedAt ?? persistedRoundTimes.get(identity) ?? null
+                timedWorkRounds.push(receivedAt ? { ...round, receivedAt } : { ...round })
+              }
+            }
             const parsedPayload = work.status && Array.isArray(work.tables) && Array.isArray(work.rounds)
               ? { sessionId: work.sessionId ?? sessionId, status: work.status, tables: work.tables, rounds: timedWorkRounds }
               : parseCloudCapturePayload({ ...work, rounds: timedWorkRounds, buildVersion: work.buildVersion ?? WORKER_PROTOCOL_BUILD_VERSION })
@@ -972,10 +990,10 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               tables: Array.isArray(applied?.tables) ? applied.tables : parsed.tables,
             }))
             leaseDeadline.assertActive()
-            await runLeasePhase('complete_ack', () => (
-              supabaseClient.completeCaptureOutbox?.({ sessionId, sequence, claimToken, attempt })
+            await runLeasePhase('complete_ack', () => Promise.all(
+              claims.map((claim) => supabaseClient.completeCaptureOutbox?.(claim)),
             ))
-            processed += 1
+            processed += claims.length
           } catch (error) {
             failed += 1
             const shadowProcessStatus = isolatedShadowProcess?.status?.() ?? null
@@ -994,13 +1012,17 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               ])
             }
             setCaptureOutboxPhase('failure_ack', attempt)
-            const failureAckKey = `${sessionId}\u0000${sequence}\u0000${claimToken}\u0000${attempt}`
-            if (!attemptedFailureAcks.has(failureAckKey)) {
+            const pendingFailureClaims = claims.filter((claim) => {
+              const failureAckKey = `${claim.sessionId}\u0000${claim.sequence}\u0000${claim.claimToken}\u0000${claim.attempt}`
+              if (attemptedFailureAcks.has(failureAckKey)) return false
               attemptedFailureAcks.add(failureAckKey)
-              if (attemptedFailureAcks.size > 10000) attemptedFailureAcks.delete(attemptedFailureAcks.values().next().value)
+              return true
+            })
+            if (attemptedFailureAcks.size > 10000) attemptedFailureAcks.delete(attemptedFailureAcks.values().next().value)
+            if (pendingFailureClaims.length > 0) {
               try {
                 await withDeadline(
-                  supabaseClient.failCaptureOutbox?.({ sessionId, sequence, claimToken, attempt, error: error?.message ?? String(error) }),
+                  Promise.all(pendingFailureClaims.map((claim) => supabaseClient.failCaptureOutbox?.({ ...claim, error: error?.message ?? String(error) }))),
                   resolvedOutboxWorkDeadlineMs,
                   `capture outbox failure acknowledgement deadline exceeded for ${sessionId}:${sequence}`,
                 )
