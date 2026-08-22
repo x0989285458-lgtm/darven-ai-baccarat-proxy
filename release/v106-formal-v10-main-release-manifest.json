@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.48",
-  "gitTag": "v106.0.0-formal.48",
-  "applicationVersion": "1.0.105",
+  "releaseVersion": "v106.0.0-formal.49",
+  "gitTag": "v106.0.0-formal.49",
+  "applicationVersion": "1.0.106",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -131,7 +131,7 @@
       "path": "supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql",
       "deploymentStep": "database-isolated-runtime-gate",
       "contract": "Service-role-only PostgreSQL provenance gate returns one bounded proof so no Python site package is needed during production cutover.",
-      "gitBlobSha1": "036049e1e3491f343f525c279b9f92f45ffdc9ba"
+      "gitBlobSha1": "4da489e32c60bb1a626d3b42f823823e114ec518"
     },
     "fence": {
       "path": "supabase/operations/fence_v105_new_issuance.sql",
@@ -337,7 +337,7 @@
         "scripts/verify-v106-issuance-barrier-db.py"
       ],
       "excludedPaths": [],
-      "sha256": "17fc0ef0803eafbde8083b79a4c1a23dceacae7ee92a54ce173e16533a4758f1"
+      "sha256": "232737136c9c43f9a07b4e33981274be7c4349ae731f08e50144ab715eb6e20d"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -348,7 +348,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "82b062e3b7435d9b0b7e13e6dbf6080c9243ff9f6154988b7b78727dd4320e60"
+      "sha256": "e47c0b1196ec1f679c3c50c625736d91dc4cdc93efe84d3c5f8250ff1530d259"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -395,7 +395,7 @@
         "scripts/verify-v106-issuance-barrier-db.py"
       ],
       "excludedPaths": [],
-      "sha256": "be1b136b0ab913b8ca282b97f2737bfc5ad892453309f8e2ca9895b2ea5519a4"
+      "sha256": "8c563530f44de7a354a068948fed066d6a5155aa9b8c1eecca2aeec1442e40db"
     }
   },
   "historicalArtifactsPreserved": true,
@@ -482,8 +482,8 @@
     "requiredIdentity": {
       "version": "v106",
       "buildVersion": "v106",
-      "releaseVersion": "v106.0.0-formal.48",
-      "packageVersion": "1.0.105",
+      "releaseVersion": "v106.0.0-formal.49",
+      "packageVersion": "1.0.106",
       "commit": "annotated-tag-attested-commit"
     },
     "failClosedExitCode": 2,
@@ -544,11 +544,11 @@
     "requiresPreAndPostDatabaseGenerationGate": true,
     "requiresPostStartFailStopCompensation": true,
     "productionDbGateScript": "scripts/verify-v106-production-db-gate.py",
-    "productionDbGateScriptGitBlobSha1": "5f1d82160903720c6808f8e52683e326952557db",
+    "productionDbGateScriptGitBlobSha1": "46e295ef0f080fbc82160e6a149debd8f8ca01fc",
     "producerStartScript": "scripts/start-v106-formal-producer.py",
-    "producerStartScriptGitBlobSha1": "8efe8313bb7bfa5d763bacb225c0631604053369",
+    "producerStartScriptGitBlobSha1": "6ced95776f435ab7835ac99267b70b5139b508fb",
     "producerStopScript": "scripts/stop-v106-formal-producer.py",
-    "producerStopScriptGitBlobSha1": "3b18336a0be69b6c23acc6206551aff83fba9021",
+    "producerStopScriptGitBlobSha1": "fe388416772812508fac677f1b2b3b9ed0fafc55",
     "producerImage": "darven-worker:v106-formal3-33f9dc6",
     "producerImageId": "sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2",
     "executesLaunchersFromExactGitTree": true,
@@ -561,8 +561,8 @@
     "predecessorLateSettlementRetained": true,
     "requiresIdentityReadinessBeforeStart": true,
     "requiresServiceReadinessAfterStart": true,
-    "databaseGateScriptGitBlobSha1": "5f1d82160903720c6808f8e52683e326952557db",
-    "isolatedRuntimeMigrationGitBlobSha1": "036049e1e3491f343f525c279b9f92f45ffdc9ba"
+    "databaseGateScriptGitBlobSha1": "46e295ef0f080fbc82160e6a149debd8f8ca01fc",
+    "isolatedRuntimeMigrationGitBlobSha1": "4da489e32c60bb1a626d3b42f823823e114ec518"
   },
   "releaseAuthorization": {
     "trustPolicyVersion": "v106-release-trust-v1",
@@ -598,6 +598,7 @@
     "formal45HttpParentAckOnly": "Formal.45 closes Fresh Review P1: isolated parent mounts pushed table/status state passively with notify=false and inferRounds=false, so it cannot infer rounds, reconcile, hydrate or issue predictions; it also skips formal runtime startup. Child remains sole Outbox/formal/ancillary/shadow owner.",
     "formal46InitializedOutboxChildRuntime": "Formal.46 fixes Formal.45 Production E2E: the isolated child now starts its private loopback app before announcing ready, completing formal history/performance hydration and shadow/runtime initialization before self-draining. Parent remains ACK-only.",
     "formal47BoundedInitializedChildStartup": "Formal.47 closes Formal.46 Fresh Review P1: Outbox child readiness timeout is configurable and defaults to 180s, covering the sequential bounded strategy/formal/shadow initialization path before ready; a real delayed fork regression proves startup does not kill valid slow initialization.",
-    "formal48CompleteChildStartupBudget": "Formal.48 closes Formal.47 Fresh Review P1: the default child readiness budget is a named 300s bound, exceeding the audited 245s sequential maximum for strategy verification, recent performance, formal hydration and required shadow preparation; regression locks the inequality."
+    "formal48CompleteChildStartupBudget": "Formal.48 closes Formal.47 Fresh Review P1: the default child readiness budget is a named 300s bound, exceeding the audited 245s sequential maximum for strategy verification, recent performance, formal hydration and required shadow preparation; regression locks the inequality.",
+    "formal49StopExitProof": "Formal.49 closes Formal.48 Fresh Review P1: IPC stop failure force-kills the exact child and waits for an actual exit event; kill-confirm timeout rejects instead of claiming stopped. Production compensation remains fail-closed."
   }
 }

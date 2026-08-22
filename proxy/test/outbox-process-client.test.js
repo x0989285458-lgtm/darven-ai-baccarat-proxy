@@ -130,3 +130,34 @@ test('repeated ready-then-crash failures retain exponential restart backoff unti
   await stopping
   clearInterval(keeper)
 })
+
+
+test('IPC stop failure force-kills and waits for confirmed child exit', async () => {
+  const child = fakeChild()
+  child.send = () => { throw new Error('ipc unavailable') }
+  const client = createOutboxProcessClient({
+    forkImpl() { queueMicrotask(() => child.emit('message', { type: 'ready' })); return child },
+    startupTimeoutMs: 100,
+    stopTimeoutMs: 20,
+    stopKillConfirmMs: 20,
+  })
+  await client.start()
+  assert.deepEqual(await client.stop(), { stopped: true })
+  assert.equal(child.exitCode, 0)
+})
+
+test('IPC stop failure cannot claim stopped without child exit proof', async () => {
+  const child = fakeChild()
+  child.send = () => { throw new Error('ipc unavailable') }
+  child.kill = () => false
+  const client = createOutboxProcessClient({
+    forkImpl() { queueMicrotask(() => child.emit('message', { type: 'ready' })); return child },
+    startupTimeoutMs: 100,
+    stopTimeoutMs: 10,
+    stopKillConfirmMs: 10,
+  })
+  await client.start()
+  await assert.rejects(client.stop(), /could not confirm child exit/)
+  assert.equal(child.connected, true)
+  assert.equal(child.exitCode, null)
+})

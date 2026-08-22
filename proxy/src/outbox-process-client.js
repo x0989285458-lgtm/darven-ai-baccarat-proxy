@@ -27,6 +27,7 @@ export function createOutboxProcessClient({
   env = process.env,
   startupTimeoutMs = Number(process.env.OUTBOX_PROCESS_STARTUP_TIMEOUT_MS ?? DEFAULT_OUTBOX_PROCESS_STARTUP_TIMEOUT_MS),
   stopTimeoutMs = 5000,
+  stopKillConfirmMs = 1000,
   restartBaseDelayMs = 250,
   restartMaxDelayMs = 5000,
   restartStableMs = 30000,
@@ -148,21 +149,32 @@ export function createOutboxProcessClient({
     const target = child
     if (!target) return { stopped: true }
     ready = false
-    await new Promise((resolve) => {
+    await new Promise((resolve, reject) => {
       let settled = false
+      let forceTimer = null
       const finish = () => {
         if (settled) return
         settled = true
         clearTimeout(timer)
+        if (forceTimer) clearTimeout(forceTimer)
         resolve()
       }
-      const timer = setTimeout(() => {
+      const forceAndVerify = () => {
+        if (settled || forceTimer) return
+        clearTimeout(timer)
         try { target.kill('SIGKILL') } catch {}
-        finish()
-      }, stopTimeoutMs)
+        forceTimer = setTimeout(() => {
+          if (settled) return
+          settled = true
+          clearTimeout(timer)
+          reject(new Error('outbox process stop could not confirm child exit'))
+        }, Math.max(1, stopKillConfirmMs))
+        forceTimer.unref?.()
+      }
+      const timer = setTimeout(forceAndVerify, stopTimeoutMs)
       timer.unref?.()
       target.once('exit', finish)
-      try { target.send({ type: 'stop' }) } catch { finish() }
+      try { target.send({ type: 'stop' }) } catch { forceAndVerify() }
     })
     if (child === target) child = null
     return { stopped: true }
