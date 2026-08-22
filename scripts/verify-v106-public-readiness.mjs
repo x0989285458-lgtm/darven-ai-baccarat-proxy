@@ -23,7 +23,8 @@ export async function verifyV106PublicReadiness({
   if (typeof fetchImpl !== 'function') throw new Error('public_readiness_fetch_required')
   if (!['identity', 'service'].includes(mode)) throw new Error('public_readiness_mode_invalid')
   const requiredStreak = Math.max(2, Number(consecutive) || 0)
-  const maxAttempts = Math.min(30, Math.max(requiredStreak, Number(attempts) || 0))
+  const hardAttemptCap = mode === 'service' ? 60 : 30
+  const maxAttempts = Math.min(hardAttemptCap, Math.max(requiredStreak, Number(attempts) || 0))
   let streak = 0
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     let response = null

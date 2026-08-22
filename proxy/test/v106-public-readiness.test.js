@@ -4,8 +4,8 @@ import { verifyV106PublicReadiness } from '../../scripts/verify-v106-public-read
 
 const expected = {
   url: 'https://example.test',
-  expectedRelease: 'v106.0.0-formal.58',
-  expectedPackage: '1.0.115',
+  expectedRelease: 'v106.0.0-formal.59',
+  expectedPackage: '1.0.116',
   expectedCommit: 'a'.repeat(40),
   intervalMs: 0,
   requestTimeoutMs: 100,
@@ -39,7 +39,7 @@ test('Formal.21 readiness blocks an older v106 release even when public health i
     ...expected, attempts: 2,
     fetchImpl: async () => response({
       ok: true, version: 'v106', buildVersion: 'v106',
-      releaseVersion: 'v106.0.0-formal.58', packageVersion: '1.0.115', commit: 'b'.repeat(40),
+      releaseVersion: 'v106.0.0-formal.59', packageVersion: '1.0.116', commit: 'b'.repeat(40),
     }),
     onProbe: (probe) => probes.push(probe),
   }), (error) => error?.code === 'PUBLIC_PROXY_READINESS_BLOCK')
@@ -64,13 +64,19 @@ test('Formal.21 readiness requires two consecutive exact public identities and r
   ])
 })
 
-test('Formal.21 readiness caps even direct caller attempts at the bound maximum of 30', async () => {
+test('Formal.59 readiness caps identity at 30 and strict post-start service at 60', async () => {
   let calls = 0
   await assert.rejects(verifyV106PublicReadiness({
-    ...expected, attempts: 31, intervalMs: 0,
+    ...expected, mode: 'identity', attempts: 31, intervalMs: 0,
     fetchImpl: async () => { calls += 1; return response({ ok: false }) },
   }), (error) => error?.code === 'PUBLIC_PROXY_READINESS_BLOCK')
   assert.equal(calls, 30)
+  calls = 0
+  await assert.rejects(verifyV106PublicReadiness({
+    ...expected, mode: 'service', attempts: 61, intervalMs: 0,
+    fetchImpl: async () => { calls += 1; return response({ ok: false }) },
+  }), (error) => error?.code === 'PUBLIC_PROXY_READINESS_BLOCK')
+  assert.equal(calls, 60)
 })
 
 test('Formal.21 readiness rejects redirects instead of following a counterfeit health responder', async () => {
