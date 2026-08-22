@@ -85,7 +85,7 @@ test('v106 full release manifest binds the exact staged implementation, build in
   const result = await verifyV106ManifestDigests({ manifest, candidateIndexTree, root: repoRoot })
   assert.equal(result.ok, true)
   assert.equal(report.releaseVersion, manifest.releaseVersion)
-  assert.match(report.status, /formal54/)
+  assert.match(report.status, /formal55/)
   assert.doesNotMatch(report.status, /^formal5(?:_|$)/)
   assert.deepEqual(Object.keys(result.digests).sort(), [
     'databaseCutoverInput', 'frontendBuildInput', 'implementationTree', 'proxyBuildInput', 'workerBuildInput',
@@ -198,6 +198,13 @@ test('v106 database contracts bind every cutover step to one exact Git blob', ()
   assert.throws(
     () => verifyV106DatabaseArtifactContracts({ manifest: wrongBlob, candidateIndexTree, root: repoRoot }),
     /database_artifact_blob_mismatch:finalize/,
+  )
+
+  const duplicateProxyStep = structuredClone(manifest)
+  duplicateProxyStep.deploymentOrder.unshift('proxy')
+  assert.throws(
+    () => verifyV106DatabaseArtifactContracts({ manifest: duplicateProxyStep, candidateIndexTree, root: repoRoot }),
+    /database_deployment_order_duplicate/,
   )
 
   const unsafeRollbackOrder = structuredClone(manifest)
