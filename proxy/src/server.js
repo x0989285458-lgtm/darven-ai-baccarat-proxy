@@ -975,11 +975,19 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               }
               const coldStartHasTables = priorScreens.size === 0 && shadowPayload.tables.length > 0
               if (coldStartHasTables || shadowPayload.rounds.length > 0) {
-                await runLeasePhase('shadow', () => processIsolatedShadowCapture(shadowPayload, {
+                const shadowOptions = {
                   signal: leaseDeadline.signal,
                   timeoutMs: leaseDeadline.remainingMs(),
-                }))
-                leaseDeadline.assertActive()
+                }
+                if (heartbeatOnly) {
+                  const shadowWork = processIsolatedShadowCapture(shadowPayload, shadowOptions)
+                  void Promise.resolve(shadowWork).catch((error) => {
+                    state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status(), shadowProcessError: error?.message ?? String(error) })
+                  })
+                } else {
+                  await runLeasePhase('shadow', () => processIsolatedShadowCapture(shadowPayload, shadowOptions))
+                  leaseDeadline.assertActive()
+                }
               }
               state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
             } else {

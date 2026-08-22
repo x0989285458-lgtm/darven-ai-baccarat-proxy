@@ -319,7 +319,12 @@ test('an expired exact lease blocks late Formal completion from starting Shadow 
     sessionId: 'late-formal',
     status: { connected: true, authenticated: true },
     tables: [{ tableId: 'BAG01', shoe: 1, round: 1 }],
-    rounds: [],
+    rounds: [{
+      tableId: 'BAG01', shoe: 1, round: 1, winner: 'banker',
+      sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
+      rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9],
+      receivedAt: '2026-08-22T00:00:00.000Z',
+    }],
   }
   const app = createApp({
     autoConnect: false,

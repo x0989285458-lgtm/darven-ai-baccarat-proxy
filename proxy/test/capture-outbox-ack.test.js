@@ -1162,15 +1162,16 @@ test('empty cold-start heartbeat ACKs without starting an empty Shadow lease', a
   await app.stop()
 })
 
-test('table heartbeat ACK is not blocked by its coalesced ancillary projection', async () => {
+test('table heartbeat ACK is not blocked by Shadow completion or coalesced ancillary projection', async () => {
   let completed = 0
   let projectionStarted = false
+  let shadowStarted = false
   const never = new Promise(() => {})
   const snapshot = envelope().snapshot
   const shadowProcessClient = {
     runtime() { return { enabled: false, async observeTable() {}, async settleRound() {}, snapshot() { return { status: 'disabled' } } } },
     async prepareRequired() { return { enabled: 0, prepared: 0, pending: 0, queued: 0, failed: 0 } },
-    async processCaptureWithoutV10() { return {} },
+    async processCaptureWithoutV10() { shadowStarted = true; return never },
     status() { return { running: true, ready: true } },
     async stop() {},
   }
@@ -1195,6 +1196,7 @@ test('table heartbeat ACK is not blocked by its coalesced ancillary projection',
   ])
   assert.deepEqual(result, { processed: 1, failed: 0 })
   assert.equal(completed, 1)
+  assert.equal(shadowStarted, true)
   await delay(0)
   assert.equal(projectionStarted, true)
   await app.stop()
