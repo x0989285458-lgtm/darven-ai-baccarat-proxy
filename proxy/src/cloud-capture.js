@@ -183,7 +183,7 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
   }
   const settlementStartedAt = Date.now()
   await runDurableStage('durable_formal_settlement', () => withFormalSettlementTail(state, async () => {
-    await Promise.all([...roundsByTable.values()].map(async (tableRounds) => {
+    const tableSettlements = await Promise.allSettled([...roundsByTable.values()].map(async (tableRounds) => {
       const shoeOrder = new Map()
       for (const round of tableRounds) {
         const shoe = String(round?.shoe ?? '')
@@ -199,6 +199,8 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
       }
       await new Promise((resolve) => setImmediate(resolve))
     }))
+    const failedSettlement = tableSettlements.find((result) => result.status === 'rejected')
+    if (failedSettlement) throw failedSettlement.reason
   }))
   durableTimings.formalSettlementMs = Date.now() - settlementStartedAt
   state?.notifyTablesUpdated?.()

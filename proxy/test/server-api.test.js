@@ -11,7 +11,7 @@ test('HTTP API exposes health, status, tables and latest snapshot', async () => 
   assert.equal(health.statusCode, 200)
   assert.deepEqual(JSON.parse(health.body), {
     ok: true, service: 'Draven MT資料代理伺服器', version: 'v106', buildVersion: 'v106',
-    releaseVersion: 'v106.0.0-formal.60', packageVersion: '1.0.117', commit: null, deployMode: 'local',
+    releaseVersion: 'v106.0.0-formal.61', packageVersion: '1.0.118', commit: null, deployMode: 'local',
     health: 'ok', degraded: false, reason: null,
     runtimeStatus: { ready: false, degraded: false, reason: 'active_strategy_not_verified', activeStrategyVersion: null },
   })

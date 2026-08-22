@@ -28,7 +28,7 @@ test('historical v105 release manifest remains internally coherent and preserves
 test('v106 frontend and proxy remain coherent while the unchanged worker protocol stays v105', () => {
   assert.match(read('frontend/src/lib/buildVersion.ts'), /buildVersion:\s*'v106'[\s\S]*strategyVersion:\s*'v106'/)
   assert.match(read('frontend/package.json'), /"version":\s*"1\.0\.63"/)
-  assert.match(read('proxy/package.json'), /"name":\s*"draven-mt-data-proxy-v106"[\s\S]*"version":\s*"1\.0\.117"/)
+  assert.match(read('proxy/package.json'), /"name":\s*"draven-mt-data-proxy-v106"[\s\S]*"version":\s*"1\.0\.118"/)
   assert.match(read('proxy/src/server.js'), /WORKER_PROTOCOL_BUILD_VERSION\s*=\s*'105'[\s\S]*WORKER_PROTOCOL_VERSION\s*=\s*'v105'/)
   assert.match(read('proxy/src/cloud-capture.js'), /buildVersion\s*!==\s*'105'/)
   assert.match(read('cloud-browser-worker/src/runtime-config.js'), /BUILD_VERSION\s*=\s*'105'/)

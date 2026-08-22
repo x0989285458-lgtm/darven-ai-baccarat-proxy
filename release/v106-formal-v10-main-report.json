@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.60",
+  "releaseVersion": "v106.0.0-formal.61",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.117",
-  "status": "formal60_candidate_all_tests_pass_exact_release_pending",
+  "applicationVersion": "1.0.118",
+  "status": "formal61_candidate_all_tests_pass_exact_release_pending",
   "productionE2E": "formal45-failed-no-issuance-growth-stopped;formal46-48-review-blocked-not-deployed",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.117",
+      "packageVersion": "1.0.118",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,11 +27,11 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "ad633d44e01fc4901978d9760984041fec293ada59d1527303afc0ae44cd904a",
-    "proxyBuildInput": "ada8b86c521a2ac281a7613bf3efa6726fe4593e95a652a1ec87d81b505d76b4",
+    "implementationTree": "de2963751b9a0b7eafedeb27c6fe1263c1d4fead213a3ffb6135ffa4ae2a5424",
+    "proxyBuildInput": "ae93af52f33827ec9c2c1fb80022cb75880d76b4c3c6f4c00bb5e86a44e33c19",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "77aefa244c268bdcb419ca4746d3fe7134884e0ed01d596278816ac77be92f7b"
+    "databaseCutoverInput": "c94a7d151b5ff6db3bbed217905b99de0af92d027f1375acd056110e92fabb69"
   },
   "rollbackComponents": {
     "proxy": {
@@ -337,6 +337,7 @@
     "formal57NonblockingRequiredShadow": "Required v103/v104/v104-iteration Shadow captures now use bounded/coalescing/retrying best-effort lane; exact Outbox ACK never waits. Proxy 1052/1052 PASS; focused release/outbox/shadow PASS.",
     "formal58BoundedCaptureStartup": "Formal.57 exhausted 30 strict service probes with capture_unavailable and safely stopped. Formal.58 identity window remains 30; strict post-start service window is independently bounded at 60. Focused 46/46 PASS; Proxy 1052/1052 PASS.",
     "formal59ModeSpecificReadinessCap": "Formal.58 Fresh Review BLOCK reproduced: shared helper hard-capped service at 30. Formal.59 mode-specific cap is identity=30/service=60; release verifier binds both manifest field and executable source. Focused 52/52 PASS; Proxy 1052/1052 PASS.",
-    "formal60CrossTableFinalConcurrency": "Production evidence: 18 claimed rows contained at least 47 Finals and stayed processing about 270 seconds while cross-table settlement was serial; pending reached 63. Distinct tables now settle concurrently through the existing formal pool while each table remains shoe/round ordered. Focused 96/96 PASS; Proxy 1053/1053 PASS."
+    "formal60CrossTableFinalConcurrency": "Production evidence: 18 claimed rows contained at least 47 Finals and stayed processing about 270 seconds while cross-table settlement was serial; pending reached 63. Distinct tables now settle concurrently through the existing formal pool while each table remains shoe/round ordered. Focused 96/96 PASS; Proxy 1053/1053 PASS.",
+    "formal61CrossTableFailureSettlement": "Formal.60 Fresh Review P1: fail-fast Promise.all could release the global tail while a sibling table settlement remained active. Formal.61 uses Promise.allSettled, reports the first failure only after every sibling branch settles, and proves the next batch cannot overlap. Focused 97/97 PASS; Proxy 1054/1054 PASS."
   }
 }
