@@ -6,6 +6,11 @@ import { prepareShadowRuntimes } from '../src/shadow-process-work.js'
 import { createApp } from '../src/server.js'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const verifiedFinal = () => ({
+  tableId: 'BAG01', shoe: 1, round: 1, winner: 'banker',
+  rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9],
+  sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
+})
 
 function fakeChild({ respond = true, respondTo = null, responseResult = null, exitDelayMs = 0, ignoreKill = false } = {}) {
   const child = new EventEmitter()
@@ -244,7 +249,8 @@ test('an unconfirmed isolated child termination enters server fatal mode without
       async claimCaptureOutbox() {
         claims += 1
         return [{ session_id: 'fatal-child', sequence: 1, claim_token: 'lease-fatal', attempts: 1, payload: { work: {
-          sessionId: 'fatal-child', status: { connected: true, authenticated: true }, tables: [], rounds: [],
+          sessionId: 'fatal-child', status: { connected: true, authenticated: true },
+          tables: [{ tableId: 'BAG01', shoe: 1, round: 1 }], rounds: [verifiedFinal()],
         } } }]
       },
       async completeCaptureOutbox() { assert.fail('unconfirmed child work must not complete') },
@@ -312,7 +318,7 @@ test('an expired exact lease blocks late Formal completion from starting Shadow 
     sessionId: 'late-formal',
     status: { connected: true, authenticated: true },
     tables: [{ tableId: 'BAG01', shoe: 1, round: 1 }],
-    rounds: [],
+    rounds: [verifiedFinal()],
   }
   const app = createApp({
     autoConnect: false,
@@ -372,7 +378,7 @@ test('an active child must exit before the exact lease failure is acknowledged',
     sessionId: 'active-child-deadline',
     status: { connected: true, authenticated: true },
     tables: [{ tableId: 'BAG01', shoe: 1, round: 1 }],
-    rounds: [],
+    rounds: [verifiedFinal()],
   }
   const app = createApp({
     autoConnect: false,
@@ -548,7 +554,8 @@ test('shutdown kills an isolated child before waiting on its unsettled capture w
         if (claimed) return []
         claimed = true
         return [{ session_id: 'shutdown-pending', sequence: 1, claim_token: 'lease-shutdown', attempts: 1, payload: { work: {
-          sessionId: 'shutdown-pending', status: { connected: true, authenticated: true }, tables: [], rounds: [],
+          sessionId: 'shutdown-pending', status: { connected: true, authenticated: true },
+          tables: [{ tableId: 'BAG01', shoe: 1, round: 1 }], rounds: [verifiedFinal()],
         } } }]
       },
       async completeCaptureOutbox() { assert.fail('unsettled capture must not complete') },

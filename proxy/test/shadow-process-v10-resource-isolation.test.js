@@ -7,6 +7,11 @@ import { createShadowProcessClient } from '../src/shadow-process-client.js'
 import { createApp } from '../src/server.js'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const verifiedFinal = () => ({
+  tableId: 'BAG01', shoe: 1, round: 20, winner: 'banker',
+  rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9],
+  sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
+})
 
 async function waitFor(predicate, message, timeoutMs = 500) {
   const deadline = Date.now() + timeoutMs
@@ -404,7 +409,7 @@ test('Outbox completion waits for required capture but never waits for a stalled
     sessionId: 'v10-isolated-ack',
     status: { connected: true, authenticated: true },
     tables: [{ tableId: 'BAG01', shoe: 1, round: 20 }],
-    rounds: [],
+    rounds: [verifiedFinal()],
   }
   const app = createApp({
     autoConnect: false,
@@ -484,7 +489,7 @@ test('V10 REST saturation cannot prevent required V9 capture or parent Outbox ac
     sessionId: 'v10-rest-saturation',
     status: { connected: true, authenticated: true },
     tables: [{ tableId: 'BAG01', shoe: 1, round: 20 }],
-    rounds: [],
+    rounds: [verifiedFinal()],
   }
   const app = createApp({
     autoConnect: false,

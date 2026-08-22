@@ -788,31 +788,38 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             const parsed = work.status && Array.isArray(work.tables) && Array.isArray(work.rounds)
               ? { sessionId: work.sessionId ?? sessionId, status: work.status, tables: work.tables, rounds: work.rounds }
               : parseCloudCapturePayload({ ...work, buildVersion: work.buildVersion ?? WORKER_PROTOCOL_BUILD_VERSION })
-            const applied = await runLeasePhase('formal', () => (
-              applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Formal, persistAncillary: false })
-            ))
-            leaseDeadline.assertActive()
-            if (isolatedShadowProcess) {
-              const shadowPayload = {
-                ...parsed,
-                tables: Array.isArray(applied?.tables) ? applied.tables : parsed.tables,
-                rounds: Array.isArray(applied?.rounds) ? applied.rounds : [],
-              }
-              await runLeasePhase('shadow', () => isolatedShadowProcess.processCapture(shadowPayload, {
-                signal: leaseDeadline.signal,
-                timeoutMs: leaseDeadline.remainingMs(),
-              }))
-              leaseDeadline.assertActive()
-              state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
+            if (parsed.rounds.length === 0) {
+              await runLeasePhase('heartbeat_complete_ack', () => (
+                supabaseClient.completeCaptureOutbox?.({ sessionId, sequence, claimToken, attempt })
+              ))
+              processed += 1
             } else {
-              await runLeasePhase('shadow_scheduler', () => shadowWorkScheduler.waitForIdle())
-              await runLeasePhase('shadow_service', () => shadowServiceWork.waitForIdle())
+              const applied = await runLeasePhase('formal', () => (
+                applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Formal, persistAncillary: false })
+              ))
+              leaseDeadline.assertActive()
+              if (isolatedShadowProcess) {
+                const shadowPayload = {
+                  ...parsed,
+                  tables: Array.isArray(applied?.tables) ? applied.tables : parsed.tables,
+                  rounds: Array.isArray(applied?.rounds) ? applied.rounds : [],
+                }
+                await runLeasePhase('shadow', () => isolatedShadowProcess.processCapture(shadowPayload, {
+                  signal: leaseDeadline.signal,
+                  timeoutMs: leaseDeadline.remainingMs(),
+                }))
+                leaseDeadline.assertActive()
+                state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
+              } else {
+                await runLeasePhase('shadow_scheduler', () => shadowWorkScheduler.waitForIdle())
+                await runLeasePhase('shadow_service', () => shadowServiceWork.waitForIdle())
+              }
+              leaseDeadline.assertActive()
+              await runLeasePhase('complete_ack', () => (
+                supabaseClient.completeCaptureOutbox?.({ sessionId, sequence, claimToken, attempt })
+              ))
+              processed += 1
             }
-            leaseDeadline.assertActive()
-            await runLeasePhase('complete_ack', () => (
-              supabaseClient.completeCaptureOutbox?.({ sessionId, sequence, claimToken, attempt })
-            ))
-            processed += 1
           } catch (error) {
             failed += 1
             const shadowProcessStatus = isolatedShadowProcess?.status?.() ?? null

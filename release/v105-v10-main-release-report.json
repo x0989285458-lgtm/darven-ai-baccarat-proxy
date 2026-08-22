@@ -1,8 +1,8 @@
 {
-  "releaseVersion": "v105-v10-main.2",
+  "releaseVersion": "v105-v10-main.3",
   "formalStrategyVersion": "v105",
   "status": "candidate-tests-pass-production-pending",
-  "scope": "V105正式基座不變，只替換主預測為V10非常見大路策略；副項、抓牌、DB與UI不變",
+  "scope": "V105產品身份不變，主預測改為V10非常見大路；零Final心跳直接完成Outbox以避免Queue壅塞；副項、抓牌、DB與UI不變",
   "tests": {
     "proxyFullSerial": "962/962 PASS",
     "focusedV105V10": "13/13 PASS",

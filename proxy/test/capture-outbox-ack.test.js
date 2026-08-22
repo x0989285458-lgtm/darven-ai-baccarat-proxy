@@ -92,6 +92,40 @@ test('durable raw capture and outbox ACK do not wait for formal settlement', asy
   }
 })
 
+test('zero-Final heartbeat completes durable outbox without entering formal prediction work', async () => {
+  let claimed = false
+  let formalStarted = false
+  const completed = []
+  const app = createApp({
+    autoConnect: false,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8)]
+      },
+      async completeCaptureOutbox(identity) { completed.push(identity); return { completed: true } },
+      async failCaptureOutbox() { assert.fail('zero-Final heartbeat must complete directly') },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot() {
+        formalStarted = true
+        await new Promise(() => {})
+      },
+    },
+  })
+  const result = await Promise.race([
+    app.drainCaptureOutbox(),
+    delay(50).then(() => ({ timeout: true })),
+  ])
+  assert.deepEqual(result, { processed: 1, failed: 0 })
+  assert.equal(formalStarted, false)
+  assert.deepEqual(completed, [{ sessionId: 'outbox-worker', sequence: 8, claimToken: 'lease-8', attempt: 1 }])
+  await app.stop()
+})
+
 test('restart drains a pending durable outbox item before marking it complete', async () => {
   const completed = []
   let claimed = false
@@ -516,7 +550,11 @@ test('formal deadline waits for the underlying work to settle before failure ACK
       async claimCaptureOutbox() {
         claimCalls += 1
         if (claimCalls > 2) return []
-        return [claimedRow(1, { attempts: claimCalls, claim_token: `lease-attempt-${claimCalls}` })]
+        return [claimedRow(1, {
+          attempts: claimCalls,
+          claim_token: `lease-attempt-${claimCalls}`,
+          payload: { work: envelope().snapshot },
+        })]
       },
       async completeCaptureOutbox({ attempt }) { completed.push(attempt); return { completed: true } },
       async failCaptureOutbox() {

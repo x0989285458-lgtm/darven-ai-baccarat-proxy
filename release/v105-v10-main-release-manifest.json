@@ -1,18 +1,19 @@
 {
-  "releaseName": "V105主預測V10升級版1",
-  "releaseVersion": "v105-v10-main.2",
-  "gitTag": "v105-v10-main.2",
+  "releaseName": "V105主預測V10升級版3",
+  "releaseVersion": "v105-v10-main.3",
+  "gitTag": "v105-v10-main.3",
   "applicationVersion": "1.0.62",
   "baseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
   "formalStrategyVersion": "v105",
   "releaseScope": {
     "predictionMainOnly": true,
-    "productRuntimeChanged": false,
+    "productRuntimeChanged": true,
     "databaseMigrationRequired": false,
     "captureWorkerChanged": false,
     "frontendChanged": false,
     "sidePredictionChanged": false,
-    "formalIdentityChanged": false
+    "formalIdentityChanged": false,
+    "zeroFinalHeartbeatFastAck": true
   },
   "prediction": {
     "mainSource": "v105-shadow-v10-big-road-uncommon-structure-rank-synchronized",
@@ -49,6 +50,7 @@
       "paths": [
         "proxy/package.json",
         "proxy/package-lock.json",
+        "proxy/src/server.js",
         "proxy/src/v105-formal-runtime.js",
         "proxy/src/v105-formal-strategy.js",
         "proxy/src/v105-v10-main-strategy.js",
@@ -57,7 +59,7 @@
         "proxy/src/v105-shadow-v9-contract.js"
       ],
       "excludedPaths": [],
-      "sha256": "a3e234dd2df86fac243f18f8a891402f6bebe1cc729c400d4db9fa9c92dc2f0a"
+      "sha256": "666e063ed635f570ca2875777b92b49df5128ffbcc2f4bd2fee5902788696487"
     }
   }
 }
