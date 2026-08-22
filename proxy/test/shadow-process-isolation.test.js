@@ -6,7 +6,6 @@ import { prepareShadowRuntimes } from '../src/shadow-process-work.js'
 import { createApp } from '../src/server.js'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-
 function fakeChild({ respond = true, respondTo = null, responseResult = null, exitDelayMs = 0, ignoreKill = false } = {}) {
   const child = new EventEmitter()
   child.connected = true
@@ -211,20 +210,18 @@ test('an unconfirmed child termination fails closed and prevents a replacement g
 })
 
 test('an unconfirmed isolated child termination enters server fatal mode without releasing or reclaiming the lease', async () => {
-  const children = []
   let claims = 0
   let failureAckCalls = 0
   let fatalHandlerCalls = 0
-  const processClient = createShadowProcessClient({
-    requestTimeoutMs: 5,
-    killGraceMs: 5,
-    killConfirmMs: 20,
-    forkImpl() {
-      const child = fakeChild({ respond: true, respondTo: (message) => message.kind === 'prepare', responseResult: { enabled: 0, prepared: 0, pending: 0, queued: 0, failed: 0 }, ignoreKill: true })
-      children.push(child)
-      return child
+  const processClient = {
+    runtime() { return { enabled: false, async observeTable() {}, async settleRound() {}, snapshot() { return { status: 'fatal' } } } },
+    async prepareRequired() { return { enabled: 0, prepared: 0, pending: 0, queued: 0, failed: 0 } },
+    async processCaptureWithoutV10() {
+      throw Object.assign(new Error('termination could not be confirmed'), { code: 'SHADOW_PROCESS_TERMINATION_UNCONFIRMED' })
     },
-  })
+    status() { return { running: true, ready: false, terminationFailed: true, phase: 'fatal', code: 'SHADOW_PROCESS_TERMINATION_UNCONFIRMED' } },
+    async stop() {},
+  }
   const app = createApp({
     autoConnect: false,
     production: false,
@@ -244,7 +241,7 @@ test('an unconfirmed isolated child termination enters server fatal mode without
       async claimCaptureOutbox() {
         claims += 1
         return [{ session_id: 'fatal-child', sequence: 1, claim_token: 'lease-fatal', attempts: 1, payload: { work: {
-          sessionId: 'fatal-child', status: { connected: true, authenticated: true }, tables: [], rounds: [],
+          sessionId: 'fatal-child', status: { connected: true, authenticated: true }, tables: [{ tableId: 'BAG01', shoe: 88, round: 1 }], rounds: [],
         } } }]
       },
       async completeCaptureOutbox() { assert.fail('unconfirmed child work must not complete') },
@@ -260,7 +257,6 @@ test('an unconfirmed isolated child termination enters server fatal mode without
 
   assert.equal(failureAckCalls, 0)
   assert.equal(claims, 1)
-  assert.equal(children.length, 1)
   assert.equal(fatalHandlerCalls, 1)
   const status = JSON.parse((await app.inject({ url: '/api/status' })).body)
   assert.deepEqual(status.captureOutboxPhase, {
@@ -305,6 +301,16 @@ test('an expired exact lease blocks late Formal completion from starting Shadow 
       return { enabled, observeTable() {}, settleRound() {}, snapshot() { return { status: 'ready' } } }
     },
     async processCapture(payload) { captures.push(payload) },
+    async processCaptureWithoutV10(payload, { signal } = {}) {
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, 40)
+        signal?.addEventListener('abort', () => {
+          clearTimeout(timer)
+          reject(signal.reason ?? new Error('lease expired'))
+        }, { once: true })
+      })
+      captures.push(payload)
+    },
     status() { return { running: false, generation: 0, pending: 0, stopping: false } },
     async stop() {},
   }

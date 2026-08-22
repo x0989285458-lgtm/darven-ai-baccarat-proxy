@@ -44,6 +44,17 @@ if (requested.length) {
     path.resolve('src', 'test-report-persistence.js'),
     ...listJavaScriptFiles(path.resolve('test')),
   ].filter((file) => file !== isolated)
-  const isolatedCode = await run([isolated])
+  // Keep confirmed and deliberately-unconfirmed child lifecycle fixtures in separate
+  // OS test processes. Running both groups in one worker leaves Node's test harness
+  // waiting on the intentionally unconfirmed generation even after every assertion passes.
+  const isolatedPatterns = [
+    '^(V9|AbortSignal|a capture batch|a stalled runtime|a timed-out request|an unconfirmed child termination)',
+    '^(an unconfirmed isolated|real shadow child|an expired exact|an active child|child hydration|pending or queued)',
+  ]
+  let isolatedCode = 0
+  for (const pattern of isolatedPatterns) {
+    isolatedCode = await run([`--test-name-pattern=${pattern}`, isolated])
+    if (isolatedCode !== 0) break
+  }
   process.exitCode = isolatedCode === 0 ? await run(discovered) : isolatedCode
 }

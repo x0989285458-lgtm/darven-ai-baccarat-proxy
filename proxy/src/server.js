@@ -972,7 +972,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                 tables: changedTables,
                 rounds: Array.isArray(applied?.rounds) ? applied.rounds : [],
               }
-              if (priorScreens.size === 0 || shadowPayload.tables.length > 0 || shadowPayload.rounds.length > 0) {
+              const coldStartHasTables = priorScreens.size === 0 && shadowPayload.tables.length > 0
+              if (coldStartHasTables || shadowPayload.rounds.length > 0) {
                 await runLeasePhase('shadow', () => processIsolatedShadowCapture(shadowPayload, {
                   signal: leaseDeadline.signal,
                   timeoutMs: leaseDeadline.remainingMs(),

@@ -1130,3 +1130,34 @@ test('one claimed outbox batch preserves every Final and completes every exact l
   assert.deepEqual(captures[0].tables.map((table) => table.round), [23])
   await app.stop()
 })
+
+
+test('empty cold-start heartbeat ACKs without starting an empty Shadow lease', async () => {
+  const captures = []
+  let completed = 0
+  const shadowProcessClient = {
+    runtime() { return { enabled: false, async observeTable() {}, async settleRound() {}, snapshot() { return { status: 'disabled' } } } },
+    async prepareRequired() { return { enabled: 0, prepared: 0, pending: 0, queued: 0, failed: 0 } },
+    async processCaptureWithoutV10(payload) { captures.push(payload); return {} },
+    status() { return { running: true, ready: true } },
+    async stop() {},
+  }
+  const snapshot = envelope().snapshot
+  const app = createApp({
+    autoConnect: false,
+    isolateShadowProcess: true,
+    shadowProcessClient,
+    v100FormalRuntime: { enabled: false },
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() { return completed ? [] : [claimedRow(901, { payload: { work: { ...snapshot, tables: [], rounds: [] } } })] },
+      async completeCaptureOutbox() { completed += 1; return { completed: true } },
+      async failCaptureOutbox() { assert.fail('empty heartbeat must ACK') },
+      async readIssuedPrediction() { return null },
+    },
+  })
+  assert.deepEqual(await app.drainCaptureOutbox(), { processed: 1, failed: 0 })
+  assert.equal(completed, 1)
+  assert.equal(captures.length, 0)
+  await app.stop()
+})

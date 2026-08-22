@@ -1,17 +1,17 @@
 {
-  "releaseVersion": "v106.0.0-formal.55",
+  "releaseVersion": "v106.0.0-formal.56",
   "artifacts": [
     {
       "path": "proxy/package.json",
-      "blob": "2927de23a8731c806a9b257fdb8ccbd5667d825f"
+      "blob": "ac17d4db4386cabd76e2b9e4a8b97be890dcbbd2"
     },
     {
       "path": "proxy/package-lock.json",
-      "blob": "f3e00ad1d80eff1acde077d4802ac937e9798b6a"
+      "blob": "a90d3cb4bee25e192cef8f20d04f3a032292dd42"
     },
     {
       "path": "proxy/scripts/run-tests.mjs",
-      "blob": "989da0dd77a29774776e31af1bcddff654f2f8b8"
+      "blob": "5468df34fec2b67340d174bf20c5d7efbeeb0cd8"
     },
     {
       "path": "frontend/package.json",
@@ -35,7 +35,7 @@
     },
     {
       "path": "scripts/verify-v106-formal-release.mjs",
-      "blob": "1c410629017aae20c56e37c0a42bc4608af1aea4"
+      "blob": "eb798a27311c1710d318bf9857f247d6a0ccd4d7"
     },
     {
       "path": "scripts/run-worker-tests-scrubbed.mjs",
@@ -115,19 +115,19 @@
     },
     {
       "path": "scripts/start-v106-formal-producer.py",
-      "blob": "a6847f40dd682edc13620770db479c8fe4d6af22"
+      "blob": "4bc5710a47ab575900945bc70350348b8ca12329"
     },
     {
       "path": "scripts/stop-v106-formal-producer.py",
-      "blob": "5d197e756b0c7fecfa8028c3565b7af0755a55df"
+      "blob": "b33078bc4ef1189f948f85a6d34cf6af04f5b0d9"
     },
     {
       "path": "scripts/verify-v106-production-db-gate.py",
-      "blob": "cd842530cb814a198ff93041bf70890fae92f986"
+      "blob": "bd84bddea0f869147f90b052ce38001213ab37ce"
     },
     {
       "path": "supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql",
-      "blob": "694df642acdac8dda9f82be3e0e085ae3ed94d34"
+      "blob": "c7a07a23bd8fc8b8224cc7762c8784b8b6fc5d64"
     },
     {
       "path": "supabase/migrations/20260821020000_v106_formal25_issuance_barrier.sql",
@@ -143,7 +143,7 @@
     },
     {
       "path": "supabase/migrations/20260822010000_v106_formal53_atomic_outbox_batch.sql",
-      "blob": "a37b9fe505c398c22df40dfc9d7ffcd7781fd729"
+      "blob": "6cb503caf99cb5588048728f393f824560f389c2"
     }
   ]
 }
