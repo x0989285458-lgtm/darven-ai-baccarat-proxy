@@ -1,4 +1,5 @@
-import { buildV105FormalPrediction, V105_FORMAL_STRATEGY_VERSION } from './v105-formal-strategy.js'
+import { V105_FORMAL_STRATEGY_VERSION } from './v105-formal-strategy.js'
+import { buildV105V10MainPrediction } from './v105-v10-main-strategy.js'
 
 const HISTORY_LIMIT = 1000
 
@@ -56,7 +57,7 @@ export function createV105FormalRuntime({ writer = null, requestTimeoutMs = 6000
       && targetRound === prior.round + 1
       ? prior
       : null
-    return buildV105FormalPrediction(table, historyRows, {
+    return buildV105V10MainPrediction(table, historyRows, {
       priorShoe: contiguousPrior?.shoe,
       priorDirection: contiguousPrior?.direction,
       priorSameSideStreak: contiguousPrior?.sameSideStreak,

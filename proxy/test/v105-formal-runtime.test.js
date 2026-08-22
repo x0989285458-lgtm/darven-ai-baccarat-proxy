@@ -35,6 +35,23 @@ test('v105 runtime hydrates v104 predecessor history, keeps v105 identity, and e
   assert.equal(prediction.diagnostics.roadCycles.main.direction, 'banker')
 })
 
+test('v105 runtime uses V10 uncommon-road main while retaining v105 issuance identity', async () => {
+  const runtime = createV105FormalRuntime({
+    writer: { configured: true, async getV105FormalHistory() { return [] } },
+  })
+  await runtime.start()
+  const prediction = await runtime.buildPrediction({
+    tableId: 'BAG01', shoe: '105', round: 20,
+    bankerCount: 12, playerCount: 8, tieCount: 1,
+    bigRoadRaw: 'B#P,P#B,B#P#B,B#P,P',
+    beadPlateRaw: 'contradictory-bead-content',
+  })
+  assert.equal(prediction.strategyVersion, 'v105')
+  assert.equal(prediction.releaseVersion, 'v105-v10-main.1')
+  assert.equal(prediction.structureDiagnostics.eligible, true)
+  assert.equal(prediction.predictionFeatures.v105_v10_main_policy.sourceStrategy, 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized')
+})
+
 test('v105 runtime accepts an identical current issuance after restart hydration without advancing its streak twice', async () => {
   const hydrated = {
     prediction_id: 'existing-current', strategy_version: 'v105', prediction_timing: 'pre_result_context',

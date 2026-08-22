@@ -1,0 +1,63 @@
+{
+  "releaseName": "V105主預測V10升級版1",
+  "releaseVersion": "v105-v10-main.1",
+  "gitTag": "v105-v10-main.1",
+  "applicationVersion": "1.0.62",
+  "baseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
+  "formalStrategyVersion": "v105",
+  "releaseScope": {
+    "predictionMainOnly": true,
+    "productRuntimeChanged": false,
+    "databaseMigrationRequired": false,
+    "captureWorkerChanged": false,
+    "frontendChanged": false,
+    "sidePredictionChanged": false,
+    "formalIdentityChanged": false
+  },
+  "prediction": {
+    "mainSource": "v105-shadow-v10-big-road-uncommon-structure-rank-synchronized",
+    "eligibility": "authoritative-big-road-uncommon-structure-only",
+    "ineligibleFallback": "exact-existing-v105-main",
+    "beadPlateUsed": false,
+    "sideOutputs": "exact-existing-v105"
+  },
+  "rollbackFromCurrentV106": {
+    "authorityTag": "v106.0.0-formal.63",
+    "terminalizerPath": "supabase/operations/terminalize_v106_rollback.sql",
+    "terminalizerBlob": "83f8ba6f130e366988d20b29a8916069767fa616",
+    "rollbackPath": "supabase/operations/rollback_v106_to_v105.sql",
+    "rollbackBlob": "5eb19bf1d5b9be81f4fc61b0f7a71c05fe7c81cb",
+    "producerStopRequired": true,
+    "receiptRequired": true,
+    "activeOutboxZeroRequired": true
+  },
+  "deploymentOrder": [
+    "verify-producer-stopped",
+    "archive-v106-backlog-evidence",
+    "run-bound-v106-terminalizer",
+    "run-bound-v106-to-v105-rollback",
+    "verify-v105-sole-active",
+    "deploy-exact-v105-v10-main-proxy",
+    "public-readiness-v105",
+    "resume-existing-v105-worker",
+    "ten-table-final-ack-v10-prediction-e2e",
+    "member-session-frontend-e2e"
+  ],
+  "releaseBinding": {
+    "implementationTree": {
+      "algorithm": "sha256",
+      "paths": [
+        "proxy/package.json",
+        "proxy/package-lock.json",
+        "proxy/src/v105-formal-runtime.js",
+        "proxy/src/v105-formal-strategy.js",
+        "proxy/src/v105-v10-main-strategy.js",
+        "proxy/src/v105-shadow-v10-contract.js",
+        "proxy/src/v105-shadow-v10-structure.js",
+        "proxy/src/v105-shadow-v9-contract.js"
+      ],
+      "excludedPaths": [],
+      "sha256": "a67e8e24f3e647ebb787158e83206284591fabfecd5b4eedf613e42d11d870ba"
+    }
+  }
+}
