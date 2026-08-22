@@ -65,6 +65,8 @@ export async function runV106ProductionCutover({
   resolveCurrentTree = ({ root: currentRoot }) => execFileSync('git', ['rev-parse', 'HEAD^{tree}'], { cwd: currentRoot, encoding: 'utf8' }).trim(),
   resolveArtifactBlob = ({ relativePath, root: currentRoot }) => execFileSync('git', ['hash-object', relativePath], { cwd: currentRoot, encoding: 'utf8' }).trim(),
   onProbe = () => {},
+  postDbGateAttempts = 1,
+  postDbGateIntervalMs = 5000,
   root = repoRoot,
 } = {}) {
   if (typeof startProducer !== 'function') throw new Error('producer_start_callback_required')
@@ -146,7 +148,22 @@ export async function runV106ProductionCutover({
     if (serviceReadiness?.verdict !== 'PASS' || serviceReadiness?.consecutive < gate.requiredConsecutive) {
       throw new Error('production_cutover_public_service_readiness_not_proven')
     }
-    const postDbGate = await verifyProductionDb({ phase: 'post', releaseVersion: manifest.releaseVersion, packageVersion: manifest.applicationVersion })
+    let postDbGate = null
+    let postDbGateError = null
+    const boundedPostAttempts = Math.max(1, Math.min(120, Number(postDbGateAttempts) || 1))
+    for (let attempt = 1; attempt <= boundedPostAttempts; attempt += 1) {
+      try {
+        postDbGate = await verifyProductionDb({ phase: 'post', releaseVersion: manifest.releaseVersion, packageVersion: manifest.applicationVersion })
+        postDbGateError = null
+      } catch (error) {
+        postDbGateError = error
+        postDbGate = null
+      }
+      if (postDbGate?.ok === true && postDbGate?.generation === preDbGate.generation) break
+      if (postDbGate?.ok === true && postDbGate?.generation !== preDbGate.generation) break
+      if (attempt < boundedPostAttempts) await new Promise((resolve) => setTimeout(resolve, Math.max(1, Number(postDbGateIntervalMs) || 5000)))
+    }
+    if (postDbGateError && !postDbGate) throw postDbGateError
     if (postDbGate?.ok !== true || postDbGate?.generation !== preDbGate.generation) {
       throw new Error('production_cutover_db_generation_drift')
     }
@@ -207,6 +224,8 @@ async function main() {
   const productionDbGateSource = loadBoundPythonSource({ candidateIndexTree, relativePath: manifest.productionCutoverRunner.productionDbGateScript, expectedBlob: manifest.productionCutoverRunner.productionDbGateScriptGitBlobSha1, root: repoRoot })
   const result = await runV106ProductionCutover({
     manifest, candidateIndexTree, attestationPath, root: repoRoot,
+    postDbGateAttempts: manifest.productionCutoverRunner.postDbGateAttempts,
+    postDbGateIntervalMs: manifest.productionCutoverRunner.postDbGateIntervalMs,
     onProbe: (probe) => process.stdout.write(`${JSON.stringify({ type: 'public-readiness-probe', ...probe })}\n`),
     verifyProductionDb: async (identity) => {
       assertTrustedPythonUnchanged()

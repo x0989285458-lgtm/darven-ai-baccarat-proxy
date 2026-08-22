@@ -1,13 +1,13 @@
 {
-  "releaseVersion": "v106.0.0-formal.50",
+  "releaseVersion": "v106.0.0-formal.51",
   "artifacts": [
     {
       "path": "proxy/package.json",
-      "blob": "f0255701d0db32c85215f680de57e606941a8353"
+      "blob": "f2b896e09c6f6fa8123dc5d0104d475f28800d16"
     },
     {
       "path": "proxy/package-lock.json",
-      "blob": "511db76614cd83b2db04c7fe1b12698b427d9b8f"
+      "blob": "de3350e6d7754e0fd69d038245e47d2d9881e447"
     },
     {
       "path": "proxy/scripts/run-tests.mjs",
@@ -35,7 +35,7 @@
     },
     {
       "path": "scripts/verify-v106-formal-release.mjs",
-      "blob": "556b76d373ff62c2856167c88c67a7a3d83105f2"
+      "blob": "d45cc516bada6ba7fe7fd8cd408e190bde7a0277"
     },
     {
       "path": "scripts/run-worker-tests-scrubbed.mjs",
@@ -95,7 +95,7 @@
     },
     {
       "path": "scripts/run-v106-production-cutover.mjs",
-      "blob": "a32cb063135b71ef756e986ea7fe09d7ae9e9171"
+      "blob": "5131641e75da85b8001844cbd18c7df1d4ba31dc"
     },
     {
       "path": "supabase/migrations/20260820030000_v106_formal16_rollback_receipt.sql",
@@ -115,19 +115,19 @@
     },
     {
       "path": "scripts/start-v106-formal-producer.py",
-      "blob": "033a85983c8b8cb9a35d8b53f0259d1304ff3f8f"
+      "blob": "00e9de9e486aadecdb3c2d810c88ba8a20bbcec6"
     },
     {
       "path": "scripts/stop-v106-formal-producer.py",
-      "blob": "c0b706c72c48894b178e589887a8381c3e60d8f6"
+      "blob": "c5f1ab73a1059e4ef12ed55b2b53e04424c42b42"
     },
     {
       "path": "scripts/verify-v106-production-db-gate.py",
-      "blob": "0a43a935691102ab9fc177552f420ce8620346b9"
+      "blob": "667ce2d84384acaf7810dded7debbb4bafe77a61"
     },
     {
       "path": "supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql",
-      "blob": "e54b06ee0aa6c0c9db143a4fd23ce822a48a184b"
+      "blob": "f0161b7b906014b31cf4d635447eaeb7eacb54ed"
     },
     {
       "path": "supabase/migrations/20260821020000_v106_formal25_issuance_barrier.sql",

@@ -136,6 +136,28 @@ test('Formal.28 proves exact identity before start and strict service readiness 
   ])
 })
 
+test('Formal.51 waits boundedly for post DB outbox convergence', async () => {
+  let postAttempts = 0
+  const result = await runV106ProductionCutover({
+    manifest, candidateIndexTree: tree(), attestationPath: 'mock-attestation', root,
+    resolveCurrentTree: () => tree(),
+    authorizeRelease: async () => ({ releaseAuthorized: true, commit: head() }),
+    verifyReadiness: async () => ({ verdict: 'PASS', consecutive: 2 }),
+    verifyProductionDb: async ({ phase }) => {
+      if (phase === 'pre') return { ok: true, generation }
+      postAttempts += 1
+      if (postAttempts < 3) throw new Error('active_outbox_not_zero')
+      return { ok: true, generation }
+    },
+    postDbGateAttempts: 3,
+    postDbGateIntervalMs: 1,
+    startProducer: async () => ({ ok: true, generation, workerImageId: manifest.productionCutoverRunner.producerImageId }),
+    stopProducer: stoppedProducer,
+  })
+  assert.equal(result.verdict, 'PASS')
+  assert.equal(postAttempts, 3)
+})
+
 test('Formal.28 post-start strict readiness failure stops producer before rejecting', async () => {
   const events = []
   await assert.rejects(runV106ProductionCutover({

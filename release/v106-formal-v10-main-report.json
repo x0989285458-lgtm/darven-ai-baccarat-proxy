@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.50",
+  "releaseVersion": "v106.0.0-formal.51",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.107",
-  "status": "formal50_candidate_all_tests_pass_exact_release_pending",
+  "applicationVersion": "1.0.108",
+  "status": "formal51_candidate_all_tests_pass_exact_release_pending",
   "productionE2E": "formal45-failed-no-issuance-growth-stopped;formal46-48-review-blocked-not-deployed",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.107",
+      "packageVersion": "1.0.108",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,11 +27,11 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "57801245bad88804467171efeeb32f851b602c8193aa5ed9ab98db9244a66abe",
-    "proxyBuildInput": "e4f6f6b4aa2df5025a1878ff9dcf77a0e59cfe09d5842660cbaf188d4939dd03",
+    "implementationTree": "b41af05de966c9b8db19cf06297f7aac4579686271b43f0ad9458fedd64bf156",
+    "proxyBuildInput": "f4687c6a60ba1c57a704da65f9a30cc444046549e6e12303880a31aa8cc22cc0",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "de69c56b7b77e36c7f7cbf72bb9cea42cbdb91c67ba07b584d74da6bbb7f1102"
+    "databaseCutoverInput": "3fc9b4666553bc5d0c81d769bdb69f9529b84fc789b0e28174a9c8d993bac23c"
   },
   "rollbackComponents": {
     "proxy": {
@@ -327,6 +327,7 @@
     "formal47BoundedStartup": "Real delayed fork 5/5 PASS; Proxy 1045/1045 and Release 28/28 PASS.",
     "formal48StartupBudget": "Named 300s default > audited 245s sequential maximum and real delayed fork 5/5 PASS; Proxy 1045/1045 and Release 28/28 PASS.",
     "formal49StopExitProof": "Focused 7/7, Proxy 1047/1047, Release 28/28 PASS. IPC stop failure force-kills exact child and requires observed exit; unconfirmed exit rejects.",
-    "formal50ShadowDelta": "Focused 57/57 PASS. Duplicate zero-round screen exact-ACKs without repeated Shadow fan-out; changed screen and Final remain included."
+    "formal50ShadowDelta": "Focused 57/57 PASS. Duplicate zero-round screen exact-ACKs without repeated Shadow fan-out; changed screen and Final remain included.",
+    "formal51PostDbConvergence": "Focused/Release 84/84 and Proxy 1049/1049 PASS. Production uses bounded 120x5s post DB convergence; tests default to one attempt unless explicitly configured; successful wrong generation remains immediate BLOCK."
   }
 }
