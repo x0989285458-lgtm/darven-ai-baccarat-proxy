@@ -53,6 +53,7 @@ test('V9 shadow IPC sends only runtime work and never inherits database credenti
   })
   await client.runtime('v105-v9', { enabled: true }).observeTable({ tableId: 'BAG01', shoe: 1, round: 2 })
   await client.processCapture({ tables: [{ tableId: 'BAG01' }], rounds: [{ tableId: 'BAG01', round: 3 }] })
+  for (let attempt = 0; attempt < 20 && !children.some((child) => child.options.env.SHADOW_PROCESS_RUNTIME_SCOPE === 'required' && child.sent.some((message) => message.kind === 'capture')); attempt += 1) await delay(0)
 
   assert.equal(children.length, 2)
   const v9Child = children.find((child) => child.options.env.SHADOW_PROCESS_RUNTIME_SCOPE === 'v105-v9')
@@ -103,7 +104,7 @@ test('AbortSignal terminates the entire shadow child and the next durable retry 
   await client.stop()
 })
 
-test('a capture batch timeout kills the child and the next durable retry uses a fresh process', async () => {
+test('a direct required runtime timeout kills the child and the next durable retry uses a fresh process', async () => {
   const children = []
   const client = createShadowProcessClient({
     env: { ...process.env, V105_SHADOW_V9_ENABLED: 'false', V105_SHADOW_V10_ENABLED: 'false' },
@@ -115,9 +116,9 @@ test('a capture batch timeout kills the child and the next durable retry uses a 
       return child
     },
   })
-  await assert.rejects(client.processCapture({ tables: [], rounds: [{ tableId: 'BAG01', round: 2 }] }), /timeout|terminated|exited/i)
+  await assert.rejects(client.request('v103', 'settleRound', { tableId: 'BAG01', round: 2 }), /timeout|terminated|exited/i)
   assert.notEqual(children[0].signalCode, null)
-  await client.processCapture({ tables: [], rounds: [{ tableId: 'BAG01', round: 2 }] })
+  await client.request('v103', 'settleRound', { tableId: 'BAG01', round: 2 })
   assert.equal(children.length, 2)
   await client.stop()
 })
@@ -168,11 +169,11 @@ test('a timed-out request is not released and no new generation starts before th
     },
   })
   let firstSettled = false
-  const first = client.processCapture({ tables: [], rounds: [{ tableId: 'BAG01', round: 2 }] })
+  const first = client.request('v103', 'settleRound', { tableId: 'BAG01', round: 2 })
     .finally(() => { firstSettled = true })
   await delay(15)
   assert.equal(firstSettled, false)
-  const retry = client.processCapture({ tables: [], rounds: [{ tableId: 'BAG01', round: 2 }] })
+  const retry = client.request('v103', 'settleRound', { tableId: 'BAG01', round: 2 })
   await delay(15)
   assert.equal(children.length, 1)
   await assert.rejects(first, /timeout/i)
@@ -194,11 +195,11 @@ test('an unconfirmed child termination fails closed and prevents a replacement g
     },
   })
   await assert.rejects(
-    client.processCapture({ tables: [], rounds: [{ tableId: 'BAG01', round: 2 }] }),
+    client.request('v103', 'settleRound', { tableId: 'BAG01', round: 2 }),
     /termination could not be confirmed/i,
   )
   await assert.rejects(
-    client.processCapture({ tables: [], rounds: [{ tableId: 'BAG01', round: 2 }] }),
+    client.request('v103', 'settleRound', { tableId: 'BAG01', round: 2 }),
     /termination could not be confirmed/i,
   )
   assert.equal(children.length, 1)
@@ -358,10 +359,10 @@ test('an expired exact lease blocks late Formal completion from starting Shadow 
   await app.stop()
 })
 
-test('an active child must exit before the exact lease failure is acknowledged', async () => {
+test('an active required Shadow child cannot delay exact Outbox ACK and exits on shutdown', async () => {
   let claimed = false
   let exitAt = 0
-  let failAt = 0
+  let completed = 0
   let failureAckCalls = 0
   let fatalHandlerCalls = 0
   const processClient = createShadowProcessClient({
@@ -397,20 +398,21 @@ test('an active child must exit before the exact lease failure is acknowledged',
         claimed = true
         return [{ session_id: work.sessionId, sequence: 1, claim_token: 'lease-child', attempts: 1, payload: { work } }]
       },
-      async completeCaptureOutbox() { assert.fail('expired child work must not complete') },
-      async failCaptureOutbox() { failureAckCalls += 1; failAt = Date.now() },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox() { failureAckCalls += 1 },
       async readIssuedPrediction() { return null },
     },
     v100FormalRuntime: { enabled: false },
   })
   const result = await app.drainCaptureOutbox()
 
-  assert.deepEqual(result, { processed: 0, failed: 1 })
-  assert.notEqual(exitAt, 0)
-  assert.equal(failAt >= exitAt, true)
-  assert.equal(failureAckCalls, 1)
+  assert.deepEqual(result, { processed: 1, failed: 0 })
+  assert.equal(completed, 1)
+  assert.equal(exitAt, 0)
+  assert.equal(failureAckCalls, 0)
   assert.equal(fatalHandlerCalls, 0)
   await app.stop()
+  assert.notEqual(exitAt, 0)
 })
 
 test('child hydration finishes before claim and does not consume the exact outbox lease deadline', async () => {

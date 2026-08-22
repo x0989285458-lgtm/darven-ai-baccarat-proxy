@@ -310,7 +310,7 @@ test('a stalled V9 child is best-effort and cannot delay required capture acknow
   ])
   await delay(20)
 
-  assert.deepEqual(result, { observed: 1, settled: 0, noops: 0 })
+  assert.deepEqual(result, {})
   assert.equal(children.some((child) => child.scope === 'v105-v9' && child.sent.some((item) => item.kind === 'capture')), true)
   assert.equal(children.some((child) => child.scope === 'v105-v10' && child.sent.some((item) => item.kind === 'capture')), true)
   assert.equal(client.status().v105V9.lane.active, 1)

@@ -352,7 +352,8 @@ test('V10 timeout, crash, and DB saturation never change required capture succes
       })
 
       const result = await client.processCapture({ tables: [{ tableId: 'BAG01', shoe: 1, round: 20 }], rounds: [] })
-      assert.equal(result.observed, 1)
+      assert.deepEqual(result, {})
+      await waitFor(() => client.status().required.lane.completed === 1, 'required best-effort capture did not complete')
       assert.equal(client.status().required.generation, 1)
       await waitFor(() => client.status().v105V10.lane.failed === 1, `${scenario} was not observed`)
       assert.equal(client.status().v105V10.lane.interruptedIdentities, 1)
@@ -392,7 +393,8 @@ test('V10 startup hydration timeout cannot block required V9 capture or restart 
   await client.prepareRequired()
   const v10Preparation = client.prepareV10()
   const result = await client.processCapture({ tables: [{ tableId: 'BAG01', shoe: 1, round: 20 }], rounds: [] })
-  assert.equal(result.observed, 1)
+  assert.deepEqual(result, {})
+  await waitFor(() => client.status().required.lane.completed === 1, 'required best-effort capture did not complete')
   await assert.rejects(v10Preparation, /timeout/)
   assert.equal(client.status().required.lastSuccess.kind, 'capture')
   assert.equal(client.status().required.generation, 1)
@@ -400,7 +402,7 @@ test('V10 startup hydration timeout cannot block required V9 capture or restart 
   await client.stop()
 })
 
-test('v106 Outbox completion waits for required capture and never starts the promoted V10 child', async (t) => {
+test('v106 Outbox completion does not wait for required Shadow capture and never starts the promoted V10 child', async (t) => {
   const children = []
   let releaseRequired
   const requiredGate = new Promise((resolve) => { releaseRequired = resolve })
@@ -454,11 +456,12 @@ test('v106 Outbox completion waits for required capture and never starts the pro
 
   const drain = app.drainCaptureOutbox()
   await delay(20)
-  assert.equal(completed, 0)
-  releaseRequired()
   assert.deepEqual(await drain, { processed: 1, failed: 0 })
   assert.equal(completed, 1)
   assert.equal(failed, 0)
+  assert.equal(client.status().required.lane.active, 1)
+  releaseRequired()
+  await waitFor(() => client.status().required.lane.completed === 1, 'required Shadow lane did not complete after ACK')
   assert.equal(client.status().v105V10.lane.active, 0)
   assert.equal(client.status().v105V10.running, false)
   assert.equal(completed, 1)

@@ -382,7 +382,7 @@ export function createShadowProcessClient({
   })
   let stopping = false
 
-  function createBestEffortCaptureLane({ runtimeKey, processLane, enabled }) {
+  function createBestEffortCaptureLane({ runtimeKey, processLane, enabled, prepareBeforeCapture = true }) {
     let preparePromise = null
     let preparedGeneration = 0
     let readiness = null
@@ -446,7 +446,7 @@ export function createShadowProcessClient({
       if (stopping || active || queue.length === 0) return
       const job = queue.shift()
       active = job
-      void prepare()
+      void (prepareBeforeCapture ? prepare() : Promise.resolve())
         .then(() => processLane.processCapture(job.payload))
         .then(() => { metrics.completed += 1 })
         .catch(() => {
@@ -505,6 +505,7 @@ export function createShadowProcessClient({
     return { prepare, enqueueCapture, recordEnqueueFailure, runtime, stop, status }
   }
 
+  const requiredBestEffort = createBestEffortCaptureLane({ runtimeKey: 'required', processLane: requiredLane, enabled: true, prepareBeforeCapture: false })
   const v9BestEffort = createBestEffortCaptureLane({ runtimeKey: V9_RUNTIME_KEY, processLane: v9ProcessLane, enabled: v9Enabled })
   const v10BestEffort = createBestEffortCaptureLane({ runtimeKey: V10_RUNTIME_KEY, processLane: v10ProcessLane, enabled: v10Enabled })
 
@@ -528,17 +529,18 @@ export function createShadowProcessClient({
   }
 
   async function processCaptureWithOptionalV10(payload, options = {}, includeV10 = true) {
-    const requiredResult = await requiredLane.processCapture(payload, options)
-    if (options.signal?.aborted) return requiredResult
+    if (options.signal?.aborted) throw options.signal.reason ?? new Error('shadow capture aborted')
+    let requiredResult = { coalesced: 0, rejected: 0 }
     let v9Result = { coalesced: 0, rejected: 0 }
     let v10Result = { coalesced: 0, rejected: 0 }
+    try { requiredResult = requiredBestEffort.enqueueCapture(payload) } catch { requiredBestEffort.recordEnqueueFailure(payload) }
     try { v9Result = v9BestEffort.enqueueCapture(payload) } catch { v9BestEffort.recordEnqueueFailure(payload) }
     if (includeV10) {
       try { v10Result = v10BestEffort.enqueueCapture(payload) } catch { v10BestEffort.recordEnqueueFailure(payload) }
     }
-    const result = requiredResult && typeof requiredResult === 'object' && !Array.isArray(requiredResult)
-      ? { ...requiredResult }
-      : {}
+    const result = {}
+    if (requiredResult.coalesced > 0) result.bestEffortRequiredCoalesced = requiredResult.coalesced
+    if (requiredResult.rejected > 0) result.bestEffortRequiredRejected = requiredResult.rejected
     if (v9Result.coalesced > 0) result.bestEffortV9Coalesced = v9Result.coalesced
     if (v9Result.rejected > 0) result.bestEffortV9Rejected = v9Result.rejected
     if (v10Result.coalesced > 0) result.bestEffortCoalesced = v10Result.coalesced
@@ -576,7 +578,7 @@ export function createShadowProcessClient({
   }
 
   async function stopRequired() {
-    return requiredLane.stop()
+    return requiredBestEffort.stop()
   }
 
   async function stopV9() {
@@ -599,7 +601,7 @@ export function createShadowProcessClient({
   }
 
   function status() {
-    const required = requiredLane.status()
+    const required = requiredBestEffort.status()
     const v105V9 = v9BestEffort.status()
     const v105V10 = v10BestEffort.status()
     return {

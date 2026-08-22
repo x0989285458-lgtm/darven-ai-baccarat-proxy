@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.56",
+  "releaseVersion": "v106.0.0-formal.57",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.113",
-  "status": "formal56_candidate_all_tests_pass_exact_release_pending",
+  "applicationVersion": "1.0.114",
+  "status": "formal57_candidate_all_tests_pass_exact_release_pending",
   "productionE2E": "formal45-failed-no-issuance-growth-stopped;formal46-48-review-blocked-not-deployed",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.113",
+      "packageVersion": "1.0.114",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,11 +27,11 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "007b09fb1f9627dab9079b49e75eadf1e4dd88bc0b1f1b844c7687b48a898bc1",
-    "proxyBuildInput": "bf42f2115e7fee1b4a6fcc6a0bbf6dd5e5ee3c6a3efa89f485b66559dfdb3925",
+    "implementationTree": "bef91a15ca9d0f795c4f5057055188c7fc562940bc1461b880210bbbb254bfe3",
+    "proxyBuildInput": "70b3a9e44392d64b6a24f2e9647bdf4156fc9aa8411596c9e6a6e8af7186d56e",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "fa156391b55dce76d693662500f9dda4354fce20e32bd980ea6c653e6b661a22"
+    "databaseCutoverInput": "0401d4c9c11b440a432c929fcab1a2e231fa837f9c40aca658a52bf53a9b31f2"
   },
   "rollbackComponents": {
     "proxy": {
@@ -333,6 +333,7 @@
     "formal53AtomicBatch": "Focused/Release 87/87 and Proxy 1051/1051 PASS; production transaction probe claimed 3/3 contiguous same-session rows and atomically completed 3/3, then ROLLBACK. SQL parse PASS.",
     "formal54ReleaseBinding": "Ad-hoc DB-first closure PASS (temporary hermes-verify script removed); Focused/Release 87/87; Proxy 1051/1051; production-schema full migration/gate rehearsal PASS with exact 8 migrations and transaction ROLLED BACK.",
     "formal55UniqueOrder": "Duplicate proxy mutation rejects with database_deployment_order_duplicate; Release 28/28; Proxy 1051/1051; production-schema exact 8-migration gate rehearsal PASS then ROLLBACK.",
-    "formal56EmptyColdStart": "Production root cause closed: zero-table zero-Final cold-start heartbeat exact-ACKs without empty Shadow lease. Proxy 1052/1052; focused release/outbox 61/61; isolated lifecycle groups 6/6 + 6/6."
+    "formal56EmptyColdStart": "Production root cause closed: zero-table zero-Final cold-start heartbeat exact-ACKs without empty Shadow lease. Proxy 1052/1052; focused release/outbox 61/61; isolated lifecycle groups 6/6 + 6/6.",
+    "formal57NonblockingRequiredShadow": "Required v103/v104/v104-iteration Shadow captures now use bounded/coalescing/retrying best-effort lane; exact Outbox ACK never waits. Proxy 1052/1052 PASS; focused release/outbox/shadow PASS."
   }
 }

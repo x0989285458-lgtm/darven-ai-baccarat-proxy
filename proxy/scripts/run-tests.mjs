@@ -48,8 +48,8 @@ if (requested.length) {
   // OS test processes. Running both groups in one worker leaves Node's test harness
   // waiting on the intentionally unconfirmed generation even after every assertion passes.
   const isolatedPatterns = [
-    '^(V9|AbortSignal|a capture batch|a stalled runtime|a timed-out request|an unconfirmed child termination)',
-    '^(an unconfirmed isolated|real shadow child|an expired exact|an active child|child hydration|pending or queued)',
+    '^(V9|AbortSignal|a direct required|a stalled runtime|a timed-out request|an unconfirmed child termination)',
+    '^(an unconfirmed isolated|real shadow child|an expired exact|an active required|child hydration|pending or queued)',
   ]
   let isolatedCode = 0
   for (const pattern of isolatedPatterns) {
