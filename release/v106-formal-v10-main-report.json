@@ -1,14 +1,14 @@
 {
-  "releaseVersion": "v106.0.0-formal.49",
+  "releaseVersion": "v106.0.0-formal.50",
   "strategyVersion": "v106",
-  "applicationVersion": "1.0.106",
-  "status": "formal49_candidate_all_tests_pass_exact_release_pending",
+  "applicationVersion": "1.0.107",
+  "status": "formal50_candidate_all_tests_pass_exact_release_pending",
   "productionE2E": "formal45-failed-no-issuance-growth-stopped;formal46-48-review-blocked-not-deployed",
   "deployment": "not-deployed-production-v105",
   "scope": "V10 eligible MAIN only; ineligible exact v105 MAIN fallback; exact v105 six-side parity",
   "versionMatrix": {
     "proxy": {
-      "packageVersion": "1.0.106",
+      "packageVersion": "1.0.107",
       "buildVersion": "v106",
       "strategyVersion": "v106",
       "workerProtocol": "v105"
@@ -27,11 +27,11 @@
     }
   },
   "releaseBindingDigests": {
-    "implementationTree": "232737136c9c43f9a07b4e33981274be7c4349ae731f08e50144ab715eb6e20d",
-    "proxyBuildInput": "e47c0b1196ec1f679c3c50c625736d91dc4cdc93efe84d3c5f8250ff1530d259",
+    "implementationTree": "57801245bad88804467171efeeb32f851b602c8193aa5ed9ab98db9244a66abe",
+    "proxyBuildInput": "e4f6f6b4aa2df5025a1878ff9dcf77a0e59cfe09d5842660cbaf188d4939dd03",
     "frontendBuildInput": "e9810003853ea7d2090465cd2442c0f80a96cd95de58bfa6827a0750f45c6ac8",
     "workerBuildInput": "caea7c9736fcf9df1f9139b642def454ce7dfd5aeba880c6781d7c8e4b2fdc2f",
-    "databaseCutoverInput": "8c563530f44de7a354a068948fed066d6a5155aa9b8c1eecca2aeec1442e40db"
+    "databaseCutoverInput": "de69c56b7b77e36c7f7cbf72bb9cea42cbdb91c67ba07b584d74da6bbb7f1102"
   },
   "rollbackComponents": {
     "proxy": {
@@ -326,6 +326,7 @@
     "formal46InitializedChild": "Focused 8/8 and real fork initialized child lifecycle PASS; Proxy 1043/1043 and Release 28/28 PASS.",
     "formal47BoundedStartup": "Real delayed fork 5/5 PASS; Proxy 1045/1045 and Release 28/28 PASS.",
     "formal48StartupBudget": "Named 300s default > audited 245s sequential maximum and real delayed fork 5/5 PASS; Proxy 1045/1045 and Release 28/28 PASS.",
-    "formal49StopExitProof": "Focused 7/7, Proxy 1047/1047, Release 28/28 PASS. IPC stop failure force-kills exact child and requires observed exit; unconfirmed exit rejects."
+    "formal49StopExitProof": "Focused 7/7, Proxy 1047/1047, Release 28/28 PASS. IPC stop failure force-kills exact child and requires observed exit; unconfirmed exit rejects.",
+    "formal50ShadowDelta": "Focused 57/57 PASS. Duplicate zero-round screen exact-ACKs without repeated Shadow fan-out; changed screen and Final remain included."
   }
 }

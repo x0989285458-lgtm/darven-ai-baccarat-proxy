@@ -630,6 +630,13 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     state.setStatus({ captureOutboxPhase: diagnostics })
   }
 
+  function captureScreenIdentity(table = {}) {
+    const tableId = canonicalProductionTableId(table?.tableId ?? table?.table_id ?? '')
+    const shoe = String(table?.shoe ?? table?.shoeNo ?? table?.shoe_no ?? '')
+    const round = String(table?.round ?? table?.roundNo ?? table?.round_no ?? '')
+    return tableId && shoe && round ? `${tableId}\u0000${shoe}\u0000${round}` : ''
+  }
+
   function enterCaptureOutboxFatal(code) {
     if (captureOutboxFatal) return
     captureOutboxFatal = {
@@ -926,21 +933,34 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               sequence: Number(work.sequence ?? sequence),
               capturedAt: work.capturedAt ?? row?.payload?.snapshot?.snapshot_at ?? row?.payload?.status?.last_message_at ?? null,
             }
+            const priorTables = Array.isArray(state.snapshot()?.tables) ? state.snapshot().tables : []
+            const priorScreens = new Set(priorTables.map(captureScreenIdentity).filter(Boolean))
             const applied = await runLeasePhase('formal', () => (
               applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Formal, persistAncillary: false })
             ))
             leaseDeadline.assertActive()
             if (isolatedShadowProcess) {
+              const appliedTables = Array.isArray(applied?.tables) ? applied.tables : parsed.tables
+              const settledTableIds = new Set((Array.isArray(applied?.rounds) ? applied.rounds : [])
+                .map((round) => canonicalProductionTableId(round?.tableId ?? round?.table_id ?? ''))
+                .filter(Boolean))
+              const changedTables = appliedTables.filter((table) => {
+                const tableId = canonicalProductionTableId(table?.tableId ?? table?.table_id ?? '')
+                const identity = captureScreenIdentity(table)
+                return settledTableIds.has(tableId) || !identity || !priorScreens.has(identity)
+              })
               const shadowPayload = {
                 ...parsed,
-                tables: Array.isArray(applied?.tables) ? applied.tables : parsed.tables,
+                tables: changedTables,
                 rounds: Array.isArray(applied?.rounds) ? applied.rounds : [],
               }
-              await runLeasePhase('shadow', () => processIsolatedShadowCapture(shadowPayload, {
-                signal: leaseDeadline.signal,
-                timeoutMs: leaseDeadline.remainingMs(),
-              }))
-              leaseDeadline.assertActive()
+              if (priorScreens.size === 0 || shadowPayload.tables.length > 0 || shadowPayload.rounds.length > 0) {
+                await runLeasePhase('shadow', () => processIsolatedShadowCapture(shadowPayload, {
+                  signal: leaseDeadline.signal,
+                  timeoutMs: leaseDeadline.remainingMs(),
+                }))
+                leaseDeadline.assertActive()
+              }
               state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status() })
             } else {
               await runLeasePhase('shadow_scheduler', () => shadowWorkScheduler.waitForIdle())

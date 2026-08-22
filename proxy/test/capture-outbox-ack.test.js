@@ -1049,3 +1049,37 @@ test('durable ingest does not notify table observers before its Final outbox wor
   assert.equal(reconciliations, 0)
   await app.stop()
 })
+
+
+test('duplicate zero-round screens skip isolated shadow fan-out while exact outbox ACKs still complete', async () => {
+  const rows = [claimedRow(701), claimedRow(702)]
+  const captures = []
+  const completed = []
+  const shadowProcessClient = {
+    runtime() { return { enabled: false, async observeTable() {}, async settleRound() {}, snapshot() { return { status: 'disabled' } } } },
+    async prepareRequired() { return { enabled: 0, prepared: 0, pending: 0, queued: 0, failed: 0 } },
+    async processCaptureWithoutV10(payload) { captures.push(payload); return {} },
+    status() { return { running: true, ready: true } },
+    async stop() {},
+  }
+  const app = createApp({
+    autoConnect: false,
+    isolateShadowProcess: true,
+    shadowProcessClient,
+    v100FormalRuntime: { enabled: false },
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() { return rows.length ? [rows.shift()] : [] },
+      async completeCaptureOutbox(identity) { completed.push(identity.sequence); return { completed: true } },
+      async failCaptureOutbox() { assert.fail('duplicate heartbeat must not fail') },
+      async readIssuedPrediction() { return null },
+    },
+  })
+
+  assert.deepEqual(await app.drainCaptureOutbox(), { processed: 1, failed: 0 })
+  assert.deepEqual(await app.drainCaptureOutbox(), { processed: 1, failed: 0 })
+  assert.deepEqual(completed, [701, 702])
+  assert.equal(captures.length, 1)
+  assert.deepEqual(captures[0].tables.map((table) => table.tableId), ['BAG01'])
+  await app.stop()
+})

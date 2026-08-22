@@ -7,8 +7,8 @@ import shutil
 import subprocess
 import tempfile
 
-EXPECTED_RELEASE = 'v106.0.0-formal.49'
-EXPECTED_PACKAGE = '1.0.106'
+EXPECTED_RELEASE = 'v106.0.0-formal.50'
+EXPECTED_PACKAGE = '1.0.107'
 EXPECTED_COMMIT = os.environ.get('V106_RELEASE_COMMIT', '')
 EXPECTED_GENERATION = os.environ.get('V106_CUTOVER_GENERATION', '')
 
