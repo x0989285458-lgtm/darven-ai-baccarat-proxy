@@ -2310,6 +2310,14 @@ export function createSupabaseIngestionClient({
           text: 'select public.fail_v105_capture_settlement_outbox($1::text, $2::bigint, $3::uuid, $4::integer, $5::text) as fail_v105_capture_settlement_outbox',
           values: [body?.p_session_id, body?.p_sequence, body?.p_claim_token, body?.p_attempt, body?.p_error],
         },
+        'rpc/complete_v105_capture_settlement_outbox_batch': {
+          text: 'select public.complete_v105_capture_settlement_outbox_batch($1::jsonb) as complete_v105_capture_settlement_outbox_batch',
+          values: [body?.p_claims],
+        },
+        'rpc/fail_v105_capture_settlement_outbox_batch': {
+          text: 'select public.fail_v105_capture_settlement_outbox_batch($1::jsonb, $2::text) as fail_v105_capture_settlement_outbox_batch',
+          values: [body?.p_claims, body?.p_error],
+        },
       }[path]
       if (directRpc) {
         const directDb = options.critical === true
@@ -3634,6 +3642,23 @@ export function createSupabaseIngestionClient({
       return postDurableRest('rpc/fail_v105_capture_settlement_outbox', {
         p_session_id: String(sessionId ?? ''), p_sequence: Number(sequence),
         p_claim_token: String(claimToken ?? ''), p_attempt: Number(attempt), p_error: redactSecrets(error),
+      }, undefined, { requireObject: true, control: true })
+    },
+    async completeCaptureOutboxBatch(claims = []) {
+      return postDurableRest('rpc/complete_v105_capture_settlement_outbox_batch', {
+        p_claims: claims.map(({ sessionId, sequence, claimToken, attempt }) => ({
+          session_id: String(sessionId ?? ''), sequence: Number(sequence),
+          claim_token: String(claimToken ?? ''), attempt: Number(attempt),
+        })),
+      }, undefined, { requireObject: true, control: true })
+    },
+    async failCaptureOutboxBatch(claims = [], error) {
+      return postDurableRest('rpc/fail_v105_capture_settlement_outbox_batch', {
+        p_claims: claims.map(({ sessionId, sequence, claimToken, attempt }) => ({
+          session_id: String(sessionId ?? ''), sequence: Number(sequence),
+          claim_token: String(claimToken ?? ''), attempt: Number(attempt),
+        })),
+        p_error: redactSecrets(error),
       }, undefined, { requireObject: true, control: true })
     },
     async getCaptureOutboxHealth() {

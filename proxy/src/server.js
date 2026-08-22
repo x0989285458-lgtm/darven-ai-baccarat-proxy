@@ -990,9 +990,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               tables: Array.isArray(applied?.tables) ? applied.tables : parsed.tables,
             }))
             leaseDeadline.assertActive()
-            await runLeasePhase('complete_ack', () => Promise.all(
-              claims.map((claim) => supabaseClient.completeCaptureOutbox?.(claim)),
-            ))
+            await runLeasePhase('complete_ack', () => claims.length === 1
+              ? supabaseClient.completeCaptureOutbox?.(claims[0])
+              : supabaseClient.completeCaptureOutboxBatch?.(claims))
             processed += claims.length
           } catch (error) {
             failed += 1
@@ -1022,7 +1022,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             if (pendingFailureClaims.length > 0) {
               try {
                 await withDeadline(
-                  Promise.all(pendingFailureClaims.map((claim) => supabaseClient.failCaptureOutbox?.({ ...claim, error: error?.message ?? String(error) }))),
+                  pendingFailureClaims.length === 1
+                    ? supabaseClient.failCaptureOutbox?.({ ...pendingFailureClaims[0], error: error?.message ?? String(error) })
+                    : supabaseClient.failCaptureOutboxBatch?.(pendingFailureClaims, error?.message ?? String(error)),
                   resolvedOutboxWorkDeadlineMs,
                   `capture outbox failure acknowledgement deadline exceeded for ${sessionId}:${sequence}`,
                 )

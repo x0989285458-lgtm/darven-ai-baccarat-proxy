@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { createSupabaseIngestionClient } from '../src/supabase-writer.js'
 
 const migrationUrl = new URL('../../supabase/migrations/20260729043000_v105_capture_settlement_outbox.sql', import.meta.url)
+const atomicBatchMigrationUrl = new URL('../../supabase/migrations/20260822010000_v106_formal53_atomic_outbox_batch.sql', import.meta.url)
 
 const response = (payload) => ({
   ok: true,
@@ -41,6 +42,18 @@ test('migration fences leases, isolates poison rows, and serializes monotonic se
   assert.match(sql, /complete_v105_capture_settlement_outbox\(p_session_id text, p_sequence bigint, p_claim_token uuid, p_attempt integer\)/i)
   assert.match(sql, /status\s*=\s*'processing'[\s\S]*claim_token\s*=\s*p_claim_token[\s\S]*attempts\s*=\s*p_attempt/i)
   assert.match(sql, /set search_path = pg_catalog, public, extensions/i)
+})
+
+test('Formal.53 claims one contiguous session batch and ACKs or fails every lease atomically', () => {
+  const sql = readFileSync(atomicBatchMigrationUrl, 'utf8')
+  assert.match(sql, /target_session[\s\S]*limit 1/i)
+  assert.match(sql, /join target_session on target_session\.session_id = candidate\.session_id/i)
+  assert.match(sql, /limit greatest\(1, least\(coalesce\(p_limit, 10\), 100\)\)/i)
+  assert.match(sql, /complete_v105_capture_settlement_outbox_batch\(p_claims jsonb\)/i)
+  assert.match(sql, /fail_v105_capture_settlement_outbox_batch\(p_claims jsonb, p_error text\)/i)
+  assert.match(sql, /if matched <> expected then raise exception 'capture outbox stale batch completion rejected'/i)
+  assert.match(sql, /if affected <> expected then raise exception 'capture outbox atomic batch failure rejected'/i)
+  assert.match(sql, /grant execute on function public\.complete_v105_capture_settlement_outbox_batch\(jsonb\) to service_role/i)
 })
 
 test('writer persists one atomic capture envelope and verifies exact accepted round keys', async () => {
@@ -91,10 +104,14 @@ test('claim, complete, and fail use the direct DB RPC path with unforgeable leas
   const claimed = await client.claimCaptureOutbox({ limit: 7 })
   await client.completeCaptureOutbox({ sessionId: 's', sequence: 1, claimToken: 'token', attempt: 2 })
   await client.failCaptureOutbox({ sessionId: 's', sequence: 2, claimToken: 'token-2', attempt: 3, error: 'safe error' })
+  await client.completeCaptureOutboxBatch([{ sessionId: 's', sequence: 3, claimToken: 'token-3', attempt: 1 }])
+  await client.failCaptureOutboxBatch([{ sessionId: 's', sequence: 4, claimToken: 'token-4', attempt: 2 }], 'batch error')
   assert.equal(claimed[0].claim_token, 'token')
   assert.match(queries[0].text, /claim_v105_capture_settlement_outbox\(\$1::integer\)/)
   assert.deepEqual(queries[1].values, ['s', 1, 'token', 2])
   assert.deepEqual(queries[2].values, ['s', 2, 'token-2', 3, 'safe error'])
+  assert.deepEqual(queries[3].values[0], [{ session_id: 's', sequence: 3, claim_token: 'token-3', attempt: 1 }])
+  assert.deepEqual(queries[4].values, [[{ session_id: 's', sequence: 4, claim_token: 'token-4', attempt: 2 }], 'batch error'])
 })
 
 test('batch rank-ledger hydration recovers missing current shoes before one exact reread', async () => {

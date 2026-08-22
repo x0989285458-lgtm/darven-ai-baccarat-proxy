@@ -1,7 +1,7 @@
 {
-  "releaseVersion": "v106.0.0-formal.52",
-  "gitTag": "v106.0.0-formal.52",
-  "applicationVersion": "1.0.109",
+  "releaseVersion": "v106.0.0-formal.53",
+  "gitTag": "v106.0.0-formal.53",
+  "applicationVersion": "1.0.110",
   "strategyVersion": "v106",
   "frontendBuildVersion": "v106",
   "proxyBuildVersion": "v106",
@@ -131,7 +131,7 @@
       "path": "supabase/migrations/20260821010000_v106_formal24_isolated_runtime_gate.sql",
       "deploymentStep": "database-isolated-runtime-gate",
       "contract": "Service-role-only PostgreSQL provenance gate returns one bounded proof so no Python site package is needed during production cutover.",
-      "gitBlobSha1": "4dfbaa4151720279b1af21b842fe90130a89d595"
+      "gitBlobSha1": "2e39a3dc0d31f4307ed1015614e53dd27045f49b"
     },
     "fence": {
       "path": "supabase/operations/fence_v105_new_issuance.sql",
@@ -174,6 +174,12 @@
       "deploymentStep": "database-successor-issuance-admission-barrier",
       "contract": "v106 issuance admission holds a shared row lock; rollback terminalization disables admission through an UPDATE that waits for every admitted transaction before receipt creation.",
       "gitBlobSha1": "70766d823fc31c449ce053f342ff7e7f0f5274bf"
+    },
+    "atomicOutboxBatch": {
+      "path": "supabase/migrations/20260822010000_v106_formal53_atomic_outbox_batch.sql",
+      "deploymentStep": "database-atomic-outbox-batch",
+      "contract": "One transaction claims a bounded contiguous batch for exactly one durable session; exact batch ACK/failure prevalidates every lease and updates all-or-none.",
+      "gitBlobSha1": "b1c74149a8ff0927c56a0d0ea0b2bac67afe1bff"
     }
   },
   "activation": "supabase/operations/activate_v106_promotion.sql",
@@ -337,7 +343,7 @@
         "scripts/verify-v106-issuance-barrier-db.py"
       ],
       "excludedPaths": [],
-      "sha256": "32ef791ace0ce660aedc4d93a5c0a84cfd7f4dd7c2b96d9ebee0657aed3d2a42"
+      "sha256": "6c9ba88281cea5aebc4bfe51d8c15ab1bae9e6cdcd4dca2f328722f8fce1b876"
     },
     "proxyBuildInput": {
       "algorithm": "sha256",
@@ -348,7 +354,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "907217e9ffd47eb876d9322a51cb91f62155669e9c36174cbcae8f91e88883ac"
+      "sha256": "88dad67946752e5d368afb5093bcd651dfd91ddb7d9d7c52a70067d453ec4e14"
     },
     "frontendBuildInput": {
       "algorithm": "sha256",
@@ -395,7 +401,7 @@
         "scripts/verify-v106-issuance-barrier-db.py"
       ],
       "excludedPaths": [],
-      "sha256": "35185577f3a3939327b42c041d07efca8ee80ef8c21640aa8cd184d530352ce3"
+      "sha256": "10140c8106faaa0065c700bf8cbbf126275dedb1f700712fbe0ea402a27238bd"
     }
   },
   "historicalArtifactsPreserved": true,
@@ -482,8 +488,8 @@
     "requiredIdentity": {
       "version": "v106",
       "buildVersion": "v106",
-      "releaseVersion": "v106.0.0-formal.52",
-      "packageVersion": "1.0.109",
+      "releaseVersion": "v106.0.0-formal.53",
+      "packageVersion": "1.0.110",
       "commit": "annotated-tag-attested-commit"
     },
     "failClosedExitCode": 2,
@@ -544,11 +550,11 @@
     "requiresPreAndPostDatabaseGenerationGate": true,
     "requiresPostStartFailStopCompensation": true,
     "productionDbGateScript": "scripts/verify-v106-production-db-gate.py",
-    "productionDbGateScriptGitBlobSha1": "b054e94206afb648a11303dbce0aac9c70c17d31",
+    "productionDbGateScriptGitBlobSha1": "02e74272e41615d1adcec804d5b3bb210e73fe9d",
     "producerStartScript": "scripts/start-v106-formal-producer.py",
-    "producerStartScriptGitBlobSha1": "de463e46997cd861a528a66df19b752c6c545aaa",
+    "producerStartScriptGitBlobSha1": "01688524ad4c2f36d90ff27d977ebebf18ec5bea",
     "producerStopScript": "scripts/stop-v106-formal-producer.py",
-    "producerStopScriptGitBlobSha1": "990ec1228f644b0bd4f643e904de812c01b4500e",
+    "producerStopScriptGitBlobSha1": "f47e9c17131fb798bec3138ff44fa829d3ff10d4",
     "producerImage": "darven-worker:v106-formal3-33f9dc6",
     "producerImageId": "sha256:c52ed0039f1a45611f2d5dfb948450c204ee92c9226e1b7d6d6e2491bb92e7c2",
     "executesLaunchersFromExactGitTree": true,

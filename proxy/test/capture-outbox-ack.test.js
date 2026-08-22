@@ -430,6 +430,11 @@ test('bounded outbox passes automatically continue beyond 100 rows without monop
         if (completed === 1) setImmediate(() => { eventLoopYielded = true })
         return { completed: true }
       },
+      async completeCaptureOutboxBatch(claims) {
+        completed += claims.length
+        if (completed === claims.length) setImmediate(() => { eventLoopYielded = true })
+        return { completed: true, count: claims.length }
+      },
       async failCaptureOutbox() { assert.fail('valid rows must not fail') },
       async getCaptureOutboxHealth() {
         await delay(10)
@@ -576,6 +581,7 @@ test('multiple session retries schedule the earliest retry instead of the slowes
       async failCaptureOutbox({ sessionId }) {
         return { failed: true, isolated: false, retry_after_ms: sessionId === 'slow-session' ? 1000 : 10 }
       },
+      async failCaptureOutboxBatch() { return { failed: true, isolated: false, retry_after_ms: 10 } },
     },
     v100FormalRuntime: { enabled: false },
   })
@@ -1110,6 +1116,7 @@ test('one claimed outbox batch preserves every Final and completes every exact l
       configured: true,
       async claimCaptureOutbox({ limit }) { claimLimit = limit; return claimed },
       async completeCaptureOutbox(identity) { completed.push(identity.sequence); return { completed: true } },
+      async completeCaptureOutboxBatch(claims) { completed.push(...claims.map((claim) => claim.sequence)); return { completed: true, count: claims.length } },
       async failCaptureOutbox() { assert.fail('valid batch must not fail') },
       async readIssuedPrediction() { return null },
     },
