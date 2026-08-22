@@ -1,5 +1,5 @@
 {
-  "releaseVersion": "v105-v10-main.1",
+  "releaseVersion": "v105-v10-main.2",
   "formalStrategyVersion": "v105",
   "status": "candidate-tests-pass-production-pending",
   "scope": "V105正式基座不變，只替換主預測為V10非常見大路策略；副項、抓牌、DB與UI不變",

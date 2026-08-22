@@ -1,7 +1,7 @@
 {
   "releaseName": "V105主預測V10升級版1",
-  "releaseVersion": "v105-v10-main.1",
-  "gitTag": "v105-v10-main.1",
+  "releaseVersion": "v105-v10-main.2",
+  "gitTag": "v105-v10-main.2",
   "applicationVersion": "1.0.62",
   "baseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
   "formalStrategyVersion": "v105",
@@ -57,7 +57,7 @@
         "proxy/src/v105-shadow-v9-contract.js"
       ],
       "excludedPaths": [],
-      "sha256": "a67e8e24f3e647ebb787158e83206284591fabfecd5b4eedf613e42d11d870ba"
+      "sha256": "a3e234dd2df86fac243f18f8a891402f6bebe1cc729c400d4db9fa9c92dc2f0a"
     }
   }
 }

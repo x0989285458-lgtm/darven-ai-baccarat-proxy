@@ -37,7 +37,8 @@ test('V105 identity promotes the exact V10 main projection without changing prod
   assert.deepEqual(actual.featureWeights, expected.featureWeights)
   assert.deepEqual(actual.scoreSources, expected.scoreSources)
   assert.deepEqual(actual.scoreTotals, expected.scoreTotals)
-  assert.equal('shadowOnly' in actual, false)
+  assert.equal(actual.shadowOnly, false)
+  assert.equal(actual.memberVisible, true)
   assert.equal('releaseCandidate' in actual, false)
 })
 
