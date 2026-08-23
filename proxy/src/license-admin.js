@@ -8,7 +8,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null, pool
   const db = pool ?? (resolvedConnectionString ? poolFactory({
     connectionString: resolveBackendReadConnectionString(resolvedConnectionString),
     ssl: { rejectUnauthorized: false },
-    max: 2,
+    max: 1,
     connectionTimeoutMillis: 9000,
     query_timeout: 9000,
     statement_timeout: 8500,

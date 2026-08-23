@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 const manifest = JSON.parse(readFileSync(new URL('../../release/v105-v10-main-release-manifest.json', import.meta.url)))
 
 test('V105 V10 main release changes prediction main only', () => {
-  assert.equal(manifest.releaseVersion, 'v105-v10-main.7')
+  assert.equal(manifest.releaseVersion, 'v105-v10-main.8')
   assert.equal(manifest.formalStrategyVersion, 'v105')
   assert.deepEqual(manifest.releaseScope, {
     predictionMainOnly: true,
@@ -21,6 +21,7 @@ test('V105 V10 main release changes prediction main only', () => {
     boundedLoginTimeoutMs: 30000,
     transientLoginRetryCount: 1,
     browserNetworkLoginRetry: true,
+    singleConnectionLicensePool: true,
     superAdminSingleQueryLogin: true,
     boundedCurrentDayAnalytics: true,
     historicalJsonAnalyticsRemoved: true,

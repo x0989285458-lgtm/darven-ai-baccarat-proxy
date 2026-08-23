@@ -20,6 +20,7 @@ test('license database pool bounds connection and query stalls', () => {
   })
   assert.equal(new URL(options.connectionString).port, '6543')
   assert.equal(options.connectionTimeoutMillis, 9000)
+  assert.equal(options.max, 1)
   assert.equal(options.query_timeout, 9000)
   assert.equal(options.statement_timeout, 8500)
 })
