@@ -120,6 +120,13 @@ test('release manifest freezes current implementation, migration, proxy, and wor
   assert.match(manifest.releaseBinding.workerBuildInput.sha256, /^[a-f0-9]{64}$/)
   assert.equal(result.shadowHydrationMigrationSha256, manifest.releaseBinding.shadowHydrationMigration.sha256)
   assert.equal(result.captureOutboxHealthMigrationSha256, manifest.releaseBinding.captureOutboxHealthMigration.sha256)
+  assert.equal(result.zeroFinalHeartbeatMigrationSha256, manifest.releaseBinding.zeroFinalHeartbeatMigration.sha256)
+  const zeroFinalTampered = structuredClone(manifest)
+  zeroFinalTampered.releaseBinding.zeroFinalHeartbeatMigration.sha256 = '0'.repeat(64)
+  await assert.rejects(
+    verifyManifestDigests({ manifest: zeroFinalTampered, repoRoot, candidateIndexTree }),
+    /zero_final_heartbeat_migration_digest_mismatch/,
+  )
   assert.equal(result.shadowV10MigrationSha256, manifest.releaseBinding.shadowV10Migration.sha256)
   assert.equal(result.shadowV10DbValidationMigrationSha256, manifest.releaseBinding.shadowV10DbValidationMigration.sha256)
   assert.equal(result.rankLedgerRecoveryMigrationSha256, manifest.releaseBinding.rankLedgerRecoveryMigration.sha256)

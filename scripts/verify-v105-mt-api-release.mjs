@@ -84,6 +84,12 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
     excludedPaths: [],
     sha256: binding.captureOutboxHealthMigration?.sha256,
   }, 'capture_outbox_health_migration')
+  const zeroFinalHeartbeatMigration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, {
+    algorithm: binding.zeroFinalHeartbeatMigration?.algorithm,
+    paths: [binding.zeroFinalHeartbeatMigration?.path],
+    excludedPaths: [],
+    sha256: binding.zeroFinalHeartbeatMigration?.sha256,
+  }, 'zero_final_heartbeat_migration')
   const shadowHydrationMigration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, {
     algorithm: binding.shadowHydrationMigration?.algorithm,
     paths: [binding.shadowHydrationMigration?.path],
@@ -148,6 +154,7 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
     implementationTreeSha256: implementation.sha256,
     migrationSha256: migration.sha256,
     captureOutboxHealthMigrationSha256: captureOutboxHealthMigration.sha256,
+    zeroFinalHeartbeatMigrationSha256: zeroFinalHeartbeatMigration.sha256,
     shadowHydrationMigrationSha256: shadowHydrationMigration.sha256,
     shadowV10MigrationSha256: shadowV10Migration.sha256,
     shadowV10DbValidationMigrationSha256: shadowV10DbValidationMigration.sha256,

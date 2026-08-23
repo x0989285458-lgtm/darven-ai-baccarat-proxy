@@ -1,7 +1,7 @@
 {
-  "releaseName": "V105主預測V10升級版10",
-  "releaseVersion": "v105-v10-main.10",
-  "gitTag": "v105-v10-main.10",
+  "releaseName": "V105主預測V10升級版11",
+  "releaseVersion": "v105-v10-main.11",
+  "gitTag": "v105-v10-main.11",
   "applicationVersion": "1.0.62",
   "baseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
   "formalStrategyVersion": "v105",
@@ -80,7 +80,7 @@
         "supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql"
       ],
       "excludedPaths": [],
-      "sha256": "c164c4162bf7e3820ab4affdc1446265f2feac2823f97ac6f7941b017a16958f"
+      "sha256": "b50d3f825d9875d274d9bcedce9530b427380b273f09253f52b391d83e4a1a0b"
     },
     "zeroFinalHeartbeatMigration": {
       "algorithm": "sha256",
