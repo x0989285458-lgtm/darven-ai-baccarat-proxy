@@ -111,7 +111,7 @@ test('a Final signalled at the trigger-loop completion boundary cannot be lost',
   }
 })
 
-test('one tick re-collects after a slow ACK before continuing the bounded FIFO drain', async (t) => {
+test('one slow-ACK tick collects once so bounded FIFO drain can reduce backlog', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-bounded-drain-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
@@ -145,7 +145,7 @@ test('one tick re-collects after a slow ACK before continuing the bounded FIFO d
   assert.equal(await pusher.tick(), true)
   assert.deepEqual(sent.map((entry) => entry.sequence), [1000, 1001, 1002])
   assert.deepEqual(sent.map((entry) => entry.timestamp), [2000, 362000, 722000])
-  assert.equal(captureCalls, 3)
+  assert.equal(captureCalls, 1)
   await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
 })
 

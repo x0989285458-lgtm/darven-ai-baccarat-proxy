@@ -1,7 +1,7 @@
 {
-  "releaseName": "V105主預測V10穩定版13",
-  "releaseVersion": "v105-v10-main.13",
-  "gitTag": "v105-v10-main.13",
+  "releaseName": "V105主預測V10穩定版14",
+  "releaseVersion": "v105-v10-main.14",
+  "gitTag": "v105-v10-main.14",
   "applicationVersion": "1.0.62",
   "baseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
   "formalStrategyVersion": "v105",
@@ -9,7 +9,7 @@
     "predictionMainOnly": true,
     "productRuntimeChanged": true,
     "databaseMigrationRequired": true,
-    "captureWorkerChanged": false,
+    "captureWorkerChanged": true,
     "frontendChanged": false,
     "sidePredictionChanged": false,
     "formalIdentityChanged": false,
@@ -24,7 +24,8 @@
     "boundedCurrentDayAnalytics": true,
     "historicalJsonAnalyticsRemoved": true,
     "rawAckReservedPoolSlot": true,
-    "outboxReplayPublishesLiveSnapshot": false
+    "outboxReplayPublishesLiveSnapshot": false,
+    "workerBacklogDrainCollectsOncePerTick": true
   },
   "prediction": {
     "mainSource": "v105-shadow-v10-big-road-uncommon-structure-rank-synchronized",
@@ -63,6 +64,8 @@
       "paths": [
         "proxy/package.json",
         "proxy/package-lock.json",
+        "cloud-browser-worker/src/snapshot-pusher.js",
+        "cloud-browser-worker/test/snapshot-pusher.test.js",
         "proxy/src/cloud-capture.js",
         "proxy/src/license-admin.js",
         "proxy/src/server.js",
@@ -86,7 +89,7 @@
         "supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql"
       ],
       "excludedPaths": [],
-      "sha256": "c39eb520092e8999671984355e11bb3f9a5d9166f5383afc386b73f065e59b67"
+      "sha256": "61babf000cc08c07c629dbdc0e5b37f731ca6e59f363e5006f48ea2ab1b4a7e1"
     },
     "zeroFinalHeartbeatMigration": {
       "algorithm": "sha256",
