@@ -36,7 +36,7 @@ test('v105 lifecycle pending index is concurrent, exact, partial, and independen
   assert.match(rollback, /drop index concurrently if exists public\.daily_prediction_results_v105_pending_lifecycle_idx/i)
 })
 
-test('formal rank ledger preserves per-identity order while serializing independent tables for service responsiveness', async () => {
+test('formal rank ledger preserves per-identity order while parallelizing independent tables for throughput', async () => {
   const activeByTable = new Map()
   const appliedByTable = new Map()
   let active = 0
@@ -65,10 +65,10 @@ test('formal rank ledger preserves per-identity order while serializing independ
   assert.deepEqual(appliedByTable.get('BAG01'), [1, 2])
   assert.deepEqual(appliedByTable.get('BAG02'), [1, 2])
   assert.equal(maxPerTable, 1)
-  assert.equal(maxActive, 1)
+  assert.equal(maxActive, 2)
 })
 
-test('formal identity fan-out is serialized to one durable operation', async () => {
+test('formal identity fan-out is bounded to three durable operations', async () => {
   let active = 0
   let maxActive = 0
   const writer = {
@@ -87,10 +87,10 @@ test('formal identity fan-out is serialized to one durable operation', async () 
 
   await runtime.processSnapshot({ tables: [], rounds })
 
-  assert.equal(maxActive, 1)
+  assert.equal(maxActive, 3)
 })
 
-test('formal settlement preserves per-table order while serializing independent tables for service responsiveness', async () => {
+test('formal settlement preserves per-table order while parallelizing independent tables for throughput', async () => {
   const activeByTable = new Map()
   const settledByTable = new Map()
   let active = 0
@@ -121,7 +121,7 @@ test('formal settlement preserves per-table order while serializing independent 
   assert.deepEqual(settledByTable.get('BAG01'), [1, 2])
   assert.deepEqual(settledByTable.get('BAG02'), [1, 2])
   assert.equal(maxPerTable, 1)
-  assert.equal(maxActive, 1)
+  assert.equal(maxActive, 2)
 })
 
 test('service work scheduler serializes work and coalesces a pending table to its latest state', async () => {

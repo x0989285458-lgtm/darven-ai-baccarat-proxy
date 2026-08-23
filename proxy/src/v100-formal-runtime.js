@@ -8,7 +8,7 @@ function identityKey(source, tableId, shoe) {
   return JSON.stringify([String(source ?? ''), String(tableId ?? ''), String(shoe ?? '')])
 }
 
-const MAX_FORMAL_IDENTITY_CONCURRENCY = 1
+const MAX_FORMAL_IDENTITY_CONCURRENCY = 3
 const yieldToServiceRequests = () => new Promise((resolve) => setImmediate(resolve))
 
 async function settleWithConcurrency(items, task, concurrency = MAX_FORMAL_IDENTITY_CONCURRENCY) {

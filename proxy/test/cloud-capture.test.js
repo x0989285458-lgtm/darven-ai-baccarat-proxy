@@ -128,6 +128,53 @@ test('cloud capture tick fetches worker, updates state, and writes Supabase clou
   assert.equal(writes[2][1].round.winner, 'player')
 })
 
+test('formal settlement runs different tables concurrently while preserving each table order', async () => {
+  let active = 0
+  let maxActive = 0
+  const activeByTable = new Map()
+  const started = []
+  const completed = []
+  const parsed = {
+    sessionId: 'cross-table-formal',
+    status: { connected: true, authenticated: true },
+    tables: ['BAG01', 'BAG02', 'BAG03'].map((tableId) => ({ tableId, shoe: 9 })),
+    rounds: [
+      { tableId: 'BAG01', shoe: 9, round: 1 },
+      { tableId: 'BAG02', shoe: 9, round: 1 },
+      { tableId: 'BAG03', shoe: 9, round: 1 },
+      { tableId: 'BAG01', shoe: 9, round: 2 },
+      { tableId: 'BAG02', shoe: 9, round: 2 },
+      { tableId: 'BAG03', shoe: 9, round: 2 },
+    ],
+  }
+  await applyCloudCapturePayload({
+    parsed,
+    writer: { configured: false },
+    state: {
+      setStatus() {}, setTables() {},
+      async upsertRoundEvent(round) {
+        const tableId = round.tableId
+        assert.equal(activeByTable.get(tableId) ?? 0, 0, 'same-table Finals must remain serial')
+        activeByTable.set(tableId, 1)
+        active += 1
+        maxActive = Math.max(maxActive, active)
+        started.push(`${tableId}:${round.round}`)
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        completed.push(`${tableId}:${round.round}`)
+        active -= 1
+        activeByTable.set(tableId, 0)
+        return { ok: true }
+      },
+    },
+  })
+
+  assert.equal(maxActive, 3)
+  for (const tableId of ['BAG01', 'BAG02', 'BAG03']) {
+    assert.deepEqual(started.filter((key) => key.startsWith(tableId)), [`${tableId}:1`, `${tableId}:2`])
+    assert.deepEqual(completed.filter((key) => key.startsWith(tableId)), [`${tableId}:1`, `${tableId}:2`])
+  }
+})
+
 test('persists a backlog with bounded parallel round writes', async () => {
   let active = 0
   let maxActive = 0

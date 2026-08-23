@@ -127,7 +127,7 @@ test('never skips a Final event from an invalid durable ledger even when its com
   assert.deepEqual(applied, [21])
 })
 
-test('formal rank-ledger work is serialized so one capture cannot starve service requests', async () => {
+test('formal rank-ledger work is bounded to three so one capture retains service headroom', async () => {
   let active = 0
   let maxActive = 0
   const writer = {
@@ -146,7 +146,7 @@ test('formal rank-ledger work is serialized so one capture cannot starve service
     tables: ['BAG01', 'BAG02', 'BAG03'].map((tableId) => ({ ...table(), tableId })),
     rounds: [],
   })
-  assert.equal(maxActive, 1)
+  assert.equal(maxActive, 3)
 })
 
 test('cold ten-table capture hydrates exact rank-ledger identities with one bounded batch read', async () => {
