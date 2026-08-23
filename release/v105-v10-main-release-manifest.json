@@ -1,14 +1,14 @@
 {
-  "releaseName": "V105主預測V10升級版9",
-  "releaseVersion": "v105-v10-main.9",
-  "gitTag": "v105-v10-main.9",
+  "releaseName": "V105主預測V10升級版10",
+  "releaseVersion": "v105-v10-main.10",
+  "gitTag": "v105-v10-main.10",
   "applicationVersion": "1.0.62",
   "baseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
   "formalStrategyVersion": "v105",
   "releaseScope": {
     "predictionMainOnly": true,
     "productRuntimeChanged": true,
-    "databaseMigrationRequired": false,
+    "databaseMigrationRequired": true,
     "captureWorkerChanged": false,
     "frontendChanged": true,
     "sidePredictionChanged": false,
@@ -47,6 +47,8 @@
     "run-bound-v106-terminalizer",
     "run-bound-v106-to-v105-rollback",
     "verify-v105-sole-active",
+    "apply-zero-final-heartbeat-outbox-migration",
+    "verify-zero-final-heartbeat-outbox-migration",
     "deploy-exact-v105-v10-main-proxy",
     "public-readiness-v105",
     "resume-existing-v105-worker",
@@ -74,10 +76,16 @@
         "frontend/package.json",
         "frontend/package-lock.json",
         "frontend/src/lib/onlineLicenseClient.ts",
-        "frontend/src/lib/onlineLicenseClient.test.ts"
+        "frontend/src/lib/onlineLicenseClient.test.ts",
+        "supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql"
       ],
       "excludedPaths": [],
-      "sha256": "20f4049358e0de6d6150bb06c4c168290e1f379df6d148426ce09f47c8dd2120"
+      "sha256": "c164c4162bf7e3820ab4affdc1446265f2feac2823f97ac6f7941b017a16958f"
+    },
+    "zeroFinalHeartbeatMigration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql",
+      "sha256": "52704becb9c645a9c3fa0910bf79ecead580fb53bfeacd9964056f9f4488b096"
     }
   }
 }

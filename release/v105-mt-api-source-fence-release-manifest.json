@@ -187,6 +187,7 @@
         "supabase/migrations/20260804100000_v100_rank_ledger_cloud_round_recovery.sql",
         "supabase/migrations/20260804110000_v105_shadow_v10_rank_sync_hydration_millisecond_order.sql",
         "supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql",
+        "supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql",
         "scripts/verify-v105-mt-api-release.mjs",
         "scripts/trusted-registry-readback-adapter.mjs",
         "release/v105-shadow-v9-resume-isolated-release-manifest.json",
@@ -198,7 +199,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "6e1f154432d5e70f2526a5a7905445662e8b23db49d6faee28e363eaf87088d3"
+      "sha256": "c14afabdc6eb7e805b746f2ea7671fb3f1487fe334bf7c7a9b9fb10610100b94"
     },
     "migration": {
       "algorithm": "sha256",
@@ -210,6 +211,11 @@
       "path": "supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql",
       "sha256": "c539a3539768999373662680960814dc1d10918d1e096d9e8192c51363fd6c15"
     },
+    "zeroFinalHeartbeatMigration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql",
+      "sha256": "52704becb9c645a9c3fa0910bf79ecead580fb53bfeacd9964056f9f4488b096"
+    },
     "proxyBuildInput": {
       "algorithm": "sha256",
       "paths": [
@@ -220,7 +226,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "8fd2074e1a4d28bfb6449a7e94f0b0a6880a225f417830f98e2900abcfc40dab"
+      "sha256": "54ee401950abffdb31c1baca96d50184a73e5a90c3359b21232d16a4f927d4dc"
     },
     "workerBuildInput": {
       "algorithm": "sha256",
