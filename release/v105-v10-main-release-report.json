@@ -1,17 +1,17 @@
 {
-  "releaseVersion": "v105-v10-main.16",
+  "releaseVersion": "v105-v10-main.17",
   "formalStrategyVersion": "v105",
   "status": "candidate-tests-pass-production-pending",
   "scope": "V105產品與V10主預測身份不變；Raw ACK保留一條Pool checkout；Outbox歷史Final只結算不覆蓋Live；Worker每Tick只收一次Snapshot，使慢ACK期間的FIFO連續Drain能真正收斂",
   "tests": {
-    "proxyFullSerial": "967/967 PASS",
+    "proxyFullSerial": "968/968 PASS",
     "frontendFull": "159/159 PASS",
     "frontendBuild": "PASS",
     "focusedV105V10": "13/13 PASS",
     "v10StrategyAndStructure": "20/20 PASS",
-    "rootCauseRegression": "3/3 PASS",
+    "rootCauseRegression": "4/4 PASS",
     "backpressureContract": "31/31 PASS",
-    "formalThroughputContract": "3/3 PASS",
+    "formalThroughputContract": "4/4 PASS",
     "workerFull": "209/209 PASS",
     "workerSlowAckBacklogRegression": "1/1 PASS"
   },

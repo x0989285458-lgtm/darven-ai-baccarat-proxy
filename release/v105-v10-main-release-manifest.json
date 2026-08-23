@@ -1,7 +1,7 @@
 {
-  "releaseName": "V105主預測V10穩定版16",
-  "releaseVersion": "v105-v10-main.16",
-  "gitTag": "v105-v10-main.16",
+  "releaseName": "V105主預測V10穩定版17",
+  "releaseVersion": "v105-v10-main.17",
+  "gitTag": "v105-v10-main.17",
   "applicationVersion": "1.0.62",
   "baseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
   "formalStrategyVersion": "v105",
@@ -27,7 +27,8 @@
     "outboxReplayPublishesLiveSnapshot": false,
     "workerBacklogDrainCollectsOncePerTick": true,
     "crossTableFormalSettlementConcurrency": 3,
-    "crossIdentityRankLedgerConcurrency": 3
+    "crossIdentityRankLedgerConcurrency": 3,
+    "failedEnvelopeDrainsAllTableBranches": true
   },
   "prediction": {
     "mainSource": "v105-shadow-v10-big-road-uncommon-structure-rank-synchronized",
@@ -96,7 +97,7 @@
         "supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql"
       ],
       "excludedPaths": [],
-      "sha256": "c3dbfaea6b60554bb59be4ef1cab6f6651dbd8c23e37135dcbc0c409ad8b67b8"
+      "sha256": "170129cca7daffda146aedfec40677e358137b83a5155bf6d753189161507318"
     },
     "zeroFinalHeartbeatMigration": {
       "algorithm": "sha256",

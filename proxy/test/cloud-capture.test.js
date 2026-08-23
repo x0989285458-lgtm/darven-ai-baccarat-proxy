@@ -175,6 +175,50 @@ test('formal settlement runs different tables concurrently while preserving each
   }
 })
 
+test('formal settlement drains every table branch before a failed envelope releases the next envelope', async () => {
+  let bag02Active = 0
+  let bag02MaxActive = 0
+  const order = []
+  const state = {
+    setStatus() {}, setTables() {},
+    async upsertRoundEvent(round) {
+      if (round.tableId === 'BAG01') {
+        order.push('BAG01:fail:start')
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        order.push('BAG01:fail:end')
+        return { ok: false, error: new Error('expected-fast-failure') }
+      }
+      bag02Active += 1
+      bag02MaxActive = Math.max(bag02MaxActive, bag02Active)
+      order.push(`BAG02:${round.round}:start`)
+      await new Promise((resolve) => setTimeout(resolve, round.round === 1 ? 50 : 5))
+      order.push(`BAG02:${round.round}:end`)
+      bag02Active -= 1
+      return { ok: true }
+    },
+  }
+  const first = applyCloudCapturePayload({
+    parsed: {
+      sessionId: 'failed-envelope', status: {}, tables: [],
+      rounds: [{ tableId: 'BAG01', shoe: 9, round: 1 }, { tableId: 'BAG02', shoe: 9, round: 1 }],
+    },
+    state, writer: { configured: false },
+  })
+  const second = applyCloudCapturePayload({
+    parsed: {
+      sessionId: 'next-envelope', status: {}, tables: [],
+      rounds: [{ tableId: 'BAG02', shoe: 9, round: 2 }],
+    },
+    state, writer: { configured: false },
+  })
+
+  const [firstResult, secondResult] = await Promise.allSettled([first, second])
+  assert.equal(firstResult.status, 'rejected')
+  assert.equal(secondResult.status, 'fulfilled')
+  assert.equal(bag02MaxActive, 1)
+  assert.ok(order.indexOf('BAG02:1:end') < order.indexOf('BAG02:2:start'))
+})
+
 test('persists a backlog with bounded parallel round writes', async () => {
   let active = 0
   let maxActive = 0
