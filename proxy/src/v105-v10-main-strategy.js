@@ -1,7 +1,7 @@
 import { buildV105FormalPrediction } from './v105-formal-strategy.js'
 import { buildV105ShadowV10Prediction } from './v105-shadow-v10-contract.js'
 
-export const V105_V10_MAIN_RELEASE_VERSION = 'v105-v10-main.12'
+export const V105_V10_MAIN_RELEASE_VERSION = 'v105-v10-main.13'
 
 export function buildV105V10MainPrediction(table = {}, historyRows = [], issuanceContext = {}) {
   const baseline = buildV105FormalPrediction(table, historyRows, issuanceContext)

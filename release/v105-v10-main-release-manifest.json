@@ -1,7 +1,7 @@
 {
-  "releaseName": "V105主預測V10穩定版12",
-  "releaseVersion": "v105-v10-main.12",
-  "gitTag": "v105-v10-main.12",
+  "releaseName": "V105主預測V10穩定版13",
+  "releaseVersion": "v105-v10-main.13",
+  "gitTag": "v105-v10-main.13",
   "applicationVersion": "1.0.62",
   "baseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
   "formalStrategyVersion": "v105",
@@ -66,6 +66,7 @@
         "proxy/src/cloud-capture.js",
         "proxy/src/license-admin.js",
         "proxy/src/server.js",
+        "proxy/src/state-store.js",
         "proxy/src/supabase-writer.js",
         "proxy/test/admin-side-actions.test.js",
         "proxy/test/prediction-integrity.test.js",
@@ -85,7 +86,7 @@
         "supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql"
       ],
       "excludedPaths": [],
-      "sha256": "feecd0507d489c274808ccba722f9e6e771d9798f20c9268beb8cc88513212d9"
+      "sha256": "c39eb520092e8999671984355e11bb3f9a5d9166f5383afc386b73f065e59b67"
     },
     "zeroFinalHeartbeatMigration": {
       "algorithm": "sha256",

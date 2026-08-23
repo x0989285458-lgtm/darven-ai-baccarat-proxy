@@ -1,5 +1,5 @@
 {
-  "releaseVersion": "v105-v10-main.12",
+  "releaseVersion": "v105-v10-main.13",
   "formalStrategyVersion": "v105",
   "status": "candidate-tests-pass-production-pending",
   "scope": "V105產品與V10主預測身份不變；Raw ACK保留一條Pool checkout，不再排在Formal／Control飽和工作後；Outbox歷史Final照常結算但不得覆蓋最新10桌抓牌狀態",

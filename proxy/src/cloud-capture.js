@@ -206,7 +206,15 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
         return shoeDelta || Number(left?.round) - Number(right?.round)
       })
       for (const round of tableRounds) {
-        const settlement = await state?.upsertRoundEvent?.(round)
+        const settlementTable = formalTables.find((table) => (
+          String(table?.tableId ?? '') === String(round?.tableId ?? '')
+          && String(table?.shoe ?? '') === String(round?.shoe ?? '')
+        )) ?? formalTables.find((table) => String(table?.tableId ?? '') === String(round?.tableId ?? ''))
+        const settleRound = publishSnapshot
+          ? state?.upsertRoundEvent
+          : state?.settleRoundEvent
+        if (typeof settleRound !== 'function') throw new Error('formal settlement state handler is unavailable')
+        const settlement = await settleRound.call(state, round, settlementTable)
         if (settlement?.ok === false) throw settlement.error ?? new Error('formal settlement failed before ingest acknowledgement')
       }
       await new Promise((resolve) => setImmediate(resolve))

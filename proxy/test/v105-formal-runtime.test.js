@@ -47,7 +47,7 @@ test('v105 runtime uses V10 uncommon-road main while retaining v105 issuance ide
     beadPlateRaw: 'contradictory-bead-content',
   })
   assert.equal(prediction.strategyVersion, 'v105')
-  assert.equal(prediction.releaseVersion, 'v105-v10-main.12')
+  assert.equal(prediction.releaseVersion, 'v105-v10-main.13')
   assert.equal(prediction.structureDiagnostics.eligible, true)
   assert.equal(prediction.predictionFeatures.v105_v10_main_policy.sourceStrategy, 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized')
 })

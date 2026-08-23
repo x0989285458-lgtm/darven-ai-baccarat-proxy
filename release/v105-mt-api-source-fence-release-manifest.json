@@ -199,7 +199,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "442c126e84bc5e83e8b831a598bc0ce763d92183b99c2aa2898b40b82ff5f7ec"
+      "sha256": "71f60ece9703ef2f7b3d328c58ccff023748aa1b2f38a17597f70dfe990e4445"
     },
     "migration": {
       "algorithm": "sha256",
@@ -226,7 +226,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "8ff50086a3013615549a5217dcf645f1274ec846d90b940570415fb590af3d9d"
+      "sha256": "ac15395cabbfe9f5547a87ab5763a3f7762d81946b094057c0958d202d39ff76"
     },
     "workerBuildInput": {
       "algorithm": "sha256",

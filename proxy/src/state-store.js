@@ -120,6 +120,24 @@ export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotR
       state.status.tableCount = state.tables.length
       return emitRoundEvent(lastRound, state.tables.find((item) => String(item.tableId) === tableId) ?? { tableId })
     },
+    settleRoundEvent(event = {}, settlementTable = null) {
+      const tableId = String(event.tableId ?? '')
+      if (!tableId) return { ok: true }
+      const receivedAt = event.receivedAt ?? new Date().toISOString()
+      const settledRound = {
+        ...event,
+        tableId,
+        shoe: event.shoe ?? null,
+        round: event.round ?? null,
+        playerPoint: event.playerPoint ?? pointFromRawResult(event.rawResult, 8),
+        bankerPoint: event.bankerPoint ?? pointFromRawResult(event.rawResult, 9),
+        receivedAt,
+      }
+      const table = settlementTable && String(settlementTable.tableId ?? '') === tableId
+        ? settlementTable
+        : state.tables.find((item) => String(item.tableId) === tableId) ?? { tableId }
+      return emitRoundEvent(settledRound, structuredCloneSafe(table))
+    },
     recordError(message) {
       state.status.connected = false
       state.status.errorMessage = redactSecrets(String(message ?? 'unknown error'))

@@ -328,7 +328,8 @@ test('durable outbox replay settles Finals without publishing its stale status o
   assert.equal(snapshot.status.authenticated, true)
   assert.equal(snapshot.status.tableCount, 1)
   assert.equal(snapshot.tables[0].shoe, 'LIVE')
-  assert.equal(snapshot.lastRound.shoe, 'OLD', 'the historical Final must still reach settlement')
+  assert.equal(snapshot.lastRound, undefined, 'historical replay must not mutate the live round mount')
+  assert.equal(snapshot.settledRound.shoe, 'OLD', 'the historical Final must still reach settlement')
 })
 
 function createFakeState() {
@@ -343,6 +344,9 @@ function createFakeState() {
     },
     upsertRoundEvent(round = {}) {
       data.lastRound = round
+    },
+    settleRoundEvent(round = {}) {
+      data.settledRound = round
     },
     recordError(message) {
       data.status.connected = false
