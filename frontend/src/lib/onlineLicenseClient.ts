@@ -16,7 +16,7 @@ export type OnlineLicenseStatus = {
 type AdminSessionPayload = { adminSessionToken?: string }
 
 export async function memberLogin(payload: { memberAccount: string; verificationPassword: string; turnstileToken?: string }, fetchImpl = fetch, timeoutMs = 30000) {
-  return postJson('/api/online-license/member-login', payload, fetchImpl, timeoutMs)
+  return postLoginJson('/api/online-license/member-login', payload, fetchImpl, timeoutMs)
 }
 
 export async function validateMemberSession(memberSessionToken: string, fetchImpl = fetch): Promise<{ ok: boolean; sessionExpiresAt?: string; error?: string; invalid?: boolean; retryable?: boolean }> {
@@ -43,7 +43,17 @@ export async function validateMemberSession(memberSessionToken: string, fetchImp
 }
 
 export async function agentLogin(payload: { agentAccount: string; turnstileToken?: string }, fetchImpl = fetch, timeoutMs = 30000) {
-  return postJson('/api/online-license/agent-login', payload, fetchImpl, timeoutMs)
+  return postLoginJson('/api/online-license/agent-login', payload, fetchImpl, timeoutMs)
+}
+
+async function postLoginJson(path: string, payload: unknown, fetchImpl: typeof fetch, timeoutMs: number) {
+  try {
+    return await postJson(path, payload, fetchImpl, timeoutMs)
+  } catch (error) {
+    const status = Number((error as Error & { status?: number })?.status)
+    if (![502, 503, 504].includes(status)) throw error
+    return postJson(path, payload, fetchImpl, timeoutMs)
+  }
 }
 
 export async function createOnlineAgent(payload: { code: string; name?: string; role?: string; parentCode?: string; permission?: string; adminAccount?: string } & AdminSessionPayload, fetchImpl = fetch) {
@@ -109,7 +119,11 @@ async function postJson(path: string, payload: unknown, fetchImpl: typeof fetch,
       signal: controller.signal,
     })
     const body = typeof response.json === 'function' ? await response.json().catch(() => ({})) : {}
-    if (!response.ok) throw new Error(body.error ?? '線上授權 API 失敗')
+    if (!response.ok) {
+      const error = new Error(body.error ?? '線上授權 API 失敗') as Error & { status?: number }
+      error.status = response.status
+      throw error
+    }
     return body
   } catch (error) {
     if (controller.signal.aborted) throw new Error('連線逾時，請稍後再試')

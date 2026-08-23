@@ -42,6 +42,20 @@ describe('onlineLicenseClient ', () => {
     }
   })
 
+  it('retries one transient gateway failure for idempotent member and agent login only', async () => {
+    const responses = [
+      { ok: false, status: 502, json: () => Promise.resolve({ error: 'gateway' }) },
+      { ok: true, status: 200, json: () => Promise.resolve({ ok: true, memberSessionToken: 'member-session' }) },
+      { ok: false, status: 503, json: () => Promise.resolve({ error: 'unavailable' }) },
+      { ok: true, status: 200, json: () => Promise.resolve({ ok: true, adminSessionToken: 'admin-session' }) },
+    ]
+    const fetchImpl = vi.fn(() => Promise.resolve(responses.shift()!)) as unknown as typeof fetch
+
+    await expect(memberLogin({ memberAccount: 'M001', verificationPassword: 'CODE' }, fetchImpl)).resolves.toMatchObject({ ok: true })
+    await expect(agentLogin({ agentAccount: 'DV1788' }, fetchImpl)).resolves.toMatchObject({ ok: true })
+    expect(fetchImpl).toHaveBeenCalledTimes(4)
+  })
+
   it('validates the short-lived member session through the backend bearer token flow', async () => {
     const fetchImpl = vi.fn(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, sessionExpiresAt: '2026-07-13T20:30:00.000Z' }) })) as unknown as typeof fetch
     const result = await validateMemberSession('member-session-1', fetchImpl)
