@@ -2,11 +2,13 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
+import { verifyV105V10MainManifestDigests } from '../../scripts/verify-v105-mt-api-release.mjs'
 
 const manifest = JSON.parse(readFileSync(new URL('../../release/v105-v10-main-release-manifest.json', import.meta.url)))
+const dependencyManifest = JSON.parse(readFileSync(new URL('../../release/v105-v10-main19-source-fence-release-manifest.json', import.meta.url)))
 
 test('V105 V10 main release changes prediction main only', () => {
-  assert.equal(manifest.releaseVersion, 'v105-v10-main.18')
+  assert.equal(manifest.releaseVersion, 'v105-v10-main.19')
   assert.equal(manifest.formalStrategyVersion, 'v105')
   assert.deepEqual(manifest.releaseScope, {
     predictionMainOnly: true,
@@ -57,6 +59,22 @@ test('V105 V10 main release binding covers the exact prediction implementation a
   assert.match(manifest.releaseBinding.workerBuildInput.sha256, /^[a-f0-9]{64}$/)
 })
 
+test('V105 V10 main canonical verifier loads both manifests and rejects duplicate or drifted batch authority', async () => {
+  const root = new URL('../..', import.meta.url)
+  const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: root, encoding: 'utf8' }).trim()
+  const result = await verifyV105V10MainManifestDigests({ manifest, dependencyManifest, repoRoot: root, candidateIndexTree })
+  assert.equal(result.mainImplementationTreeSha256, manifest.releaseBinding.implementationTree.sha256)
+  const duplicateProxy = structuredClone(manifest)
+  duplicateProxy.deploymentOrder.unshift('deploy-exact-v105-v10-main-proxy')
+  await assert.rejects(verifyV105V10MainManifestDigests({ manifest: duplicateProxy, dependencyManifest, repoRoot: root, candidateIndexTree }), /v105_v10_main_deployment_order_duplicate/)
+  const driftedDependency = structuredClone(dependencyManifest)
+  driftedDependency.gitTag = 'v105-v10-main.18'
+  await assert.rejects(verifyV105V10MainManifestDigests({ manifest, dependencyManifest: driftedDependency, repoRoot: root, candidateIndexTree }), /v105_v10_main_dependency_identity_invalid/)
+  const missingBatchReadback = structuredClone(manifest)
+  missingBatchReadback.deploymentOrder = missingBatchReadback.deploymentOrder.filter((step) => step !== 'same-session-outbox-batch-catalog-acl-readback')
+  await assert.rejects(verifyV105V10MainManifestDigests({ manifest: missingBatchReadback, dependencyManifest, repoRoot: root, candidateIndexTree }), /v105_v10_main_deployment_order_duplicate/)
+})
+
 test('V105 restore uses the immutable reviewed V106 terminalizer and rollback artifacts', () => {
   const root = new URL('../..', import.meta.url)
   const tag = manifest.rollbackFromCurrentV106.authorityTag
@@ -68,7 +86,7 @@ test('V105 restore uses the immutable reviewed V106 terminalizer and rollback ar
     'verify-producer-stopped', 'archive-v106-backlog-evidence', 'run-bound-v106-terminalizer',
     'run-bound-v106-to-v105-rollback', 'verify-v105-sole-active',
     'apply-zero-final-heartbeat-outbox-migration', 'verify-zero-final-heartbeat-outbox-migration',
-    'apply-same-session-outbox-batch-migration', 'verify-same-session-outbox-batch-migration',
+    'same-session-outbox-batch-migration', 'same-session-outbox-batch-catalog-acl-readback',
     'deploy-exact-v105-v10-main-proxy',
   ])
   assert.deepEqual(manifest.deploymentOrder.slice(10, 16), [

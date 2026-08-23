@@ -135,9 +135,9 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
   const proxy = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.proxyBuildInput, 'proxy_build_input')
   const worker = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.workerBuildInput, 'worker_build_input')
   const exclusions = binding.implementationTree.excludedPaths?.map(normalizeRelative) ?? []
-  for (const required of ['release/v105-mt-api-source-fence-release-manifest.json', 'release/attestations']) {
-    if (!exclusions.includes(required)) throw new Error(`implementation_tree_self_reference_not_excluded:${required}`)
-  }
+  if (!exclusions.includes('release/attestations')) throw new Error('implementation_tree_self_reference_not_excluded:release/attestations')
+  const manifestExclusions = exclusions.filter((entry) => /source-fence-release-manifest\.json$/.test(entry))
+  if (manifestExclusions.length !== 1) throw new Error('implementation_tree_source_manifest_exclusion_invalid')
   const captureOutboxHealth = manifest?.database?.captureOutboxHealthMigration
   const deployment = Array.isArray(manifest?.deploymentOrder) ? manifest.deploymentOrder : []
   const batchStep = 'same-session-outbox-batch-migration'
@@ -195,6 +195,37 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
     proxyBuildInputSha256: proxy.sha256,
     workerBuildInputSha256: worker.sha256,
   }
+}
+
+export async function verifyV105V10MainManifestDigests({ manifest, dependencyManifest, repoRoot, candidateIndexTree } = {}) {
+  const binding = manifest?.releaseBinding
+  if (!binding) throw new Error('v105_v10_main_release_binding_missing')
+  if (manifest?.releaseVersion !== manifest?.gitTag || manifest?.formalStrategyVersion !== 'v105') throw new Error('v105_v10_main_release_identity_invalid')
+  if (dependencyManifest?.releaseVersion !== manifest.releaseVersion || dependencyManifest?.gitTag !== manifest.gitTag) throw new Error('v105_v10_main_dependency_identity_invalid')
+  const implementation = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.implementationTree, 'v105_v10_main_implementation_tree')
+  const zeroFinalHeartbeatMigration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, { algorithm: binding.zeroFinalHeartbeatMigration?.algorithm, paths: [binding.zeroFinalHeartbeatMigration?.path], excludedPaths: [], sha256: binding.zeroFinalHeartbeatMigration?.sha256 }, 'v105_v10_main_zero_final_heartbeat_migration')
+  const sameSessionOutboxBatchMigration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, { algorithm: binding.sameSessionOutboxBatchMigration?.algorithm, paths: [binding.sameSessionOutboxBatchMigration?.path], excludedPaths: [], sha256: binding.sameSessionOutboxBatchMigration?.sha256 }, 'v105_v10_main_same_session_outbox_batch_migration')
+  const worker = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.workerBuildInput, 'v105_v10_main_worker_build_input')
+  const deployment = Array.isArray(manifest?.deploymentOrder) ? manifest.deploymentOrder : []
+  const requiredUnique = ['apply-zero-final-heartbeat-outbox-migration', 'verify-zero-final-heartbeat-outbox-migration', 'same-session-outbox-batch-migration', 'same-session-outbox-batch-catalog-acl-readback', 'deploy-exact-v105-v10-main-proxy']
+  if (requiredUnique.some((step) => deployment.filter((entry) => entry === step).length !== 1)) throw new Error('v105_v10_main_deployment_order_duplicate')
+  const zeroApplyIndex = deployment.indexOf('apply-zero-final-heartbeat-outbox-migration')
+  const zeroReadbackIndex = deployment.indexOf('verify-zero-final-heartbeat-outbox-migration')
+  const batchIndex = deployment.indexOf('same-session-outbox-batch-migration')
+  const batchReadbackIndex = deployment.indexOf('same-session-outbox-batch-catalog-acl-readback')
+  const proxyIndex = deployment.indexOf('deploy-exact-v105-v10-main-proxy')
+  if (!(zeroApplyIndex < zeroReadbackIndex && zeroReadbackIndex < batchIndex && batchIndex < batchReadbackIndex && batchReadbackIndex < proxyIndex)) throw new Error('v105_v10_main_deployment_order_invalid')
+  const requiredImplementationPaths = [binding.sameSessionOutboxBatchMigration?.path, 'proxy/src/server.js', 'proxy/src/supabase-writer.js', 'proxy/test/capture-outbox-ack.test.js', 'proxy/test/capture-outbox-writer.test.js', 'scripts/verify-v105-mt-api-release.mjs', 'release/v105-v10-main19-source-fence-release-manifest.json']
+  if (requiredImplementationPaths.some((required) => !binding.implementationTree.paths?.includes(required))) throw new Error('v105_v10_main_implementation_contract_invalid')
+  const dependencyBinding = dependencyManifest?.releaseBinding?.sameSessionOutboxBatchMigration
+  const dependencyDatabase = dependencyManifest?.database?.sameSessionOutboxBatchMigration
+  if (dependencyBinding?.path !== binding.sameSessionOutboxBatchMigration?.path
+    || dependencyBinding?.sha256 !== binding.sameSessionOutboxBatchMigration?.sha256
+    || dependencyDatabase?.path !== binding.sameSessionOutboxBatchMigration?.path
+    || dependencyManifest?.deploymentOrder?.filter((step) => step === 'same-session-outbox-batch-migration').length !== 1
+    || dependencyManifest?.deploymentOrder?.filter((step) => step === 'same-session-outbox-batch-catalog-acl-readback').length !== 1
+    || dependencyManifest?.deploymentOrder?.filter((step) => step === 'proxy-compatible').length !== 1) throw new Error('v105_v10_main_dependency_contract_invalid')
+  return { ok: true, mainImplementationTreeSha256: implementation.sha256, mainZeroFinalHeartbeatMigrationSha256: zeroFinalHeartbeatMigration.sha256, mainSameSessionOutboxBatchMigrationSha256: sameSessionOutboxBatchMigration.sha256, mainWorkerBuildInputSha256: worker.sha256 }
 }
 
 export function verifyV9ShadowRollbackContract(manifest = {}, binding = manifest?.releaseBinding ?? {}) {
@@ -545,9 +576,12 @@ async function main() {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
   const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
   assertCandidateIndexClean(repoRoot, candidateIndexTree)
-  const manifestBytes = execFileSync('git', ['cat-file', 'blob', `${candidateIndexTree}:release/v105-mt-api-source-fence-release-manifest.json`], { cwd: repoRoot })
+  const manifestBytes = execFileSync('git', ['cat-file', 'blob', `${candidateIndexTree}:release/v105-v10-main19-source-fence-release-manifest.json`], { cwd: repoRoot })
   const manifest = JSON.parse(manifestBytes.toString('utf8'))
+  const mainManifestBytes = execFileSync('git', ['cat-file', 'blob', `${candidateIndexTree}:release/v105-v10-main-release-manifest.json`], { cwd: repoRoot })
+  const mainManifest = JSON.parse(mainManifestBytes.toString('utf8'))
   const digests = await verifyManifestDigests({ manifest, repoRoot, candidateIndexTree })
+  await verifyV105V10MainManifestDigests({ manifest: mainManifest, dependencyManifest: manifest, repoRoot, candidateIndexTree })
   const expected = { ...digests, gitTag: manifest.gitTag, candidateIndexTree }
   const evidenceArgs = parseReleaseEvidenceArgs(process.argv.slice(2))
   const attestationPath = await assertExternalAttestationPath({ repoRoot, attestationPath: evidenceArgs.attestationPath })

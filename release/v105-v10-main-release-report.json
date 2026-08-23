@@ -1,10 +1,10 @@
 {
-  "releaseVersion": "v105-v10-main.18",
+  "releaseVersion": "v105-v10-main.19",
   "formalStrategyVersion": "v105",
   "status": "candidate-tests-pass-production-pending",
   "scope": "V105產品與V10主預測身份不變；Raw ACK保留一條Pool checkout；Outbox歷史Final只結算不覆蓋Live；Worker每Tick只收一次Snapshot，使慢ACK期間的FIFO連續Drain能真正收斂",
   "tests": {
-    "proxyFullSerial": "971/971 PASS",
+    "proxyFullSerial": "972/972 PASS",
     "frontendFull": "159/159 PASS",
     "frontendBuild": "PASS",
     "focusedV105V10": "13/13 PASS",

@@ -4,7 +4,7 @@ import path from 'node:path'
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
-import manifest from '../../release/v105-mt-api-source-fence-release-manifest.json' with { type: 'json' }
+import manifest from '../../release/v105-v10-main19-source-fence-release-manifest.json' with { type: 'json' }
 import {
   computePathSetDigest,
   verifyManifestDigests,
@@ -13,8 +13,8 @@ import {
 import * as releaseVerifier from '../../scripts/verify-v105-mt-api-release.mjs'
 
 test('release scope freezes one existing session as API-only canonical capture', () => {
-  assert.equal(manifest.releaseVersion, 'v105-shadow-v9-request-id-lifetime.1')
-  assert.equal(manifest.gitTag, 'v105-shadow-v9-request-id-lifetime.1')
+  assert.equal(manifest.releaseVersion, 'v105-v10-main.19')
+  assert.equal(manifest.gitTag, 'v105-v10-main.19')
   assert.equal(manifest.applicationVersion, '1.0.61')
   assert.deepEqual(manifest.releaseScope, {
     mode: 'single-session-api-primary',

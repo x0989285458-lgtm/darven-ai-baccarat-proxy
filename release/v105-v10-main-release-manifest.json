@@ -1,7 +1,7 @@
 {
-  "releaseName": "V105主預測V10穩定版18",
-  "releaseVersion": "v105-v10-main.18",
-  "gitTag": "v105-v10-main.18",
+  "releaseName": "V105主預測V10穩定版19",
+  "releaseVersion": "v105-v10-main.19",
+  "gitTag": "v105-v10-main.19",
   "applicationVersion": "1.0.62",
   "baseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
   "formalStrategyVersion": "v105",
@@ -57,8 +57,8 @@
     "verify-v105-sole-active",
     "apply-zero-final-heartbeat-outbox-migration",
     "verify-zero-final-heartbeat-outbox-migration",
-    "apply-same-session-outbox-batch-migration",
-    "verify-same-session-outbox-batch-migration",
+    "same-session-outbox-batch-migration",
+    "same-session-outbox-batch-catalog-acl-readback",
     "deploy-exact-v105-v10-main-proxy",
     "public-readiness-v105",
     "build-exact-v105-v10-main-worker-image",
@@ -96,6 +96,9 @@
         "proxy/test/capture-outbox-ack.test.js",
         "proxy/test/capture-outbox-writer.test.js",
         "proxy/test/v105-formal-ingest-backpressure-contract.test.js",
+        "proxy/test/v105-v10-main-release.test.js",
+        "scripts/verify-v105-mt-api-release.mjs",
+        "release/v105-v10-main19-source-fence-release-manifest.json",
         "frontend/package.json",
         "frontend/package-lock.json",
         "frontend/src/lib/onlineLicenseClient.ts",
@@ -104,7 +107,7 @@
         "supabase/migrations/20260824010000_v105_capture_outbox_same_session_batch.sql"
       ],
       "excludedPaths": [],
-      "sha256": "a7b6c962ee8823c7daf134831c2ea505645bf07edd010173dd06d0ab4f472738"
+      "sha256": "4f9851947debbdbff4afe111c5414fed21dcba140658d72c643ab3567e66a0a3"
     },
     "zeroFinalHeartbeatMigration": {
       "algorithm": "sha256",
