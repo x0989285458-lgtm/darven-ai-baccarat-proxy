@@ -304,6 +304,33 @@ test('Final rank-ledger work hydrates only identities present in the durable Fin
   assert.deepEqual(result.tables.map((table) => table.tableId), ['BAG01', 'BAG02'])
 })
 
+test('durable outbox replay settles Finals without publishing its stale status or table snapshot', async () => {
+  const state = createFakeState()
+  state.setStatus({ connected: true, authenticated: true, lastMessageAt: '2026-08-23T13:30:00.000Z' })
+  state.setTables([{ tableId: 'BAG01', shoe: 'LIVE', round: 9 }])
+
+  await applyCloudCapturePayload({
+    parsed: {
+      sessionId: 'worker',
+      status: { connected: false, authenticated: false, lastMessageAt: '2026-08-23T12:30:00.000Z' },
+      tables: [],
+      rounds: [{ tableId: 'BAG01', shoe: 'OLD', round: 1, winner: 'banker' }],
+    },
+    state,
+    writer: { configured: false },
+    v100Formal: { enabled: false },
+    persistAncillary: false,
+    publishSnapshot: false,
+  })
+
+  const snapshot = state.snapshot()
+  assert.equal(snapshot.status.connected, true)
+  assert.equal(snapshot.status.authenticated, true)
+  assert.equal(snapshot.status.tableCount, 1)
+  assert.equal(snapshot.tables[0].shoe, 'LIVE')
+  assert.equal(snapshot.lastRound.shoe, 'OLD', 'the historical Final must still reach settlement')
+})
+
 function createFakeState() {
   const data = { status: {}, tables: [] }
   return {

@@ -6,14 +6,14 @@ import { readFileSync } from 'node:fs'
 const manifest = JSON.parse(readFileSync(new URL('../../release/v105-v10-main-release-manifest.json', import.meta.url)))
 
 test('V105 V10 main release changes prediction main only', () => {
-  assert.equal(manifest.releaseVersion, 'v105-v10-main.11')
+  assert.equal(manifest.releaseVersion, 'v105-v10-main.12')
   assert.equal(manifest.formalStrategyVersion, 'v105')
   assert.deepEqual(manifest.releaseScope, {
     predictionMainOnly: true,
     productRuntimeChanged: true,
     databaseMigrationRequired: true,
     captureWorkerChanged: false,
-    frontendChanged: true,
+    frontendChanged: false,
     sidePredictionChanged: false,
     formalIdentityChanged: false,
     zeroFinalHeartbeatFastAck: true,
@@ -26,6 +26,8 @@ test('V105 V10 main release changes prediction main only', () => {
     superAdminSingleQueryLogin: true,
     boundedCurrentDayAnalytics: true,
     historicalJsonAnalyticsRemoved: true,
+    rawAckReservedPoolSlot: true,
+    outboxReplayPublishesLiveSnapshot: false,
   })
   assert.equal(manifest.prediction.mainSource, 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized')
   assert.equal(manifest.prediction.beadPlateUsed, false)
@@ -34,7 +36,7 @@ test('V105 V10 main release changes prediction main only', () => {
 
 test('V105 V10 main release binding covers the exact prediction implementation and required migration', () => {
   assert.match(manifest.releaseBinding.implementationTree.sha256, /^[a-f0-9]{64}$/)
-  for (const required of ['proxy/src/cloud-capture.js', 'proxy/src/license-admin.js', 'proxy/src/server.js', 'proxy/test/admin-side-actions.test.js', 'proxy/test/prediction-integrity.test.js', 'proxy/test/prediction-safety.test.js', 'proxy/src/v105-formal-runtime.js', 'proxy/src/v105-v10-main-strategy.js', 'proxy/src/v105-shadow-v10-contract.js', 'proxy/src/v105-shadow-v10-structure.js', 'frontend/src/lib/onlineLicenseClient.ts', 'frontend/src/lib/onlineLicenseClient.test.ts', 'supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql']) {
+  for (const required of ['proxy/src/cloud-capture.js', 'proxy/src/license-admin.js', 'proxy/src/server.js', 'proxy/src/supabase-writer.js', 'proxy/test/cloud-capture.test.js', 'proxy/test/v105-formal-ingest-backpressure-contract.test.js', 'proxy/test/admin-side-actions.test.js', 'proxy/test/prediction-integrity.test.js', 'proxy/test/prediction-safety.test.js', 'proxy/src/v105-formal-runtime.js', 'proxy/src/v105-v10-main-strategy.js', 'proxy/src/v105-shadow-v10-contract.js', 'proxy/src/v105-shadow-v10-structure.js', 'frontend/src/lib/onlineLicenseClient.ts', 'frontend/src/lib/onlineLicenseClient.test.ts', 'supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql']) {
     assert.ok(manifest.releaseBinding.implementationTree.paths.includes(required), required)
   }
   assert.equal(manifest.releaseBinding.zeroFinalHeartbeatMigration.path, 'supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql')

@@ -1,7 +1,7 @@
 {
-  "releaseName": "V105主預測V10升級版11",
-  "releaseVersion": "v105-v10-main.11",
-  "gitTag": "v105-v10-main.11",
+  "releaseName": "V105主預測V10穩定版12",
+  "releaseVersion": "v105-v10-main.12",
+  "gitTag": "v105-v10-main.12",
   "applicationVersion": "1.0.62",
   "baseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
   "formalStrategyVersion": "v105",
@@ -10,7 +10,7 @@
     "productRuntimeChanged": true,
     "databaseMigrationRequired": true,
     "captureWorkerChanged": false,
-    "frontendChanged": true,
+    "frontendChanged": false,
     "sidePredictionChanged": false,
     "formalIdentityChanged": false,
     "zeroFinalHeartbeatFastAck": true,
@@ -22,7 +22,9 @@
     "zeroFinalHeartbeatOutboxFastComplete": true,
     "superAdminSingleQueryLogin": true,
     "boundedCurrentDayAnalytics": true,
-    "historicalJsonAnalyticsRemoved": true
+    "historicalJsonAnalyticsRemoved": true,
+    "rawAckReservedPoolSlot": true,
+    "outboxReplayPublishesLiveSnapshot": false
   },
   "prediction": {
     "mainSource": "v105-shadow-v10-big-road-uncommon-structure-rank-synchronized",
@@ -64,6 +66,7 @@
         "proxy/src/cloud-capture.js",
         "proxy/src/license-admin.js",
         "proxy/src/server.js",
+        "proxy/src/supabase-writer.js",
         "proxy/test/admin-side-actions.test.js",
         "proxy/test/prediction-integrity.test.js",
         "proxy/test/prediction-safety.test.js",
@@ -73,6 +76,8 @@
         "proxy/src/v105-shadow-v10-contract.js",
         "proxy/src/v105-shadow-v10-structure.js",
         "proxy/src/v105-shadow-v9-contract.js",
+        "proxy/test/cloud-capture.test.js",
+        "proxy/test/v105-formal-ingest-backpressure-contract.test.js",
         "frontend/package.json",
         "frontend/package-lock.json",
         "frontend/src/lib/onlineLicenseClient.ts",
@@ -80,7 +85,7 @@
         "supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql"
       ],
       "excludedPaths": [],
-      "sha256": "b50d3f825d9875d274d9bcedce9530b427380b273f09253f52b391d83e4a1a0b"
+      "sha256": "feecd0507d489c274808ccba722f9e6e771d9798f20c9268beb8cc88513212d9"
     },
     "zeroFinalHeartbeatMigration": {
       "algorithm": "sha256",

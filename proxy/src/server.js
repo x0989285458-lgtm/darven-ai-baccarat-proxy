@@ -795,7 +795,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               processed += 1
             } else {
               const applied = await runLeasePhase('formal', () => (
-                applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Formal, persistAncillary: false })
+                applyCloudCapturePayload({
+                  parsed, state, writer: supabaseClient, v100Formal,
+                  persistAncillary: false,
+                  publishSnapshot: false,
+                })
               ))
               leaseDeadline.assertActive()
               if (isolatedShadowProcess) {

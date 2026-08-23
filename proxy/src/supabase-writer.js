@@ -2064,8 +2064,15 @@ export function createSupabaseIngestionClient({
   const durableWriteTimeoutMs = Math.max(formalTimeoutMs, Number(durableWriteRequestTimeoutMs) || formalTimeoutMs)
   const startupTimeoutMs = Math.max(formalTimeoutMs, Number(startupRequestTimeoutMs) || 30000)
   const shadowTimeoutMs = Math.max(1, Number(shadowRequestTimeoutMs) || 30000)
+  // Keep one of the ten pool checkouts outside the Formal/Control scheduler so
+  // the producer's durable Raw ACK cannot sit behind already-admitted work.
   const strategyQueryScheduler = rawStrategyDb && typeof rawStrategyDb.query === 'function'
-    ? createStrategyQueryScheduler(rawStrategyDb, { queueTimeoutMs: durableWriteTimeoutMs })
+    ? createStrategyQueryScheduler(rawStrategyDb, {
+        maxConcurrent: 9,
+        maxStandardConcurrent: 6,
+        maxPriorityConcurrent: 3,
+        queueTimeoutMs: durableWriteTimeoutMs,
+      })
     : null
   const strategyDb = strategyQueryScheduler ? { query: (...args) => strategyQueryScheduler.query(...args) } : null
   const priorityStrategyDb = strategyQueryScheduler ? { query: (...args) => strategyQueryScheduler.queryPriority(...args) } : null
@@ -2212,7 +2219,11 @@ export function createSupabaseIngestionClient({
         },
       }[path]
       if (directRpc) {
-        const directDb = options.priority === true ? priorityStrategyDb : strategyDb
+        const rawCapturePath = path === 'rpc/persist_v105_capture_envelope'
+          || path === 'rpc/persist_v105_fenced_capture_envelope'
+        const directDb = rawCapturePath
+          ? rawStrategyDb
+          : options.priority === true ? priorityStrategyDb : strategyDb
         const result = await directDb.query(directRpc)
         const row = Array.isArray(result?.rows) ? result.rows[0] : null
         const functionName = path.slice('rpc/'.length)

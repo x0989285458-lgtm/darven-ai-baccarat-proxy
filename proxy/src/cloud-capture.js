@@ -149,7 +149,7 @@ async function runDurableStage(stage, operation) {
   }
 }
 
-export async function applyCloudCapturePayload({ parsed, state, writer, v100Formal = null, persistAncillary = true }) {
+export async function applyCloudCapturePayload({ parsed, state, writer, v100Formal = null, persistAncillary = true, publishSnapshot = true }) {
   parsed = canonicalizeFormalRoundSources(parsed)
   const durableTimings = {}
   let v100Result = null
@@ -183,8 +183,10 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
     String(table?.tableId ?? ''),
     String(table?.shoe ?? ''),
   ])) ?? table))
-  state?.setStatus?.(parsed.status)
-  state?.setTables?.(formalTables)
+  if (publishSnapshot) {
+    state?.setStatus?.(parsed.status)
+    state?.setTables?.(formalTables)
+  }
   const roundsByTable = new Map()
   for (const round of parsed.rounds) {
     const tableId = String(round?.tableId ?? '')

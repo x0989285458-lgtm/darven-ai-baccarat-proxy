@@ -858,7 +858,7 @@ test('formal issuance uses the reserved priority slot when shadow-standard traff
   }
 })
 
-test('formal settlement burst keeps four reserved priority slots beside six standard slots', async () => {
+test('formal settlement burst keeps three control slots beside six standard slots and one Raw ACK slot', async () => {
   let standardStarted = 0
   let formalStarted = 0
   let releaseAll = false
@@ -916,7 +916,7 @@ test('formal settlement burst keeps four reserved priority slots beside six stan
   })
   while (formalStarted < 1) await new Promise((resolve) => setImmediate(resolve))
   await new Promise((resolve) => setImmediate(resolve))
-  assert.equal(formalStarted, 4)
+  assert.equal(formalStarted, 3)
 
   releaseAll = true
   for (const release of standardReleases.splice(0)) release()
@@ -964,6 +964,53 @@ test('sustained priority traffic cannot starve an ACK-required standard durable 
       item.resolve(resultFor(item.text))
     }
     await Promise.allSettled(calls)
+  }
+})
+
+test('raw capture ACK keeps one database slot outside the saturated formal and control scheduler', async () => {
+  const started = []
+  let releaseBlocked
+  const blocked = new Promise((resolve) => { releaseBlocked = resolve })
+  const strategyPool = {
+    async query(query) {
+      const text = String(query?.text ?? query)
+      started.push(text)
+      if (/persist_v105_fenced_capture_envelope/i.test(text)) {
+        return { rows: [{ persist_v105_fenced_capture_envelope: {
+          persisted: true,
+          accepted_round_keys: ['BAG01:S1:1'],
+        } }] }
+      }
+      await blocked
+      return { rows: [] }
+    },
+  }
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    strategyPool, fetchImpl: async () => assert.fail('direct DB path must not use REST'),
+    durableWriteRequestTimeoutMs: 1000,
+  })
+  const standard = Array.from({ length: 6 }, () => client.getRecentPredictionRows({ limit: 1 }))
+  const control = Array.from({ length: 4 }, () => client.claimCaptureOutbox({ limit: 1 }))
+  try {
+    for (let index = 0; index < 20 && started.length < 9; index += 1) await delay(1)
+    assert.ok(started.length >= 9, 'Formal/Control work must saturate the schedulable pool budget before the Raw ACK probe')
+    const rawAck = client.persistCaptureEnvelope({
+      sessionId: 'worker', sequence: 1, roundKeys: ['BAG01:S1:1'],
+      status: { connected: true, authenticated: true },
+      tables: [{ tableId: 'BAG01', shoe: 'S1', round: 1 }],
+      rounds: [finalRound('BAG01', 1)],
+      source: { epoch: 1, owner: 'worker', fence: 'lease' },
+    })
+    await delay(20)
+    assert.equal(started.some((text) => /persist_v105_fenced_capture_envelope/i.test(text)), true,
+      'Raw ACK must enter the reserved database slot without waiting for Formal/Control work')
+    assert.deepEqual(await rawAck, {
+      persisted: true, accepted_round_keys: ['BAG01:S1:1'], acceptedRoundKeys: ['BAG01:S1:1'],
+    })
+  } finally {
+    releaseBlocked()
+    await Promise.allSettled([...standard, ...control])
   }
 })
 
