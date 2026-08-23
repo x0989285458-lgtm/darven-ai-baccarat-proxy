@@ -38,15 +38,14 @@ test('admin requires complete boolean side_actions and side_hits before reportin
     assert.match(sql, new RegExp(`coalesce\\(side_hits,\\s*prediction_features->'side_hits'\\)->>'${key}'[\\s\\S]*in \\('true','false'\\)`, 'i'))
   }
   assert.doesNotMatch(sql, /jsonb_object_length/i)
-  assert.match(sql, /jsonb_object_keys\(\s*case\s+when\s+jsonb_typeof\(prediction_features->'side_actions'\)\s*=\s*'object'\s+then\s+prediction_features->'side_actions'\s+else\s+'\{\}'::jsonb\s+end\s*\)\)\s*=\s*6/i)
-  assert.match(sql, /jsonb_object_keys\(\s*case\s+when\s+jsonb_typeof\(coalesce\(side_hits,\s*prediction_features->'side_hits'\)\)\s*=\s*'object'\s+then\s+coalesce\(side_hits,\s*prediction_features->'side_hits'\)\s+else\s+'\{\}'::jsonb\s+end\s*\)\)\s*=\s*6/i)
+  assert.doesNotMatch(sql, /jsonb_object_keys/i)
   assert.deepEqual(analytics.tableStats.map((row) => row.tableId), ['BAG01','BAG02','BAG03','BAG03A','BAG05','BAG06','BAG07','BAG08','BAG09','BAG10'])
-  assert.match(sql, /created_at\s*>=\s*\(\(timezone\('Asia\/Taipei',\s*now\(\)\)::date\s*-\s*6\)::timestamp\s+at\s+time\s+zone\s+'Asia\/Taipei'\)/i)
-  assert.match(sql, /\(created_at\s+at\s+time\s+zone\s+'Asia\/Taipei'\)::date\s+as\s+day/i)
-  assert.doesNotMatch(queries[2], /created_at\s*<\s*current_date/i)
-  assert.equal((sql.match(/strategy_version\s*=\s*\$1/gi) ?? []).length, 3)
+  assert.doesNotMatch(sql, /::date\s*-\s*6/i)
+  assert.equal((sql.match(/strategy_version\s*=\s*\$1/gi) ?? []).length, 2)
+  assert.equal((sql.match(/settlement_final\s+is\s+true/gi) ?? []).length, 2)
+  assert.doesNotMatch(sql, /settlement_final\s+is\s+null/i)
+  assert.doesNotMatch(sql, /prediction_features->>'settlement_final'/i)
   assert.deepEqual(parameters, [
-    ['v105'],
     ['v105'],
     ['v105'],
   ])
@@ -68,7 +67,7 @@ test('admin analytics shares one in-flight load and reuses the successful cache'
   const [first, second] = await Promise.all([client.getDailyAnalytics(), client.getDailyAnalytics()])
   assert.equal(first.todayRoundCount, 2)
   assert.deepEqual(second, first)
-  assert.equal(calls, 3)
+  assert.equal(calls, 2)
   await client.getDailyAnalytics()
-  assert.equal(calls, 3)
+  assert.equal(calls, 2)
 })

@@ -179,7 +179,8 @@ test('analytics trusts saved side actions, excludes ties from main rate, and gat
 
   const sql = queries.join('\n')
   assert.match(sql, /prediction_features->'side_actions'/)
-  assert.match(sql, /prediction_features\s*->>\s*'settlement_final'\s*=\s*'true'/i)
+  assert.match(sql, /settlement_final\s+is\s+true/i)
+  assert.doesNotMatch(sql, /prediction_features\s*->>\s*'settlement_final'/i)
   assert.match(sql, /predicted_result in \('banker','player'\)/i)
   assert.match(sql, /predicted_result='banker'.*side_actions'->>'bankerDragon'/is)
   assert.match(sql, /predicted_result='player'.*side_actions'->>'playerDragon'/is)

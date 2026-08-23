@@ -233,7 +233,7 @@ test('admin main denominators exclude tie PUSH in SQL and fallback reports', asy
   const pool = { async query(sql) {
     queries.push(String(sql))
     if (queries.length === 1) return { rows: [{ rounds: 5 }] }
-    if (queries.length === 2) return { rows: [{ table_id: 'BAG01', rounds: 5, main_total: 4, main_hits: 2, side_actions: 0, side_hits: 0, side_actions_available: false }] }
+    if (queries.length === 2) return { rows: [{ table_id: 'BAG01', rounds: 5, main_total: 4, main_hits: 2, banker_total: 2, banker_hits: 1, player_total: 2, player_hits: 1, side_actions: 0, side_hits: 0, side_actions_available: false }] }
     return { rows: [{ date: '2026-07-16', rounds: 5, banker_hit_rate: '50.0%', player_hit_rate: '50.0%', side_actions_available: false, tie_hit_rate: 'unavailable', dragon_hit_rate: 'unavailable', pair_hit_rate: 'unavailable', six_hit_rate: 'unavailable' }] }
   } }
   const analytics = await createLicenseAdminClient({ pool }).getDailyAnalytics()
@@ -242,8 +242,8 @@ test('admin main denominators exclude tie PUSH in SQL and fallback reports', asy
   assert.equal(analytics.dailyReports[0].player_hit_rate, '50.0%')
   const sql = queries.join('\n')
   assert.match(sql, /actual_result\s+in\s*\(\s*'banker'\s*,\s*'player'\s*\)[^\n]+as main_total/i)
-  assert.match(sql, /predicted_result='banker'\s+and actual_result\s+in\s*\(\s*'banker'\s*,\s*'player'\s*\)[^\n]+as banker_total/i)
-  assert.match(sql, /predicted_result='player'\s+and actual_result\s+in\s*\(\s*'banker'\s*,\s*'player'\s*\)[^\n]+as player_total/i)
+  assert.match(sql, /predicted_result='banker'\s+and\s+(?:s\.)?actual_result\s+in\s*\(\s*'banker'\s*,\s*'player'\s*\)[^\n]+as banker_total/i)
+  assert.match(sql, /predicted_result='player'\s+and\s+(?:s\.)?actual_result\s+in\s*\(\s*'banker'\s*,\s*'player'\s*\)[^\n]+as player_total/i)
   assert.equal(buildTableStats(rows)[0].mainHitRate, '50.0%')
   assert.equal(buildDailyReports(rows)[0].banker_hit_rate, '50.0%')
   assert.equal(buildDailyReports(rows)[0].player_hit_rate, '50.0%')

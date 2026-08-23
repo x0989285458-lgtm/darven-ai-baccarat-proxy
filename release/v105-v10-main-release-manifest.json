@@ -1,7 +1,7 @@
 {
-  "releaseName": "V105主預測V10升級版5",
-  "releaseVersion": "v105-v10-main.5",
-  "gitTag": "v105-v10-main.5",
+  "releaseName": "V105主預測V10升級版6",
+  "releaseVersion": "v105-v10-main.6",
+  "gitTag": "v105-v10-main.6",
   "applicationVersion": "1.0.62",
   "baseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
   "formalStrategyVersion": "v105",
@@ -17,7 +17,9 @@
     "finalIdentityRankHydrationOnly": true,
     "boundedLoginTimeoutMs": 30000,
     "transientLoginRetryCount": 1,
-    "superAdminSingleQueryLogin": true
+    "superAdminSingleQueryLogin": true,
+    "boundedCurrentDayAnalytics": true,
+    "historicalJsonAnalyticsRemoved": true
   },
   "prediction": {
     "mainSource": "v105-shadow-v10-big-road-uncommon-structure-rank-synchronized",
@@ -57,6 +59,9 @@
         "proxy/src/cloud-capture.js",
         "proxy/src/license-admin.js",
         "proxy/src/server.js",
+        "proxy/test/admin-side-actions.test.js",
+        "proxy/test/prediction-integrity.test.js",
+        "proxy/test/prediction-safety.test.js",
         "proxy/src/v105-formal-runtime.js",
         "proxy/src/v105-formal-strategy.js",
         "proxy/src/v105-v10-main-strategy.js",
@@ -69,7 +74,7 @@
         "frontend/src/lib/onlineLicenseClient.test.ts"
       ],
       "excludedPaths": [],
-      "sha256": "2d69e6659be217560b8725dcae5d1153e8960e9e6a21abe7139d904cbe0a6b6b"
+      "sha256": "d4a8d1597d6256649c3ef8310a6e7520684c74038313d068710e5c129c566ab4"
     }
   }
 }
