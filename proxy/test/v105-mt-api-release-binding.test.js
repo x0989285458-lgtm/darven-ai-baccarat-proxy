@@ -106,6 +106,8 @@ test('release scope freezes one existing session as API-only canonical capture',
   assert.equal(manifest.releaseBinding.rankSyncHydrationMigration.path, 'supabase/migrations/20260804110000_v105_shadow_v10_rank_sync_hydration_millisecond_order.sql')
   assert.equal(manifest.releaseBinding.captureOutboxHealthMigration.path, 'supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql')
   assert.equal(manifest.releaseBinding.captureOutboxHealthMigration.sha256, 'c539a3539768999373662680960814dc1d10918d1e096d9e8192c51363fd6c15')
+  assert.equal(manifest.releaseBinding.sameSessionOutboxBatchMigration.path, 'supabase/migrations/20260824010000_v105_capture_outbox_same_session_batch.sql')
+  assert.equal(manifest.releaseBinding.sameSessionOutboxBatchMigration.sha256, '76deb1c5113032afeab578dd2106abb55b07583690e4cb8e0e7de8ea0f5e1cfa')
   assert.equal(manifest.releaseBinding.shadowV6V8RetirementMigration.path, 'supabase/migrations/20260802020000_retire_v105_shadow_v6_v8.sql')
 })
 
@@ -121,6 +123,19 @@ test('release manifest freezes current implementation, migration, proxy, and wor
   assert.equal(result.shadowHydrationMigrationSha256, manifest.releaseBinding.shadowHydrationMigration.sha256)
   assert.equal(result.captureOutboxHealthMigrationSha256, manifest.releaseBinding.captureOutboxHealthMigration.sha256)
   assert.equal(result.zeroFinalHeartbeatMigrationSha256, manifest.releaseBinding.zeroFinalHeartbeatMigration.sha256)
+  assert.equal(result.sameSessionOutboxBatchMigrationSha256, manifest.releaseBinding.sameSessionOutboxBatchMigration.sha256)
+  const batchTampered = structuredClone(manifest)
+  batchTampered.releaseBinding.sameSessionOutboxBatchMigration.sha256 = '0'.repeat(64)
+  await assert.rejects(
+    verifyManifestDigests({ manifest: batchTampered, repoRoot, candidateIndexTree }),
+    /same_session_outbox_batch_migration_digest_mismatch/,
+  )
+  const duplicateOrder = structuredClone(manifest)
+  duplicateOrder.deploymentOrder.unshift('proxy-compatible')
+  await assert.rejects(
+    verifyManifestDigests({ manifest: duplicateOrder, repoRoot, candidateIndexTree }),
+    /same_session_outbox_batch_deployment_order_duplicate/,
+  )
   const zeroFinalTampered = structuredClone(manifest)
   zeroFinalTampered.releaseBinding.zeroFinalHeartbeatMigration.sha256 = '0'.repeat(64)
   await assert.rejects(

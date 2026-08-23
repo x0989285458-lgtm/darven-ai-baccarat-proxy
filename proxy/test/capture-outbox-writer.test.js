@@ -5,6 +5,7 @@ import { createSupabaseIngestionClient } from '../src/supabase-writer.js'
 
 const migrationUrl = new URL('../../supabase/migrations/20260729043000_v105_capture_settlement_outbox.sql', import.meta.url)
 const zeroFinalHeartbeatMigrationUrl = new URL('../../supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql', import.meta.url)
+const sameSessionBatchMigrationUrl = new URL('../../supabase/migrations/20260824010000_v105_capture_outbox_same_session_batch.sql', import.meta.url)
 
 const response = (payload) => ({
   ok: true,
@@ -42,6 +43,20 @@ test('migration fences leases, isolates poison rows, and serializes monotonic se
   assert.match(sql, /complete_v105_capture_settlement_outbox\(p_session_id text, p_sequence bigint, p_claim_token uuid, p_attempt integer\)/i)
   assert.match(sql, /status\s*=\s*'processing'[\s\S]*claim_token\s*=\s*p_claim_token[\s\S]*attempts\s*=\s*p_attempt/i)
   assert.match(sql, /set search_path = pg_catalog, public, extensions/i)
+})
+
+test('same-session batch migration claims one ordered prefix and atomically completes or fails exact leases', () => {
+  const sql = readFileSync(sameSessionBatchMigrationUrl, 'utf8')
+  assert.match(sql, /claim_v105_capture_settlement_outbox_batch\(p_limit integer default 10\)/i)
+  assert.match(sql, /head as materialized[\s\S]*for update skip locked[\s\S]*limit 1/i)
+  assert.match(sql, /join head on head\.session_id = outbox\.session_id/i)
+  assert.match(sql, /bool_or[\s\S]*blocked[\s\S]*where ordered\.blocked is false/i)
+  assert.match(sql, /complete_v105_capture_settlement_outbox_batch\(p_claims jsonb\)/i)
+  assert.match(sql, /fail_v105_capture_settlement_outbox_batch\(p_claims jsonb, p_error text\)/i)
+  assert.match(sql, /if affected <> expected then raise exception 'capture outbox stale batch completion rejected'/i)
+  assert.match(sql, /if affected <> expected then raise exception 'capture outbox stale batch failure rejected'/i)
+  assert.match(sql, /grant execute on function public\.claim_v105_capture_settlement_outbox_batch\(integer\) to service_role/i)
+  assert.doesNotMatch(sql, /\b(drop|truncate|delete\s+from)\b/i)
 })
 
 test('zero-Final heartbeat keeps an idempotency row but completes it without settlement work', () => {
@@ -84,12 +99,12 @@ test('writer persists one atomic capture envelope and verifies exact accepted ro
   assert.equal(requests[0].body.p_capture.status.last_round_at, new Date(7).toISOString())
 })
 
-test('claim, complete, and fail use the direct DB RPC path with unforgeable lease identity', async () => {
+test('claim, complete, fail, and their batch variants use direct DB RPCs with unforgeable lease identity', async () => {
   const queries = []
   const pool = {
     async query(query) {
       queries.push(query)
-      if (/claim_v105_capture_settlement_outbox/.test(query.text)) return { rows: [{ session_id: 's', sequence: 1, claim_token: 'token', attempts: 2 }] }
+      if (/claim_v105_capture_settlement_outbox_batch/.test(query.text)) return { rows: [{ session_id: 's', sequence: 1, claim_token: 'token', attempts: 2 }] }
       const functionName = /as\s+(\w+)/i.exec(query.text)?.[1]
       return { rows: [{ [functionName]: { ok: true } }] }
     },
@@ -101,10 +116,16 @@ test('claim, complete, and fail use the direct DB RPC path with unforgeable leas
   const claimed = await client.claimCaptureOutbox({ limit: 7 })
   await client.completeCaptureOutbox({ sessionId: 's', sequence: 1, claimToken: 'token', attempt: 2 })
   await client.failCaptureOutbox({ sessionId: 's', sequence: 2, claimToken: 'token-2', attempt: 3, error: 'safe error' })
+  const claims = [{ sessionId: 's', sequence: 3, claimToken: 'token-3', attempt: 1 }]
+  await client.completeCaptureOutboxBatch({ claims })
+  await client.failCaptureOutboxBatch({ claims, error: 'batch error' })
   assert.equal(claimed[0].claim_token, 'token')
-  assert.match(queries[0].text, /claim_v105_capture_settlement_outbox\(\$1::integer\)/)
+  assert.match(queries[0].text, /claim_v105_capture_settlement_outbox_batch\(\$1::integer\)/)
   assert.deepEqual(queries[1].values, ['s', 1, 'token', 2])
   assert.deepEqual(queries[2].values, ['s', 2, 'token-2', 3, 'safe error'])
+  const wireClaims = [{ session_id: 's', sequence: 3, claim_token: 'token-3', attempt: 1 }]
+  assert.deepEqual(queries[3].values, [wireClaims])
+  assert.deepEqual(queries[4].values, [wireClaims, 'batch error'])
 })
 
 test('batch rank-ledger hydration recovers missing current shoes before one exact reread', async () => {

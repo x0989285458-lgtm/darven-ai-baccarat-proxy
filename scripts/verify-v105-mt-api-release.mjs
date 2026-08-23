@@ -90,6 +90,12 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
     excludedPaths: [],
     sha256: binding.zeroFinalHeartbeatMigration?.sha256,
   }, 'zero_final_heartbeat_migration')
+  const sameSessionOutboxBatchMigration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, {
+    algorithm: binding.sameSessionOutboxBatchMigration?.algorithm,
+    paths: [binding.sameSessionOutboxBatchMigration?.path],
+    excludedPaths: [],
+    sha256: binding.sameSessionOutboxBatchMigration?.sha256,
+  }, 'same_session_outbox_batch_migration')
   const shadowHydrationMigration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, {
     algorithm: binding.shadowHydrationMigration?.algorithm,
     paths: [binding.shadowHydrationMigration?.path],
@@ -133,8 +139,16 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
     if (!exclusions.includes(required)) throw new Error(`implementation_tree_self_reference_not_excluded:${required}`)
   }
   const captureOutboxHealth = manifest?.database?.captureOutboxHealthMigration
-  const captureOutboxHealthIndex = manifest?.deploymentOrder?.indexOf('capture-outbox-health-active-only-migration') ?? -1
-  const proxyIndex = manifest?.deploymentOrder?.indexOf('proxy-compatible') ?? -1
+  const deployment = Array.isArray(manifest?.deploymentOrder) ? manifest.deploymentOrder : []
+  const batchStep = 'same-session-outbox-batch-migration'
+  const batchReadbackStep = 'same-session-outbox-batch-catalog-acl-readback'
+  if (deployment.filter((step) => step === batchStep).length !== 1
+    || deployment.filter((step) => step === batchReadbackStep).length !== 1
+    || deployment.filter((step) => step === 'proxy-compatible').length !== 1) {
+    throw new Error('same_session_outbox_batch_deployment_order_duplicate')
+  }
+  const captureOutboxHealthIndex = deployment.indexOf('capture-outbox-health-active-only-migration')
+  const proxyIndex = deployment.indexOf('proxy-compatible')
   if (captureOutboxHealth?.path !== binding.captureOutboxHealthMigration?.path
     || captureOutboxHealth?.rpc !== 'public.get_v105_capture_outbox_health()'
     || captureOutboxHealth?.completedHistoryExcluded !== true
@@ -142,6 +156,22 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
     || captureOutboxHealthIndex < 0 || proxyIndex <= captureOutboxHealthIndex
     || !binding.implementationTree.paths?.includes(captureOutboxHealth.path)) {
     throw new Error('capture_outbox_health_migration_contract_invalid')
+  }
+  const batchMigration = manifest?.database?.sameSessionOutboxBatchMigration
+  const batchIndex = deployment.indexOf(batchStep)
+  const batchReadbackIndex = deployment.indexOf(batchReadbackStep)
+  if (batchMigration?.path !== binding.sameSessionOutboxBatchMigration?.path
+    || batchMigration?.claimRpc !== 'public.claim_v105_capture_settlement_outbox_batch(integer)'
+    || batchMigration?.completeRpc !== 'public.complete_v105_capture_settlement_outbox_batch(jsonb)'
+    || batchMigration?.failRpc !== 'public.fail_v105_capture_settlement_outbox_batch(jsonb,text)'
+    || batchMigration?.batchLimit !== 10
+    || batchMigration?.sameSessionOrderedPrefix !== true
+    || batchMigration?.atomicLeaseMutation !== true
+    || batchMigration?.serviceRoleOnly !== true
+    || batchMigration?.catalogAclReadbackRequired !== true
+    || batchIndex < 0 || batchReadbackIndex <= batchIndex || proxyIndex <= batchReadbackIndex
+    || !binding.implementationTree.paths?.includes(batchMigration.path)) {
+    throw new Error('same_session_outbox_batch_migration_contract_invalid')
   }
   verifyTrustedEvidenceContract(binding)
   verifyV9ShadowRollbackContract(manifest, binding)
@@ -155,6 +185,7 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
     migrationSha256: migration.sha256,
     captureOutboxHealthMigrationSha256: captureOutboxHealthMigration.sha256,
     zeroFinalHeartbeatMigrationSha256: zeroFinalHeartbeatMigration.sha256,
+    sameSessionOutboxBatchMigrationSha256: sameSessionOutboxBatchMigration.sha256,
     shadowHydrationMigrationSha256: shadowHydrationMigration.sha256,
     shadowV10MigrationSha256: shadowV10Migration.sha256,
     shadowV10DbValidationMigrationSha256: shadowV10DbValidationMigration.sha256,

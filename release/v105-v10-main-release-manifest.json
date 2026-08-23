@@ -1,7 +1,7 @@
 {
-  "releaseName": "V105主預測V10穩定版17",
-  "releaseVersion": "v105-v10-main.17",
-  "gitTag": "v105-v10-main.17",
+  "releaseName": "V105主預測V10穩定版18",
+  "releaseVersion": "v105-v10-main.18",
+  "gitTag": "v105-v10-main.18",
   "applicationVersion": "1.0.62",
   "baseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
   "formalStrategyVersion": "v105",
@@ -28,7 +28,9 @@
     "workerBacklogDrainCollectsOncePerTick": true,
     "crossTableFormalSettlementConcurrency": 3,
     "crossIdentityRankLedgerConcurrency": 3,
-    "failedEnvelopeDrainsAllTableBranches": true
+    "failedEnvelopeDrainsAllTableBranches": true,
+    "sameSessionOutboxBatchLimit": 10,
+    "atomicOutboxBatchLeaseAck": true
   },
   "prediction": {
     "mainSource": "v105-shadow-v10-big-road-uncommon-structure-rank-synchronized",
@@ -55,6 +57,8 @@
     "verify-v105-sole-active",
     "apply-zero-final-heartbeat-outbox-migration",
     "verify-zero-final-heartbeat-outbox-migration",
+    "apply-same-session-outbox-batch-migration",
+    "verify-same-session-outbox-batch-migration",
     "deploy-exact-v105-v10-main-proxy",
     "public-readiness-v105",
     "build-exact-v105-v10-main-worker-image",
@@ -89,20 +93,28 @@
         "proxy/src/v105-shadow-v10-structure.js",
         "proxy/src/v105-shadow-v9-contract.js",
         "proxy/test/cloud-capture.test.js",
+        "proxy/test/capture-outbox-ack.test.js",
+        "proxy/test/capture-outbox-writer.test.js",
         "proxy/test/v105-formal-ingest-backpressure-contract.test.js",
         "frontend/package.json",
         "frontend/package-lock.json",
         "frontend/src/lib/onlineLicenseClient.ts",
         "frontend/src/lib/onlineLicenseClient.test.ts",
-        "supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql"
+        "supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql",
+        "supabase/migrations/20260824010000_v105_capture_outbox_same_session_batch.sql"
       ],
       "excludedPaths": [],
-      "sha256": "170129cca7daffda146aedfec40677e358137b83a5155bf6d753189161507318"
+      "sha256": "a7b6c962ee8823c7daf134831c2ea505645bf07edd010173dd06d0ab4f472738"
     },
     "zeroFinalHeartbeatMigration": {
       "algorithm": "sha256",
       "path": "supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql",
       "sha256": "52704becb9c645a9c3fa0910bf79ecead580fb53bfeacd9964056f9f4488b096"
+    },
+    "sameSessionOutboxBatchMigration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260824010000_v105_capture_outbox_same_session_batch.sql",
+      "sha256": "76deb1c5113032afeab578dd2106abb55b07583690e4cb8e0e7de8ea0f5e1cfa"
     },
     "workerBuildInput": {
       "algorithm": "sha256",

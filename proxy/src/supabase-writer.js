@@ -2213,9 +2213,17 @@ export function createSupabaseIngestionClient({
           text: 'select public.complete_v105_capture_settlement_outbox($1::text, $2::bigint, $3::uuid, $4::integer) as complete_v105_capture_settlement_outbox',
           values: [body?.p_session_id, body?.p_sequence, body?.p_claim_token, body?.p_attempt],
         },
+        'rpc/complete_v105_capture_settlement_outbox_batch': {
+          text: 'select public.complete_v105_capture_settlement_outbox_batch($1::jsonb) as complete_v105_capture_settlement_outbox_batch',
+          values: [body?.p_claims],
+        },
         'rpc/fail_v105_capture_settlement_outbox': {
           text: 'select public.fail_v105_capture_settlement_outbox($1::text, $2::bigint, $3::uuid, $4::integer, $5::text) as fail_v105_capture_settlement_outbox',
           values: [body?.p_session_id, body?.p_sequence, body?.p_claim_token, body?.p_attempt, body?.p_error],
+        },
+        'rpc/fail_v105_capture_settlement_outbox_batch': {
+          text: 'select public.fail_v105_capture_settlement_outbox_batch($1::jsonb, $2::text) as fail_v105_capture_settlement_outbox_batch',
+          values: [body?.p_claims, body?.p_error],
         },
       }[path]
       if (directRpc) {
@@ -3449,13 +3457,13 @@ export function createSupabaseIngestionClient({
       const normalizedLimit = Math.max(1, Math.min(100, Number(limit) || 10))
       if (priorityStrategyDb && typeof priorityStrategyDb.query === 'function') {
         const result = await priorityStrategyDb.query({
-          text: 'select * from public.claim_v105_capture_settlement_outbox($1::integer)',
+          text: 'select * from public.claim_v105_capture_settlement_outbox_batch($1::integer)',
           values: [normalizedLimit],
         })
         if (!Array.isArray(result?.rows)) throw new Error('Direct DB capture outbox claim returned invalid rows')
         return result.rows
       }
-      return postRpcRows('claim_v105_capture_settlement_outbox', {
+      return postRpcRows('claim_v105_capture_settlement_outbox_batch', {
         p_limit: normalizedLimit,
       }, { requestTimeoutMs: durableWriteTimeoutMs })
     },
@@ -3465,10 +3473,31 @@ export function createSupabaseIngestionClient({
         p_claim_token: String(claimToken ?? ''), p_attempt: Number(attempt),
       }, undefined, { requireObject: true, priority: true })
     },
+    async completeCaptureOutboxBatch({ claims } = {}) {
+      return postDurableRest('rpc/complete_v105_capture_settlement_outbox_batch', {
+        p_claims: (Array.isArray(claims) ? claims : []).map((claim) => ({
+          session_id: String(claim?.sessionId ?? ''),
+          sequence: Number(claim?.sequence),
+          claim_token: String(claim?.claimToken ?? ''),
+          attempt: Number(claim?.attempt),
+        })),
+      }, undefined, { requireObject: true, priority: true })
+    },
     async failCaptureOutbox({ sessionId, sequence, claimToken, attempt, error } = {}) {
       return postDurableRest('rpc/fail_v105_capture_settlement_outbox', {
         p_session_id: String(sessionId ?? ''), p_sequence: Number(sequence),
         p_claim_token: String(claimToken ?? ''), p_attempt: Number(attempt), p_error: redactSecrets(error),
+      }, undefined, { requireObject: true, priority: true })
+    },
+    async failCaptureOutboxBatch({ claims, error } = {}) {
+      return postDurableRest('rpc/fail_v105_capture_settlement_outbox_batch', {
+        p_claims: (Array.isArray(claims) ? claims : []).map((claim) => ({
+          session_id: String(claim?.sessionId ?? ''),
+          sequence: Number(claim?.sequence),
+          claim_token: String(claim?.claimToken ?? ''),
+          attempt: Number(claim?.attempt),
+        })),
+        p_error: redactSecrets(error),
       }, undefined, { requireObject: true, priority: true })
     },
     async getCaptureOutboxHealth() {

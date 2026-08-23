@@ -89,6 +89,8 @@
     "database-additive",
     "database-catalog-acl-readback",
     "capture-outbox-health-active-only-migration",
+    "same-session-outbox-batch-migration",
+    "same-session-outbox-batch-catalog-acl-readback",
     "proxy-compatible",
     "v9-isolated-child-credential-fence-readback",
     "v9-shadow-enable-after-proxy-readback",
@@ -124,6 +126,17 @@
       "rpc": "public.get_v105_capture_outbox_health()",
       "completedHistoryExcluded": true,
       "serviceRoleOnly": true
+    },
+    "sameSessionOutboxBatchMigration": {
+      "path": "supabase/migrations/20260824010000_v105_capture_outbox_same_session_batch.sql",
+      "claimRpc": "public.claim_v105_capture_settlement_outbox_batch(integer)",
+      "completeRpc": "public.complete_v105_capture_settlement_outbox_batch(jsonb)",
+      "failRpc": "public.fail_v105_capture_settlement_outbox_batch(jsonb,text)",
+      "batchLimit": 10,
+      "sameSessionOrderedPrefix": true,
+      "atomicLeaseMutation": true,
+      "serviceRoleOnly": true,
+      "catalogAclReadbackRequired": true
     },
     "shadowV6V8RetirementMigration": {
       "path": "supabase/migrations/20260802020000_retire_v105_shadow_v6_v8.sql",
@@ -188,6 +201,7 @@
         "supabase/migrations/20260804110000_v105_shadow_v10_rank_sync_hydration_millisecond_order.sql",
         "supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql",
         "supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql",
+        "supabase/migrations/20260824010000_v105_capture_outbox_same_session_batch.sql",
         "scripts/verify-v105-mt-api-release.mjs",
         "scripts/trusted-registry-readback-adapter.mjs",
         "release/v105-shadow-v9-resume-isolated-release-manifest.json",
@@ -199,7 +213,7 @@
         "release/v105-mt-api-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "3707a6f3a6548c161e9c1d00b1877c14880534d660eef0146a2d668e79ea20ae"
+      "sha256": "6f6a2ca81b3aee45b0713ae45f3f2aa24b26742b51d30d683a527a138024ca65"
     },
     "migration": {
       "algorithm": "sha256",
@@ -216,6 +230,11 @@
       "path": "supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql",
       "sha256": "52704becb9c645a9c3fa0910bf79ecead580fb53bfeacd9964056f9f4488b096"
     },
+    "sameSessionOutboxBatchMigration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260824010000_v105_capture_outbox_same_session_batch.sql",
+      "sha256": "76deb1c5113032afeab578dd2106abb55b07583690e4cb8e0e7de8ea0f5e1cfa"
+    },
     "proxyBuildInput": {
       "algorithm": "sha256",
       "paths": [
@@ -226,7 +245,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "523f328564d9751540baff5dce1ef1f7d4252cee5e33e9007f6b084ae858bf1c"
+      "sha256": "8572506685a319d931018b711750268315869ba88155ebf4650e3884f299b73d"
     },
     "workerBuildInput": {
       "algorithm": "sha256",

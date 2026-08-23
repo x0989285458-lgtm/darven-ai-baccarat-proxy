@@ -412,6 +412,8 @@ test('release manifest freezes DB-first cutover through fenced finalize and brow
     'database-additive',
     'database-catalog-acl-readback',
     'capture-outbox-health-active-only-migration',
+    'same-session-outbox-batch-migration',
+    'same-session-outbox-batch-catalog-acl-readback',
     'proxy-compatible',
     'v9-isolated-child-credential-fence-readback',
     'v9-shadow-enable-after-proxy-readback',

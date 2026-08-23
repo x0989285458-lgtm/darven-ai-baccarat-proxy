@@ -92,6 +92,90 @@ test('durable raw capture and outbox ACK do not wait for formal settlement', asy
   }
 })
 
+test('same-session outbox batch merges ordered envelopes and completes every exact lease atomically', async () => {
+  let claimed = false
+  const formalInputs = []
+  const completedBatches = []
+  const makeFinal = (tableId, round) => ({
+    tableId, shoe: 88, round, winner: 'banker',
+    rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9],
+    sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
+  })
+  const rows = [
+    claimedRow(21, { payload: { work: { ...envelope().snapshot, rounds: [makeFinal('BAG01', 21)] } } }),
+    claimedRow(22, { payload: { work: { ...envelope().snapshot, rounds: [makeFinal('BAG02', 22)] } } }),
+    claimedRow(23, { payload: { work: { ...envelope().snapshot, rounds: [makeFinal('BAG01', 23)] } } }),
+  ]
+  const app = createApp({
+    autoConnect: false,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox({ limit }) {
+        assert.equal(limit, 10)
+        if (claimed) return []
+        claimed = true
+        return rows
+      },
+      async completeCaptureOutboxBatch({ claims }) {
+        completedBatches.push(claims)
+        return { completed: true, count: claims.length }
+      },
+      async failCaptureOutboxBatch() { assert.fail('successful batch must not fail') },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot(input) {
+        formalInputs.push(structuredClone(input))
+        return { tables: input.tables }
+      },
+    },
+  })
+
+  await app.drainCaptureOutbox()
+  await app.waitForCaptureOutboxIdle()
+
+  assert.equal(formalInputs.length, 1)
+  assert.deepEqual(formalInputs[0].rounds.map((round) => `${round.tableId}:${round.round}`), ['BAG01:21', 'BAG02:22', 'BAG01:23'])
+  assert.deepEqual(completedBatches, [[
+    { sessionId: 'outbox-worker', sequence: 21, claimToken: 'lease-21', attempt: 1 },
+    { sessionId: 'outbox-worker', sequence: 22, claimToken: 'lease-22', attempt: 1 },
+    { sessionId: 'outbox-worker', sequence: 23, claimToken: 'lease-23', attempt: 1 },
+  ]])
+})
+
+test('same-session outbox batch failure drains merged work then fails every exact lease atomically', async () => {
+  let claimed = false
+  const failedBatches = []
+  const rows = [21, 22].map((sequence) => claimedRow(sequence, {
+    payload: { work: { ...envelope().snapshot, rounds: [{ ...envelope().snapshot.rounds[0], round: sequence }] } },
+  }))
+  const app = createApp({
+    autoConnect: false,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return rows
+      },
+      async completeCaptureOutboxBatch() { assert.fail('failed batch must not complete') },
+      async failCaptureOutboxBatch(payload) { failedBatches.push(payload); return { failed: true, count: payload.claims.length } },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot() { throw new Error('formal batch failure') },
+    },
+  })
+
+  const result = await app.drainCaptureOutbox()
+  await app.waitForCaptureOutboxIdle()
+
+  assert.deepEqual(result, { processed: 0, failed: 2 })
+  assert.equal(failedBatches.length, 1)
+  assert.match(failedBatches[0].error, /formal batch failure/)
+  assert.deepEqual(failedBatches[0].claims.map((claim) => claim.sequence), [21, 22])
+})
+
 test('zero-Final heartbeat completes durable outbox without entering formal prediction work', async () => {
   let claimed = false
   let formalStarted = false
