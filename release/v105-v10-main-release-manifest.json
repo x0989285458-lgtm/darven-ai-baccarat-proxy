@@ -1,7 +1,7 @@
 {
-  "releaseName": "V105主預測V10升級版8",
-  "releaseVersion": "v105-v10-main.8",
-  "gitTag": "v105-v10-main.8",
+  "releaseName": "V105主預測V10升級版9",
+  "releaseVersion": "v105-v10-main.9",
+  "gitTag": "v105-v10-main.9",
   "applicationVersion": "1.0.62",
   "baseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
   "formalStrategyVersion": "v105",
@@ -19,6 +19,7 @@
     "transientLoginRetryCount": 1,
     "browserNetworkLoginRetry": true,
     "singleConnectionLicensePool": true,
+    "zeroFinalHeartbeatOutboxFastComplete": true,
     "superAdminSingleQueryLogin": true,
     "boundedCurrentDayAnalytics": true,
     "historicalJsonAnalyticsRemoved": true
@@ -76,7 +77,7 @@
         "frontend/src/lib/onlineLicenseClient.test.ts"
       ],
       "excludedPaths": [],
-      "sha256": "9f5c4b2e62fd00bf2cd085d4f4e89d036eccdfe1c32d8e3ae006b4e3acaa614a"
+      "sha256": "20f4049358e0de6d6150bb06c4c168290e1f379df6d148426ce09f47c8dd2120"
     }
   }
 }

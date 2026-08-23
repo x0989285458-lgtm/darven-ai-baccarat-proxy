@@ -1,10 +1,10 @@
 {
-  "releaseVersion": "v105-v10-main.8",
+  "releaseVersion": "v105-v10-main.9",
   "formalStrategyVersion": "v105",
   "status": "candidate-tests-pass-production-pending",
-  "scope": "V105產品身份不變；V10主預測、零Final ACK與Final Rank Ledger契約不變；後台分析只讀本日權威Scalar Final；登入對無CORS的瞬時Gateway網路失敗安全重試一次，授權查詢固定單一DB連線避免雙連線其中一路長時間失效",
+  "scope": "V105產品身份不變；V10主預測、Final Rank Ledger與精確ACK契約不變；後台分析只讀本日權威Scalar Final；登入支援無CORS瞬時Gateway安全重試並固定單一授權DB連線；零Final心跳保留冪等序列證據但直接完成Outbox，不再產生無效結算工作",
   "tests": {
-    "proxyFullSerial": "965/965 PASS",
+    "proxyFullSerial": "966/966 PASS",
     "frontendFull": "159/159 PASS",
     "frontendBuild": "PASS",
     "focusedV105V10": "13/13 PASS",

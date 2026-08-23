@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { createSupabaseIngestionClient } from '../src/supabase-writer.js'
 
 const migrationUrl = new URL('../../supabase/migrations/20260729043000_v105_capture_settlement_outbox.sql', import.meta.url)
+const zeroFinalHeartbeatMigrationUrl = new URL('../../supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql', import.meta.url)
 
 const response = (payload) => ({
   ok: true,
@@ -41,6 +42,15 @@ test('migration fences leases, isolates poison rows, and serializes monotonic se
   assert.match(sql, /complete_v105_capture_settlement_outbox\(p_session_id text, p_sequence bigint, p_claim_token uuid, p_attempt integer\)/i)
   assert.match(sql, /status\s*=\s*'processing'[\s\S]*claim_token\s*=\s*p_claim_token[\s\S]*attempts\s*=\s*p_attempt/i)
   assert.match(sql, /set search_path = pg_catalog, public, extensions/i)
+})
+
+test('zero-Final heartbeat keeps an idempotency row but completes it without settlement work', () => {
+  const sql = readFileSync(zeroFinalHeartbeatMigrationUrl, 'utf8')
+  assert.match(sql, /jsonb_array_length\(capture_rounds\)\s*=\s*0[\s\S]*'completed'/i)
+  assert.match(sql, /insert into public\.v105_capture_settlement_outbox[\s\S]*status[\s\S]*processed_at/i)
+  assert.match(sql, /create or replace function public\.persist_v105_capture_envelope\(p_capture jsonb\)/i)
+  assert.match(sql, /grant execute on function public\.persist_v105_capture_envelope\(jsonb\) to service_role/i)
+  assert.doesNotMatch(sql, /\b(drop|truncate|delete\s+from)\b/i)
 })
 
 test('writer persists one atomic capture envelope and verifies exact accepted round keys', async () => {
