@@ -1,7 +1,7 @@
 {
-  "releaseName": "V105主預測V10穩定版14",
-  "releaseVersion": "v105-v10-main.14",
-  "gitTag": "v105-v10-main.14",
+  "releaseName": "V105主預測V10穩定版15",
+  "releaseVersion": "v105-v10-main.15",
+  "gitTag": "v105-v10-main.15",
   "applicationVersion": "1.0.62",
   "baseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
   "formalStrategyVersion": "v105",
@@ -54,7 +54,10 @@
     "verify-zero-final-heartbeat-outbox-migration",
     "deploy-exact-v105-v10-main-proxy",
     "public-readiness-v105",
-    "resume-existing-v105-worker",
+    "build-exact-v105-v10-main-worker-image",
+    "verify-exact-worker-image-commit-digest",
+    "deploy-exact-v105-v10-main-worker",
+    "verify-worker-queue-cursor-journal-preserved",
     "ten-table-final-ack-v10-prediction-e2e",
     "member-session-frontend-e2e"
   ],
@@ -89,12 +92,25 @@
         "supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql"
       ],
       "excludedPaths": [],
-      "sha256": "61babf000cc08c07c629dbdc0e5b37f731ca6e59f363e5006f48ea2ab1b4a7e1"
+      "sha256": "93eb7971ad9946bf144e03f02215771f8a797d8a6f19483f1719510360c07c57"
     },
     "zeroFinalHeartbeatMigration": {
       "algorithm": "sha256",
       "path": "supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql",
       "sha256": "52704becb9c645a9c3fa0910bf79ecead580fb53bfeacd9964056f9f4488b096"
+    },
+    "workerBuildInput": {
+      "algorithm": "sha256",
+      "paths": [
+        "cloud-browser-worker/.dockerignore",
+        "cloud-browser-worker/Dockerfile",
+        "cloud-browser-worker/package.json",
+        "cloud-browser-worker/package-lock.json",
+        "cloud-browser-worker/src",
+        "shared"
+      ],
+      "excludedPaths": [],
+      "sha256": "91c87399ebb4c8bb76506951fac4e082ea3e7ae52dd17a65f8ea75fa20f2566c"
     }
   }
 }

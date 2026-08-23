@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 const manifest = JSON.parse(readFileSync(new URL('../../release/v105-v10-main-release-manifest.json', import.meta.url)))
 
 test('V105 V10 main release changes prediction main only', () => {
-  assert.equal(manifest.releaseVersion, 'v105-v10-main.14')
+  assert.equal(manifest.releaseVersion, 'v105-v10-main.15')
   assert.equal(manifest.formalStrategyVersion, 'v105')
   assert.deepEqual(manifest.releaseScope, {
     predictionMainOnly: true,
@@ -42,6 +42,12 @@ test('V105 V10 main release binding covers the exact prediction implementation a
   }
   assert.equal(manifest.releaseBinding.zeroFinalHeartbeatMigration.path, 'supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql')
   assert.match(manifest.releaseBinding.zeroFinalHeartbeatMigration.sha256, /^[a-f0-9]{64}$/)
+  assert.deepEqual(manifest.releaseBinding.workerBuildInput.paths, [
+    'cloud-browser-worker/.dockerignore', 'cloud-browser-worker/Dockerfile',
+    'cloud-browser-worker/package.json', 'cloud-browser-worker/package-lock.json',
+    'cloud-browser-worker/src', 'shared',
+  ])
+  assert.match(manifest.releaseBinding.workerBuildInput.sha256, /^[a-f0-9]{64}$/)
 })
 
 test('V105 restore uses the immutable reviewed V106 terminalizer and rollback artifacts', () => {
@@ -56,5 +62,13 @@ test('V105 restore uses the immutable reviewed V106 terminalizer and rollback ar
     'run-bound-v106-to-v105-rollback', 'verify-v105-sole-active',
     'apply-zero-final-heartbeat-outbox-migration', 'verify-zero-final-heartbeat-outbox-migration',
     'deploy-exact-v105-v10-main-proxy',
+  ])
+  assert.deepEqual(manifest.deploymentOrder.slice(8, 14), [
+    'public-readiness-v105',
+    'build-exact-v105-v10-main-worker-image',
+    'verify-exact-worker-image-commit-digest',
+    'deploy-exact-v105-v10-main-worker',
+    'verify-worker-queue-cursor-journal-preserved',
+    'ten-table-final-ack-v10-prediction-e2e',
   ])
 })
