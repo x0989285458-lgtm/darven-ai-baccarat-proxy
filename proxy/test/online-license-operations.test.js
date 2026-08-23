@@ -20,6 +20,23 @@ test('total manager can suspend extend and delete a license, non-total manager i
   assert.ok(queries.some((q) => q.sql.includes("set status = 'expired'")))
 })
 
+test('DV1788 login bypasses the unrelated maintenance-settings query and uses one authoritative manager lookup', async () => {
+  const queries = []
+  const pool = {
+    async query(sql) {
+      queries.push(sql)
+      if (sql.includes('online_app_settings')) throw new Error('maintenance read must not be on the super-admin login path')
+      if (sql.includes('manager_accounts')) return { rows: [{ id: 'manager-1', username: 'dv1788', role: 'total', is_active: true }] }
+      return { rows: [] }
+    },
+  }
+  const client = createLicenseAdminClient({ pool })
+  const result = await client.validateAgentLogin({ agentAccount: 'DV1788' })
+  assert.equal(result.ok, true)
+  assert.equal(result.account.role, 'total')
+  assert.equal(queries.length, 1)
+})
+
 test('status hides deleted licenses from admin list', async () => {
   const pool = { async query(sql, params = []) { return fakeResult(sql, params) } }
   const client = createLicenseAdminClient({ pool })

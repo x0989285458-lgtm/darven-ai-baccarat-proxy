@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 const manifest = JSON.parse(readFileSync(new URL('../../release/v105-v10-main-release-manifest.json', import.meta.url)))
 
 test('V105 V10 main release changes prediction main only', () => {
-  assert.equal(manifest.releaseVersion, 'v105-v10-main.4')
+  assert.equal(manifest.releaseVersion, 'v105-v10-main.5')
   assert.equal(manifest.formalStrategyVersion, 'v105')
   assert.deepEqual(manifest.releaseScope, {
     predictionMainOnly: true,
@@ -19,6 +19,8 @@ test('V105 V10 main release changes prediction main only', () => {
     zeroFinalHeartbeatFastAck: true,
     finalIdentityRankHydrationOnly: true,
     boundedLoginTimeoutMs: 30000,
+    transientLoginRetryCount: 1,
+    superAdminSingleQueryLogin: true,
   })
   assert.equal(manifest.prediction.mainSource, 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized')
   assert.equal(manifest.prediction.beadPlateUsed, false)
@@ -27,7 +29,7 @@ test('V105 V10 main release changes prediction main only', () => {
 
 test('V105 V10 main release binding covers the exact prediction implementation', () => {
   assert.match(manifest.releaseBinding.implementationTree.sha256, /^[a-f0-9]{64}$/)
-  for (const required of ['proxy/src/cloud-capture.js', 'proxy/src/server.js', 'proxy/src/v105-formal-runtime.js', 'proxy/src/v105-v10-main-strategy.js', 'proxy/src/v105-shadow-v10-contract.js', 'proxy/src/v105-shadow-v10-structure.js', 'frontend/src/lib/onlineLicenseClient.ts']) {
+  for (const required of ['proxy/src/cloud-capture.js', 'proxy/src/license-admin.js', 'proxy/src/server.js', 'proxy/src/v105-formal-runtime.js', 'proxy/src/v105-v10-main-strategy.js', 'proxy/src/v105-shadow-v10-contract.js', 'proxy/src/v105-shadow-v10-structure.js', 'frontend/src/lib/onlineLicenseClient.ts', 'frontend/src/lib/onlineLicenseClient.test.ts']) {
     assert.ok(manifest.releaseBinding.implementationTree.paths.includes(required), required)
   }
 })

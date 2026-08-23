@@ -307,7 +307,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null, pool
 
   async function validateAgentLogin({ agentAccount } = {}) {
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
-    if (await isMaintenanceMode() && !isSuperAdmin(agentAccount)) return { ok: false, maintenanceMode: true, error: '系統維護中，僅超級管理員可登入' }
+    if (!isSuperAdmin(agentAccount) && await isMaintenanceMode()) return { ok: false, maintenanceMode: true, error: '系統維護中，僅超級管理員可登入' }
     if (!agentAccount) throw new Error('Agent account is required')
     const managerResult = await db.query("select id, username, role, is_active, created_at from public.manager_accounts where lower(username) = lower($1) and lower(username) = 'dv1788' and is_active = true limit 1", [agentAccount])
     const manager = managerResult.rows[0] ?? null
