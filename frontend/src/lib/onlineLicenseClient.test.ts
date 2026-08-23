@@ -42,6 +42,15 @@ describe('onlineLicenseClient ', () => {
     }
   })
 
+  it('retries one browser-network failure when a gateway 502 has no CORS response headers', async () => {
+    const fetchImpl = vi.fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, adminSessionToken: 'admin-session' }) }) as unknown as typeof fetch
+
+    await expect(agentLogin({ agentAccount: 'DV1788' }, fetchImpl)).resolves.toMatchObject({ ok: true })
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
   it('retries one transient gateway failure for idempotent member and agent login only', async () => {
     const responses = [
       { ok: false, status: 502, json: () => Promise.resolve({ error: 'gateway' }) },

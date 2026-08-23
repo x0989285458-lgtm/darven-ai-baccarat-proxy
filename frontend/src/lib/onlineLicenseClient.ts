@@ -51,7 +51,10 @@ async function postLoginJson(path: string, payload: unknown, fetchImpl: typeof f
     return await postJson(path, payload, fetchImpl, timeoutMs)
   } catch (error) {
     const status = Number((error as Error & { status?: number })?.status)
-    if (![502, 503, 504].includes(status)) throw error
+    const message = String((error as Error)?.message ?? '')
+    const transientGateway = [502, 503, 504].includes(status)
+    const browserNetworkFailure = !Number.isFinite(status) && message !== '連線逾時，請稍後再試'
+    if (!transientGateway && !browserNetworkFailure) throw error
     return postJson(path, payload, fetchImpl, timeoutMs)
   }
 }

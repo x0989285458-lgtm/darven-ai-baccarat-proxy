@@ -1,11 +1,11 @@
 {
-  "releaseVersion": "v105-v10-main.6",
+  "releaseVersion": "v105-v10-main.7",
   "formalStrategyVersion": "v105",
   "status": "candidate-tests-pass-production-pending",
-  "scope": "V105產品身份不變；V10主預測、零Final ACK與Final Rank Ledger契約不變；後台分析只讀本日權威Scalar Final並由本日10桌聚合主副項，移除7日大型JSON掃描；登入可靠性保留",
+  "scope": "V105產品身份不變；V10主預測、零Final ACK與Final Rank Ledger契約不變；後台分析只讀本日權威Scalar Final；登入對無CORS的瞬時Gateway網路失敗安全重試一次",
   "tests": {
     "proxyFullSerial": "965/965 PASS",
-    "frontendFull": "158/158 PASS",
+    "frontendFull": "159/159 PASS",
     "frontendBuild": "PASS",
     "focusedV105V10": "13/13 PASS",
     "v10StrategyAndStructure": "20/20 PASS"
