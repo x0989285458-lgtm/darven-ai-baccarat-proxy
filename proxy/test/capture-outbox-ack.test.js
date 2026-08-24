@@ -94,6 +94,38 @@ test('durable raw capture and outbox ACK do not wait for formal settlement', asy
   }
 })
 
+for (const disabledValue of [false, 'false']) {
+  test(`consumer-disabled ingest preserves durable raw ACK without claiming formal outbox (${JSON.stringify(disabledValue)})`, async () => {
+    let claimCalls = 0
+    const app = createApp({
+      autoConnect: false,
+      captureOutboxConsumerEnabled: disabledValue,
+      outboxCoalesceMs: 0,
+      ingestKey: 'worker-key',
+      now: () => 1_000_000,
+      supabaseClient: {
+        configured: true,
+        async persistCaptureEnvelope(value) { return { acceptedRoundKeys: value.roundKeys } },
+        async claimCaptureOutbox() { claimCalls += 1; return [] },
+        async writeCloudCaptureStatus() {},
+        async writeCloudTableSnapshot() {},
+        async writeCloudRoundEvent() {},
+      },
+    })
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cloud-ingest/snapshot',
+      headers: { 'x-worker-key': 'worker-key' },
+      body: JSON.stringify(envelope()),
+    })
+    assert.equal(response.statusCode, 200)
+    assert.deepEqual(JSON.parse(response.body).acceptedRoundKeys, ['BAG01:88:21'])
+    await delay(20)
+    assert.equal(claimCalls, 0)
+  })
+}
+
 test('ACK scheduled during an in-flight stale health read always triggers a fresh outbox drain', async () => {
   let releaseFirstHealth
   let signalFirstHealthStarted
