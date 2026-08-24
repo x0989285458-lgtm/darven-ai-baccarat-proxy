@@ -1,5 +1,5 @@
 {
-  "releaseVersion": "v105-v10-main.19",
+  "releaseVersion": "v105-v10-main.20",
   "formalStrategyVersion": "v105",
   "status": "candidate-tests-pass-production-pending",
   "scope": "V105產品與V10主預測身份不變；Raw ACK保留一條Pool checkout；Outbox歷史Final只結算不覆蓋Live；Worker每Tick只收一次Snapshot，使慢ACK期間的FIFO連續Drain能真正收斂",

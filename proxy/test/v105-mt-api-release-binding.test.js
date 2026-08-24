@@ -4,7 +4,7 @@ import path from 'node:path'
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
-import manifest from '../../release/v105-v10-main19-source-fence-release-manifest.json' with { type: 'json' }
+import manifest from '../../release/v105-v10-main20-source-fence-release-manifest.json' with { type: 'json' }
 import {
   computePathSetDigest,
   verifyManifestDigests,
@@ -13,8 +13,8 @@ import {
 import * as releaseVerifier from '../../scripts/verify-v105-mt-api-release.mjs'
 
 test('release scope freezes one existing session as API-only canonical capture', () => {
-  assert.equal(manifest.releaseVersion, 'v105-v10-main.19')
-  assert.equal(manifest.gitTag, 'v105-v10-main.19')
+  assert.equal(manifest.releaseVersion, 'v105-v10-main.20')
+  assert.equal(manifest.gitTag, 'v105-v10-main.20')
   assert.equal(manifest.applicationVersion, '1.0.61')
   assert.deepEqual(manifest.releaseScope, {
     mode: 'single-session-api-primary',
@@ -225,6 +225,9 @@ test('Reviewer P1 attestation exact binding rejects old tag and wrong tree while
   const attestation = {
     commit: '1'.repeat(40), tree: candidateIndexTree, tagObject: 'a'.repeat(40), tag: manifest.gitTag,
     implementationTreeSha256: '3'.repeat(64), migrationSha256: '4'.repeat(64),
+    captureOutboxHealthMigrationSha256: '9'.repeat(64),
+    zeroFinalHeartbeatMigrationSha256: '8'.repeat(64),
+    sameSessionOutboxBatchMigrationSha256: '7'.repeat(64),
     shadowHydrationMigrationSha256: 'd'.repeat(64),
     shadowV10MigrationSha256: 'e'.repeat(64), shadowV10DbValidationMigrationSha256: 'c'.repeat(64),
     rankLedgerRecoveryMigrationSha256: 'b'.repeat(64),
@@ -238,6 +241,9 @@ test('Reviewer P1 attestation exact binding rejects old tag and wrong tree while
   }
   const expected = {
     implementationTreeSha256: '3'.repeat(64), migrationSha256: '4'.repeat(64),
+    captureOutboxHealthMigrationSha256: '9'.repeat(64),
+    zeroFinalHeartbeatMigrationSha256: '8'.repeat(64),
+    sameSessionOutboxBatchMigrationSha256: '7'.repeat(64),
     shadowHydrationMigrationSha256: 'd'.repeat(64),
     shadowV10MigrationSha256: 'e'.repeat(64), shadowV10DbValidationMigrationSha256: 'c'.repeat(64),
     rankLedgerRecoveryMigrationSha256: 'b'.repeat(64),
@@ -263,6 +269,10 @@ test('Reviewer P1 attestation exact binding rejects old tag and wrong tree while
   }), /immutable_git_attestation_readback_mismatch/)
   assert.throws(() => verifyExternalReleaseAttestation({ ...attestation, tag: 'v105-mt-api-primary.0' }, expected), /attestation_tag_mismatch/)
   assert.throws(() => verifyExternalReleaseAttestation({ ...attestation, tree: '2'.repeat(40) }, expected), /attestation_tree_mismatch/)
+  assert.throws(() => verifyExternalReleaseAttestation({ ...attestation, sameSessionOutboxBatchMigrationSha256: '0'.repeat(64) }, expected), /attestation_sameSessionOutboxBatchMigrationSha256_mismatch/)
+  const missingBatchDigest = { ...attestation }
+  delete missingBatchDigest.sameSessionOutboxBatchMigrationSha256
+  assert.throws(() => verifyExternalReleaseAttestation(missingBatchDigest, expected), /attestation_sameSessionOutboxBatchMigrationSha256_mismatch/)
   assert.equal(verifyExternalReleaseAttestation({
     ...attestation,
     images: { ...attestation.images, worker: { ...attestation.images.worker, readbackDigest: `sha256:${'9'.repeat(64)}` } },
@@ -368,6 +378,9 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
   const external = {
     commit, tree, tagObject: '7'.repeat(40), tag: manifest.gitTag,
     implementationTreeSha256: '8'.repeat(64), migrationSha256: '9'.repeat(64),
+    captureOutboxHealthMigrationSha256: '1'.repeat(64),
+    zeroFinalHeartbeatMigrationSha256: '2'.repeat(64),
+    sameSessionOutboxBatchMigrationSha256: '3'.repeat(64),
     shadowHydrationMigrationSha256: 'd'.repeat(64),
     shadowV10MigrationSha256: 'e'.repeat(64), shadowV10DbValidationMigrationSha256: 'c'.repeat(64),
     rankLedgerRecoveryMigrationSha256: 'b'.repeat(64),
@@ -382,6 +395,9 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
   assert.equal(verifyExternalReleaseAttestation(external, {
     gitTag: manifest.gitTag, candidateIndexTree: tree,
     implementationTreeSha256: external.implementationTreeSha256, migrationSha256: external.migrationSha256,
+    captureOutboxHealthMigrationSha256: external.captureOutboxHealthMigrationSha256,
+    zeroFinalHeartbeatMigrationSha256: external.zeroFinalHeartbeatMigrationSha256,
+    sameSessionOutboxBatchMigrationSha256: external.sameSessionOutboxBatchMigrationSha256,
     shadowHydrationMigrationSha256: external.shadowHydrationMigrationSha256,
     shadowV10MigrationSha256: external.shadowV10MigrationSha256,
     shadowV10DbValidationMigrationSha256: external.shadowV10DbValidationMigrationSha256,

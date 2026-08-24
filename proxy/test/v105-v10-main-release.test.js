@@ -5,10 +5,10 @@ import { readFileSync } from 'node:fs'
 import { verifyV105V10MainManifestDigests } from '../../scripts/verify-v105-mt-api-release.mjs'
 
 const manifest = JSON.parse(readFileSync(new URL('../../release/v105-v10-main-release-manifest.json', import.meta.url)))
-const dependencyManifest = JSON.parse(readFileSync(new URL('../../release/v105-v10-main19-source-fence-release-manifest.json', import.meta.url)))
+const dependencyManifest = JSON.parse(readFileSync(new URL('../../release/v105-v10-main20-source-fence-release-manifest.json', import.meta.url)))
 
 test('V105 V10 main release changes prediction main only', () => {
-  assert.equal(manifest.releaseVersion, 'v105-v10-main.19')
+  assert.equal(manifest.releaseVersion, 'v105-v10-main.20')
   assert.equal(manifest.formalStrategyVersion, 'v105')
   assert.deepEqual(manifest.releaseScope, {
     predictionMainOnly: true,

@@ -215,7 +215,7 @@ export async function verifyV105V10MainManifestDigests({ manifest, dependencyMan
   const batchReadbackIndex = deployment.indexOf('same-session-outbox-batch-catalog-acl-readback')
   const proxyIndex = deployment.indexOf('deploy-exact-v105-v10-main-proxy')
   if (!(zeroApplyIndex < zeroReadbackIndex && zeroReadbackIndex < batchIndex && batchIndex < batchReadbackIndex && batchReadbackIndex < proxyIndex)) throw new Error('v105_v10_main_deployment_order_invalid')
-  const requiredImplementationPaths = [binding.sameSessionOutboxBatchMigration?.path, 'proxy/src/server.js', 'proxy/src/supabase-writer.js', 'proxy/test/capture-outbox-ack.test.js', 'proxy/test/capture-outbox-writer.test.js', 'scripts/verify-v105-mt-api-release.mjs', 'release/v105-v10-main19-source-fence-release-manifest.json']
+  const requiredImplementationPaths = [binding.sameSessionOutboxBatchMigration?.path, 'proxy/src/server.js', 'proxy/src/supabase-writer.js', 'proxy/test/capture-outbox-ack.test.js', 'proxy/test/capture-outbox-writer.test.js', 'scripts/verify-v105-mt-api-release.mjs', 'release/v105-v10-main20-source-fence-release-manifest.json']
   if (requiredImplementationPaths.some((required) => !binding.implementationTree.paths?.includes(required))) throw new Error('v105_v10_main_implementation_contract_invalid')
   const dependencyBinding = dependencyManifest?.releaseBinding?.sameSessionOutboxBatchMigration
   const dependencyDatabase = dependencyManifest?.database?.sameSessionOutboxBatchMigration
@@ -369,7 +369,7 @@ export function verifyExternalReleaseAttestation(attestation = {}, expected = {}
   if (!String(expected.gitTag ?? '').trim() || attestation.tag !== expected.gitTag) throw new Error('attestation_tag_mismatch')
   if (!/^[a-f0-9]{40}$/.test(String(expected.candidateIndexTree ?? ''))
     || attestation.tree !== expected.candidateIndexTree) throw new Error('attestation_tree_mismatch')
-  const digestFields = ['implementationTreeSha256', 'migrationSha256', 'shadowHydrationMigrationSha256', 'shadowV10MigrationSha256', 'shadowV10DbValidationMigrationSha256', 'rankLedgerRecoveryMigrationSha256', 'rankSyncHydrationMigrationSha256', 'shadowV6V8RetirementMigrationSha256', 'proxyBuildInputSha256', 'workerBuildInputSha256']
+  const digestFields = ['implementationTreeSha256', 'migrationSha256', 'captureOutboxHealthMigrationSha256', 'zeroFinalHeartbeatMigrationSha256', 'sameSessionOutboxBatchMigrationSha256', 'shadowHydrationMigrationSha256', 'shadowV10MigrationSha256', 'shadowV10DbValidationMigrationSha256', 'rankLedgerRecoveryMigrationSha256', 'rankSyncHydrationMigrationSha256', 'shadowV6V8RetirementMigrationSha256', 'proxyBuildInputSha256', 'workerBuildInputSha256']
   for (const field of digestFields) {
     if (!/^[a-f0-9]{64}$/.test(String(attestation[field] ?? '')) || attestation[field] !== expected[field]) {
       throw new Error(`attestation_${field}_mismatch`)
@@ -576,7 +576,7 @@ async function main() {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
   const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
   assertCandidateIndexClean(repoRoot, candidateIndexTree)
-  const manifestBytes = execFileSync('git', ['cat-file', 'blob', `${candidateIndexTree}:release/v105-v10-main19-source-fence-release-manifest.json`], { cwd: repoRoot })
+  const manifestBytes = execFileSync('git', ['cat-file', 'blob', `${candidateIndexTree}:release/v105-v10-main20-source-fence-release-manifest.json`], { cwd: repoRoot })
   const manifest = JSON.parse(manifestBytes.toString('utf8'))
   const mainManifestBytes = execFileSync('git', ['cat-file', 'blob', `${candidateIndexTree}:release/v105-v10-main-release-manifest.json`], { cwd: repoRoot })
   const mainManifest = JSON.parse(mainManifestBytes.toString('utf8'))
