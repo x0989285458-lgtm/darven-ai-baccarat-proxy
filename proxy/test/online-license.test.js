@@ -25,6 +25,103 @@ test('license database pool bounds connection and query stalls', () => {
   assert.equal(options.statement_timeout, 8500)
 })
 
+test('concurrent authentication connection failures rebuild one owned pool and retry exact queries once', async () => {
+  const pools = []
+  let releaseOldFailures
+  const oldFailures = new Promise((resolve) => { releaseOldFailures = resolve })
+  const poolFactory = () => {
+    const index = pools.length
+    const pool = {
+      ended: 0,
+      listeners: [],
+      calls: [],
+      on(event, handler) { this.listeners.push({ event, handler }) },
+      async end() { this.ended += 1 },
+      async query(sql, params) {
+        this.calls.push({ sql, params })
+        if (index === 1) {
+          await oldFailures
+          throw new Error('Connection terminated due to connection timeout')
+        }
+        if (index === 2) return { rows: [{ id: 'manager-1', username: params[0], role: 'total', is_active: true }] }
+        return { rows: [] }
+      },
+    }
+    pools.push(pool)
+    return pool
+  }
+  const client = createLicenseAdminClient({ dbConnectionString: 'postgresql://test:***@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres', poolFactory })
+  const first = client.validateAgentLogin({ agentAccount: 'dv1788' })
+  const second = client.validateAgentLogin({ agentAccount: 'DV1788' })
+  while (pools[1].calls.length < 2) await new Promise((resolve) => setTimeout(resolve, 0))
+  releaseOldFailures()
+  const results = await Promise.all([first, second])
+  assert.deepEqual(results.map((result) => result.ok), [true, true])
+  assert.equal(pools.length, 3)
+  assert.equal(pools[1].ended, 1)
+  assert.deepEqual(pools[1].listeners.map(({ event }) => event), ['error'])
+  assert.deepEqual(pools[2].listeners.map(({ event }) => event), ['error'])
+  assert.equal(pools[2].calls.length, 2)
+  assert.equal(pools[2].calls.every(({ sql }) => sql === pools[1].calls[0].sql), true)
+  assert.deepEqual(pools[2].calls.map(({ params }) => params[0]).sort(), ['dv1788', 'DV1788'].sort())
+})
+
+test('authentication retry stops after the replacement pool also has a connection failure', async () => {
+  const pools = []
+  const poolFactory = () => {
+    const index = pools.length
+    const pool = {
+      ended: 0, on() {}, async end() { this.ended += 1 },
+      async query() {
+        if (index > 0) throw new Error('Connection terminated due to connection timeout')
+        return { rows: [] }
+      },
+    }
+    pools.push(pool)
+    return pool
+  }
+  const client = createLicenseAdminClient({ dbConnectionString: 'postgresql://test:***@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres', poolFactory })
+  await assert.rejects(client.validateAgentLogin({ agentAccount: 'dv1788' }), /connection timeout/i)
+  assert.equal(pools.length, 3)
+  assert.equal(pools[1].ended, 1)
+  assert.equal(pools[2].ended, 0)
+})
+
+test('injected shared authentication pool is never observed replaced or ended by connection retry logic', async () => {
+  let listeners = 0
+  let ended = 0
+  let factories = 0
+  const pool = {
+    on() { listeners += 1 },
+    async end() { ended += 1 },
+    async query() { throw new Error('Connection terminated due to connection timeout') },
+  }
+  const client = createLicenseAdminClient({ pool, poolFactory() { factories += 1; return pool } })
+  await assert.rejects(client.validateAgentLogin({ agentAccount: 'dv1788' }), /connection timeout/i)
+  assert.equal(listeners, 0)
+  assert.equal(ended, 0)
+  assert.equal(factories, 0)
+})
+
+test('authentication query never retries a non-connection database error', async () => {
+  const pools = []
+  const poolFactory = () => {
+    const index = pools.length
+    const pool = {
+      on() {}, async end() {},
+      async query() {
+        if (index === 1) throw Object.assign(new Error('permission denied'), { code: '42501' })
+        return { rows: [] }
+      },
+    }
+    pools.push(pool)
+    return pool
+  }
+  const client = createLicenseAdminClient({ dbConnectionString: 'postgresql://test:***@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres', poolFactory })
+  await assert.rejects(client.validateAgentLogin({ agentAccount: 'dv1788' }), /permission denied/)
+  assert.equal(pools.length, 2)
+})
+
 test('successful member login does not wait for best-effort validation audit logging', async () => {
   let releaseAudit
   let auditParams
