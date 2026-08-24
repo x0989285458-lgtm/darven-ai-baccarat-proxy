@@ -2215,7 +2215,7 @@ export function createSupabaseIngestionClient({
         },
         'rpc/complete_v105_capture_settlement_outbox_batch': {
           text: 'select public.complete_v105_capture_settlement_outbox_batch($1::jsonb) as complete_v105_capture_settlement_outbox_batch',
-          values: [body?.p_claims],
+          values: [JSON.stringify(body?.p_claims ?? [])],
         },
         'rpc/fail_v105_capture_settlement_outbox': {
           text: 'select public.fail_v105_capture_settlement_outbox($1::text, $2::bigint, $3::uuid, $4::integer, $5::text) as fail_v105_capture_settlement_outbox',
@@ -2223,7 +2223,7 @@ export function createSupabaseIngestionClient({
         },
         'rpc/fail_v105_capture_settlement_outbox_batch': {
           text: 'select public.fail_v105_capture_settlement_outbox_batch($1::jsonb, $2::text) as fail_v105_capture_settlement_outbox_batch',
-          values: [body?.p_claims, body?.p_error],
+          values: [JSON.stringify(body?.p_claims ?? []), body?.p_error],
         },
       }[path]
       if (directRpc) {

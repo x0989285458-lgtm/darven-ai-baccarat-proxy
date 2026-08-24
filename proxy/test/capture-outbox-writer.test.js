@@ -124,8 +124,8 @@ test('claim, complete, fail, and their batch variants use direct DB RPCs with un
   assert.deepEqual(queries[1].values, ['s', 1, 'token', 2])
   assert.deepEqual(queries[2].values, ['s', 2, 'token-2', 3, 'safe error'])
   const wireClaims = [{ session_id: 's', sequence: 3, claim_token: 'token-3', attempt: 1 }]
-  assert.deepEqual(queries[3].values, [wireClaims])
-  assert.deepEqual(queries[4].values, [wireClaims, 'batch error'])
+  assert.deepEqual(queries[3].values, [JSON.stringify(wireClaims)])
+  assert.deepEqual(queries[4].values, [JSON.stringify(wireClaims), 'batch error'])
 })
 
 test('batch rank-ledger hydration recovers missing current shoes before one exact reread', async () => {
