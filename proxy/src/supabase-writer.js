@@ -2500,9 +2500,32 @@ export function createSupabaseIngestionClient({
                           ledger.seen_dealt_rank_counts, ledger.seen_dealt_code_counts,
                           ledger.undealt_after_observed_deals, ledger.cards_seen_dealt, ledger.status,
                           ledger.ledger_checksum, ledger.revision, ledger.physical_remaining_exact,
-                          ledger.burn_observation_status
+                          ledger.burn_observation_status,
+                          latest.latest_shoe as recovery_latest_shoe,
+                          coverage.min_round as recovery_min_round,
+                          coverage.max_round as recovery_max_round,
+                          coverage.row_count as recovery_row_count,
+                          coverage.distinct_round_count as recovery_distinct_round_count
                      from public.shoe_rank_ledgers as ledger
-                     join requested using (source, table_id, shoe_no)`,
+                     join requested using (source, table_id, shoe_no)
+                     left join lateral (
+                       select rounds.shoe_no as latest_shoe
+                         from public.cloud_table_rounds as rounds
+                        where rounds.source = ledger.source
+                          and rounds.table_id = ledger.table_id
+                        order by rounds.received_at desc, rounds.round_no desc
+                        limit 1
+                     ) as latest on true
+                     left join lateral (
+                       select min(rounds.round_no)::integer as min_round,
+                              max(rounds.round_no)::integer as max_round,
+                              count(*)::integer as row_count,
+                              count(distinct rounds.round_no)::integer as distinct_round_count
+                         from public.cloud_table_rounds as rounds
+                        where rounds.source = ledger.source
+                          and rounds.table_id = ledger.table_id
+                          and rounds.shoe_no = ledger.shoe_no
+                     ) as coverage on true`,
             values: [exact.map((item) => item.source), exact.map((item) => item.tableId), exact.map((item) => item.shoe)],
           })).rows
         }
@@ -2533,6 +2556,20 @@ export function createSupabaseIngestionClient({
           && (identity.expectedCompleteThrough == null
             || (Number.isSafeInteger(completeThrough) && completeThrough >= identity.expectedCompleteThrough))
         if (terminal || currentEnough) continue
+        const recoveryCoverageKnown = current != null
+          && Object.hasOwn(current, 'recovery_row_count')
+          && Object.hasOwn(current, 'recovery_distinct_round_count')
+        if (!recoveryCoverageKnown) continue
+        const minRound = Number(current.recovery_min_round)
+        const maxRound = Number(current.recovery_max_round)
+        const rowCount = Number(current.recovery_row_count)
+        const distinctRoundCount = Number(current.recovery_distinct_round_count)
+        const recoveryEligible = String(current.recovery_latest_shoe ?? '') === identity.shoe
+          && Number.isSafeInteger(minRound) && minRound === 1
+          && Number.isSafeInteger(maxRound) && maxRound >= 1
+          && Number.isSafeInteger(rowCount) && rowCount === maxRound
+          && Number.isSafeInteger(distinctRoundCount) && distinctRoundCount === maxRound
+        if (!recoveryEligible) continue
         try {
           const acknowledgement = priorityStrategyDb && typeof priorityStrategyDb.query === 'function'
             ? (await priorityStrategyDb.query({
