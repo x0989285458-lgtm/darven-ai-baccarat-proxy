@@ -25,6 +25,35 @@ test('license database pool bounds connection and query stalls', () => {
   assert.equal(options.statement_timeout, 8500)
 })
 
+test('owned authentication queries destroy each checked-out physical connection after use', async () => {
+  const pools = []
+  const releases = []
+  const poolFactory = () => {
+    const index = pools.length
+    const pool = {
+      on() {},
+      async end() {},
+      async query() { throw new Error('owned auth pool must use a checked-out client') },
+      async connect() {
+        assert.equal(index, 1)
+        return {
+          async query(sql, params) {
+            assert.match(sql, /manager_accounts/)
+            return { rows: [{ id: 'manager-1', username: params[0], role: 'total', is_active: true }] }
+          },
+          release(destroy) { releases.push(destroy) },
+        }
+      },
+    }
+    pools.push(pool)
+    return pool
+  }
+  const client = createLicenseAdminClient({ dbConnectionString: 'postgresql://test:***@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres', poolFactory })
+  const result = await client.validateAgentLogin({ agentAccount: 'dv1788' })
+  assert.equal(result.ok, true)
+  assert.deepEqual(releases, [true])
+})
+
 test('concurrent authentication connection failures rebuild one owned pool and retry exact queries once', async () => {
   const pools = []
   let releaseOldFailures
@@ -35,16 +64,23 @@ test('concurrent authentication connection failures rebuild one owned pool and r
       ended: 0,
       listeners: [],
       calls: [],
+      releases: [],
       on(event, handler) { this.listeners.push({ event, handler }) },
       async end() { this.ended += 1 },
-      async query(sql, params) {
-        this.calls.push({ sql, params })
-        if (index === 1) {
-          await oldFailures
-          throw new Error('Connection terminated due to connection timeout')
+      async connect() {
+        const owner = this
+        return {
+          async query(sql, params) {
+            owner.calls.push({ sql, params })
+            if (index === 1) {
+              await oldFailures
+              throw new Error('Connection terminated due to connection timeout')
+            }
+            if (index === 2) return { rows: [{ id: 'manager-1', username: params[0], role: 'total', is_active: true }] }
+            return { rows: [] }
+          },
+          release(destroy) { owner.releases.push(destroy) },
         }
-        if (index === 2) return { rows: [{ id: 'manager-1', username: params[0], role: 'total', is_active: true }] }
-        return { rows: [] }
       },
     }
     pools.push(pool)
@@ -64,6 +100,8 @@ test('concurrent authentication connection failures rebuild one owned pool and r
   assert.equal(pools[2].calls.length, 2)
   assert.equal(pools[2].calls.every(({ sql }) => sql === pools[1].calls[0].sql), true)
   assert.deepEqual(pools[2].calls.map(({ params }) => params[0]).sort(), ['dv1788', 'DV1788'].sort())
+  assert.deepEqual(pools[1].releases, [true, true])
+  assert.deepEqual(pools[2].releases, [true, true])
 })
 
 test('authentication retry stops after the replacement pool also has a connection failure', async () => {
@@ -71,10 +109,16 @@ test('authentication retry stops after the replacement pool also has a connectio
   const poolFactory = () => {
     const index = pools.length
     const pool = {
-      ended: 0, on() {}, async end() { this.ended += 1 },
-      async query() {
-        if (index > 0) throw new Error('Connection terminated due to connection timeout')
-        return { rows: [] }
+      ended: 0, releases: [], on() {}, async end() { this.ended += 1 },
+      async connect() {
+        const owner = this
+        return {
+          async query() {
+            if (index > 0) throw new Error('Connection terminated due to connection timeout')
+            return { rows: [] }
+          },
+          release(destroy) { owner.releases.push(destroy) },
+        }
       },
     }
     pools.push(pool)
@@ -85,6 +129,8 @@ test('authentication retry stops after the replacement pool also has a connectio
   assert.equal(pools.length, 3)
   assert.equal(pools[1].ended, 1)
   assert.equal(pools[2].ended, 0)
+  assert.deepEqual(pools[1].releases, [true])
+  assert.deepEqual(pools[2].releases, [true])
 })
 
 test('injected shared authentication pool is never observed replaced or ended by connection retry logic', async () => {
@@ -105,13 +151,19 @@ test('injected shared authentication pool is never observed replaced or ended by
 
 test('authentication query never retries a non-connection database error', async () => {
   const pools = []
+  const releases = []
   const poolFactory = () => {
     const index = pools.length
     const pool = {
       on() {}, async end() {},
-      async query() {
-        if (index === 1) throw Object.assign(new Error('permission denied'), { code: '42501' })
-        return { rows: [] }
+      async connect() {
+        return {
+          async query() {
+            if (index === 1) throw Object.assign(new Error('permission denied'), { code: '42501' })
+            return { rows: [] }
+          },
+          release(destroy) { releases.push(destroy) },
+        }
       },
     }
     pools.push(pool)
@@ -120,6 +172,7 @@ test('authentication query never retries a non-connection database error', async
   const client = createLicenseAdminClient({ dbConnectionString: 'postgresql://test:***@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres', poolFactory })
   await assert.rejects(client.validateAgentLogin({ agentAccount: 'dv1788' }), /permission denied/)
   assert.equal(pools.length, 2)
+  assert.deepEqual(releases, [true])
 })
 
 test('successful member login does not wait for best-effort validation audit logging', async () => {

@@ -26,10 +26,20 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null, auth
     target.on('error', () => {})
   }
 
+  async function queryAuthTarget(target, sql, params) {
+    if (!ownsAuthPool) return target.query(sql, params)
+    const client = await target.connect()
+    try {
+      return await client.query(sql, params)
+    } finally {
+      client.release(true)
+    }
+  }
+
   async function authQuery(sql, params) {
     const target = authDb
     try {
-      return await target.query(sql, params)
+      return await queryAuthTarget(target, sql, params)
     } catch (error) {
       if (!ownsAuthPool || !isRetryableAuthConnectionError(error)) throw error
       if (target === authDb) {
@@ -38,7 +48,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null, auth
         authDb = replacement
         try { await target.end?.() } catch {}
       }
-      return authDb.query(sql, params)
+      return queryAuthTarget(authDb, sql, params)
     }
   }
   const dailyAnalyticsCacheMs = 60_000
