@@ -868,6 +868,12 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                   parsed, state, writer: supabaseClient, v100Formal,
                   persistAncillary: false,
                   publishSnapshot: false,
+                  onDurablePhase: ({ phase }) => state.setStatus({
+                    captureOutboxPhase: {
+                      phase: `formal_${phase}`,
+                      startedAt: new Date(Number(now())).toISOString(),
+                    },
+                  }),
                 })
               ))
               leaseDeadline.assertActive()

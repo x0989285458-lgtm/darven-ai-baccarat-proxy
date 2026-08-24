@@ -149,7 +149,13 @@ async function runDurableStage(stage, operation) {
   }
 }
 
-export async function applyCloudCapturePayload({ parsed, state, writer, v100Formal = null, persistAncillary = true, publishSnapshot = true }) {
+export async function applyCloudCapturePayload({ parsed, state, writer, v100Formal = null, persistAncillary = true, publishSnapshot = true, onDurablePhase = null }) {
+  const reportDurablePhase = (phase, diagnostic = {}) => {
+    try {
+      const reported = onDurablePhase?.({ phase, ...diagnostic })
+      if (reported && typeof reported.then === 'function') void Promise.resolve(reported).catch(() => {})
+    } catch {}
+  }
   parsed = canonicalizeFormalRoundSources(parsed)
   const durableTimings = {}
   let v100Result = null
@@ -165,6 +171,7 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
           String(table?.shoe ?? ''),
         ])))
     const startedAt = Date.now()
+    reportDurablePhase('rank_ledger', { roundCount: parsed.rounds.length, tableCount: rankTables.length })
     try {
       v100Result = await runDurableStage('durable_rank_ledger', () => v100Formal.processSnapshot({ tables: rankTables, rounds: parsed.rounds }))
     } catch (error) {
@@ -194,6 +201,7 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
     roundsByTable.get(tableId).push(round)
   }
   const settlementStartedAt = Date.now()
+  reportDurablePhase('formal_settlement', { roundCount: parsed.rounds.length, tableCount: roundsByTable.size })
   await runDurableStage('durable_formal_settlement', () => withFormalSettlementTail(state, async () => {
     const tableSettlements = await Promise.allSettled([...roundsByTable.values()].map(async (tableRounds) => {
       const shoeOrder = new Map()
@@ -231,6 +239,7 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
   }
   const sessionId = parsed.sessionId ?? 'cloud-browser'
   const ancillaryStartedAt = Date.now()
+  reportDurablePhase('ancillary', { roundCount: parsed.rounds.length, tableCount: formalTables.length })
   const ancillaryWrites = [
     runDurableStage('durable_capture_status', () => writer.writeCloudCaptureStatus?.({ sessionId, captureSource: 'cloud_browser', status: parsed.status })),
     runDurableStage('durable_table_snapshot', () => writer.writeCloudTableSnapshot?.({ sessionId, tables: formalTables, status: parsed.status })),

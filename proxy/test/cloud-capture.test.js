@@ -202,6 +202,38 @@ test('same-table formal Finals yield to service requests between rounds', async 
   assert.deepEqual(started, [1, 2])
 })
 
+test('formal payload reports granular durable phases in execution order', async () => {
+  const phases = []
+  await applyCloudCapturePayload({
+    parsed: {
+      sessionId: 'durable-phase-diagnostics',
+      status: { connected: true, authenticated: true },
+      tables: [{ tableId: 'BAG01', shoe: 9 }],
+      rounds: [{ tableId: 'BAG01', shoe: 9, round: 1 }],
+    },
+    state: {
+      setStatus() {}, setTables() {},
+      async upsertRoundEvent() { return { ok: true } },
+    },
+    writer: {
+      configured: true,
+      async writeCloudCaptureStatus() {},
+      async writeCloudTableSnapshot() {},
+      async writeCloudRoundEvents() {},
+    },
+    v100Formal: {
+      enabled: true,
+      async processSnapshot({ tables }) { return { tables } },
+    },
+    async onDurablePhase(diagnostic) {
+      phases.push(diagnostic.phase)
+      throw new Error('diagnostic callback rejection must be isolated')
+    },
+  })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(phases, ['rank_ledger', 'formal_settlement', 'ancillary'])
+})
+
 test('formal settlement drains every table branch before a failed envelope releases the next envelope', async () => {
   let bag02Active = 0
   let bag02MaxActive = 0
