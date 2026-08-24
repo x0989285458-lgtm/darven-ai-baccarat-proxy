@@ -355,6 +355,17 @@ test('outbox coalescing rejects invalid or unbounded configuration', async () =>
   await app.stop()
 })
 
+test('outbox batch limit rejects invalid or unbounded configuration', async () => {
+  for (const value of ['', Number.NaN, 0, 1.5, 11]) {
+    assert.throws(
+      () => createApp({ autoConnect: false, captureOutboxBatchLimit: value }),
+      /outbox batch limit.*integer.*1.*10/i,
+    )
+  }
+  const app = createApp({ autoConnect: false, captureOutboxBatchLimit: 3 })
+  await app.stop()
+})
+
 test('same-session outbox batch merges ordered envelopes and completes every exact lease atomically', async () => {
   let claimed = false
   const formalInputs = []
@@ -371,10 +382,11 @@ test('same-session outbox batch merges ordered envelopes and completes every exa
   ]
   const app = createApp({
     autoConnect: false,
+    captureOutboxBatchLimit: 3,
     supabaseClient: {
       configured: true,
       async claimCaptureOutbox({ limit }) {
-        assert.equal(limit, 10)
+        assert.equal(limit, 3)
         if (claimed) return []
         claimed = true
         return rows
