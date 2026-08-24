@@ -321,3 +321,43 @@ test('shutdown bounds an in-flight immediate broadcast authorization check', asy
     await stopping
   }
 })
+
+test('slow periodic table broadcast does not queue an immediate duplicate refresh', async () => {
+  let snapshotReads = 0
+  let releaseFirstRead
+  const firstReadGate = new Promise((resolve) => { releaseFirstRead = resolve })
+  const supabaseClient = {
+    configured: true,
+    async getLatestCloudTableSnapshot() {
+      snapshotReads += 1
+      if (snapshotReads === 1) await firstReadGate
+      return null
+    },
+  }
+  const app = createApp({
+    autoConnect: false,
+    port: 0,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    streamHeartbeatMs: 50,
+    supabaseClient,
+  })
+  await app.start()
+  const controller = new AbortController()
+  const stream = fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, {
+    signal: controller.signal,
+  }).catch(() => null)
+
+  try {
+    while (snapshotReads < 1) await new Promise((resolve) => setTimeout(resolve, 5))
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    releaseFirstRead()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    assert.equal(snapshotReads, 1, 'timer ticks during a slow broadcast must be dropped instead of replayed immediately')
+  } finally {
+    controller.abort()
+    releaseFirstRead()
+    await stream
+    await app.stop()
+  }
+})
