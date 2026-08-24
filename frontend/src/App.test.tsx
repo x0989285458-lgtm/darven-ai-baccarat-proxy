@@ -516,7 +516,7 @@ describe('AI百家預測軟體', () => {
     expect(within(sidebar).queryByText('百家樂桌')).not.toBeInTheDocument()
     expect(within(sidebar).queryByText('Cloudflare Turnstile')).not.toBeInTheDocument()
     expect(within(sidebar).queryByRole('heading', { name: '連線控制' })).not.toBeInTheDocument()
-    expect(within(sidebar).getAllByText(/^BAG\d+$/)).toHaveLength(10)
+    expect(within(sidebar).getAllByText(/^BAG(?:\d+|03A)$/)).toHaveLength(10)
 
     const expectedLabels = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']
     const tableButtons = within(sidebar).getAllByRole('button', { name: /MT百家樂第.+桌 第\d+局/ })
@@ -545,8 +545,8 @@ describe('AI百家預測軟體', () => {
     expect(buttons.map((button) => button.textContent?.match(/第(.+?)桌/)?.[1])).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'])
     expect(buttons[3]).toHaveAttribute('data-table-id', 'BAG03A')
     expect(buttons[3]).toHaveTextContent('第4桌')
-    expect(buttons[3]).toHaveTextContent('BAG04')
-    expect(buttons[3]).not.toHaveTextContent('BAG03A')
+    expect(buttons[3]).toHaveTextContent('BAG03A')
+    expect(buttons[3]).not.toHaveTextContent('BAG04')
   })
 
   it('reports the loaded table count without claiming every table is online', async () => {

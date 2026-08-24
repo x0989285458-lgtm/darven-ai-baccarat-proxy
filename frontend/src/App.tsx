@@ -42,8 +42,7 @@ function tableNumber(table: LiveTable, index: number) {
 }
 
 function memberTableDisplayId(table: LiveTable) {
-  const tableId = canonicalMemberTableId(table)
-  return tableId === 'BAG03A' ? 'BAG04' : tableId
+  return canonicalMemberTableId(table)
 }
 
 function formatPredictionReasonWeight(weight: number) {
