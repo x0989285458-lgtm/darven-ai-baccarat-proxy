@@ -175,6 +175,33 @@ test('formal settlement runs different tables concurrently while preserving each
   }
 })
 
+test('same-table formal Finals yield to service requests between rounds', async () => {
+  let serviceTurnObserved = false
+  const started = []
+  await applyCloudCapturePayload({
+    parsed: {
+      sessionId: 'same-table-service-yield',
+      status: { connected: true, authenticated: true },
+      tables: [{ tableId: 'BAG01', shoe: 9 }],
+      rounds: [
+        { tableId: 'BAG01', shoe: 9, round: 1 },
+        { tableId: 'BAG01', shoe: 9, round: 2 },
+      ],
+    },
+    writer: { configured: false },
+    state: {
+      setStatus() {}, setTables() {},
+      async upsertRoundEvent(round) {
+        started.push(round.round)
+        if (round.round === 1) setImmediate(() => { serviceTurnObserved = true })
+        if (round.round === 2) assert.equal(serviceTurnObserved, true, 'service turn must run before the next same-table Final')
+        return { ok: true }
+      },
+    },
+  })
+  assert.deepEqual(started, [1, 2])
+})
+
 test('formal settlement drains every table branch before a failed envelope releases the next envelope', async () => {
   let bag02Active = 0
   let bag02MaxActive = 0

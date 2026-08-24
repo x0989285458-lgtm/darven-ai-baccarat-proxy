@@ -216,8 +216,8 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
         if (typeof settleRound !== 'function') throw new Error('formal settlement state handler is unavailable')
         const settlement = await settleRound.call(state, round, settlementTable)
         if (settlement?.ok === false) throw settlement.error ?? new Error('formal settlement failed before ingest acknowledgement')
+        await new Promise((resolve) => setImmediate(resolve))
       }
-      await new Promise((resolve) => setImmediate(resolve))
     }))
     const failedSettlement = tableSettlements.find((result) => result.status === 'rejected')
     if (failedSettlement) throw failedSettlement.reason
