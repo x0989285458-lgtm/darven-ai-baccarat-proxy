@@ -425,15 +425,29 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const resolvedAdminSessionTtlInput = Number(requestedAdminSessionTtlMs)
   const adminSessionTtlMs = Math.min(30 * 60 * 1000, Math.max(60000, Number.isFinite(resolvedAdminSessionTtlInput) ? resolvedAdminSessionTtlInput : 30 * 60 * 1000))
   let requestTablesBroadcast = () => {}
+  let requestTablesRefresh = () => {}
+  let latestStreamScreenSignature = ''
   const state = createProxyState({
     inferSnapshotRounds: !strictRealCardRounds,
     onTablesUpdated: (tables) => {
       tablesReceivedAtMs = now()
+      const streamScreenSignature = JSON.stringify(tables
+        .map((table) => ({
+          tableId: canonicalProductionTableId(table?.tableId),
+          shoe: table?.shoe == null ? '' : String(table.shoe),
+          round: Number(table?.round),
+        }))
+        .filter((screen) => screen.tableId && screen.shoe && Number.isSafeInteger(screen.round))
+        .sort((left, right) => left.tableId.localeCompare(right.tableId)))
+      let screenProgressChanged = streamScreenSignature !== latestStreamScreenSignature
+      latestStreamScreenSignature = streamScreenSignature
       for (const table of tables) {
         const observedTableId = canonicalProductionTableId(table?.tableId)
         const observedShoe = table?.shoe == null ? '' : String(table.shoe)
         const observedRound = Number(table?.round)
         if (observedTableId && observedShoe && Number.isSafeInteger(observedRound)) {
+          const previousScreen = latestObservedScreenByTable.get(observedTableId)
+          if (previousScreen?.shoe !== observedShoe || previousScreen?.visibleRound !== observedRound) screenProgressChanged = true
           latestObservedScreenByTable.set(observedTableId, { shoe: observedShoe, visibleRound: observedRound })
         }
         const tableKey = `table:${String(table?.tableId ?? '')}`
@@ -464,6 +478,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           }).catch(() => {})
         })
       }
+      if (screenProgressChanged) requestTablesRefresh()
     },
     onRoundEvent: async (round, table) => {
       if (!supabaseClient?.configured && !supabaseClient?.persistRound) return
@@ -1852,13 +1867,18 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     if (retryAt > now()) return Promise.resolve(null)
     issuedPredictionReadRetryAt.delete(key)
     if (typeof supabaseClient?.readIssuedPrediction !== 'function') return Promise.resolve(null)
-    const read = Promise.resolve()
-      .then(() => supabaseClient.readIssuedPrediction({
+    let readOperation
+    try {
+      readOperation = Promise.resolve(supabaseClient.readIssuedPrediction({
         tableId: table.tableId,
         shoe: table.shoe,
         round: targetRound,
         strategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION,
       }))
+    } catch (error) {
+      readOperation = Promise.reject(error)
+    }
+    const read = readOperation
       .then((candidate) => {
         if (!isExactScreenPrediction(candidate, table, targetRound, durableIssuanceRequired)) {
           rememberIssuedPredictionReadBackoff(key)
@@ -1901,10 +1921,14 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       exact = null
     }
     if (!exact && durableIssuanceRequired) {
+      const issuedPredictionRead = startIssuedPredictionRead(table, targetRound, key, durableIssuanceRequired)
       exact = await Promise.race([
-        startIssuedPredictionRead(table, targetRound, key, durableIssuanceRequired),
+        issuedPredictionRead,
         new Promise((resolve) => setTimeout(() => resolve(null), 50)),
       ])
+      if (!exact) {
+        void issuedPredictionRead.then((readBack) => requestDurablePredictionBroadcast(readBack))
+      }
     }
     if (!exact && !durableIssuanceRequired && !expiredPredictionKeys.has(key) && isPredictionRuntimeReady() && recentPerformanceReady) {
       const tablePerformance = recentTablePerformance.summary(table.tableId)
@@ -1944,7 +1968,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   }
 
   function isPendingPredictionExpired(prediction) {
-    return now() - Number(prediction?.createdAtMs ?? 0) > actionablePredictionTtlMs
+    return now() - Number(prediction?.createdAtMs ?? 0) >= actionablePredictionTtlMs
   }
 
   function rememberExpiredPredictionKey(key) {
@@ -2130,30 +2154,49 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const streamClients = new Set()
   let streamTimer = null
   let streamLastSignature = ''
+  let streamLastTableCount = 0
+  let streamHeartbeatPromise = null
+  let streamTablesVersion = 0
+  let streamLastBroadcastVersion = 0
+  let streamNextPredictionExpiryAtMs = Number.POSITIVE_INFINITY
 
   function writeSse(res, event, payload) {
     if (res.destroyed || res.writableEnded) return
     res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`)
   }
 
+  async function authorizedStreamClients() {
+    const authorizedClients = []
+    for (const client of streamClients) {
+      if (await isMemberSessionAuthorized(client.headers)) authorizedClients.push(client)
+      else {
+        writeSse(client.res, 'unauthorized', { status: 401, error: 'member session is required' })
+        client.res.end()
+        streamClients.delete(client)
+      }
+    }
+    if (!authorizedClients.length) stopStreamTimerIfIdle()
+    return authorizedClients
+  }
+
   async function broadcastTables(force = false) {
     if (!streamClients.size) return
     try {
+      const authorizedClients = await authorizedStreamClients()
+      if (!authorizedClients.length) return
+      const versionAtStart = streamTablesVersion
       const tables = await readBestTables()
       const signature = JSON.stringify(tables)
       const payload = { tables, updatedAt: new Date().toISOString(), tableCount: tables.length }
-      const authorizedClients = []
-      for (const client of streamClients) {
-        if (await isMemberSessionAuthorized(client.headers)) authorizedClients.push(client)
-        else {
-          writeSse(client.res, 'unauthorized', { status: 401, error: 'member session is required' })
-          client.res.end()
-          streamClients.delete(client)
+      streamLastTableCount = tables.length
+      streamLastBroadcastVersion = versionAtStart
+      const broadcastNowMs = now()
+      streamNextPredictionExpiryAtMs = Number.POSITIVE_INFINITY
+      for (const prediction of pendingPredictions.values()) {
+        const expiryAtMs = Number(prediction?.createdAtMs) + actionablePredictionTtlMs
+        if (Number.isFinite(expiryAtMs) && expiryAtMs > broadcastNowMs) {
+          streamNextPredictionExpiryAtMs = Math.min(streamNextPredictionExpiryAtMs, expiryAtMs)
         }
-      }
-      if (!authorizedClients.length) {
-        stopStreamTimerIfIdle()
-        return
       }
       if (force || signature !== streamLastSignature) {
         streamLastSignature = signature
@@ -2168,10 +2211,25 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
   }
 
+  async function broadcastHeartbeat() {
+    if (!streamClients.size) return
+    try {
+      const authorizedClients = await authorizedStreamClients()
+      const heartbeat = { updatedAt: new Date().toISOString(), tableCount: streamLastTableCount }
+      for (const client of authorizedClients) writeSse(client.res, 'heartbeat', heartbeat)
+    } catch (error) {
+      const payload = { message: error?.message ?? String(error), updatedAt: new Date().toISOString() }
+      for (const client of streamClients) writeSse(client.res, 'error', payload)
+    }
+  }
+
   let tablesBroadcastPromise = null
   let tablesBroadcastPending = false
   let tablesBroadcastForcePending = false
   let tablesBroadcastStopping = false
+  requestTablesRefresh = () => {
+    streamTablesVersion += 1
+  }
   requestTablesBroadcast = (force = false) => {
     if (tablesBroadcastStopping) return
     tablesBroadcastPending = true
@@ -2193,8 +2251,14 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   function ensureStreamTimer() {
     if (streamTimer) return
     streamTimer = setInterval(() => {
-      if (tablesBroadcastPromise) return
-      requestTablesBroadcast(false)
+      if (tablesBroadcastPromise || streamHeartbeatPromise) return
+      if (streamTablesVersion !== streamLastBroadcastVersion || now() >= streamNextPredictionExpiryAtMs) {
+        requestTablesBroadcast(false)
+        return
+      }
+      streamHeartbeatPromise = broadcastHeartbeat().finally(() => {
+        streamHeartbeatPromise = null
+      })
     }, Math.max(10, Number(streamHeartbeatMs) || 3000))
   }
 
@@ -2322,7 +2386,10 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       streamClients.clear()
       try {
         await withDeadline(
-          tablesBroadcastPromise?.catch(() => {}) ?? Promise.resolve(),
+          Promise.all([
+            tablesBroadcastPromise?.catch(() => {}) ?? Promise.resolve(),
+            streamHeartbeatPromise?.catch(() => {}) ?? Promise.resolve(),
+          ]),
           resolvedShadowShutdownDeadlineMs,
           'tables broadcast shutdown deadline exceeded',
         )

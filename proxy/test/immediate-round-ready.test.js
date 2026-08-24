@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createApp } from '../src/server.js'
+import { buildLivePrediction } from '../src/supabase-writer.js'
 
 const table = {
   tableId: 'BAG01', shoe: 88, round: 20,
@@ -223,6 +224,132 @@ test('duplicate same-screen updates wait for the heartbeat instead of triggering
     assert.equal(result, 'quiet')
     controller.abort()
     await pendingEvent
+  } finally {
+    controller.abort()
+    await app.stop()
+  }
+})
+
+test('fast durable prediction read-back stays inside the current full broadcast', async () => {
+  const issuedAt = new Date().toISOString()
+  const exact = {
+    ...buildLivePrediction({ ...table, round: 19 }),
+    predictionId: 'fast-read-back-20',
+    issuedAt,
+  }
+  const supabaseClient = {
+    configured: true,
+    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' }),
+    getV105FormalHistory: async () => [],
+    issuePrediction: async () => null,
+    readIssuedPrediction: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      return exact
+    },
+  }
+  const app = createApp({ autoConnect: false, port: 0, streamHeartbeatMs: 40, requireVerifiedStrategy: true, supabaseClient })
+  app.state.setTables([table])
+  await app.start()
+  const controller = new AbortController()
+  const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal })).body.getReader()
+
+  try {
+    const initial = await readSseEvent(reader)
+    assert.equal(initial.event, 'tables')
+    assert.equal(initial.data.tables[0].prediction.predictionId, 'fast-read-back-20')
+    const next = await readSseEvent(reader, 500)
+    assert.equal(next.event, 'heartbeat')
+  } finally {
+    controller.abort()
+    await app.stop()
+  }
+})
+
+test('slow durable prediction read-back triggers an immediate full tables broadcast', async () => {
+  const issuedAt = new Date().toISOString()
+  const exact = {
+    ...buildLivePrediction({ ...table, round: 19 }),
+    predictionId: 'slow-read-back-20',
+    issuedAt,
+  }
+  const supabaseClient = {
+    configured: true,
+    getRuntimeStatus: () => ({ ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' }),
+    getV105FormalHistory: async () => [],
+    issuePrediction: async () => null,
+    readIssuedPrediction: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80))
+      return exact
+    },
+  }
+  const app = createApp({ autoConnect: false, port: 0, streamHeartbeatMs: 40, requireVerifiedStrategy: true, supabaseClient })
+  app.state.setTables([table])
+  await app.start()
+  const controller = new AbortController()
+  const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal })).body.getReader()
+
+  try {
+    const initial = await readSseEvent(reader)
+    assert.equal(initial.event, 'tables')
+    assert.equal(initial.data.tables[0].prediction, null)
+    const ready = await readSseEvent(reader, 500)
+    assert.equal(ready.event, 'tables')
+    assert.equal(ready.data.tables[0].prediction.predictionId, 'slow-read-back-20')
+  } finally {
+    controller.abort()
+    await app.stop()
+  }
+})
+
+test('heartbeat does not rebuild the complete durable tables payload when no table changed', async () => {
+  let durableReads = 0
+  const supabaseClient = {
+    configured: true,
+    getLatestCloudTableSnapshot: async () => {
+      durableReads += 1
+      return { tables: [], snapshot_at: new Date().toISOString() }
+    },
+  }
+  const app = createApp({ autoConnect: false, port: 0, streamHeartbeatMs: 40, supabaseClient })
+  await app.start()
+  const controller = new AbortController()
+  const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal })).body.getReader()
+
+  try {
+    const initial = await readSseEvent(reader)
+    assert.equal(initial.event, 'tables')
+    const heartbeat = await readSseEvent(reader, 500)
+    assert.equal(heartbeat.event, 'heartbeat')
+    assert.equal(durableReads, 1)
+  } finally {
+    controller.abort()
+    await app.stop()
+  }
+})
+
+test('repeated unchanged empty tables use heartbeat without another durable rebuild', async () => {
+  let durableReads = 0
+  const supabaseClient = {
+    configured: true,
+    getLatestCloudTableSnapshot: async () => {
+      durableReads += 1
+      return { tables: [], snapshot_at: new Date().toISOString() }
+    },
+  }
+  const app = createApp({ autoConnect: false, port: 0, streamHeartbeatMs: 40, supabaseClient })
+  app.state.setTables([table])
+  await app.start()
+  const controller = new AbortController()
+  const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal })).body.getReader()
+
+  try {
+    assert.equal((await readSseEvent(reader)).event, 'tables')
+    app.state.setTables([])
+    assert.equal((await readSseEvent(reader, 500)).event, 'tables')
+    assert.equal(durableReads, 1)
+    app.state.setTables([])
+    assert.equal((await readSseEvent(reader, 500)).event, 'heartbeat')
+    assert.equal(durableReads, 1)
   } finally {
     controller.abort()
     await app.stop()

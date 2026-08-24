@@ -155,7 +155,7 @@ test('expired prediction tombstones are bounded across long-running tables', asy
 
 test('SSE sends table data when prediction TTL expires and when tables become empty', async () => {
   let clock = 1_000_000
-  const app = createApp({ autoConnect: false, port: 0, now: () => clock, predictionTtlMs: 1000, supabaseClient: { configured: false } })
+  const app = createApp({ autoConnect: false, port: 0, now: () => clock, predictionTtlMs: 1000, streamHeartbeatMs: 40, supabaseClient: { configured: false } })
   app.state.setTables([table])
   await app.start()
   const controller = new AbortController()
@@ -166,10 +166,13 @@ test('SSE sends table data when prediction TTL expires and when tables become em
     assert.equal(fresh.event, 'tables')
     assert.ok(fresh.data.tables[0].prediction)
 
-    clock += 1001
+    clock += 1000
     const expired = await readSseEvent(reader)
     assert.equal(expired.event, 'tables')
     assert.equal(expired.data.tables[0].prediction, null)
+
+    const afterExpiry = await readSseEvent(reader)
+    assert.equal(afterExpiry.event, 'heartbeat')
 
     app.state.setTables([])
     const empty = await readSseEvent(reader)
