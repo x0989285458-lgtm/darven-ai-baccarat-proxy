@@ -333,6 +333,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   let outboxWakeAtMs = null
   let outboxWakePromise = null
   let resolveOutboxWake = null
+  let outboxWakeGeneration = 0
   let outboxStopping = false
   let captureOutboxFatal = null
   let fatalHandlerCalled = false
@@ -669,7 +670,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   }
 
   function scheduleCaptureOutboxDrain(delayMs = 0) {
-    if (outboxStopping) return outboxWakePromise
+    if (outboxStopping) return outboxWakePromise ?? Promise.resolve()
+    outboxWakeGeneration += 1
     const normalizedDelayMs = Math.max(0, Number(delayMs) || 0)
     const targetWakeAtMs = Date.now() + normalizedDelayMs
     if (outboxWakeTimer) {
@@ -739,6 +741,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
 
   function drainCaptureOutbox() {
     if (outboxDrainPromise) return outboxDrainPromise
+    const drainWakeGeneration = outboxWakeGeneration
     let deferredWakeDelayMs = null
     const deferWake = (delayMs) => {
       const normalizedDelayMs = Math.max(0, Number(delayMs) || 0)
@@ -919,8 +922,10 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       return { processed, failed }
     })().finally(() => {
       if (!captureOutboxFatal) setCaptureOutboxPhase('idle')
+      const freshWakeRequested = outboxWakeGeneration !== drainWakeGeneration
       outboxDrainPromise = null
-      if (!outboxStopping && !captureOutboxFatal && deferredWakeDelayMs != null) scheduleCaptureOutboxDrain(deferredWakeDelayMs)
+      const nextDelayMs = freshWakeRequested ? 0 : deferredWakeDelayMs
+      if (!outboxStopping && !captureOutboxFatal && nextDelayMs != null) scheduleCaptureOutboxDrain(nextDelayMs)
     })
     return outboxDrainPromise
   }
@@ -1190,7 +1195,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               }
               captureResult = { durableTimings: { rawOutboxMs: Math.max(0, Date.now() - rawOutboxStartedAt) } }
               if (!duplicateCapture) {
-                void drainCaptureOutbox().catch((error) => {
+                void scheduleCaptureOutboxDrain(0).catch((error) => {
                   state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
                 })
               }

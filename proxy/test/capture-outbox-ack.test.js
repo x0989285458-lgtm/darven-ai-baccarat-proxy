@@ -83,6 +83,7 @@ test('durable raw capture and outbox ACK do not wait for formal settlement', asy
     assert.equal(response.statusCode, 200)
     assert.deepEqual(JSON.parse(response.body).acceptedRoundKeys, ['BAG01:88:21'])
     assert.equal(order[0], 'raw-outbox')
+    assert.equal(order.includes('formal-start'), false, 'HTTP ACK must be created before Formal Outbox work starts')
     await delay(0)
     assert.equal(order.includes('formal-start'), true)
     assert.equal(order.includes('formal-finish'), false)
@@ -90,6 +91,114 @@ test('durable raw capture and outbox ACK do not wait for formal settlement', asy
     releaseSettlement()
     await request
   }
+})
+
+test('ACK scheduled during an in-flight stale health read always triggers a fresh outbox drain', async () => {
+  let releaseFirstHealth
+  let signalFirstHealthStarted
+  const firstHealthGate = new Promise((resolve) => { releaseFirstHealth = resolve })
+  const firstHealthStarted = new Promise((resolve) => { signalFirstHealthStarted = resolve })
+  let pending = false
+  let claimCalls = 0
+  let formalCalls = 0
+  let healthCalls = 0
+  const app = createApp({
+    autoConnect: false,
+    ingestKey: 'worker-key',
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async persistCaptureEnvelope(value) {
+        pending = true
+        return { acceptedRoundKeys: value.roundKeys }
+      },
+      async writeCloudCaptureStatus() {},
+      async writeCloudTableSnapshot() {},
+      async writeCloudRoundEvent() {},
+      async claimCaptureOutbox() {
+        claimCalls += 1
+        if (!pending) return []
+        pending = false
+        return [claimedRow(7, { payload: { work: envelope().snapshot } })]
+      },
+      async getCaptureOutboxHealth() {
+        healthCalls += 1
+        if (healthCalls === 1) {
+          signalFirstHealthStarted()
+          await firstHealthGate
+        }
+        return { pending: 0, error: 0, processing: 0, dead_letter: 0, next_wakeup_at: null }
+      },
+      async completeCaptureOutbox() { return { completed: true } },
+      async failCaptureOutbox() { assert.fail('fresh durable work must not fail') },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) {
+        formalCalls += 1
+        return { tables }
+      },
+    },
+  })
+
+  const staleDrain = app.drainCaptureOutbox()
+  await firstHealthStarted
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/cloud-ingest/snapshot',
+    headers: { 'x-worker-key': 'worker-key' },
+    body: JSON.stringify(envelope()),
+  })
+  assert.equal(response.statusCode, 200)
+  await delay(20)
+  releaseFirstHealth()
+  await staleDrain
+  await app.waitForCaptureOutboxIdle()
+
+  assert.ok(claimCalls >= 2, `fresh outbox wake was lost after ${claimCalls} claim`)
+  assert.equal(formalCalls, 1)
+  assert.equal(pending, false)
+  await app.stop()
+})
+
+test('durable ACK remains successful when graceful stop begins before outbox wake scheduling', async () => {
+  let releasePersist
+  let signalPersistStarted
+  const persistGate = new Promise((resolve) => { releasePersist = resolve })
+  const persistStarted = new Promise((resolve) => { signalPersistStarted = resolve })
+  const app = createApp({
+    autoConnect: false,
+    ingestKey: 'worker-key',
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async persistCaptureEnvelope(value) {
+        signalPersistStarted()
+        await persistGate
+        return { acceptedRoundKeys: value.roundKeys }
+      },
+      async writeCloudCaptureStatus() {},
+      async writeCloudTableSnapshot() {},
+      async writeCloudRoundEvent() {},
+      async claimCaptureOutbox() { return [] },
+    },
+    v100FormalRuntime: { enabled: false },
+  })
+
+  const request = app.inject({
+    method: 'POST',
+    url: '/api/cloud-ingest/snapshot',
+    headers: { 'x-worker-key': 'worker-key' },
+    body: JSON.stringify(envelope()),
+  })
+  await persistStarted
+  const stopping = app.stop()
+  releasePersist()
+  const response = await request
+  await stopping
+
+  assert.equal(response.statusCode, 200)
+  assert.deepEqual(JSON.parse(response.body).acceptedRoundKeys, ['BAG01:88:21'])
 })
 
 test('same-session outbox batch merges ordered envelopes and completes every exact lease atomically', async () => {
