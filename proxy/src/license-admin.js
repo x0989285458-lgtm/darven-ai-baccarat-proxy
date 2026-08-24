@@ -2,10 +2,10 @@ import crypto from 'node:crypto'
 import pg from 'pg'
 import { ALL_MT_EQUAL_STRATEGY_VERSION, resolveBackendReadConnectionString } from './supabase-writer.js'
 
-export function createLicenseAdminClient({ dbConnectionString, pool = null, poolFactory = (options) => new pg.Pool(options) } = {}) {
+export function createLicenseAdminClient({ dbConnectionString, pool = null, authPool = null, poolFactory = (options) => new pg.Pool(options) } = {}) {
   const resolvedConnectionString = dbConnectionString ?? process.env.SUPABASE_DB_CONNECTION_STRING
-  const configured = Boolean(pool || resolvedConnectionString)
-  const db = pool ?? (resolvedConnectionString ? poolFactory({
+  const configured = Boolean(pool || authPool || resolvedConnectionString)
+  const poolOptions = () => ({
     connectionString: resolveBackendReadConnectionString(resolvedConnectionString),
     ssl: { rejectUnauthorized: false },
     max: 1,
@@ -13,7 +13,11 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null, pool
     query_timeout: 9000,
     statement_timeout: 8500,
     idleTimeoutMillis: 30000,
-  }) : null)
+  })
+  const db = pool ?? (resolvedConnectionString ? poolFactory(poolOptions()) : null)
+  // Keep authentication off the admin dashboard's five-query reporting queue.
+  // Injected pools retain the historical single-pool behavior unless authPool is explicit.
+  const authDb = authPool ?? (pool ? pool : (resolvedConnectionString ? poolFactory(poolOptions()) : db))
   const dailyAnalyticsCacheMs = 60_000
   let dailyAnalyticsCache = null
   let dailyAnalyticsCacheAt = 0
@@ -249,7 +253,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null, pool
 
   async function isMaintenanceMode() {
     try {
-      const result = await db.query(`select s.value
+      const result = await authDb.query(`select s.value
         from public.online_app_settings s
         join public.memory_projects p on p.id = s.project_id
         where p.slug = 'ai-baccarat' and s.scope = 'frontend' and s.key = 'ui_defaults'
@@ -264,7 +268,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null, pool
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
     if (await isMaintenanceMode()) return { ok: false, maintenanceMode: true, error: '系統維護中，暫停登入' }
     if (!memberAccount || !verificationPassword) throw new Error('Member account and verification password are required')
-    const result = await db.query(
+    const result = await authDb.query(
       `select l.id, l.code, l.member_account, l.status, l.expires_on, a.code as agent_code, p.name as plan_name
        from public.licenses l
        join public.agents a on a.id = l.agent_id
@@ -278,7 +282,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null, pool
     try {
       const auditWrite = db.query(
         'insert into public.license_validation_logs(license_id, member_account, submitted_code, result) values ($1, $2, $3, $4)',
-        [license?.id ?? null, memberAccount, '[REDACTED]', ok ? 'valid' : 'failed'],
+        [license?.id ?? null, memberAccount, '[REDACTED]', validationAuditOutcome(license, ok)],
       )
       void Promise.resolve(auditWrite).catch((error) => {
         console.warn('[license-validation-log-skipped]', error?.message || error)
@@ -291,7 +295,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null, pool
 
   async function validateMemberSession({ memberAccount, licenseId, authorizationVersion = null } = {}) {
     if (!configured || !memberAccount || !licenseId) return { ok: false }
-    const result = await db.query(
+    const result = await authDb.query(
       `select l.id, l.member_account, l.status, l.expires_on, l.updated_at
        from public.licenses l
        where l.id = $1 and l.member_account = $2
@@ -309,10 +313,10 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null, pool
     if (!configured) return { skipped: true, reason: 'Supabase DB connection is not configured' }
     if (!isSuperAdmin(agentAccount) && await isMaintenanceMode()) return { ok: false, maintenanceMode: true, error: '系統維護中，僅超級管理員可登入' }
     if (!agentAccount) throw new Error('Agent account is required')
-    const managerResult = await db.query("select id, username, role, is_active, created_at from public.manager_accounts where lower(username) = lower($1) and lower(username) = 'dv1788' and is_active = true limit 1", [agentAccount])
+    const managerResult = await authDb.query("select id, username, role, is_active, created_at from public.manager_accounts where lower(username) = lower($1) and lower(username) = 'dv1788' and is_active = true limit 1", [agentAccount])
     const manager = managerResult.rows[0] ?? null
     if (manager) return { ok: true, agent: null, account: { ...manager, type: 'manager', permission: manager.role === 'total' ? 'all' : 'limited' } }
-    const result = await db.query("select id, code, name, role, parent_code, permission, created_at from public.agents where code = $1 and lower(code) <> 'dv1788' and coalesce(is_active, true) = true limit 1", [agentAccount])
+    const result = await authDb.query("select id, code, name, role, parent_code, permission, created_at from public.agents where code = $1 and lower(code) <> 'dv1788' and coalesce(is_active, true) = true limit 1", [agentAccount])
     const agent = result.rows[0] ?? null
     if (agent) return { ok: true, agent, account: { ...agent, type: 'agent', permission: agent.permission ?? 'agent' } }
     return { ok: false, agent: null, account: null }
@@ -670,6 +674,14 @@ function inferDepth(role) {
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10)
+}
+
+function validationAuditOutcome(license, ok) {
+  if (ok) return 'valid'
+  if (!license) return 'missing'
+  if (license.status === 'suspended') return 'suspended'
+  if (license.status === 'expired' || dateOnly(license.expires_on) < todayIso()) return 'expired'
+  return 'missing'
 }
 
 function dateOnly(value) {

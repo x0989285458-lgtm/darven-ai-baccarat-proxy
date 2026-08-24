@@ -3,6 +3,62 @@ import assert from 'node:assert/strict'
 import { createLicenseAdminClient } from '../src/license-admin.js'
 import { createApp } from '../src/server.js'
 
+test('production license client isolates authentication reads from admin reporting queries', async () => {
+  const pools = []
+  const poolFactory = (config) => {
+    const index = pools.length
+    const queries = []
+    const pool = {
+      config,
+      queries,
+      async query(sql, params = []) {
+        queries.push({ sql: String(sql), params })
+        if (String(sql).includes('online_app_settings')) return { rows: [] }
+        if (String(sql).includes('manager_accounts')) return { rows: [{ id: 'manager-1', username: 'dv1788', role: 'total', is_active: true }] }
+        if (String(sql).includes('where l.id = $1')) return { rows: [{ id: 'license-1', member_account: 'Member001', status: 'active', expires_on: '2099-12-31', updated_at: '2026-08-24T00:00:00.000Z' }] }
+        if (String(sql).includes('where l.code = $1')) return { rows: [{ id: 'license-1', code: params[0], member_account: params[1], status: 'active', expires_on: '2099-12-31' }] }
+        return { rows: [] }
+      },
+    }
+    pools.push(pool)
+    return pool
+  }
+  const client = createLicenseAdminClient({ dbConnectionString: 'postgresql://user:secret@example.invalid:5432/postgres', poolFactory })
+  assert.equal(pools.length, 2)
+  assert.equal(pools[0].config.max, 1)
+  assert.equal(pools[1].config.max, 1)
+
+  await client.validateAgentLogin({ agentAccount: 'dv1788' })
+  await client.validateMemberLogin({ memberAccount: 'Member001', verificationPassword: 'CODE001' })
+  await client.validateMemberSession({ memberAccount: 'Member001', licenseId: 'license-1' })
+
+  assert.equal(pools[0].queries.some((q) => q.sql.includes('manager_accounts') || q.sql.includes('where l.code = $1') || q.sql.includes('where l.id = $1')), false)
+  assert.equal(pools[1].queries.some((q) => q.sql.includes('manager_accounts')), true)
+  assert.equal(pools[1].queries.some((q) => q.sql.includes('where l.code = $1')), true)
+  assert.equal(pools[1].queries.some((q) => q.sql.includes('where l.id = $1')), true)
+})
+
+test('member validation audit records only schema-supported outcomes', async () => {
+  const auditOutcomes = []
+  const pool = { async query(sql, params = []) {
+    const text = String(sql)
+    if (text.includes('online_app_settings')) return { rows: [] }
+    if (text.includes('where l.code = $1')) {
+      if (params[0] === 'SUSPENDED') return { rows: [{ id: 's', status: 'suspended', expires_on: '2099-12-31' }] }
+      if (params[0] === 'EXPIRED') return { rows: [{ id: 'e', status: 'active', expires_on: '2020-01-01' }] }
+      return { rows: [] }
+    }
+    if (text.includes('license_validation_logs')) { auditOutcomes.push(params[3]); return { rows: [] } }
+    return { rows: [] }
+  } }
+  const client = createLicenseAdminClient({ pool })
+  await client.validateMemberLogin({ memberAccount: 'Member001', verificationPassword: 'MISSING' })
+  await client.validateMemberLogin({ memberAccount: 'Member001', verificationPassword: 'SUSPENDED' })
+  await client.validateMemberLogin({ memberAccount: 'Member001', verificationPassword: 'EXPIRED' })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(auditOutcomes, ['missing', 'suspended', 'expired'])
+})
+
 test('creates member-bound licenses, logs admin operation, and validates exact active member/code pair', async () => {
   const queries = []
   const pool = { async query(sql, params = []) { queries.push({ sql: String(sql), params }); return fakeV046(sql, params) } }
