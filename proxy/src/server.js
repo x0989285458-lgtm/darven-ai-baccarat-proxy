@@ -2009,8 +2009,10 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     if (localSnapshot.tables.length > 0 && isFreshCloudTimestamp(localProgressAt)) return null
     if (!supabaseClient?.configured || typeof supabaseClient.getLatestCloudCaptureStatus !== 'function') return null
     try {
-      const status = await supabaseClient.getLatestCloudCaptureStatus()
-      const snapshot = await readLatestCloudSnapshot({ requireFresh: true })
+      const [status, snapshot] = await Promise.all([
+        supabaseClient.getLatestCloudCaptureStatus(),
+        readLatestCloudSnapshot({ requireFresh: true }),
+      ])
       const statusSource = String(status?.capture_source ?? status?.captureSource ?? '').toLowerCase()
       const statusIsFresh = statusSource === 'local_chrome' || isFreshCloudTimestamp(status?.last_message_at ?? status?.snapshot_at ?? status?.updated_at ?? status?.created_at)
       if (!statusIsFresh && !snapshot) {

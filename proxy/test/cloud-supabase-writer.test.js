@@ -361,6 +361,26 @@ test('formal Supabase reads abort within the configured request deadline', async
   )
 })
 
+test('control-plane cloud status reads abort within the configured request deadline', async () => {
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'sb_secret_test_key',
+    requestTimeoutMs: 5,
+    fetchImpl: async (_url, init = {}) => new Promise((resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('request aborted', 'AbortError')))
+    }),
+  })
+
+  for (const read of [client.getLatestCloudCaptureStatus, client.getLatestCloudTableSnapshot]) {
+    await assert.rejects(
+      Promise.race([
+        read(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('control-plane read remained hung')), 100)),
+      ]),
+      /abort/i,
+    )
+  }
+})
+
 test('formal Supabase RPC reads and strategy patches share the configured deadline', async () => {
   const makeClient = () => createSupabaseIngestionClient({
     url: 'https://example.supabase.co',

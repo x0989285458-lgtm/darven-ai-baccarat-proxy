@@ -3591,11 +3591,11 @@ export function createSupabaseIngestionClient({
       return { ok: true, row, result }
     },
     async getLatestCloudTableSnapshot() {
-      const rows = await getRest('cloud_table_snapshots', { select: '*', order: 'snapshot_at.desc', limit: '1' })
+      const rows = await getRest('cloud_table_snapshots', { select: '*', order: 'snapshot_at.desc', limit: '1' }, { requestTimeoutMs: formalTimeoutMs })
       return Array.isArray(rows) ? rows[0] ?? null : null
     },
     async getLatestCloudCaptureStatus() {
-      const rows = await getRest('cloud_capture_status', { select: '*', order: 'updated_at.desc', limit: '1' })
+      const rows = await getRest('cloud_capture_status', { select: '*', order: 'updated_at.desc', limit: '1' }, { requestTimeoutMs: formalTimeoutMs })
       return Array.isArray(rows) ? rows[0] ?? null : null
     },
     async countTodayPredictionRounds() {

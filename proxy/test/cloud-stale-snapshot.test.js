@@ -99,6 +99,28 @@ test('api/status replaces stale non-empty in-memory capture state with fresher d
   assert.equal(body.degraded, false)
 })
 
+test('api/status reads durable capture status and snapshot in parallel', async () => {
+  const freshTime = new Date().toISOString()
+  const delayed = (value) => new Promise((resolve) => setTimeout(() => resolve(value), 60))
+  const app = createApp({
+    autoConnect: false, deployMode: 'cloud', captureSource: 'cloud_browser', ingestKey: 'worker-key',
+    supabaseClient: {
+      configured: true,
+      getLatestCloudCaptureStatus: () => delayed({
+        capture_source: 'cloud_browser', connected: true, authenticated: true, table_count: 10,
+        last_message_at: freshTime, last_round_at: freshTime,
+      }),
+      getLatestCloudTableSnapshot: () => delayed({ capture_source: 'cloud_browser', snapshot_at: freshTime, table_count: 10, tables: [] }),
+    },
+  })
+  app.state.setStatus({ lastMessageAt: staleTime, lastRoundAt: staleTime })
+  const started = Date.now()
+  const response = await app.inject({ method: 'GET', url: '/api/status' })
+  const elapsed = Date.now() - started
+  assert.equal(response.statusCode, 200)
+  assert.ok(elapsed < 105, `durable status reads remained sequential (${elapsed}ms)`)
+})
+
 test('health fails closed when ten connected tables have no authoritative Final progress', async () => {
   const currentTimeMs = Date.now()
   const app = createApp({
