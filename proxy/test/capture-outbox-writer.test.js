@@ -6,6 +6,7 @@ import { createSupabaseIngestionClient } from '../src/supabase-writer.js'
 const migrationUrl = new URL('../../supabase/migrations/20260729043000_v105_capture_settlement_outbox.sql', import.meta.url)
 const zeroFinalHeartbeatMigrationUrl = new URL('../../supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql', import.meta.url)
 const sameSessionBatchMigrationUrl = new URL('../../supabase/migrations/20260824010000_v105_capture_outbox_same_session_batch.sql', import.meta.url)
+const transportRebindMigrationUrl = new URL('../../supabase/migrations/20260824143000_v105_capture_transport_rebind_idempotency.sql', import.meta.url)
 
 const response = (payload) => ({
   ok: true,
@@ -64,6 +65,28 @@ test('zero-Final heartbeat keeps an idempotency row but completes it without set
   assert.match(sql, /jsonb_array_length\(capture_rounds\)\s*=\s*0[\s\S]*'completed'/i)
   assert.match(sql, /insert into public\.v105_capture_settlement_outbox[\s\S]*status[\s\S]*processed_at/i)
   assert.match(sql, /create or replace function public\.persist_v105_capture_envelope\(p_capture jsonb\)/i)
+  assert.match(sql, /grant execute on function public\.persist_v105_capture_envelope\(jsonb\) to service_role/i)
+  assert.doesNotMatch(sql, /\b(drop|truncate|delete\s+from)\b/i)
+})
+
+test('transport-rebound Finals ignore only source fence metadata during round conflict checks', () => {
+  const sql = readFileSync(transportRebindMigrationUrl, 'utf8')
+  const normalizedSql = sql.replaceAll(String.fromCharCode(13), '')
+  const expectedLines = readFileSync(zeroFinalHeartbeatMigrationUrl, 'utf8').replaceAll(String.fromCharCode(13), '').split('\n')
+  expectedLines[0] = '-- V105 transport-rebound Finals keep business identity strict while excluding mutable source-fence metadata.'
+  expectedLines[1] = '-- Additive function replacement only: no historical data is dropped or rewritten.'
+  const expectedSql = expectedLines.join('\n').replace(
+    'existing.raw_event is distinct from incoming.raw_event',
+    "(existing.raw_event - 'source' - 'capturedSource') is distinct from (incoming.raw_event - 'source' - 'capturedSource')",
+  )
+  assert.equal(normalizedSql, expectedSql, 'migration may differ from the latest zero-Final function only at the documented transport predicate')
+  assert.match(sql, /create or replace function public\.persist_v105_capture_envelope\(p_capture jsonb\)/i)
+  assert.match(sql, /\(existing\.raw_event\s*-\s*'source'\s*-\s*'capturedSource'\)\s+is distinct from\s+\(incoming\.raw_event\s*-\s*'source'\s*-\s*'capturedSource'\)/i)
+  assert.match(sql, /existing\.main_result is distinct from incoming\.main_result/i)
+  assert.match(sql, /existing\.banker_points is distinct from incoming\.banker_points/i)
+  assert.match(sql, /existing\.player_points is distinct from incoming\.player_points/i)
+  assert.match(sql, /existing\.table_snapshot is distinct from incoming\.table_snapshot/i)
+  assert.doesNotMatch(sql, /raw_event\s*-\s*'(rawResult|winner|bankerPoint|playerPoint)'/i)
   assert.match(sql, /grant execute on function public\.persist_v105_capture_envelope\(jsonb\) to service_role/i)
   assert.doesNotMatch(sql, /\b(drop|truncate|delete\s+from)\b/i)
 })
