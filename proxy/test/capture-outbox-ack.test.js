@@ -40,6 +40,7 @@ test('durable raw capture and outbox ACK do not wait for formal settlement', asy
   let claimed = false
   const app = createApp({
     autoConnect: false,
+    outboxCoalesceMs: 0,
     ingestKey: 'worker-key',
     now: () => 1_000_000,
     supabaseClient: {
@@ -104,6 +105,7 @@ test('ACK scheduled during an in-flight stale health read always triggers a fres
   let healthCalls = 0
   const app = createApp({
     autoConnect: false,
+    outboxCoalesceMs: 0,
     ingestKey: 'worker-key',
     now: () => 1_000_000,
     supabaseClient: {
@@ -161,6 +163,87 @@ test('ACK scheduled during an in-flight stale health read always triggers a fres
   await app.stop()
 })
 
+test('fresh durable ACK cannot delay an existing immediate backlog continuation', async () => {
+  let releaseFirstFormal
+  let signalFirstFormalStarted
+  let signalSecondClaimStarted
+  const firstFormalGate = new Promise((resolve) => { releaseFirstFormal = resolve })
+  const firstFormalStarted = new Promise((resolve) => { signalFirstFormalStarted = resolve })
+  const secondClaimStarted = new Promise((resolve) => { signalSecondClaimStarted = resolve })
+  const makeWork = (round) => {
+    const work = structuredClone(envelope().snapshot)
+    work.tables[0].round = round
+    work.rounds[0].round = round
+    return work
+  }
+  const pendingRows = [
+    claimedRow(21, { payload: { work: makeWork(21) } }),
+    claimedRow(22, { payload: { work: makeWork(22) } }),
+  ]
+  let claimCalls = 0
+  let formalCalls = 0
+  const app = createApp({
+    autoConnect: false,
+    ingestKey: 'worker-key',
+    now: () => 1_000_000,
+    outboxCoalesceMs: 100,
+    supabaseClient: {
+      configured: true,
+      async persistCaptureEnvelope(value) {
+        pendingRows.push(claimedRow(value.sequence, { payload: { work: makeWork(23) } }))
+        return { acceptedRoundKeys: value.roundKeys }
+      },
+      async writeCloudCaptureStatus() {},
+      async writeCloudTableSnapshot() {},
+      async writeCloudRoundEvent() {},
+      async claimCaptureOutbox() {
+        claimCalls += 1
+        if (claimCalls === 2) signalSecondClaimStarted()
+        return pendingRows.length > 0 ? [pendingRows.shift()] : []
+      },
+      async completeCaptureOutbox() { return { completed: true } },
+      async failCaptureOutbox() { assert.fail('backlog continuation must not fail') },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) {
+        formalCalls += 1
+        if (formalCalls === 1) {
+          signalFirstFormalStarted()
+          await firstFormalGate
+        }
+        return { tables }
+      },
+    },
+  })
+
+  const firstDrain = app.drainCaptureOutbox()
+  await firstFormalStarted
+  const freshEnvelope = envelope()
+  freshEnvelope.sessionId = 'fresh-worker'
+  freshEnvelope.sequence = 23
+  freshEnvelope.roundKeys = ['BAG01:88:23']
+  freshEnvelope.snapshot.tables[0].round = 23
+  freshEnvelope.snapshot.rounds[0].round = 23
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/cloud-ingest/snapshot',
+    headers: { 'x-worker-key': 'worker-key' },
+    body: JSON.stringify(freshEnvelope),
+  })
+  assert.equal(response.statusCode, 200, response.body)
+  releaseFirstFormal()
+
+  const continuedImmediately = await Promise.race([
+    secondClaimStarted.then(() => true),
+    delay(50).then(() => false),
+  ])
+  assert.equal(continuedImmediately, true, 'fresh ACK delayed an existing 0ms backlog continuation')
+  await firstDrain
+  await app.waitForCaptureOutboxIdle()
+  await app.stop()
+})
+
 test('durable ACK remains successful when graceful stop begins before outbox wake scheduling', async () => {
   let releasePersist
   let signalPersistStarted
@@ -199,6 +282,77 @@ test('durable ACK remains successful when graceful stop begins before outbox wak
 
   assert.equal(response.statusCode, 200)
   assert.deepEqual(JSON.parse(response.body).acceptedRoundKeys, ['BAG01:88:21'])
+})
+
+test('sequential durable ACKs coalesce before one formal outbox batch claim', async () => {
+  const pendingRows = []
+  const claimedBatchSizes = []
+  let formalCalls = 0
+  const app = createApp({
+    autoConnect: false,
+    ingestKey: 'worker-key',
+    now: () => 1_000_000,
+    outboxCoalesceMs: 25,
+    supabaseClient: {
+      configured: true,
+      async persistCaptureEnvelope(value) {
+        const work = structuredClone(envelope().snapshot)
+        if (value.sequence === 8) {
+          work.tables[0].round = 22
+          work.rounds[0].round = 22
+        }
+        pendingRows.push(claimedRow(value.sequence, { payload: { work } }))
+        return { acceptedRoundKeys: value.roundKeys }
+      },
+      async writeCloudCaptureStatus() {},
+      async writeCloudTableSnapshot() {},
+      async writeCloudRoundEvent() {},
+      async claimCaptureOutbox() {
+        if (pendingRows.length === 0) return []
+        const rows = pendingRows.splice(0, 3)
+        claimedBatchSizes.push(rows.length)
+        return rows
+      },
+      async completeCaptureOutboxBatch({ claims }) { return { completed: claims.length } },
+      async failCaptureOutboxBatch() { assert.fail('coalesced work must not fail') },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) {
+        formalCalls += 1
+        return { tables }
+      },
+    },
+  })
+
+  const first = envelope()
+  const second = structuredClone(first)
+  second.sequence = 8
+  second.roundKeys = ['BAG01:88:22']
+  second.snapshot.tables[0].round = 22
+  second.snapshot.rounds[0].round = 22
+  const firstResponse = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': 'worker-key' }, body: JSON.stringify(first) })
+  await delay(5)
+  const secondResponse = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': 'worker-key' }, body: JSON.stringify(second) })
+  assert.equal(firstResponse.statusCode, 200)
+  assert.equal(secondResponse.statusCode, 200)
+  await delay(50)
+  await app.waitForCaptureOutboxIdle()
+
+  assert.deepEqual(claimedBatchSizes, [2])
+  assert.equal(formalCalls, 1)
+  await app.stop()
+})
+
+test('outbox coalescing rejects invalid or unbounded configuration', async () => {
+  for (const value of ['', Number.NaN, -1, 1.5, 5001]) {
+    assert.throws(
+      () => createApp({ autoConnect: false, outboxCoalesceMs: value }),
+      /outbox coalesce.*integer.*0.*5000/i,
+    )
+  }
+  const app = createApp({ autoConnect: false, outboxCoalesceMs: 0 })
+  await app.stop()
 })
 
 test('same-session outbox batch merges ordered envelopes and completes every exact lease atomically', async () => {
