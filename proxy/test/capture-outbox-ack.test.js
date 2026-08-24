@@ -100,6 +100,7 @@ for (const disabledValue of [false, 'false']) {
     const app = createApp({
       autoConnect: false,
       captureOutboxConsumerEnabled: disabledValue,
+      captureOutboxPollMs: 10,
       outboxCoalesceMs: 0,
       ingestKey: 'worker-key',
       now: () => 1_000_000,
@@ -125,6 +126,62 @@ for (const disabledValue of [false, 'false']) {
     assert.equal(claimCalls, 0)
   })
 }
+
+test('external consumer polls for durable work that arrives without an in-process ACK wake', async () => {
+  let pending = false
+  let completed = false
+  let claimCalls = 0
+  const app = createApp({
+    autoConnect: false,
+    port: 0,
+    host: '127.0.0.1',
+    captureOutboxPollMs: 10,
+    outboxCoalesceMs: 0,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        claimCalls += 1
+        if (!pending) return []
+        return [claimedRow(8)]
+      },
+      async completeCaptureOutbox() { pending = false; completed = true },
+      async getCaptureOutboxHealth() {
+        return { pending: pending ? 1 : 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null }
+      },
+    },
+  })
+
+  await app.start()
+  await Promise.race([
+    (async () => { while (claimCalls === 0) await delay(5) })(),
+    delay(200).then(() => { throw new Error('startup drain did not run') }),
+  ])
+  await delay(15)
+  const claimsAfterInitialDrain = claimCalls
+  pending = true
+  try {
+    await Promise.race([
+      (async () => { while (!completed) await delay(5) })(),
+      delay(200).then(() => { throw new Error('external consumer poll did not discover durable work') }),
+    ])
+    assert.ok(claimCalls > claimsAfterInitialDrain)
+    assert.equal(completed, true)
+  } finally {
+    await app.stop()
+  }
+  const claimsAfterStop = claimCalls
+  await delay(25)
+  assert.equal(claimCalls, claimsAfterStop, 'poll claimed work after app stop')
+})
+
+test('external consumer poll interval is zero-disabled or a bounded safe integer', () => {
+  for (const value of [-1, 1, 60_001, 'NaN', '', '   ']) {
+    assert.throws(() => createApp({ autoConnect: false, captureOutboxPollMs: value }), /capture outbox poll/i)
+  }
+  assert.doesNotThrow(() => createApp({ autoConnect: false, captureOutboxPollMs: 0 }))
+  assert.doesNotThrow(() => createApp({ autoConnect: false, captureOutboxPollMs: 10 }))
+  assert.doesNotThrow(() => createApp({ autoConnect: false, captureOutboxPollMs: 60_000 }))
+})
 
 test('ACK scheduled during an in-flight stale health read always triggers a fresh outbox drain', async () => {
   let releaseFirstHealth
