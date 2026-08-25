@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "v105-v10-main-successor-overlay.1",
+  "predecessorManifest": "release/v105-v10-main31-trusted-workflow-release-manifest.json",
+  "releaseName": "V105主預測V10穩定版32 Fail-Closed Trusted Delta發布修復",
+  "releaseVersion": "v105-v10-main.32",
+  "gitTag": "v105-v10-main.32",
+  "applicationVersion": "1.0.66",
+  "baseCommit": "8f6e490677d3e38ffc8468c3a911c62a7b62a901",
+  "runtimeSourceVersion": "v105-v10-main.30",
+  "releaseScope": {
+    "runtimeCodeChanged": false,
+    "predictionChanged": false,
+    "databaseChanged": false,
+    "frontendChanged": false,
+    "trustedWorkflowChanged": true,
+    "releaseDeltaVerifierAdded": true
+  },
+  "workflowContract": {
+    "exactTag": "v105-v10-main.32",
+    "requiredParentCommit": "8f6e490677d3e38ffc8468c3a911c62a7b62a901",
+    "allowedChangedPaths": [
+      ".github/workflows/trusted-release-images-main32.yml",
+      "proxy/test/v105-v10-main32-trusted-workflow-release.test.js",
+      "release/v105-v10-main32-trusted-workflow-release-manifest.json",
+      "release/v105-v10-main32-trusted-workflow-release-report.json",
+      "scripts/verify-trusted-release-delta.sh"
+    ],
+    "renameDetectionDisabled": true,
+    "pipelineFailurePropagated": true,
+    "nulDelimitedPaths": true,
+    "roles": ["proxy", "formal-consumer", "worker"],
+    "provenanceReadback": {
+      "repository": "x0989285458-lgtm/darven-ai-baccarat-proxy",
+      "workflow": ".github/workflows/trusted-release-images-main32.yml",
+      "sourceRef": "refs/tags/v105-v10-main.32",
+      "sourceDigest": "resolved-tag-commit-equals-github-sha",
+      "denySelfHostedRunners": true
+    }
+  },
+  "releaseBinding": {
+    "changedFileSha256": {
+      ".github/workflows/trusted-release-images-main32.yml": "6daeb630449903563e54fbf74a3ddfc9325eec8cab2d9d51c57fd9e2674dcfa0",
+      "proxy/test/v105-v10-main32-trusted-workflow-release.test.js": "04d33e58b83c9b9402f1f927059106612d098607d4927ebc528a5499f019e20f",
+      "release/v105-v10-main32-trusted-workflow-release-report.json": "ae224780eaf41f6710ad85302d1dd9c1b2bf7c33f1d5bda71c2104bb0104f0dc",
+      "scripts/verify-trusted-release-delta.sh": "4a60d384ee68bad50e12cab78e984ec3fa6d484888b87ee98e860692caaa2513"
+    }
+  },
+  "deploymentOrder": [
+    "fresh-independent-main32-review-pass",
+    "commit-tag-push-exact-source",
+    "trusted-three-role-build-and-provenance-pass",
+    "local-three-role-provenance-readback-pass",
+    "deploy-formal-consumer-by-verified-digest",
+    "readback-formal-consumer-digest-and-runtime",
+    "archive-only-verified-main29-dead-residue",
+    "controlled-worker-start",
+    "ten-minute-live-window",
+    "member-agent-admin-browser-e2e",
+    "production-audit-pass"
+  ]
+}

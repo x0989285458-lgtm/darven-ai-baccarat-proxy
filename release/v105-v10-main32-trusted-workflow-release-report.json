@@ -1,0 +1,38 @@
+{
+  "title": "V105主預測V10穩定版32 Fail-Closed Trusted Delta發布修復報告",
+  "releaseVersion": "v105-v10-main.32",
+  "runtimeSourceVersion": "v105-v10-main.30",
+  "applicationVersion": "1.0.66",
+  "baseCommit": "8f6e490677d3e38ffc8468c3a911c62a7b62a901",
+  "status": "candidate-shell-gates-pass-fresh-review-pending",
+  "rootCause": "Main31 changed-path Gate使用預設rename detection且透過process substitution讀取pipeline；rename可能隱藏allowlist外來源，git diff或sort非零亦可能不傳給mapfile。",
+  "scope": {
+    "runtimeCodeChanged": false,
+    "predictionRulesChanged": false,
+    "weightsChanged": false,
+    "thresholdsChanged": false,
+    "databaseChanged": false,
+    "frontendChanged": false,
+    "releaseGateOnly": true
+  },
+  "evidence": {
+    "main31Commit": "8f6e490677d3e38ffc8468c3a911c62a7b62a901",
+    "main31Tree": "928c592cee1ad39f4ae56db6cdc8f174825541cf",
+    "main31TrustedRun": "32896913309 SUCCESS",
+    "main31ThreeRoleProvenance": "PASS",
+    "main31FreshReview": "BLOCK: rename and process-substitution fail-closed gaps",
+    "main32TddRed": "PASS",
+    "main32FocusedShellGates": "5/5 PASS",
+    "proxyFullSerial": "1040/1040 PASS"
+  },
+  "productionGates": {
+    "freshReview": "PENDING",
+    "trustedImageBuild": "PENDING",
+    "localProvenanceReadback": "PENDING",
+    "formalConsumerDeployment": "PENDING",
+    "queueRecovery": "PENDING",
+    "tenMinuteLiveWindow": "PENDING",
+    "browserE2E": "PENDING",
+    "finalVerdict": "BLOCK"
+  }
+}
