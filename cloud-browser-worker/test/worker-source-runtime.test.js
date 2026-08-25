@@ -345,6 +345,44 @@ test('runtime delivery health is derived from API state and source progress inst
   assert.equal(snapshot.tableCount, 1, 'duplicate rows cannot impersonate the exact ten production tables')
 })
 
+test('startup arms lease renewal before pending journal rebind and API start', async () => {
+  const order = []
+  let renewTick = null
+  const lease = { mode: 'api', ownerId: 'api-primary', epoch: 2, fence: 'new-fence', status: 'active', expiresAt: 10_000 }
+  const sourceOwner = {
+    acquireOrRecover: async () => { order.push('lease'); return lease },
+    lease: () => lease,
+    nextEventSource: async () => ({ mode: 'api', ownerId: 'api-primary', epoch: 2, fence: 'new-fence', sequence: 1 }),
+    renew: async () => { order.push('renew'); return lease },
+    stop: async () => {},
+  }
+  const runtime = createWorkerSourceRuntime({
+    sourceOwner,
+    journal: {
+      pending: () => [], cursor: () => null, append: async () => {}, ack: async () => {},
+      rebindPending: async () => {
+        order.push('rebind')
+        assert.equal(typeof renewTick, 'function', 'renewal must be armed before a potentially slow rebind')
+        await renewTick()
+        order.push('rebind_done')
+      },
+    },
+    gapDetector: { detect: () => [] },
+    replayProvider: { replay: async () => ({ ok: true, events: [] }) },
+    createApiClient: () => ({ start: async () => { order.push('api') }, stop: () => {} }),
+    setIntervalFn: (callback) => {
+      order.push('renewal_armed')
+      renewTick = callback
+      return { unref: () => {} }
+    },
+    clearIntervalFn: () => {},
+  })
+
+  await runtime.start()
+
+  assert.deepEqual(order, ['lease', 'renewal_armed', 'rebind', 'renew', 'rebind_done', 'api'])
+})
+
 test('restart rebinds old-fence pending Finals after new lease acquisition and before API delivery', async () => {
   const order = []
   const oldSource = { mode: 'api', ownerId: 'api-primary', epoch: 1, fence: 'old-fence', sequence: 7 }

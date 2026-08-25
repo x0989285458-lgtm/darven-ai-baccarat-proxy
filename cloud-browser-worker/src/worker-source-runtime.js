@@ -30,6 +30,8 @@ export function createWorkerSourceRuntime({
   const bypassedGaps = []
   const crossShoeCoverage = new Set()
   let leaseTimer = null
+  let leaseRenewTail = Promise.resolve()
+  let leaseRenewalError = null
   let sourceProgressTracker = null
   const freshBaselineTables = new Set(allowFreshBaseline ? PRODUCTION_TABLE_IDS : [])
   let freshBaselineReadyAt = null
@@ -40,31 +42,56 @@ export function createWorkerSourceRuntime({
     lease = typeof sourceOwner.acquireOrRecover === 'function'
       ? await sourceOwner.acquireOrRecover()
       : await sourceOwner.acquire()
-    if (typeof journal.rebindPending === 'function') {
-      await journal.rebindPending(
-        () => sourceOwner.nextEventSource(sourceOwner.lease?.() ?? lease),
-        { mode: lease.mode, ownerId: lease.ownerId, epoch: lease.epoch, fence: lease.fence },
-      )
-      lease = sourceOwner.lease?.() ?? lease
-    }
-    apiClient = createApiClient({ onFinal, onTables })
-    await apiClient.start()
-    leaseTimer = setIntervalFn(async () => {
-      try {
-        lease = await sourceOwner.renew(sourceOwner.lease?.() ?? lease)
-      } catch {
-        apiClient?.stop?.()
-        lastReplayGate = 'source_lease_renewal_failed'
-        started = false
-      }
+    leaseRenewalError = null
+    leaseRenewTail = Promise.resolve()
+    leaseTimer = setIntervalFn(() => {
+      leaseRenewTail = leaseRenewTail.then(async () => {
+        if (leaseRenewalError) return
+        try {
+          lease = await sourceOwner.renew(sourceOwner.lease?.() ?? lease)
+        } catch (error) {
+          leaseRenewalError = error
+          apiClient?.stop?.()
+          lastReplayGate = 'source_lease_renewal_failed'
+          started = false
+        }
+      })
+      return leaseRenewTail
     }, Math.max(1, Number(leaseRenewalMs) || 1))
     leaseTimer?.unref?.()
-    started = true
+    try {
+      if (typeof journal.rebindPending === 'function') {
+        await journal.rebindPending(
+          () => sourceOwner.nextEventSource(sourceOwner.lease?.() ?? lease),
+          { mode: lease.mode, ownerId: lease.ownerId, epoch: lease.epoch, fence: lease.fence },
+        )
+        lease = sourceOwner.lease?.() ?? lease
+      }
+      if (leaseRenewalError) throw leaseRenewalError
+      apiClient = createApiClient({ onFinal, onTables })
+      await apiClient.start()
+      await leaseRenewTail
+      if (leaseRenewalError) throw leaseRenewalError
+      started = true
+    } catch (error) {
+      if (leaseTimer) clearIntervalFn(leaseTimer)
+      leaseTimer = null
+      await leaseRenewTail
+      apiClient?.stop?.()
+      const current = sourceOwner.lease?.()
+      if (current) {
+        try { await sourceOwner.stop(current) } catch {}
+      }
+      apiClient = null
+      started = false
+      throw error
+    }
   }
 
   async function stop() {
     if (leaseTimer) clearIntervalFn(leaseTimer)
     leaseTimer = null
+    await leaseRenewTail
     apiClient?.stop?.()
     const current = sourceOwner.lease?.()
     if (current) await sourceOwner.stop(current)
