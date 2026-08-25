@@ -4,7 +4,7 @@ services:
     runtime: image
     plan: starter
     image:
-      url: ghcr.io/x0989285458-lgtm/darven-ai-baccarat-proxy:v105-v10-main.21
+      url: ghcr.io/x0989285458-lgtm/darven-ai-baccarat-proxy:v105-v10-main.22
       creds:
         fromRegistryCreds:
           name: darven-ghcr

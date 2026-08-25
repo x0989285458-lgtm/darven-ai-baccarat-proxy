@@ -383,6 +383,133 @@ test('startup arms lease renewal before pending journal rebind and API start', a
   assert.deepEqual(order, ['lease', 'renewal_armed', 'rebind', 'renew', 'rebind_done', 'api'])
 })
 
+test('renewal failure during pending rebind rejects startup without opening API delivery and releases the owner once', async () => {
+  let renewTick = null
+  let releaseRebind
+  let rebindEntered
+  let ownerStops = 0
+  let apiStarts = 0
+  const rebindGate = new Promise((resolve) => { releaseRebind = resolve })
+  const rebindStarted = new Promise((resolve) => { rebindEntered = resolve })
+  const lease = { mode: 'api', ownerId: 'api-primary', epoch: 2, fence: 'new-fence', status: 'active', expiresAt: 10_000 }
+  const runtime = createWorkerSourceRuntime({
+    sourceOwner: {
+      acquireOrRecover: async () => lease,
+      lease: () => lease,
+      assertCurrent: () => true,
+      renew: async () => { throw new Error('renew_failed_during_rebind') },
+      stop: async () => { ownerStops += 1 },
+    },
+    journal: {
+      pending: () => [], cursor: () => null, append: async () => {}, ack: async () => {},
+      rebindPending: async () => { rebindEntered(); await rebindGate },
+    },
+    gapDetector: { detect: () => [] },
+    replayProvider: { replay: async () => ({ ok: true, events: [] }) },
+    createApiClient: () => ({ start: async () => { apiStarts += 1 }, stop: () => {} }),
+    setIntervalFn: (callback) => { renewTick = callback; return { unref: () => {} } },
+    clearIntervalFn: () => {},
+  })
+
+  const starting = runtime.start()
+  await rebindStarted
+  await renewTick()
+  releaseRebind()
+
+  await assert.rejects(starting, /renew_failed_during_rebind/)
+  assert.equal(apiStarts, 0)
+  assert.equal(ownerStops, 1)
+  assert.equal(runtime.snapshot().started, false)
+  assert.equal(runtime.snapshot().liveGate, 'source_lease_renewal_failed')
+})
+
+test('slow renewal started during rebind must settle before API delivery starts', async () => {
+  let renewTick = null
+  let releaseRenew
+  let renewalEntered
+  let releaseRebind
+  let rebindEntered
+  let apiStarts = 0
+  const renewGate = new Promise((resolve) => { releaseRenew = resolve })
+  const renewStarted = new Promise((resolve) => { renewalEntered = resolve })
+  const rebindGate = new Promise((resolve) => { releaseRebind = resolve })
+  const rebindStarted = new Promise((resolve) => { rebindEntered = resolve })
+  const lease = { mode: 'api', ownerId: 'api-primary', epoch: 2, fence: 'new-fence', status: 'active', expiresAt: 10_000 }
+  const runtime = createWorkerSourceRuntime({
+    sourceOwner: {
+      acquireOrRecover: async () => lease,
+      lease: () => lease,
+      renew: async () => { renewalEntered(); await renewGate; return lease },
+      stop: async () => {},
+    },
+    journal: {
+      pending: () => [], cursor: () => null, append: async () => {}, ack: async () => {},
+      rebindPending: async () => { rebindEntered(); await rebindGate },
+    },
+    gapDetector: { detect: () => [] },
+    replayProvider: { replay: async () => ({ ok: true, events: [] }) },
+    createApiClient: () => ({ start: async () => { apiStarts += 1 }, stop: () => {} }),
+    setIntervalFn: (callback) => { renewTick = callback; return { unref: () => {} } },
+    clearIntervalFn: () => {},
+  })
+
+  const starting = runtime.start()
+  await rebindStarted
+  const renewing = renewTick()
+  await renewStarted
+  releaseRebind()
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(apiStarts, 0, 'API delivery cannot start while the rebind-period renewal is unresolved')
+  releaseRenew()
+  await renewing
+  await starting
+  assert.equal(apiStarts, 1)
+  await runtime.stop()
+})
+
+test('stop waits for pending rebind and prevents a late API start after shutdown', async () => {
+  let releaseRebind
+  let rebindEntered
+  let apiStarts = 0
+  let ownerStops = 0
+  const rebindGate = new Promise((resolve) => { releaseRebind = resolve })
+  const rebindStarted = new Promise((resolve) => { rebindEntered = resolve })
+  const lease = { mode: 'api', ownerId: 'api-primary', epoch: 2, fence: 'new-fence', status: 'active', expiresAt: 10_000 }
+  const runtime = createWorkerSourceRuntime({
+    sourceOwner: {
+      acquireOrRecover: async () => lease,
+      lease: () => lease,
+      assertCurrent: () => true,
+      renew: async () => lease,
+      stop: async () => { ownerStops += 1 },
+    },
+    journal: {
+      pending: () => [], cursor: () => null, append: async () => {}, ack: async () => {},
+      rebindPending: async () => { rebindEntered(); await rebindGate },
+    },
+    gapDetector: { detect: () => [] },
+    replayProvider: { replay: async () => ({ ok: true, events: [] }) },
+    createApiClient: () => ({ start: async () => { apiStarts += 1 }, stop: () => {} }),
+    setIntervalFn: () => ({ unref: () => {} }),
+    clearIntervalFn: () => {},
+  })
+
+  const starting = runtime.start()
+  await rebindStarted
+  let stopSettled = false
+  const stopping = runtime.stop().then(() => { stopSettled = true })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(stopSettled, false)
+
+  releaseRebind()
+  await stopping
+  await starting
+  assert.equal(apiStarts, 0)
+  assert.equal(ownerStops, 1)
+  assert.equal(runtime.snapshot().started, false)
+})
+
 test('renewal failure clears the timer and stops the active owner lease exactly once', async () => {
   let renewTick = null
   let clearCalls = 0

@@ -33,6 +33,8 @@ export function createWorkerSourceRuntime({
   let leaseRenewTail = Promise.resolve()
   let leaseRenewalError = null
   let ownerLeaseStopped = false
+  let startInFlight = null
+  let stopRequested = false
   let sourceProgressTracker = null
   const freshBaselineTables = new Set(allowFreshBaseline ? PRODUCTION_TABLE_IDS : [])
   let freshBaselineReadyAt = null
@@ -47,10 +49,23 @@ export function createWorkerSourceRuntime({
 
   async function start() {
     if (started) return
+    if (startInFlight) return startInFlight
+    stopRequested = false
+    const operation = startOnce()
+    startInFlight = operation
+    try {
+      return await operation
+    } finally {
+      if (startInFlight === operation) startInFlight = null
+    }
+  }
+
+  async function startOnce() {
     lease = typeof sourceOwner.acquireOrRecover === 'function'
       ? await sourceOwner.acquireOrRecover()
       : await sourceOwner.acquire()
     ownerLeaseStopped = false
+    if (stopRequested) return
     leaseRenewalError = null
     leaseRenewTail = Promise.resolve()
     leaseTimer = setIntervalFn(() => {
@@ -79,11 +94,14 @@ export function createWorkerSourceRuntime({
         )
         lease = sourceOwner.lease?.() ?? lease
       }
+      await leaseRenewTail
       if (leaseRenewalError) throw leaseRenewalError
+      if (stopRequested) return
       apiClient = createApiClient({ onFinal, onTables })
       await apiClient.start()
       await leaseRenewTail
       if (leaseRenewalError) throw leaseRenewalError
+      if (stopRequested) return
       started = true
     } catch (error) {
       if (leaseTimer) clearIntervalFn(leaseTimer)
@@ -98,9 +116,15 @@ export function createWorkerSourceRuntime({
   }
 
   async function stop() {
+    stopRequested = true
     if (leaseTimer) clearIntervalFn(leaseTimer)
     leaseTimer = null
     await leaseRenewTail
+    if (startInFlight) {
+      try { await startInFlight } catch {}
+    }
+    if (leaseTimer) clearIntervalFn(leaseTimer)
+    leaseTimer = null
     apiClient?.stop?.()
     await stopOwnerLeaseOnce()
     apiClient = null

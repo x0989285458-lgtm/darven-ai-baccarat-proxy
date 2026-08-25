@@ -1,0 +1,520 @@
+{
+  "releaseName": "V105主預測V10穩定版22 Worker2續租完整性",
+  "releaseVersion": "v105-v10-main.22",
+  "gitTag": "v105-v10-main.22",
+  "applicationVersion": "1.0.63",
+  "baseCommit": "d2fa2acaafb74db592514075a4113819e6db0290",
+  "formalStrategyVersion": "v105",
+  "applicationVersionChanged": true,
+  "releaseScope": {
+    "mode": "single-session-api-primary",
+    "canonicalSource": "api",
+    "workerEnvironment": {
+      "MT_SOURCE_MODE": "api",
+      "MT_CAPTURE_ROLE": "canonical"
+    },
+    "browserEnabled": false,
+    "backupReplayEnabled": false,
+    "recordContract": "unverified",
+    "gapPolicy": "fail-closed-stop-ack-and-alert",
+    "deferred": [
+      "second-independent-session-backup",
+      "record-replay"
+    ],
+    "httpParentExternalConsumerIsolation": true,
+    "captureWorkerChanged": true,
+    "frontendChanged": true
+  },
+  "adminSession": {
+    "mode": "aes-256-gcm-stateless-with-live-db-revalidation",
+    "secretEnvironmentPriority": [
+      "ADMIN_SESSION_SECRET",
+      "MEMBER_SESSION_SECRET"
+    ],
+    "minimumSecretBytes": 32,
+    "productionFailClosed": true,
+    "ttlMinMs": 60000,
+    "ttlMaxMs": 1800000,
+    "revalidateAccountAndRoleOnEveryProtectedRequest": true,
+    "transientValidationStatus": 503,
+    "invalidAuthorizationStatus": 401
+  },
+  "newRoundDelivery": {
+    "trigger": "durable-next-prediction-ready",
+    "payload": "existing-tables-sse-with-road-and-exact-v105-prediction",
+    "immediateBroadcast": true,
+    "singleFlightCoalescing": true,
+    "heartbeatFallbackMs": 3000,
+    "blocksCaptureOutboxAck": false,
+    "frontendChanged": false,
+    "historyQueryChanged": true
+  },
+  "shadowV9Isolation": {
+    "strategyVersion": "v105-shadow-v9-weighted-v7-v8",
+    "runtimeFlag": "V105_SHADOW_V9_ENABLED=true",
+    "childScope": "v105-v9",
+    "separateFromRequired": true,
+    "separateFromV10": true,
+    "childDatabaseCredentials": false,
+    "writerTransport": "parent-ipc",
+    "writerRequestValidation": "method-schema-identity-size",
+    "writerMaxConcurrency": 4,
+    "writerPayloadMaxBytes": 262144,
+    "writerResultMaxBytes": 2097152,
+    "writerRequestIdValidation": "strict-monotonic-high-water-per-generation",
+    "writerRequestIdStorage": "constant-space-high-water",
+    "writerRequestIdsReusableWithinGeneration": false,
+    "ipcErrorRedaction": "both-boundaries-uri-jwt-key",
+    "writerResponseDropObservable": true,
+    "shutdownWaitsForParentWrites": true,
+    "captureLane": "bounded-best-effort",
+    "deliveryGuarantee": "live-best-effort-no-retroactive-replay",
+    "failureAndDropCountsObservable": true,
+    "retroactiveReplayAllowed": false,
+    "maxQueuedCaptures": 2,
+    "maxQueuedIdentities": 2000,
+    "blocksFormalOutboxAck": false,
+    "counterMode": "resume-existing",
+    "memberVisible": false
+  },
+  "deploymentOrder": [
+    "v9-shadow-hydration-migration",
+    "v9-shadow-hydration-catalog-acl-readback",
+    "v10-shadow-migration",
+    "v10-shadow-catalog-acl-readback",
+    "v10-shadow-db-validation-migration",
+    "v10-shadow-db-validation-catalog-acl-readback",
+    "v100-rank-ledger-recovery-migration",
+    "v100-rank-ledger-recovery-catalog-acl-readback",
+    "v10-rank-sync-hydration-migration",
+    "v10-rank-sync-hydration-catalog-acl-readback",
+    "v6-v8-retirement-migration",
+    "v6-v8-retirement-catalog-acl-readback",
+    "database-additive",
+    "database-catalog-acl-readback",
+    "capture-outbox-health-active-only-migration",
+    "same-session-outbox-batch-migration",
+    "same-session-outbox-batch-catalog-acl-readback",
+    "transport-rebind-idempotency-migration",
+    "transport-rebind-idempotency-catalog-acl-readback",
+    "proxy-compatible",
+    "v9-isolated-child-credential-fence-readback",
+    "v9-shadow-enable-after-proxy-readback",
+    "v9-new-issuance-settlement-readback",
+    "new-api-worker",
+    "durable-source-readback",
+    "require-fenced-ingest-finalize"
+  ],
+  "database": {
+    "migration": "supabase/migrations/20260731010000_v105_capture_source_fence.sql",
+    "table": "public.v105_capture_source_fence",
+    "rpc": "public.persist_v105_fenced_capture_envelope(jsonb)",
+    "atomicFenceAndEnvelope": true,
+    "serviceRoleOnly": true,
+    "shadowHydrationMigration": {
+      "path": "supabase/migrations/20260801162200_v105_shadow_v9_hydration_millisecond_order.sql",
+      "rpc": "public.get_v105_shadow_v9_compact_history(integer)",
+      "serviceRoleOnly": true,
+      "catalogAclReadbackRequired": true
+    },
+    "shadowV10Migration": {
+      "path": "supabase/migrations/20260804013000_v105_shadow_v10_rank_sync.sql",
+      "serviceRoleOnly": true,
+      "catalogAclReadbackRequired": true
+    },
+    "shadowV10DbValidationMigration": {
+      "path": "supabase/migrations/20260804090000_v105_shadow_v10_rank_sync_db_validation.sql",
+      "serviceRoleOnly": true,
+      "catalogAclReadbackRequired": true
+    },
+    "captureOutboxHealthMigration": {
+      "path": "supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql",
+      "rpc": "public.get_v105_capture_outbox_health()",
+      "completedHistoryExcluded": true,
+      "serviceRoleOnly": true
+    },
+    "sameSessionOutboxBatchMigration": {
+      "path": "supabase/migrations/20260824010000_v105_capture_outbox_same_session_batch.sql",
+      "claimRpc": "public.claim_v105_capture_settlement_outbox_batch(integer)",
+      "completeRpc": "public.complete_v105_capture_settlement_outbox_batch(jsonb)",
+      "failRpc": "public.fail_v105_capture_settlement_outbox_batch(jsonb,text)",
+      "batchLimit": 10,
+      "sameSessionOrderedPrefix": true,
+      "atomicLeaseMutation": true,
+      "serviceRoleOnly": true,
+      "catalogAclReadbackRequired": true
+    },
+    "shadowV6V8RetirementMigration": {
+      "path": "supabase/migrations/20260802020000_retire_v105_shadow_v6_v8.sql",
+      "dropsOnlyRetiredV6V8Objects": true,
+      "preservesV9V10AndFormalV105": true,
+      "catalogAclReadbackRequired": true
+    },
+    "rankLedgerRecoveryMigration": {
+      "path": "supabase/migrations/20260804100000_v100_rank_ledger_cloud_round_recovery.sql",
+      "rpc": "public.rebuild_v100_rank_ledger_from_cloud_rounds(text,text,text)",
+      "serviceRoleOnly": true,
+      "catalogAclReadbackRequired": true
+    },
+    "rankSyncHydrationMigration": {
+      "path": "supabase/migrations/20260804110000_v105_shadow_v10_rank_sync_hydration_millisecond_order.sql",
+      "rpc": "public.get_v105_shadow_v10_rank_sync_compact_history(integer)",
+      "serviceRoleOnly": true,
+      "catalogAclReadbackRequired": true,
+      "nodeDateMillisecondOrdering": true
+    },
+    "transportRebindMigration": {
+      "path": "supabase/migrations/20260824143000_v105_capture_transport_rebind_idempotency.sql",
+      "serviceRoleOnly": true,
+      "catalogAclReadbackRequired": true,
+      "transportMetadataConflictIgnoredOnlyForApprovedRebind": true
+    }
+  },
+  "proxy": {
+    "compatibleBeforeFinalize": true,
+    "unfencedLegacyRpcAllowedOnlyWhenSourceAbsent": true,
+    "fencedRpcFallbackAllowed": false,
+    "finalizeEnvironment": "REQUIRE_FENCED_INGEST=true"
+  },
+  "browserColdBackup": {
+    "requiresSource": true,
+    "sourceMode": "browser",
+    "requiresOwnerIdEpochFence": true
+  },
+  "readbackGate": {
+    "requireExactModeOwnerIdEpochFence": true,
+    "requireNewApiWorkerAckSource": true,
+    "requireOldEpochRejectedAfterProxyRestart": true
+  },
+  "releaseBinding": {
+    "implementationTree": {
+      "algorithm": "sha256",
+      "paths": [
+        "cloud-browser-worker/.dockerignore",
+        "cloud-browser-worker/Dockerfile",
+        "cloud-browser-worker/package.json",
+        "cloud-browser-worker/package-lock.json",
+        "cloud-browser-worker/src",
+        "cloud-browser-worker/test/worker-source-runtime.test.js",
+        "frontend/package.json",
+        "frontend/package-lock.json",
+        "proxy/package.json",
+        "proxy/package-lock.json",
+        "proxy/deploy/render.yaml",
+        "proxy/src",
+        "shared",
+        "supabase/migrations/20260731010000_v105_capture_source_fence.sql",
+        "supabase/migrations/20260801162200_v105_shadow_v9_hydration_millisecond_order.sql",
+        "supabase/migrations/20260802010000_v105_shadow_v10.sql",
+        "supabase/migrations/20260802020000_retire_v105_shadow_v6_v8.sql",
+        "supabase/migrations/20260803093000_v105_shadow_v10_hydration_millisecond_order.sql",
+        "supabase/migrations/20260804013000_v105_shadow_v10_rank_sync.sql",
+        "supabase/migrations/20260804090000_v105_shadow_v10_rank_sync_db_validation.sql",
+        "supabase/migrations/20260804100000_v100_rank_ledger_cloud_round_recovery.sql",
+        "supabase/migrations/20260804110000_v105_shadow_v10_rank_sync_hydration_millisecond_order.sql",
+        "supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql",
+        "supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql",
+        "supabase/migrations/20260824010000_v105_capture_outbox_same_session_batch.sql",
+        "scripts/verify-v105-mt-api-release.mjs",
+        "scripts/trusted-registry-readback-adapter.mjs",
+        "release/v105-shadow-v9-resume-isolated-release-manifest.json",
+        "release/v105-shadow-v9-request-id-lifetime-release-manifest.json",
+        "release/v105-v10-main22-source-fence-release-manifest.json",
+        "release/attestations",
+        "proxy/Dockerfile.formal-consumer",
+        "proxy/Dockerfile.formal-consumer.dockerignore",
+        "proxy/test/capture-outbox-ack.test.js",
+        "frontend/src/App.tsx",
+        "frontend/src/App.test.tsx",
+        "supabase/migrations/20260824143000_v105_capture_transport_rebind_idempotency.sql",
+        "proxy/test/formal-cloud-data.test.js",
+        "proxy/test/v102-release-integrity.test.js",
+        "proxy/test/v104-iteration-shadow-release.test.js",
+        "proxy/test/v105-mt-session-auto-refresh-release.test.js",
+        "proxy/test/v105-mt-api-release-binding.test.js",
+        "proxy/test/v105-v10-main-release.test.js",
+        "release/v105-v10-main-release-report.json",
+        "proxy/test/deploy-config.test.js",
+        ".github/workflows/trusted-release-images.yml",
+        "proxy/Dockerfile.evidence",
+        "proxy/Dockerfile.evidence.dockerignore",
+        "cloud-browser-worker/Dockerfile.dockerignore"
+      ],
+      "excludedPaths": [
+        "release/v105-v10-main22-source-fence-release-manifest.json",
+        "release/attestations"
+      ],
+      "sha256": "ade1e0c81866da49b14d64129b40067e46f3e4a5614b497620002412cb4ea4d5"
+    },
+    "migration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260731010000_v105_capture_source_fence.sql",
+      "sha256": "aa4730458d093c08275eaa4c0d3e9b87b2088de3da9b302890615edf0b7dbc89"
+    },
+    "captureOutboxHealthMigration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260803124500_v105_capture_outbox_health_active_only.sql",
+      "sha256": "c539a3539768999373662680960814dc1d10918d1e096d9e8192c51363fd6c15"
+    },
+    "zeroFinalHeartbeatMigration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql",
+      "sha256": "52704becb9c645a9c3fa0910bf79ecead580fb53bfeacd9964056f9f4488b096"
+    },
+    "sameSessionOutboxBatchMigration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260824010000_v105_capture_outbox_same_session_batch.sql",
+      "sha256": "76deb1c5113032afeab578dd2106abb55b07583690e4cb8e0e7de8ea0f5e1cfa"
+    },
+    "proxyBuildInput": {
+      "algorithm": "sha256",
+      "paths": [
+        "proxy/Dockerfile.evidence",
+        "proxy/Dockerfile.evidence.dockerignore",
+        "proxy/package.json",
+        "proxy/package-lock.json",
+        "proxy/deploy/render.yaml",
+        "proxy/src",
+        "shared"
+      ],
+      "excludedPaths": [],
+      "sha256": "f9d93c7a4b2d981b0e2ebeaaac1caf2556bafd4cc3a29f5dc889c9166481c61f"
+    },
+    "workerBuildInput": {
+      "algorithm": "sha256",
+      "paths": [
+        "cloud-browser-worker/Dockerfile",
+        "cloud-browser-worker/Dockerfile.dockerignore",
+        "cloud-browser-worker/package.json",
+        "cloud-browser-worker/package-lock.json",
+        "cloud-browser-worker/src",
+        "shared"
+      ],
+      "excludedPaths": [],
+      "sha256": "40caf61b0ebae2e40c5ebedb56342549f73e9368d720bcee4ace5c2e4b08b848"
+    },
+    "attestation": {
+      "externalFileRequired": true,
+      "immutableCommitAndAnnotatedTagRequired": true,
+      "imageDigestReadbackRequired": true,
+      "phase": "post-build-pre-cutover",
+      "independentBuildReceiptsRequired": true,
+      "fixedRegistryAdapterRequired": true,
+      "fixedRegistryAdapter": "scripts/trusted-registry-readback-adapter.mjs",
+      "arbitraryReadbackJsonRejected": true,
+      "abortOnMismatch": true,
+      "requiredImageRoles": [
+        "proxy",
+        "formal-consumer",
+        "worker"
+      ],
+      "cryptographicProvenanceRequired": true,
+      "provenanceProvider": "github-sigstore-attestation",
+      "trustedRepository": "x0989285458-lgtm/darven-ai-baccarat-proxy",
+      "signerWorkflow": "x0989285458-lgtm/darven-ai-baccarat-proxy/.github/workflows/trusted-release-images.yml",
+      "sourceRef": "refs/tags/v105-v10-main.22",
+      "denySelfHostedRunners": true
+    },
+    "shadowHydrationMigration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260801162200_v105_shadow_v9_hydration_millisecond_order.sql",
+      "sha256": "1532547446c46a94373f1b4758f1b464798b3d5583f4a73492c83000a662a974"
+    },
+    "shadowV10Migration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260804013000_v105_shadow_v10_rank_sync.sql",
+      "sha256": "3bf5de1d73086a22ff56d96a8a22c2e05f31ae6a18b1c4537d63440e4e5923d6"
+    },
+    "shadowV10DbValidationMigration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260804090000_v105_shadow_v10_rank_sync_db_validation.sql",
+      "sha256": "70e1d3a8a8c0f9329ef79e6339e2d49dc55bfcbbf5823847c5c0d55780639ebd"
+    },
+    "shadowV6V8RetirementMigration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260802020000_retire_v105_shadow_v6_v8.sql",
+      "sha256": "875b881331e2fc9ab4baeea4e67eb67edcaf03131e786703e7f34a3dbbc74bee"
+    },
+    "rankLedgerRecoveryMigration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260804100000_v100_rank_ledger_cloud_round_recovery.sql",
+      "sha256": "b280dcd5942d221d9e2b30f36934c0009ed88c57ba95e6f8ea425f87b3a9c718"
+    },
+    "rankSyncHydrationMigration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260804110000_v105_shadow_v10_rank_sync_hydration_millisecond_order.sql",
+      "sha256": "a6ffcbf369b17615a28f173d3edbefa5646d9903aaead8e2bd34a45e53ec1d61"
+    },
+    "transportRebindMigration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260824143000_v105_capture_transport_rebind_idempotency.sql",
+      "sha256": "ee1f915dcfdfb4e99d4ab0bb2622bb678c3634a66e0b08bf7b8750f309a75725"
+    },
+    "formalConsumerBuildInput": {
+      "algorithm": "sha256",
+      "paths": [
+        "proxy/Dockerfile.formal-consumer",
+        "proxy/Dockerfile.formal-consumer.dockerignore",
+        "proxy/package.json",
+        "proxy/package-lock.json",
+        "proxy/src",
+        "shared"
+      ],
+      "excludedPaths": [],
+      "sha256": "2fae7fbac782413b9ff9f09450c1401d1b5ea128251c9c736b8d1b6215b2db4e"
+    }
+  },
+  "rollback": {
+    "target": {
+      "commit": "0b17afa2d1ec28aa27e91be6c2bda58ca301a860",
+      "tree": "9e992c409c7e162a6af0d64d973533cfea695f7f",
+      "proxyArtifact": "proxy-from-exact-target",
+      "browserWorkerArtifact": "cloud-browser-worker-from-exact-target"
+    },
+    "order": [
+      {
+        "id": "stop-api-intake-sockets-renewal",
+        "requireApiIntakeStopped": true,
+        "requireRenewalTimerStopped": true,
+        "requireStopAcknowledgement": true
+      },
+      {
+        "id": "drain-pusher-queue",
+        "requireDrainComplete": true,
+        "unfinishedCounts": [
+          "pending",
+          "processing",
+          "error",
+          "dead-letter"
+        ]
+      },
+      {
+        "id": "stop-pusher-and-wait",
+        "requirePusherStopped": true,
+        "requireInFlight": 0,
+        "abortAfterTimeoutRequired": true
+      },
+      {
+        "id": "checkpoint-queue-cursor-journal",
+        "checkpoint": [
+          "queue",
+          "cursor",
+          "journal"
+        ],
+        "requireChecksums": true,
+        "requireCursorBaseline": true
+      },
+      {
+        "id": "readback-zero-and-preserved",
+        "requireAllUnfinishedCountsZero": true,
+        "requireCheckpointReadback": true,
+        "requireCursorNonRegression": true,
+        "abortBeforeArtifactRollbackOnFailure": true
+      },
+      {
+        "id": "disable-fenced-requirement",
+        "setEnvironment": "REQUIRE_FENCED_INGEST=false",
+        "requireEnvironmentReadback": "false"
+      },
+      {
+        "id": "readback-old-unfenced-accepted",
+        "requireOldUnfencedAccepted": true,
+        "abortBeforeProxyRollbackOnFailure": true
+      },
+      {
+        "id": "disable-v9-shadow-before-proxy-rollback",
+        "setEnvironment": "V105_SHADOW_V9_ENABLED=false",
+        "requireEnvironmentReadback": "false",
+        "preserveShadowEvidence": true,
+        "abortBeforeProxyRollbackOnFailure": true
+      },
+      {
+        "id": "disable-v10-shadow-before-proxy-rollback",
+        "setEnvironment": "V105_SHADOW_V10_ENABLED=false",
+        "requireEnvironmentReadback": "false",
+        "preserveShadowEvidence": true,
+        "abortBeforeProxyRollbackOnFailure": true
+      },
+      {
+        "id": "rollback-proxy-compatible",
+        "artifact": "proxy-from-exact-target",
+        "requireCompatibleStatusReadback": true
+      },
+      {
+        "id": "readback-lease-stopped-no-socket",
+        "requireLeaseStopped": true,
+        "requireApiSocketCount": 0
+      },
+      {
+        "id": "start-old-browser-worker",
+        "artifact": "cloud-browser-worker-from-exact-target",
+        "requireBrowserOwnerReadback": true
+      }
+    ],
+    "preserve": [
+      "queue",
+      "cursor",
+      "journal"
+    ],
+    "requireAllUnfinishedCountsZero": true,
+    "unfinishedCounts": [
+      "pending",
+      "processing",
+      "error",
+      "dead-letter"
+    ],
+    "requireNoNewLostFinals": true,
+    "requireCursorNonRegression": true,
+    "requireProducerQuiesce": true,
+    "abortGates": [
+      "rollback-target-readback-mismatch",
+      "unfinished-count-nonzero",
+      "producer-not-quiesced",
+      "drain-checkpoint-readback-failed",
+      "old-unfenced-not-accepted",
+      "proxy-compatibility-readback-failed",
+      "api-owner-lease-not-stopped",
+      "api-owner-socket-still-open",
+      "queue-cursor-journal-preservation-failed",
+      "new-lost-final-detected",
+      "cursor-regression-detected",
+      "v9-shadow-disable-readback-failed",
+      "v10-shadow-disable-readback-failed"
+    ],
+    "preserveShadowEvidence": true,
+    "requireV9ShadowDisabledBeforeProxyRollback": true,
+    "requireV10ShadowDisabledBeforeProxyRollback": true
+  },
+  "behavior": {
+    "predictionRulesChanged": false,
+    "predictionWeightsChanged": false,
+    "predictionThresholdsChanged": false,
+    "receiverOwnershipChanged": true,
+    "uiChanged": false,
+    "v6ToV9Changed": false,
+    "versionChanged": true
+  },
+  "shadowV10": {
+    "strategyVersion": "v105-shadow-v10-big-road-uncommon-structure-rank-synchronized",
+    "runtimeFlag": "V105_SHADOW_V10_ENABLED=true",
+    "v9WeightShare": 0.9,
+    "structureWeightShare": 0.1,
+    "preservesFormalV105": true,
+    "preservesV9": true,
+    "preservesSidePredictions": true,
+    "memberVisible": false,
+    "independentCounterStartsAt": 0,
+    "fixedFormalTableAllowlist": true,
+    "inputSource": "authoritative-big-road-only",
+    "beadPlateUsed": false,
+    "oldV10EvidencePreserved": true
+  },
+  "shadowHydrationHotfix": {
+    "strategyVersion": "v105-shadow-v9-weighted-v7-v8",
+    "runtimeFlag": "V105_SHADOW_V9_ENABLED=true",
+    "preservesFormalV105": true,
+    "preservesShadowHistory": true,
+    "changesWeightsOrThresholds": false,
+    "nodeDateMillisecondOrdering": true
+  }
+}

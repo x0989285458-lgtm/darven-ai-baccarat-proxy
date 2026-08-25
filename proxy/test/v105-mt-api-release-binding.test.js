@@ -4,7 +4,7 @@ import path from 'node:path'
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
-import manifest from '../../release/v105-v10-main21-source-fence-release-manifest.json' with { type: 'json' }
+import manifest from '../../release/v105-v10-main22-source-fence-release-manifest.json' with { type: 'json' }
 import {
   computePathSetDigest,
   verifyManifestDigests,
@@ -13,8 +13,8 @@ import {
 import * as releaseVerifier from '../../scripts/verify-v105-mt-api-release.mjs'
 
 test('release scope freezes one existing session as API-only canonical capture', () => {
-  assert.equal(manifest.releaseVersion, 'v105-v10-main.21')
-  assert.equal(manifest.gitTag, 'v105-v10-main.21')
+  assert.equal(manifest.releaseVersion, 'v105-v10-main.22')
+  assert.equal(manifest.gitTag, 'v105-v10-main.22')
   assert.equal(manifest.applicationVersion, '1.0.63')
   assert.deepEqual(manifest.releaseScope, {
     mode: 'single-session-api-primary',
@@ -26,7 +26,7 @@ test('release scope freezes one existing session as API-only canonical capture',
     gapPolicy: 'fail-closed-stop-ack-and-alert',
     deferred: ['second-independent-session-backup', 'record-replay'],
     httpParentExternalConsumerIsolation: true,
-    captureWorkerChanged: false,
+    captureWorkerChanged: true,
     frontendChanged: true,
   })
   assert.deepEqual(manifest.behavior, {
@@ -386,7 +386,7 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
   const proxyDigest = `sha256:${'5'.repeat(64)}`
   const formalConsumerDigest = `sha256:${'9'.repeat(64)}`
   const workerDigest = `sha256:${'6'.repeat(64)}`
-  const sourceRef = 'refs/tags/v105-v10-main.21'
+  const sourceRef = 'refs/tags/v105-v10-main.22'
   const signerWorkflow = 'x0989285458-lgtm/darven-ai-baccarat-proxy/.github/workflows/trusted-release-images.yml'
   const expected = { commit, tree, proxyBuildInputSha256: proxyInput, formalConsumerBuildInputSha256: formalConsumerInput, workerBuildInputSha256: workerInput, sourceRef }
   const buildReceipts = {
@@ -572,7 +572,7 @@ test('Reviewer P1 fixed trusted registry adapter binds role, immutable digest, a
   assert.equal(typeof adapter.readTrustedRegistryEvidence, 'function')
   const calls = []
   const sourceDigest = '1'.repeat(40)
-  const sourceRef = 'refs/tags/v105-v10-main.21'
+  const sourceRef = 'refs/tags/v105-v10-main.22'
   const signerWorkflow = 'x0989285458-lgtm/darven-ai-baccarat-proxy/.github/workflows/trusted-release-images.yml'
   const digestHex = '44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a'
   const imageDigest = `sha256:${digestHex}`

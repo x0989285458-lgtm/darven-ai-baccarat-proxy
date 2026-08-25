@@ -1,15 +1,15 @@
 {
-  "releaseName": "V105主預測V10穩定版21接收器隔離",
-  "releaseVersion": "v105-v10-main.21",
-  "gitTag": "v105-v10-main.21",
+  "releaseName": "V105主預測V10穩定版22 Worker2續租完整性",
+  "releaseVersion": "v105-v10-main.22",
+  "gitTag": "v105-v10-main.22",
   "applicationVersion": "1.0.63",
-  "baseCommit": "6461574c256bcfe94e0fdb6d79d974690be77a83",
+  "baseCommit": "d2fa2acaafb74db592514075a4113819e6db0290",
   "formalStrategyVersion": "v105",
   "releaseScope": {
     "predictionMainOnly": false,
     "productRuntimeChanged": true,
     "databaseMigrationRequired": true,
-    "captureWorkerChanged": false,
+    "captureWorkerChanged": true,
     "frontendChanged": true,
     "sidePredictionChanged": false,
     "formalIdentityChanged": false,
@@ -61,7 +61,7 @@
     "resolve-release-tags-to-verified-digests",
     "deploy-verified-proxy-image-by-digest",
     "readback-render-proxy-image-digest",
-    "public-readiness-v105-main21",
+    "public-readiness-v105-main22",
     "deploy-verified-formal-consumer-image-by-digest",
     "readback-formal-consumer-image-digest",
     "verify-external-consumer-ready-self-drain",
@@ -79,6 +79,8 @@
         "proxy/package-lock.json",
         "cloud-browser-worker/src/snapshot-pusher.js",
         "cloud-browser-worker/test/snapshot-pusher.test.js",
+        "cloud-browser-worker/src/worker-source-runtime.js",
+        "cloud-browser-worker/test/worker-source-runtime.test.js",
         "proxy/src/cloud-capture.js",
         "proxy/src/v100-formal-runtime.js",
         "proxy/test/v100-formal-runtime.test.js",
@@ -101,7 +103,7 @@
         "proxy/test/v105-formal-ingest-backpressure-contract.test.js",
         "proxy/test/v105-v10-main-release.test.js",
         "scripts/verify-v105-mt-api-release.mjs",
-        "release/v105-v10-main21-source-fence-release-manifest.json",
+        "release/v105-v10-main22-source-fence-release-manifest.json",
         "frontend/package.json",
         "frontend/package-lock.json",
         "frontend/src/lib/onlineLicenseClient.ts",
@@ -127,7 +129,7 @@
         "cloud-browser-worker/Dockerfile.dockerignore"
       ],
       "excludedPaths": [],
-      "sha256": "73167f78c9b6f27fba33dc641e69ab3e8e2cc3bcedda77e38134a05ef8e5d5bb"
+      "sha256": "1f5bd91808f614d768c19a1229a5719d735a483fb4f79d115fb208b6c2850d0f"
     },
     "zeroFinalHeartbeatMigration": {
       "algorithm": "sha256",
@@ -150,7 +152,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "751ef8c19a495f86307c525419e53202399a45110a12ecdf3485159db830d420"
+      "sha256": "40caf61b0ebae2e40c5ebedb56342549f73e9368d720bcee4ace5c2e4b08b848"
     },
     "transportRebindMigration": {
       "algorithm": "sha256",
@@ -168,7 +170,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "c904f9ed6e2c13cad15890d682b78f1cb00496320052a3a515f8b6af1394f748"
+      "sha256": "2fae7fbac782413b9ff9f09450c1401d1b5ea128251c9c736b8d1b6215b2db4e"
     }
   }
 }

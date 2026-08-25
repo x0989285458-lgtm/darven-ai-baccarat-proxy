@@ -4,14 +4,14 @@ import { execFileSync } from 'node:child_process'
 import { readdir, readFile, lstat, realpath } from 'node:fs/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-const MAIN21_RELEASE_NAME = 'V105主預測V10穩定版21接收器隔離'
+const MAIN21_RELEASE_NAME = 'V105主預測V10穩定版22 Worker2續租完整性'
 const MAIN21_APPLICATION_VERSION = '1.0.63'
-const MAIN21_BASE_COMMIT = '6461574c256bcfe94e0fdb6d79d974690be77a83'
-const MAIN21_REPORT_TITLE = 'V105主預測V10穩定版21接收器隔離正式發布報告'
-const MAIN21_REPORT_SCOPE = 'V105與V10預測規則、權重、門檻及Formal身份不變；Main21將HTTP Parent限制為被動Tables與狀態更新，Formal Outbox與Shadow lifecycle僅由External Consumer擁有'
+const MAIN21_BASE_COMMIT = 'd2fa2acaafb74db592514075a4113819e6db0290'
+const MAIN21_REPORT_TITLE = 'V105主預測V10穩定版22 Worker2續租完整性正式發布報告'
+const MAIN21_REPORT_SCOPE = 'V105與V10預測規則、權重、門檻、Formal身份及前端行為不變；Main22發布Worker2續租失敗收束、慢續租與stop等待修正'
 const TRUSTED_SIGNER_WORKFLOW = 'x0989285458-lgtm/darven-ai-baccarat-proxy/.github/workflows/trusted-release-images.yml'
-const TRUSTED_SOURCE_REF = 'refs/tags/v105-v10-main.21'
-const TRUSTED_WORKFLOW_SHA256 = 'cc90d7bb624529f7986124bdb84542c1d97c3de484ee4dae7af627040960e620'
+const TRUSTED_SOURCE_REF = 'refs/tags/v105-v10-main.22'
+const TRUSTED_WORKFLOW_SHA256 = '4e2025ddf3ac399d5d76198e202df305321f7beb6a51ac05ee2d77445f21a8e5'
 const TRUSTED_READBACK_CAPABILITIES = new WeakSet()
 const HAS_TRUSTED_READBACK_CAPABILITY = TRUSTED_READBACK_CAPABILITIES.has.bind(TRUSTED_READBACK_CAPABILITIES)
 const ADD_TRUSTED_READBACK_CAPABILITY = TRUSTED_READBACK_CAPABILITIES.add.bind(TRUSTED_READBACK_CAPABILITIES)
@@ -19,7 +19,7 @@ const MAIN21_SCOPE = Object.freeze({
   predictionMainOnly: false,
   productRuntimeChanged: true,
   databaseMigrationRequired: true,
-  captureWorkerChanged: false,
+  captureWorkerChanged: true,
   frontendChanged: true,
   sidePredictionChanged: false,
   formalIdentityChanged: false,
@@ -55,7 +55,7 @@ const MAIN21_DEPENDENCY_SCOPE = Object.freeze({
   gapPolicy: 'fail-closed-stop-ack-and-alert',
   deferred: ['second-independent-session-backup', 'record-replay'],
   httpParentExternalConsumerIsolation: true,
-  captureWorkerChanged: false,
+  captureWorkerChanged: true,
   frontendChanged: true,
 })
 const MAIN21_BEHAVIOR = Object.freeze({
@@ -422,7 +422,7 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
   }
 }
 
-export function verifyMain21ReleaseReportContract(releaseReport, releaseVersion = 'v105-v10-main.21') {
+export function verifyMain22ReleaseReportContract(releaseReport, releaseVersion = 'v105-v10-main.22') {
   if (!exactJson(releaseReport, {
     title: MAIN21_REPORT_TITLE,
     releaseVersion,
@@ -432,8 +432,9 @@ export function verifyMain21ReleaseReportContract(releaseReport, releaseVersion 
     status: 'candidate-full-tests-pass-exact-review-pending',
     scope: MAIN21_REPORT_SCOPE,
     tests: {
-      parentExternalConsumerIsolation: '4/4 PASS', dependencyBinding: '8/8 PASS', mainBinding: '5/5 PASS',
-      proxyFullSerial: '1006/1006 PASS', frontendFull: '159/159 PASS', frontendBuild: 'PASS',
+      parentExternalConsumerIsolation: '4/4 PASS', dependencyBinding: '8/8 PASS', mainBinding: '6/6 PASS',
+      canonicalReleaseGate: '14/14 PASS', workerFull: '214/214 PASS',
+      proxyFullSerial: '1007/1007 PASS', frontendFull: '159/159 PASS', frontendBuild: 'PASS',
     },
     review: {
       predictionRulesChanged: false, predictionWeightsChanged: false, predictionThresholdsChanged: false,
@@ -483,7 +484,7 @@ export async function verifyV105V10MainManifestDigests({ manifest, dependencyMan
   } catch (error) {
     throw new Error('v105_v10_main_release_report_invalid', { cause: error })
   }
-  verifyMain21ReleaseReportContract(releaseReport, manifest.releaseVersion)
+  verifyMain22ReleaseReportContract(releaseReport, manifest.releaseVersion)
   let renderConfig
   let formalConsumerDockerfile
   let trustedWorkflow
@@ -495,7 +496,7 @@ export async function verifyV105V10MainManifestDigests({ manifest, dependencyMan
     throw new Error('v105_v10_main_deployment_role_invalid', { cause: error })
   }
   if (!/runtime:\s*image/.test(renderConfig)
-    || !/url:\s*ghcr\.io\/x0989285458-lgtm\/darven-ai-baccarat-proxy:v105-v10-main\.21/.test(renderConfig)
+    || !/url:\s*ghcr\.io\/x0989285458-lgtm\/darven-ai-baccarat-proxy:v105-v10-main\.22/.test(renderConfig)
     || !/fromRegistryCreds:\s*\n\s*name:\s*darven-ghcr/.test(renderConfig)
     || /buildCommand:|startCommand:|runtime:\s*node/.test(renderConfig)
     || !/CAPTURE_OUTBOX_CONSUMER_ENABLED[\s\S]*?value:\s*["']false["']/.test(renderConfig)
@@ -511,9 +512,9 @@ export async function verifyV105V10MainManifestDigests({ manifest, dependencyMan
   const formalConsumer = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.formalConsumerBuildInput, 'v105_v10_main_formal_consumer_build_input')
   const worker = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.workerBuildInput, 'v105_v10_main_worker_build_input')
   const deployment = Array.isArray(manifest?.deploymentOrder) ? manifest.deploymentOrder : []
-  const expectedDeployment = ['verify-producer-stopped', 'verify-active-outbox-zero', 'transport-rebind-idempotency-migration', 'transport-rebind-idempotency-catalog-acl-readback', 'verify-sigstore-three-role-images', 'resolve-release-tags-to-verified-digests', 'deploy-verified-proxy-image-by-digest', 'readback-render-proxy-image-digest', 'public-readiness-v105-main21', 'deploy-verified-formal-consumer-image-by-digest', 'readback-formal-consumer-image-digest', 'verify-external-consumer-ready-self-drain', 'deploy-verified-worker-image-by-digest', 'readback-worker-image-digest', 'verify-worker-queue-cursor-journal-preserved', 'ten-table-final-ack-v10-prediction-e2e', 'member-session-frontend-e2e']
+  const expectedDeployment = ['verify-producer-stopped', 'verify-active-outbox-zero', 'transport-rebind-idempotency-migration', 'transport-rebind-idempotency-catalog-acl-readback', 'verify-sigstore-three-role-images', 'resolve-release-tags-to-verified-digests', 'deploy-verified-proxy-image-by-digest', 'readback-render-proxy-image-digest', 'public-readiness-v105-main22', 'deploy-verified-formal-consumer-image-by-digest', 'readback-formal-consumer-image-digest', 'verify-external-consumer-ready-self-drain', 'deploy-verified-worker-image-by-digest', 'readback-worker-image-digest', 'verify-worker-queue-cursor-journal-preserved', 'ten-table-final-ack-v10-prediction-e2e', 'member-session-frontend-e2e']
   if (JSON.stringify(deployment) !== JSON.stringify(expectedDeployment)) throw new Error('v105_v10_main_deployment_order_invalid')
-  const requiredImplementationPaths = [binding.sameSessionOutboxBatchMigration?.path, binding.transportRebindMigration?.path, '.github/workflows/trusted-release-images.yml', 'proxy/Dockerfile.evidence', 'proxy/Dockerfile.evidence.dockerignore', 'cloud-browser-worker/Dockerfile.dockerignore', 'proxy/Dockerfile.formal-consumer', 'proxy/Dockerfile.formal-consumer.dockerignore', 'proxy/deploy/render.yaml', 'proxy/src/server.js', 'proxy/src/supabase-writer.js', 'proxy/test/capture-outbox-ack.test.js', 'proxy/test/capture-outbox-writer.test.js', 'proxy/test/deploy-config.test.js', 'scripts/verify-v105-mt-api-release.mjs', 'release/v105-v10-main21-source-fence-release-manifest.json', 'release/v105-v10-main-release-report.json']
+  const requiredImplementationPaths = [binding.sameSessionOutboxBatchMigration?.path, binding.transportRebindMigration?.path, '.github/workflows/trusted-release-images.yml', 'proxy/Dockerfile.evidence', 'proxy/Dockerfile.evidence.dockerignore', 'cloud-browser-worker/Dockerfile.dockerignore', 'cloud-browser-worker/src/worker-source-runtime.js', 'cloud-browser-worker/test/worker-source-runtime.test.js', 'proxy/Dockerfile.formal-consumer', 'proxy/Dockerfile.formal-consumer.dockerignore', 'proxy/deploy/render.yaml', 'proxy/src/server.js', 'proxy/src/supabase-writer.js', 'proxy/test/capture-outbox-ack.test.js', 'proxy/test/capture-outbox-writer.test.js', 'proxy/test/deploy-config.test.js', 'scripts/verify-v105-mt-api-release.mjs', 'release/v105-v10-main22-source-fence-release-manifest.json', 'release/v105-v10-main-release-report.json']
   if (requiredImplementationPaths.some((required) => !binding.implementationTree.paths?.includes(required))) throw new Error('v105_v10_main_implementation_contract_invalid')
   const dependencyBinding = dependencyManifest?.releaseBinding?.sameSessionOutboxBatchMigration
   const dependencyDatabase = dependencyManifest?.database?.sameSessionOutboxBatchMigration
@@ -973,7 +974,7 @@ async function main() {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
   const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
   assertCandidateIndexClean(repoRoot, candidateIndexTree)
-  const manifestBytes = execFileSync('git', ['cat-file', 'blob', `${candidateIndexTree}:release/v105-v10-main21-source-fence-release-manifest.json`], { cwd: repoRoot })
+  const manifestBytes = execFileSync('git', ['cat-file', 'blob', `${candidateIndexTree}:release/v105-v10-main22-source-fence-release-manifest.json`], { cwd: repoRoot })
   const manifest = JSON.parse(manifestBytes.toString('utf8'))
   const mainManifestBytes = execFileSync('git', ['cat-file', 'blob', `${candidateIndexTree}:release/v105-v10-main-release-manifest.json`], { cwd: repoRoot })
   const mainManifest = JSON.parse(mainManifestBytes.toString('utf8'))

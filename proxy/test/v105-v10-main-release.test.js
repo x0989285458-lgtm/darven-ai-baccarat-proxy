@@ -2,21 +2,21 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { verifyMain21ReleaseReportContract, verifyManifestDigests, verifyV105V10MainManifestDigests } from '../../scripts/verify-v105-mt-api-release.mjs'
+import { verifyMain22ReleaseReportContract, verifyManifestDigests, verifyV105V10MainManifestDigests } from '../../scripts/verify-v105-mt-api-release.mjs'
 
 const manifest = JSON.parse(readFileSync(new URL('../../release/v105-v10-main-release-manifest.json', import.meta.url)))
-const dependencyManifest = JSON.parse(readFileSync(new URL('../../release/v105-v10-main21-source-fence-release-manifest.json', import.meta.url)))
+const dependencyManifest = JSON.parse(readFileSync(new URL('../../release/v105-v10-main22-source-fence-release-manifest.json', import.meta.url)))
 const releaseReport = JSON.parse(readFileSync(new URL('../../release/v105-v10-main-release-report.json', import.meta.url)))
 const formalConsumerDockerfile = readFileSync(new URL('../Dockerfile.formal-consumer', import.meta.url), 'utf8')
 
-test('V105 Main21 preserves formal prediction while changing receiver ownership', () => {
-  assert.equal(manifest.releaseVersion, 'v105-v10-main.21')
+test('V105 Main22 preserves formal prediction while releasing the Worker2 lifecycle fix', () => {
+  assert.equal(manifest.releaseVersion, 'v105-v10-main.22')
   assert.equal(manifest.formalStrategyVersion, 'v105')
   assert.deepEqual(manifest.releaseScope, {
     predictionMainOnly: false,
     productRuntimeChanged: true,
     databaseMigrationRequired: true,
-    captureWorkerChanged: false,
+    captureWorkerChanged: true,
     frontendChanged: true,
     sidePredictionChanged: false,
     formalIdentityChanged: false,
@@ -48,11 +48,11 @@ test('V105 Main21 preserves formal prediction while changing receiver ownership'
   assert.match(formalConsumerDockerfile, /ENV CAPTURE_OUTBOX_CONSUMER_ENABLED=true/)
   assert.match(formalConsumerDockerfile, /ENV CAPTURE_OUTBOX_POLL_MS=3000/)
   assert.equal(releaseReport.releaseVersion, manifest.releaseVersion)
-  assert.equal(releaseReport.title, 'V105主預測V10穩定版21接收器隔離正式發布報告')
+  assert.equal(releaseReport.title, 'V105主預測V10穩定版22 Worker2續租完整性正式發布報告')
   assert.equal(releaseReport.formalStrategyVersion, 'v105')
   assert.equal(releaseReport.applicationVersion, manifest.applicationVersion)
   assert.equal(releaseReport.baseCommit, manifest.baseCommit)
-  assert.equal(releaseReport.scope, 'V105與V10預測規則、權重、門檻及Formal身份不變；Main21將HTTP Parent限制為被動Tables與狀態更新，Formal Outbox與Shadow lifecycle僅由External Consumer擁有')
+  assert.equal(releaseReport.scope, 'V105與V10預測規則、權重、門檻、Formal身份及前端行為不變；Main22發布Worker2續租失敗收束、慢續租與stop等待修正')
   assert.deepEqual(releaseReport.review, {
     predictionRulesChanged: false,
     predictionWeightsChanged: false,
@@ -65,7 +65,7 @@ test('V105 Main21 preserves formal prediction while changing receiver ownership'
 
 test('V105 V10 main release binding covers the exact prediction implementation and required migration', () => {
   assert.match(manifest.releaseBinding.implementationTree.sha256, /^[a-f0-9]{64}$/)
-  for (const required of ['cloud-browser-worker/src/snapshot-pusher.js', 'cloud-browser-worker/test/snapshot-pusher.test.js', 'proxy/src/cloud-capture.js', 'proxy/src/v100-formal-runtime.js', 'proxy/test/v100-formal-runtime.test.js', 'proxy/src/license-admin.js', 'proxy/src/server.js', 'proxy/src/state-store.js', 'proxy/src/supabase-writer.js', 'proxy/test/cloud-capture.test.js', 'proxy/test/capture-outbox-ack.test.js', 'proxy/test/capture-outbox-writer.test.js', 'proxy/test/v105-formal-ingest-backpressure-contract.test.js', 'proxy/test/admin-side-actions.test.js', 'proxy/test/prediction-integrity.test.js', 'proxy/test/prediction-safety.test.js', 'proxy/src/v105-formal-runtime.js', 'proxy/src/v105-v10-main-strategy.js', 'proxy/src/v105-shadow-v10-contract.js', 'proxy/src/v105-shadow-v10-structure.js', 'frontend/src/lib/onlineLicenseClient.ts', 'frontend/src/lib/onlineLicenseClient.test.ts', 'frontend/src/App.tsx', 'frontend/src/App.test.tsx', 'proxy/Dockerfile.formal-consumer', 'proxy/Dockerfile.formal-consumer.dockerignore', 'release/v105-v10-main-release-report.json', 'supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql', 'supabase/migrations/20260824010000_v105_capture_outbox_same_session_batch.sql', 'supabase/migrations/20260824143000_v105_capture_transport_rebind_idempotency.sql']) {
+  for (const required of ['cloud-browser-worker/src/snapshot-pusher.js', 'cloud-browser-worker/test/snapshot-pusher.test.js', 'cloud-browser-worker/src/worker-source-runtime.js', 'cloud-browser-worker/test/worker-source-runtime.test.js', 'proxy/src/cloud-capture.js', 'proxy/src/v100-formal-runtime.js', 'proxy/test/v100-formal-runtime.test.js', 'proxy/src/license-admin.js', 'proxy/src/server.js', 'proxy/src/state-store.js', 'proxy/src/supabase-writer.js', 'proxy/test/cloud-capture.test.js', 'proxy/test/capture-outbox-ack.test.js', 'proxy/test/capture-outbox-writer.test.js', 'proxy/test/v105-formal-ingest-backpressure-contract.test.js', 'proxy/test/admin-side-actions.test.js', 'proxy/test/prediction-integrity.test.js', 'proxy/test/prediction-safety.test.js', 'proxy/src/v105-formal-runtime.js', 'proxy/src/v105-v10-main-strategy.js', 'proxy/src/v105-shadow-v10-contract.js', 'proxy/src/v105-shadow-v10-structure.js', 'frontend/src/lib/onlineLicenseClient.ts', 'frontend/src/lib/onlineLicenseClient.test.ts', 'frontend/src/App.tsx', 'frontend/src/App.test.tsx', 'proxy/Dockerfile.formal-consumer', 'proxy/Dockerfile.formal-consumer.dockerignore', 'release/v105-v10-main-release-report.json', 'supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql', 'supabase/migrations/20260824010000_v105_capture_outbox_same_session_batch.sql', 'supabase/migrations/20260824143000_v105_capture_transport_rebind_idempotency.sql']) {
     assert.ok(manifest.releaseBinding.implementationTree.paths.includes(required), required)
   }
   assert.equal(manifest.releaseBinding.zeroFinalHeartbeatMigration.path, 'supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql')
@@ -162,11 +162,11 @@ test('V105 V10 main canonical verifier loads both manifests and rejects duplicat
   }
 })
 
-test('V105 Main21 release report is exact and cannot self-approve production gates', () => {
-  assert.deepEqual(verifyMain21ReleaseReportContract(releaseReport, manifest.releaseVersion), { ok: true })
+test('V105 Main22 release report is exact and cannot self-approve production gates', () => {
+  assert.deepEqual(verifyMain22ReleaseReportContract(releaseReport, manifest.releaseVersion), { ok: true })
   const mutations = [
     (value) => { value.status = 'review-pass' },
-    (value) => { value.tests.proxyFullSerial = '1005/1006 PASS' },
+    (value) => { value.tests.proxyFullSerial = '1006/1007 PASS' },
     (value) => { value.tests.unreviewed = 'PASS' },
     (value) => { value.productionGates.exactCommitReview = true },
     (value) => { delete value.productionGates.tenTables },
@@ -175,11 +175,11 @@ test('V105 Main21 release report is exact and cannot self-approve production gat
   for (const mutate of mutations) {
     const drifted = structuredClone(releaseReport)
     mutate(drifted)
-    assert.throws(() => verifyMain21ReleaseReportContract(drifted, manifest.releaseVersion), /v105_v10_main_release_report_invalid/)
+    assert.throws(() => verifyMain22ReleaseReportContract(drifted, manifest.releaseVersion), /v105_v10_main_release_report_invalid/)
   }
 })
 
-test('V105 Main21 deploys DB and three verified immutable role images before E2E', () => {
+test('V105 Main22 deploys DB and three verified immutable role images before E2E', () => {
   assert.deepEqual(manifest.deploymentOrder, [
     'verify-producer-stopped',
     'verify-active-outbox-zero',
@@ -189,7 +189,7 @@ test('V105 Main21 deploys DB and three verified immutable role images before E2E
     'resolve-release-tags-to-verified-digests',
     'deploy-verified-proxy-image-by-digest',
     'readback-render-proxy-image-digest',
-    'public-readiness-v105-main21',
+    'public-readiness-v105-main22',
     'deploy-verified-formal-consumer-image-by-digest',
     'readback-formal-consumer-image-digest',
     'verify-external-consumer-ready-self-drain',
@@ -199,6 +199,23 @@ test('V105 Main21 deploys DB and three verified immutable role images before E2E
     'ten-table-final-ack-v10-prediction-e2e',
     'member-session-frontend-e2e',
   ])
-  assert.equal(manifest.releaseScope.captureWorkerChanged, false)
+  assert.equal(manifest.releaseScope.captureWorkerChanged, true)
   assert.equal(manifest.releaseScope.httpParentExternalConsumerIsolation, true)
+})
+
+test('V105 Main22 trusted workflow builds all roles only from the exact frozen tag with GitHub Sigstore provenance', () => {
+  const root = new URL('../..', import.meta.url)
+  const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: root, encoding: 'utf8' }).trim()
+  const workflow = execFileSync('git', ['show', `${candidateIndexTree}:.github/workflows/trusted-release-images.yml`], { cwd: root, encoding: 'utf8' })
+  assert.match(workflow, /tags:\s*\n\s*- v105-v10-main\.22/)
+  assert.match(workflow, /if: github\.ref == 'refs\/tags\/v105-v10-main\.22'/)
+  assert.match(workflow, /runs-on: ubuntu-latest/)
+  assert.match(workflow, /ref: refs\/tags\/v105-v10-main\.22/)
+  assert.match(workflow, /test "\$\{GITHUB_REF\}" = "refs\/tags\/v105-v10-main\.22"/)
+  assert.match(workflow, /test "\$\(git rev-parse HEAD\)" = "\$\{GITHUB_SHA\}"/)
+  for (const role of ['proxy', 'formal-consumer', 'worker']) assert.match(workflow, new RegExp(`role: ${role}`))
+  assert.match(workflow, /id-token: write/)
+  assert.match(workflow, /actions\/attest-build-provenance@[a-f0-9]{40}/)
+  assert.match(workflow, /subject-digest: \$\{\{ steps\.build\.outputs\.digest \}\}/)
+  assert.match(workflow, /push-to-registry: true/)
 })
