@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "v105-v10-main-successor-overlay.1",
+  "predecessorManifest": "release/v105-v10-main29-db-batch-limit-release-manifest.json",
+  "releaseName": "V105主預測V10穩定版30 Formal Outbox冪等發行讀回修復",
+  "releaseVersion": "v105-v10-main.30",
+  "gitTag": "v105-v10-main.30",
+  "applicationVersion": "1.0.66",
+  "baseCommit": "33f60a58f00726f7cba978f8e9c371257d58359d",
+  "formalStrategyVersion": "v105",
+  "releaseScope": {
+    "proxyChanged": true,
+    "formalConsumerChanged": true,
+    "workerChanged": false,
+    "frontendChanged": false,
+    "databaseChanged": false
+  },
+  "safetyContract": {
+    "exactReadbackIdentity": ["tableId", "shoe", "nextRound", "strategyVersion=v105"],
+    "durableValidation": "isExactScreenPrediction",
+    "missingIssuance": "fail-closed-retain-exact-lease",
+    "reconciliationFailure": "fail-closed-retain-exact-lease",
+    "predictionRulesChanged": false,
+    "weightsChanged": false,
+    "thresholdsChanged": false
+  },
+  "releaseBinding": {
+    "changedFileSha256": {
+      "proxy/package.json": "c8813834e4004161795c480e463cefe0b0a75a563bd7ef4c8337a2a35ee78a9e",
+      "proxy/package-lock.json": "9c7478930012feb9e297dc026f49a8d4844b4d64f51febd1998dfa3212f937c0",
+      "proxy/deploy/render.yaml": "31ef7d54b7cb2945e80ede3549e722ad89ed4a8c42c9477ccdad80ff8fd17cf0",
+      "proxy/src/server.js": "6c147bc5a4b91338fa4914c595bfe39cbae17fb913291fbc75fbf78f35a2b4f8",
+      "proxy/test/capture-outbox-ack.test.js": "896fcd5c3df768461f8ec0a1c0935d44461ee930442d9e27d057b61d5d8932cf",
+      "proxy/test/deploy-config.test.js": "3ff430ecdc24f35a1c9d43c500e52c12297903ce887500baaa139d0643b5d1da",
+      "proxy/test/deploy-package.test.js": "d882b978f8222061a4f487198fca85d783b599e1437b28c4096d67e4db2c9f1b",
+      "proxy/test/v102-release-integrity.test.js": "7dafa6f0799d610748dbe519365397d739d6bd1e45509689c4320efd507740f6",
+      "proxy/test/v104-iteration-shadow-release.test.js": "ecfbcdead5031c187418be6a26bb409a92cad60a62f0731ec67ccb3e81fec177",
+      "proxy/test/v105-mt-session-auto-refresh-release.test.js": "7df5074c4c9399582bad6d22d01803cee06a41b735172f90bb2669fbcdfb5036",
+      "proxy/test/v105-service-work-scheduler-release.test.js": "282e765d95915a8a1df000f443497fd9186dc3d6f5ceab94004dc76f54527704",
+      "proxy/test/v105-v10-main30-idempotent-issuance-release.test.js": "bd9c99c8ce3e3ec2567bf920eeaef289592cb8858900f22d323b7d84c21dc9db",
+      "release/v105-v10-main30-idempotent-issuance-readback-release-report.json": "587b3aa11cca4e09c67b3ed438698046881754572a6919e6d434c6687282cf37"
+    }
+  },
+  "deploymentOrder": [
+    "fresh-independent-review-pass",
+    "commit-tag-push-exact-source",
+    "build-proxy-image-from-exact-tag-with-provenance",
+    "resolve-tag-to-immutable-digest",
+    "deploy-formal-consumer-by-digest",
+    "readback-formal-consumer-image-digest",
+    "archive-only-verified-main29-dead-letter-replay-residue",
+    "start-formal-consumer-before-worker",
+    "start-worker-from-preserved-cursor-with-empty-local-queue",
+    "verify-ack-final-prediction-settlement-and-ten-tables",
+    "run-ten-minute-live-window",
+    "run-member-agent-browser-e2e-and-clean-test-data",
+    "update-production-gates-only-from-live-evidence"
+  ]
+}

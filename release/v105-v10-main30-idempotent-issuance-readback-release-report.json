@@ -1,0 +1,57 @@
+{
+  "title": "V105主預測V10穩定版30 Formal Outbox冪等發行讀回修復發布報告",
+  "releaseVersion": "v105-v10-main.30",
+  "formalStrategyVersion": "v105",
+  "applicationVersion": "1.0.66",
+  "baseCommit": "33f60a58f00726f7cba978f8e9c371257d58359d",
+  "status": "candidate-full-tests-pass-fresh-review-pass",
+  "rootCause": "Formal Consumer已完成Final結算且下一局Durable預測已存在時，本地發行ACK遺失或重播回空值；外層未先Exact讀回Durable issuance，將冪等已完成工作誤判為prediction issuance failure並使Exact Lease重試至dead-letter。",
+  "productionEvidence": {
+    "main29Window": "BLOCK",
+    "publicFailures": 0,
+    "verifiedTables": 10,
+    "deadLetterMax": 17,
+    "verifiedDeadIdentities": 19,
+    "settledFinalIdentities": 19,
+    "durableNextIssuances": 19,
+    "durableNextSettled": 18,
+    "durableNextAbandonedShoeChange": 1
+  },
+  "behavior": {
+    "normalIssuancePath": "unchanged",
+    "idempotentReplay": "when normal issuance returns empty, read exact durable v105 issuance by table+shoe+nextRound and accept only after existing exact validation",
+    "missingDurableIssuance": "fail-closed and retain exact lease",
+    "reconciliationFailure": "fail-closed and retain exact lease",
+    "predictionRulesChanged": false,
+    "weightsChanged": false,
+    "thresholdsChanged": false,
+    "workerChanged": false,
+    "frontendChanged": false
+  },
+  "tests": {
+    "tddRed": "PASS: corrected regression test failed with issueCalls=1 and completed=0 before implementation",
+    "targetedGreen": "3/3 PASS",
+    "captureOutboxAck": "43/43 PASS",
+    "proxyFullSerial": "1030/1030 PASS"
+  },
+  "freshReview": {
+    "verdict": "PASS",
+    "reviewedRuntimeDiffSha256": "246214d773949a2a0c784f2ff3b4b374ade120d6c30a808d7ea7514a3666fe0b",
+    "securityConcerns": 0,
+    "logicErrors": 0,
+    "residualSuggestions": [
+      "add explicit wrong-identity durable read-back regression",
+      "add issuance-commit/read-back race regression",
+      "guard targetRound safe-integer overflow"
+    ]
+  },
+  "productionGates": {
+    "freshReview": "PASS",
+    "immutableImageBuild": "PENDING",
+    "formalConsumerDigestReadback": "PENDING",
+    "queueRecovery": "PENDING",
+    "tenTableLiveWindow": "PENDING",
+    "memberAgentBrowserE2E": "PENDING",
+    "finalVerdict": "BLOCK"
+  }
+}

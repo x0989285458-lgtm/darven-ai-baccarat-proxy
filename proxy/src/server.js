@@ -917,7 +917,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               const predictionTables = [...finalizedIdentities].map((identity) => publishedTableByIdentity.get(identity))
               const nextPredictions = await runLeasePhase('formal_prediction', async () => {
                 const predictions = await Promise.all(predictionTables.map((table) => (
-                  reconcileThenSavePendingPrediction(table, { failOnReconciliationError: true })
+                  reconcileThenResolveOutboxPrediction(table)
                 )))
                 await serviceWorkScheduler.waitForIdle()
                 return predictions
@@ -1833,6 +1833,16 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
     if (canReconcile) requestDurablePredictionBroadcast(preparedPrediction)
     return preparedPrediction
+  }
+
+  async function reconcileThenResolveOutboxPrediction(table) {
+    const prepared = await reconcileThenSavePendingPrediction(table, { failOnReconciliationError: true })
+    if (prepared) return prepared
+    const currentRound = Number(table?.round)
+    if (!table?.tableId || table?.shoe == null || !Number.isSafeInteger(currentRound)) return null
+    const targetRound = currentRound + 1
+    const key = predictionTargetKey(table.tableId, table.shoe, targetRound)
+    return startIssuedPredictionRead(table, targetRound, key, isDurablePredictionIssuanceRequired())
   }
 
   function requestDurablePredictionBroadcast(prediction) {

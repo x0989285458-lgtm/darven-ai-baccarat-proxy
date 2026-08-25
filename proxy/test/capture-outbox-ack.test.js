@@ -317,6 +317,57 @@ test('external consumer publishes a finalized screen and issues the next predict
   assert.deepEqual(order, ['reconcile', 'issue', 'complete'])
 })
 
+test('external consumer completes an idempotent replay when exact next issuance exists after its acknowledgement was lost', async () => {
+  let claimed = false
+  let completed = 0
+  let failed = 0
+  let issueCalls = 0
+  let durablePrediction = null
+  const snapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: snapshot } })]
+      },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox() { failed += 1 },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async reconcilePredictionLifecycle() {},
+      async issuePrediction(candidate) {
+        issueCalls += 1
+        durablePrediction = { ...candidate, predictionId: 'pid-BAG01-88-22', issuedAt: '2026-08-25T16:00:01.000Z' }
+        throw new Error('durable issuance acknowledgement was lost')
+      },
+      async readIssuedPrediction(identity) {
+        if (identity.round === 21) return null
+        assert.deepEqual(identity, { tableId: 'BAG01', shoe: 88, round: 22, strategyVersion: 'v105' })
+        return durablePrediction
+      },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) { return { enabled: true, predictions: [], tables } },
+    },
+  })
+
+  await app.drainCaptureOutbox()
+  await app.waitForServiceWorkIdle()
+
+  assert.equal(issueCalls, 1)
+  assert.equal(completed, 1)
+  assert.equal(failed, 0)
+})
+
 test('external consumer retains the exact outbox lease when next prediction issuance fails', async () => {
   let claimed = false
   let completed = 0
