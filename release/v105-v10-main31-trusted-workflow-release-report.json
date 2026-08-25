@@ -1,0 +1,38 @@
+{
+  "title": "V105主預測V10穩定版31 Trusted Image工作流發布修復報告",
+  "releaseVersion": "v105-v10-main.31",
+  "runtimeSourceVersion": "v105-v10-main.30",
+  "applicationVersion": "1.0.66",
+  "baseCommit": "1cfc2cd494fd02b288263ab4dfa0eb7434b6effe",
+  "status": "candidate-workflow-contract-pass-fresh-review-pending",
+  "rootCause": "Main30 Tag已不可變推送，但既有Trusted release images workflow只監聽並驗證v105-v10-main.26，因此Main30不會建立GitHub-hosted provenance image。",
+  "scope": {
+    "runtimeCodeChanged": false,
+    "predictionRulesChanged": false,
+    "weightsChanged": false,
+    "thresholdsChanged": false,
+    "databaseChanged": false,
+    "workerChanged": false,
+    "frontendChanged": false,
+    "trustedWorkflowAdded": true,
+    "releaseVerificationChanged": true
+  },
+  "evidence": {
+    "main30Commit": "1cfc2cd494fd02b288263ab4dfa0eb7434b6effe",
+    "main30Tree": "44ea5da38d26de86b7fe691c0ac0c3784c90119e",
+    "main30RemoteTagReadback": "PASS",
+    "main30WorkflowRunFound": false,
+    "main30RuntimeTests": "1030/1030 PASS",
+    "main30FreshReview": "PASS"
+  },
+  "productionGates": {
+    "freshWorkflowReview": "PENDING",
+    "trustedImageBuild": "PENDING",
+    "provenanceReadback": "PENDING",
+    "formalConsumerDigestReadback": "PENDING",
+    "queueRecovery": "PENDING",
+    "tenTableLiveWindow": "PENDING",
+    "memberAgentBrowserE2E": "PENDING",
+    "finalVerdict": "BLOCK"
+  }
+}

@@ -98,9 +98,9 @@ test('V105 V10 main release binding covers the exact prediction implementation a
   assert.match(manifest.releaseBinding.workerBuildInput.sha256, /^[a-f0-9]{64}$/)
 })
 
-test('V105 V10 main canonical verifier loads both manifests and rejects duplicate or drifted batch authority', async () => {
+test('V105 V10 main canonical verifier loads the immutable Main26 tree and rejects duplicate or drifted batch authority', async () => {
   const root = new URL('../..', import.meta.url)
-  const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: root, encoding: 'utf8' }).trim()
+  const candidateIndexTree = execFileSync('git', ['rev-parse', 'v105-v10-main.26^{tree}'], { cwd: root, encoding: 'utf8' }).trim()
   const result = await verifyV105V10MainManifestDigests({ manifest, dependencyManifest, repoRoot: root, candidateIndexTree })
   assert.equal(result.mainImplementationTreeSha256, manifest.releaseBinding.implementationTree.sha256)
   const duplicateProxy = structuredClone(manifest)
@@ -215,7 +215,7 @@ test('V105 Main26 rebuilds three trusted roles and deploys the changed proxy plu
 
 test('V105 Main26 trusted workflow rebuilds all roles only from the exact frozen tag with GitHub Sigstore provenance', () => {
   const root = new URL('../..', import.meta.url)
-  const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: root, encoding: 'utf8' }).trim()
+  const candidateIndexTree = execFileSync('git', ['rev-parse', 'v105-v10-main.26^{tree}'], { cwd: root, encoding: 'utf8' }).trim()
   const workflow = execFileSync('git', ['show', `${candidateIndexTree}:.github/workflows/trusted-release-images.yml`], { cwd: root, encoding: 'utf8' })
   assert.match(workflow, /tags:\s*\n\s*- v105-v10-main\.26/)
   assert.match(workflow, /if: github\.ref == 'refs\/tags\/v105-v10-main\.26'/)

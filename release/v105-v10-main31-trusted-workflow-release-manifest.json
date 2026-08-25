@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "v105-v10-main-successor-overlay.1",
+  "predecessorManifest": "release/v105-v10-main30-idempotent-issuance-readback-release-manifest.json",
+  "releaseName": "V105主預測V10穩定版31 Trusted Image工作流發布修復",
+  "releaseVersion": "v105-v10-main.31",
+  "gitTag": "v105-v10-main.31",
+  "applicationVersion": "1.0.66",
+  "baseCommit": "1cfc2cd494fd02b288263ab4dfa0eb7434b6effe",
+  "runtimeSourceVersion": "v105-v10-main.30",
+  "releaseScope": {
+    "runtimeCodeChanged": false,
+    "proxyChanged": false,
+    "formalConsumerChanged": false,
+    "workerChanged": false,
+    "frontendChanged": false,
+    "databaseChanged": false,
+    "trustedWorkflowAdded": true,
+    "releaseVerificationChanged": true
+  },
+  "workflowContract": {
+    "exactTag": "v105-v10-main.31",
+    "roles": ["proxy", "formal-consumer", "worker"],
+    "githubHostedProvenance": true,
+    "mutableLatestTag": false,
+    "pinnedActionsOnly": true,
+    "requiredParentCommit": "1cfc2cd494fd02b288263ab4dfa0eb7434b6effe",
+    "allowedChangedPaths": [
+      ".github/workflows/trusted-release-images-main31.yml",
+      "proxy/test/v105-mt-api-release-binding.test.js",
+      "proxy/test/v105-v10-main-release.test.js",
+      "proxy/test/v105-v10-main31-trusted-workflow-release.test.js",
+      "release/v105-v10-main31-trusted-workflow-release-manifest.json",
+      "release/v105-v10-main31-trusted-workflow-release-report.json"
+    ],
+    "provenanceReadbackRequiredFields": [
+      "repository",
+      "workflowRef",
+      "commitSha",
+      "subjectName",
+      "subjectDigest"
+    ],
+    "provenanceReadbackContract": {
+      "phase": "post-attestation-pre-deployment",
+      "verifier": "gh attestation verify",
+      "repository": "x0989285458-lgtm/darven-ai-baccarat-proxy",
+      "workflowRef": "x0989285458-lgtm/darven-ai-baccarat-proxy/.github/workflows/trusted-release-images-main31.yml",
+      "sourceRef": "refs/tags/v105-v10-main.31",
+      "commitSha": "resolved-tag-commit-equals-github-sha",
+      "roleSubjects": {
+        "proxy": "ghcr.io/x0989285458-lgtm/darven-ai-baccarat-proxy",
+        "formal-consumer": "ghcr.io/x0989285458-lgtm/darven-ai-baccarat-formal-consumer",
+        "worker": "ghcr.io/x0989285458-lgtm/darven-ai-baccarat-worker"
+      },
+      "abortOnMismatch": true
+    }
+  },
+  "releaseBinding": {
+    "changedFileSha256": {
+      ".github/workflows/trusted-release-images-main31.yml": "4f8511ce93b1efa8f10fbd884a551c7bc08eee1b460e650f725f79aff3e3a26b",
+      "proxy/test/v105-mt-api-release-binding.test.js": "ac884d663b0153135f614e88478ad643575ed4b2edf4e0308ea8e0a6c8c84755",
+      "proxy/test/v105-v10-main-release.test.js": "28d72143b678aba30e14fd77c76d857e9e4c858dbf1872cb18223cc6a99d0930",
+      "proxy/test/v105-v10-main31-trusted-workflow-release.test.js": "4817434fc5ed1c2ec1efcec23598cf0fe9da67f398232480d2f3307ff70f3af5",
+      "release/v105-v10-main31-trusted-workflow-release-report.json": "1aadeb5f1589d2c54be4a3601225f4e261d2b91c8856ff633e40c9c27e0348d6"
+    }
+  },
+  "deploymentOrder": [
+    "fresh-independent-workflow-review-pass",
+    "commit-tag-push-exact-source",
+    "wait-trusted-release-images-main31-success",
+    "resolve-formal-consumer-tag-to-immutable-digest",
+    "verify-github-provenance-subject-and-source-tag",
+    "deploy-formal-consumer-by-digest",
+    "readback-formal-consumer-image-digest",
+    "archive-only-main29-verified-dead-letter-residue",
+    "start-formal-consumer-before-worker",
+    "start-worker-with-preserved-cursor-and-empty-local-queue",
+    "run-ten-minute-live-window",
+    "run-member-agent-browser-e2e-and-clean-test-data",
+    "update-production-gates-only-from-live-evidence"
+  ]
+}
