@@ -1,0 +1,26 @@
+{
+  "title": "V105主預測V10穩定版29 Outbox批次上限漂移修復發布報告",
+  "releaseVersion": "v105-v10-main.29",
+  "runtimeReleaseVersion": "v105-v10-main.26",
+  "baseCommit": "f03e98436636b5c4c87df27a8e48f317d7827df1",
+  "status": "candidate-full-tests-pass-exact-review-pending",
+  "priorBlocks": {
+    "main26FormalGate": "BLOCK",
+    "main27Review": "BLOCK",
+    "main28Preflight": "BLOCK"
+  },
+  "rootCause": "正式DB Claim函式硬限制3；Main29使用正式PostgreSQL已驗證可用的POSIX whitespace normalization後交易內讀回max10。",
+  "tests": {
+    "main29Contract": "4/4 PASS",
+    "main26ImmutableBinding": "6/6 PASS",
+    "proxyFullSerial": "1026/1026 PASS"
+  },
+  "productionGates": {
+    "exactCommitReview": false,
+    "migrationApplied": false,
+    "functionMax10Readback": false,
+    "queueDrainedNaturally": false,
+    "predictionSettlementAckGrowth": false,
+    "browserE2E": false
+  }
+}

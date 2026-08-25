@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "v105-v10-main-db-migration-release.1",
+  "releaseName": "V105主預測V10穩定版29 Outbox批次上限漂移修復",
+  "releaseVersion": "v105-v10-main.29",
+  "gitTag": "v105-v10-main.29",
+  "baseCommit": "f03e98436636b5c4c87df27a8e48f317d7827df1",
+  "runtimeReleaseVersion": "v105-v10-main.26",
+  "applicationVersion": "1.0.65",
+  "formalStrategyVersion": "v105",
+  "releaseScope": {
+    "databaseMigrationOnly": true,
+    "proxyChanged": false,
+    "formalConsumerChanged": false,
+    "workerChanged": false,
+    "frontendChanged": false,
+    "predictionRulesChanged": false,
+    "predictionWeightsChanged": false,
+    "predictionThresholdsChanged": false,
+    "queuedWorkRewritten": false,
+    "historicalDataRewritten": false
+  },
+  "incident": {
+    "main26FormalGate": "BLOCK",
+    "main27Review": "BLOCK",
+    "main28Preflight": "BLOCK",
+    "main28P0": "postgres-regex-whitespace-normalization-did-not-match",
+    "observedMaxPending": 104,
+    "currentProductionFunctionBatchLimit": 3,
+    "targetBatchLimit": 10
+  },
+  "releaseBinding": {
+    "migration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260826030000_v105_capture_outbox_batch_limit_drift_repair.sql",
+      "sha256": "9b46e926fb3a8c6d7f0e0ff91de7ec5e0f1eb02bd7510fbb81efecaecf3d3fa8"
+    },
+    "testPath": "proxy/test/v105-v10-main29-db-release.test.js",
+    "preconditionContract": "limit greatest(1, least(coalesce(p_limit, 3), 3))",
+    "postconditionContract": "limit greatest(1, least(coalesce(p_limit, 10), 10))",
+    "normalizationContract": "[[:space:]]+"
+  },
+  "deploymentOrder": [
+    "verify-exact-main29-tag",
+    "verify-production-function-precondition-max-3",
+    "verify-active-outbox-no-dead-letter",
+    "apply-main29-migration-in-one-transaction",
+    "readback-pg-get-functiondef-max-10",
+    "verify-service-role-execute",
+    "verify-next-claim-processing-up-to-10",
+    "verify-queue-natural-drain-without-delete",
+    "verify-final-prediction-settlement-ack-growth",
+    "run-new-main29-long-window"
+  ]
+}
