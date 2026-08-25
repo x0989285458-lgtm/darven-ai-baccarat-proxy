@@ -243,7 +243,7 @@
         "release/v105-v10-main21-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "934c360f9e7f98f571b32fe7ef293f1dd4d564328b66a2eab247cd6b1c170eb5"
+      "sha256": "28d554a949286b611262dbd055437ceeef4199383167e762efbe2097461f7787"
     },
     "migration": {
       "algorithm": "sha256",

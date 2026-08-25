@@ -12,7 +12,7 @@ const MAIN21_REPORT_SCOPE = 'V105與V10預測規則、權重、門檻及Formal�
 const TRUSTED_SIGNER_WORKFLOW = 'x0989285458-lgtm/darven-ai-baccarat-proxy/.github/workflows/trusted-release-images.yml'
 const TRUSTED_SOURCE_REF = 'refs/tags/v105-v10-main.21'
 const TRUSTED_WORKFLOW_SHA256 = 'cc90d7bb624529f7986124bdb84542c1d97c3de484ee4dae7af627040960e620'
-const TRUSTED_READBACK_CAPABILITY = Symbol('trusted-readback-capability')
+const TRUSTED_READBACK_CAPABILITIES = new WeakSet()
 const MAIN21_SCOPE = Object.freeze({
   predictionMainOnly: false,
   productRuntimeChanged: true,
@@ -745,7 +745,7 @@ export async function verifyTrustedImageEvidence({ buildReceipts, expected = {},
     const build = receipts.get(role)
     const readback = await trustedReadback({ role, imageRef: build.imageRef })
     assertNoSecretMaterial(readback, 'trusted_registry_readback_secret_rejected')
-    if (!readback || readback[TRUSTED_READBACK_CAPABILITY] !== true
+    if (!readback || !TRUSTED_READBACK_CAPABILITIES.has(readback)
       || readback.role !== role || !isEvidenceId(readback.receiptId)
       || readback.provenance !== 'github-sigstore-attestation'
       || readback.sourceDigest !== expected.commit
@@ -962,7 +962,7 @@ function createFixedRegistryReadback(adapterSource, { sourceDigest, sourceRef } 
       throw new Error('trusted_registry_readback_json_invalid', { cause: error })
     }
     assertNoSecretMaterial(value, 'trusted_registry_readback_secret_rejected')
-    Object.defineProperty(value, TRUSTED_READBACK_CAPABILITY, { value: true })
+    TRUSTED_READBACK_CAPABILITIES.add(value)
     return value
   }
 }

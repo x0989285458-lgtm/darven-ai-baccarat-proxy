@@ -127,7 +127,7 @@
         "cloud-browser-worker/Dockerfile.dockerignore"
       ],
       "excludedPaths": [],
-      "sha256": "3b76657733b6874b61b27a02fae8cce6555c25446f010de08bb326f7a9721567"
+      "sha256": "5df89e28cab17a37524bed15bba3393038af8727fc0cb4bdab62d48307ba8d60"
     },
     "zeroFinalHeartbeatMigration": {
       "algorithm": "sha256",

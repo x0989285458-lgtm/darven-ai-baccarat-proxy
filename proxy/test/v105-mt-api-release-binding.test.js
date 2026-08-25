@@ -435,6 +435,16 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
     /trusted_registry_readback_invalid/,
     'caller-controlled readback cannot acquire the module-private fixed-adapter capability',
   )
+  const proxyForgedReadback = async ({ role }) => new Proxy(structuredClone(registry[role]), {
+    get(target, key, receiver) {
+      return typeof key === 'symbol' ? true : Reflect.get(target, key, receiver)
+    },
+  })
+  await assert.rejects(
+    releaseVerifier.verifyTrustedImageEvidence({ buildReceipts, expected, trustedReadback: proxyForgedReadback }),
+    /trusted_registry_readback_invalid/,
+    'a Proxy get trap cannot forge WeakSet object identity',
+  )
   await assert.rejects(releaseVerifier.verifyTrustedImageEvidence({
     buildReceipts: { receipts: buildReceipts.receipts.filter((receipt) => receipt.role !== 'formal-consumer') }, expected, trustedReadback,
   }), /trusted_build_receipt_role_invalid:formal-consumer/)
