@@ -4,6 +4,83 @@ import { execFileSync } from 'node:child_process'
 import { readdir, readFile, lstat, realpath } from 'node:fs/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+const MAIN21_RELEASE_NAME = 'V105主預測V10穩定版21接收器隔離'
+const MAIN21_APPLICATION_VERSION = '1.0.63'
+const MAIN21_BASE_COMMIT = '6461574c256bcfe94e0fdb6d79d974690be77a83'
+const MAIN21_REPORT_TITLE = 'V105主預測V10穩定版21接收器隔離正式發布報告'
+const MAIN21_REPORT_SCOPE = 'V105與V10預測規則、權重、門檻及Formal身份不變；Main21將HTTP Parent限制為被動Tables與狀態更新，Formal Outbox與Shadow lifecycle僅由External Consumer擁有'
+const MAIN21_SCOPE = Object.freeze({
+  predictionMainOnly: false,
+  productRuntimeChanged: true,
+  databaseMigrationRequired: true,
+  captureWorkerChanged: false,
+  frontendChanged: true,
+  sidePredictionChanged: false,
+  formalIdentityChanged: false,
+  zeroFinalHeartbeatFastAck: true,
+  finalIdentityRankHydrationOnly: true,
+  boundedLoginTimeoutMs: 30000,
+  transientLoginRetryCount: 1,
+  browserNetworkLoginRetry: true,
+  singleConnectionLicensePool: true,
+  zeroFinalHeartbeatOutboxFastComplete: true,
+  superAdminSingleQueryLogin: true,
+  boundedCurrentDayAnalytics: true,
+  historicalJsonAnalyticsRemoved: true,
+  rawAckReservedPoolSlot: true,
+  outboxReplayPublishesLiveSnapshot: false,
+  workerBacklogDrainCollectsOncePerTick: true,
+  crossTableFormalSettlementConcurrency: 3,
+  crossIdentityRankLedgerConcurrency: 3,
+  failedEnvelopeDrainsAllTableBranches: true,
+  sameSessionOutboxBatchLimit: 10,
+  atomicOutboxBatchLeaseAck: true,
+  httpParentExternalConsumerIsolation: true,
+  externalFormalConsumerChanged: true,
+  transportRebindMigrationBound: true,
+})
+const MAIN21_DEPENDENCY_SCOPE = Object.freeze({
+  mode: 'single-session-api-primary',
+  canonicalSource: 'api',
+  workerEnvironment: { MT_SOURCE_MODE: 'api', MT_CAPTURE_ROLE: 'canonical' },
+  browserEnabled: false,
+  backupReplayEnabled: false,
+  recordContract: 'unverified',
+  gapPolicy: 'fail-closed-stop-ack-and-alert',
+  deferred: ['second-independent-session-backup', 'record-replay'],
+  httpParentExternalConsumerIsolation: true,
+  captureWorkerChanged: false,
+  frontendChanged: true,
+})
+const MAIN21_BEHAVIOR = Object.freeze({
+  predictionRulesChanged: false,
+  predictionWeightsChanged: false,
+  predictionThresholdsChanged: false,
+  receiverOwnershipChanged: true,
+  uiChanged: false,
+  v6ToV9Changed: false,
+  versionChanged: true,
+})
+
+function exactJson(value, expected) {
+  if (Array.isArray(expected)) return Array.isArray(value)
+    && value.length === expected.length
+    && expected.every((item, index) => exactJson(value[index], item))
+  if (expected && typeof expected === 'object') {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+    const actualKeys = Object.keys(value).sort()
+    const expectedKeys = Object.keys(expected).sort()
+    return exactJson(actualKeys, expectedKeys)
+      && expectedKeys.every((key) => exactJson(value[key], expected[key]))
+  }
+  return value === expected
+}
+
+function hasExactKeys(value, keys) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    && exactJson(Object.keys(value).sort(), [...keys].sort())
+}
+
 export async function computePathSetDigest(repoRoot, { paths = [], excludedPaths = [] } = {}) {
   const root = normalizeRoot(repoRoot)
   const excluded = excludedPaths.map(normalizeRelative)
@@ -96,6 +173,12 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
     excludedPaths: [],
     sha256: binding.sameSessionOutboxBatchMigration?.sha256,
   }, 'same_session_outbox_batch_migration')
+  const transportRebindMigration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, {
+    algorithm: binding.transportRebindMigration?.algorithm,
+    paths: [binding.transportRebindMigration?.path],
+    excludedPaths: [],
+    sha256: binding.transportRebindMigration?.sha256,
+  }, 'transport_rebind_migration')
   const shadowHydrationMigration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, {
     algorithm: binding.shadowHydrationMigration?.algorithm,
     paths: [binding.shadowHydrationMigration?.path],
@@ -133,6 +216,7 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
     sha256: binding.shadowV6V8RetirementMigration?.sha256,
   }, 'shadow_v6_v8_retirement_migration')
   const proxy = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.proxyBuildInput, 'proxy_build_input')
+  const formalConsumer = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.formalConsumerBuildInput, 'formal_consumer_build_input')
   const worker = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.workerBuildInput, 'worker_build_input')
   const exclusions = binding.implementationTree.excludedPaths?.map(normalizeRelative) ?? []
   if (!exclusions.includes('release/attestations')) throw new Error('implementation_tree_self_reference_not_excluded:release/attestations')
@@ -173,6 +257,17 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
     || !binding.implementationTree.paths?.includes(batchMigration.path)) {
     throw new Error('same_session_outbox_batch_migration_contract_invalid')
   }
+  const transportMigration = manifest?.database?.transportRebindMigration
+  const transportIndex = deployment.indexOf('transport-rebind-idempotency-migration')
+  const transportReadbackIndex = deployment.indexOf('transport-rebind-idempotency-catalog-acl-readback')
+  if (transportMigration?.path !== binding.transportRebindMigration?.path
+    || transportMigration?.serviceRoleOnly !== true
+    || transportMigration?.catalogAclReadbackRequired !== true
+    || transportMigration?.transportMetadataConflictIgnoredOnlyForApprovedRebind !== true
+    || transportIndex < 0 || transportReadbackIndex <= transportIndex || proxyIndex <= transportReadbackIndex
+    || !binding.implementationTree.paths?.includes(transportMigration.path)) {
+    throw new Error('transport_rebind_migration_contract_invalid')
+  }
   verifyTrustedEvidenceContract(binding)
   verifyV9ShadowRollbackContract(manifest, binding)
   verifyV10ShadowRollbackContract(manifest, binding)
@@ -186,6 +281,7 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
     captureOutboxHealthMigrationSha256: captureOutboxHealthMigration.sha256,
     zeroFinalHeartbeatMigrationSha256: zeroFinalHeartbeatMigration.sha256,
     sameSessionOutboxBatchMigrationSha256: sameSessionOutboxBatchMigration.sha256,
+    transportRebindMigrationSha256: transportRebindMigration.sha256,
     shadowHydrationMigrationSha256: shadowHydrationMigration.sha256,
     shadowV10MigrationSha256: shadowV10Migration.sha256,
     shadowV10DbValidationMigrationSha256: shadowV10DbValidationMigration.sha256,
@@ -193,6 +289,7 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
     rankSyncHydrationMigrationSha256: rankSyncHydrationMigration.sha256,
     shadowV6V8RetirementMigrationSha256: shadowV6V8RetirementMigration.sha256,
     proxyBuildInputSha256: proxy.sha256,
+    formalConsumerBuildInputSha256: formalConsumer.sha256,
     workerBuildInputSha256: worker.sha256,
   }
 }
@@ -200,32 +297,91 @@ export async function verifyManifestDigests({ manifest, repoRoot, candidateIndex
 export async function verifyV105V10MainManifestDigests({ manifest, dependencyManifest, repoRoot, candidateIndexTree } = {}) {
   const binding = manifest?.releaseBinding
   if (!binding) throw new Error('v105_v10_main_release_binding_missing')
-  if (manifest?.releaseVersion !== manifest?.gitTag || manifest?.formalStrategyVersion !== 'v105') throw new Error('v105_v10_main_release_identity_invalid')
-  if (dependencyManifest?.releaseVersion !== manifest.releaseVersion || dependencyManifest?.gitTag !== manifest.gitTag) throw new Error('v105_v10_main_dependency_identity_invalid')
+  for (const spec of [binding.implementationTree, binding.formalConsumerBuildInput, binding.workerBuildInput]) {
+    if (!hasExactKeys(spec, ['algorithm', 'paths', 'excludedPaths', 'sha256'])) throw new Error('v105_v10_main_binding_shape_invalid')
+  }
+  for (const spec of [binding.zeroFinalHeartbeatMigration, binding.sameSessionOutboxBatchMigration, binding.transportRebindMigration]) {
+    if (!hasExactKeys(spec, ['algorithm', 'path', 'sha256'])) throw new Error('v105_v10_main_binding_shape_invalid')
+  }
+  if (manifest?.releaseVersion !== manifest?.gitTag
+    || manifest?.formalStrategyVersion !== 'v105'
+    || manifest?.releaseName !== MAIN21_RELEASE_NAME
+    || manifest?.applicationVersion !== MAIN21_APPLICATION_VERSION
+    || manifest?.baseCommit !== MAIN21_BASE_COMMIT) throw new Error('v105_v10_main_release_identity_invalid')
+  if (!exactJson(manifest?.releaseScope, MAIN21_SCOPE)) throw new Error('v105_v10_main_release_scope_invalid')
+  if (dependencyManifest?.releaseVersion !== manifest.releaseVersion
+    || dependencyManifest?.baseCommit !== manifest.baseCommit
+    || dependencyManifest?.gitTag !== manifest.gitTag
+    || dependencyManifest?.formalStrategyVersion !== 'v105'
+    || dependencyManifest?.releaseName !== MAIN21_RELEASE_NAME
+    || dependencyManifest?.applicationVersion !== MAIN21_APPLICATION_VERSION
+    || dependencyManifest?.applicationVersionChanged !== true) throw new Error('v105_v10_main_dependency_identity_invalid')
+  if (!exactJson(dependencyManifest?.releaseScope, MAIN21_DEPENDENCY_SCOPE)) throw new Error('v105_v10_main_dependency_scope_invalid')
+  if (!exactJson(dependencyManifest?.behavior, MAIN21_BEHAVIOR)) throw new Error('v105_v10_main_dependency_behavior_invalid')
+  let releaseReport
+  try {
+    releaseReport = JSON.parse(execFileSync('git', ['show', `${candidateIndexTree}:release/v105-v10-main-release-report.json`], { cwd: rootValue(repoRoot), encoding: 'utf8' }))
+  } catch (error) {
+    throw new Error('v105_v10_main_release_report_invalid', { cause: error })
+  }
+  if (releaseReport?.releaseVersion !== manifest.releaseVersion
+    || releaseReport?.title !== MAIN21_REPORT_TITLE
+    || releaseReport?.formalStrategyVersion !== 'v105'
+    || releaseReport?.applicationVersion !== MAIN21_APPLICATION_VERSION
+    || releaseReport?.baseCommit !== MAIN21_BASE_COMMIT
+    || releaseReport?.scope !== MAIN21_REPORT_SCOPE
+    || !exactJson(releaseReport?.review, {
+      predictionRulesChanged: false,
+      predictionWeightsChanged: false,
+      predictionThresholdsChanged: false,
+      receiverOwnershipChanged: true,
+      externalConsumerOwnsFormalLifecycle: true,
+      httpParentStartsPredictionRuntimes: false,
+    })) throw new Error('v105_v10_main_release_report_invalid')
+  let renderConfig
+  let formalConsumerDockerfile
+  try {
+    renderConfig = execFileSync('git', ['show', `${candidateIndexTree}:proxy/deploy/render.yaml`], { cwd: rootValue(repoRoot), encoding: 'utf8' })
+    formalConsumerDockerfile = execFileSync('git', ['show', `${candidateIndexTree}:proxy/Dockerfile.formal-consumer`], { cwd: rootValue(repoRoot), encoding: 'utf8' })
+  } catch (error) {
+    throw new Error('v105_v10_main_deployment_role_invalid', { cause: error })
+  }
+  if (!/CAPTURE_OUTBOX_CONSUMER_ENABLED[\s\S]*?value:\s*["']false["']/.test(renderConfig)
+    || !/ENV CAPTURE_OUTBOX_CONSUMER_ENABLED=true/.test(formalConsumerDockerfile)
+    || !/ENV CAPTURE_OUTBOX_POLL_MS=3000/.test(formalConsumerDockerfile)) throw new Error('v105_v10_main_deployment_role_invalid')
   const implementation = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.implementationTree, 'v105_v10_main_implementation_tree')
   const zeroFinalHeartbeatMigration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, { algorithm: binding.zeroFinalHeartbeatMigration?.algorithm, paths: [binding.zeroFinalHeartbeatMigration?.path], excludedPaths: [], sha256: binding.zeroFinalHeartbeatMigration?.sha256 }, 'v105_v10_main_zero_final_heartbeat_migration')
   const sameSessionOutboxBatchMigration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, { algorithm: binding.sameSessionOutboxBatchMigration?.algorithm, paths: [binding.sameSessionOutboxBatchMigration?.path], excludedPaths: [], sha256: binding.sameSessionOutboxBatchMigration?.sha256 }, 'v105_v10_main_same_session_outbox_batch_migration')
+  const transportRebindMigration = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, { algorithm: binding.transportRebindMigration?.algorithm, paths: [binding.transportRebindMigration?.path], excludedPaths: [], sha256: binding.transportRebindMigration?.sha256 }, 'v105_v10_main_transport_rebind_migration')
+  const formalConsumer = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.formalConsumerBuildInput, 'v105_v10_main_formal_consumer_build_input')
   const worker = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.workerBuildInput, 'v105_v10_main_worker_build_input')
   const deployment = Array.isArray(manifest?.deploymentOrder) ? manifest.deploymentOrder : []
-  const requiredUnique = ['apply-zero-final-heartbeat-outbox-migration', 'verify-zero-final-heartbeat-outbox-migration', 'same-session-outbox-batch-migration', 'same-session-outbox-batch-catalog-acl-readback', 'deploy-exact-v105-v10-main-proxy']
+  const requiredUnique = ['verify-producer-stopped', 'verify-active-outbox-zero', 'transport-rebind-idempotency-migration', 'transport-rebind-idempotency-catalog-acl-readback', 'deploy-exact-v105-v10-main21-proxy', 'public-readiness-v105-main21', 'build-exact-v105-formal-consumer-image', 'verify-exact-formal-consumer-image-commit-digest', 'deploy-exact-v105-formal-consumer', 'verify-external-consumer-ready-self-drain', 'start-existing-v105-api-worker']
   if (requiredUnique.some((step) => deployment.filter((entry) => entry === step).length !== 1)) throw new Error('v105_v10_main_deployment_order_duplicate')
-  const zeroApplyIndex = deployment.indexOf('apply-zero-final-heartbeat-outbox-migration')
-  const zeroReadbackIndex = deployment.indexOf('verify-zero-final-heartbeat-outbox-migration')
-  const batchIndex = deployment.indexOf('same-session-outbox-batch-migration')
-  const batchReadbackIndex = deployment.indexOf('same-session-outbox-batch-catalog-acl-readback')
-  const proxyIndex = deployment.indexOf('deploy-exact-v105-v10-main-proxy')
-  if (!(zeroApplyIndex < zeroReadbackIndex && zeroReadbackIndex < batchIndex && batchIndex < batchReadbackIndex && batchReadbackIndex < proxyIndex)) throw new Error('v105_v10_main_deployment_order_invalid')
-  const requiredImplementationPaths = [binding.sameSessionOutboxBatchMigration?.path, 'proxy/src/server.js', 'proxy/src/supabase-writer.js', 'proxy/test/capture-outbox-ack.test.js', 'proxy/test/capture-outbox-writer.test.js', 'scripts/verify-v105-mt-api-release.mjs', 'release/v105-v10-main20-source-fence-release-manifest.json']
+  const ordered = requiredUnique.map((step) => deployment.indexOf(step))
+  if (!ordered.every((value, index) => index === 0 || value > ordered[index - 1])) throw new Error('v105_v10_main_deployment_order_invalid')
+  const requiredImplementationPaths = [binding.sameSessionOutboxBatchMigration?.path, binding.transportRebindMigration?.path, 'proxy/Dockerfile.formal-consumer', 'proxy/Dockerfile.formal-consumer.dockerignore', 'proxy/deploy/render.yaml', 'proxy/src/server.js', 'proxy/src/supabase-writer.js', 'proxy/test/capture-outbox-ack.test.js', 'proxy/test/capture-outbox-writer.test.js', 'proxy/test/deploy-config.test.js', 'scripts/verify-v105-mt-api-release.mjs', 'release/v105-v10-main21-source-fence-release-manifest.json', 'release/v105-v10-main-release-report.json']
   if (requiredImplementationPaths.some((required) => !binding.implementationTree.paths?.includes(required))) throw new Error('v105_v10_main_implementation_contract_invalid')
   const dependencyBinding = dependencyManifest?.releaseBinding?.sameSessionOutboxBatchMigration
   const dependencyDatabase = dependencyManifest?.database?.sameSessionOutboxBatchMigration
-  if (dependencyBinding?.path !== binding.sameSessionOutboxBatchMigration?.path
-    || dependencyBinding?.sha256 !== binding.sameSessionOutboxBatchMigration?.sha256
+  const dependencyTransportBinding = dependencyManifest?.releaseBinding?.transportRebindMigration
+  const dependencyTransportDatabase = dependencyManifest?.database?.transportRebindMigration
+  const dependencyFormalConsumer = dependencyManifest?.releaseBinding?.formalConsumerBuildInput
+  const dependencyWorker = dependencyManifest?.releaseBinding?.workerBuildInput
+  const dependencyZeroFinal = dependencyManifest?.releaseBinding?.zeroFinalHeartbeatMigration
+  if (!exactJson(dependencyBinding, binding.sameSessionOutboxBatchMigration)
     || dependencyDatabase?.path !== binding.sameSessionOutboxBatchMigration?.path
     || dependencyManifest?.deploymentOrder?.filter((step) => step === 'same-session-outbox-batch-migration').length !== 1
     || dependencyManifest?.deploymentOrder?.filter((step) => step === 'same-session-outbox-batch-catalog-acl-readback').length !== 1
-    || dependencyManifest?.deploymentOrder?.filter((step) => step === 'proxy-compatible').length !== 1) throw new Error('v105_v10_main_dependency_contract_invalid')
-  return { ok: true, mainImplementationTreeSha256: implementation.sha256, mainZeroFinalHeartbeatMigrationSha256: zeroFinalHeartbeatMigration.sha256, mainSameSessionOutboxBatchMigrationSha256: sameSessionOutboxBatchMigration.sha256, mainWorkerBuildInputSha256: worker.sha256 }
+    || dependencyManifest?.deploymentOrder?.filter((step) => step === 'proxy-compatible').length !== 1
+    || !exactJson(dependencyTransportBinding, binding.transportRebindMigration)
+    || dependencyTransportDatabase?.path !== binding.transportRebindMigration?.path
+    || !exactJson(dependencyFormalConsumer, binding.formalConsumerBuildInput)
+    || !exactJson(dependencyWorker, binding.workerBuildInput)
+    || !exactJson(dependencyZeroFinal, binding.zeroFinalHeartbeatMigration)
+    || dependencyManifest?.deploymentOrder?.filter((step) => step === 'transport-rebind-idempotency-migration').length !== 1
+    || dependencyManifest?.deploymentOrder?.filter((step) => step === 'transport-rebind-idempotency-catalog-acl-readback').length !== 1) throw new Error('v105_v10_main_dependency_contract_invalid')
+  return { ok: true, mainImplementationTreeSha256: implementation.sha256, mainZeroFinalHeartbeatMigrationSha256: zeroFinalHeartbeatMigration.sha256, mainSameSessionOutboxBatchMigrationSha256: sameSessionOutboxBatchMigration.sha256, mainTransportRebindMigrationSha256: transportRebindMigration.sha256, mainFormalConsumerBuildInputSha256: formalConsumer.sha256, mainWorkerBuildInputSha256: worker.sha256 }
 }
 
 export function verifyV9ShadowRollbackContract(manifest = {}, binding = manifest?.releaseBinding ?? {}) {
@@ -347,6 +503,7 @@ export function verifyV6V8RetirementContract(manifest = {}, binding = manifest?.
 export function verifyTrustedEvidenceContract(binding = {}) {
   const attestation = binding.attestation
   const adapter = 'scripts/trusted-registry-readback-adapter.mjs'
+  const requiredImageRoles = ['proxy', 'formal-consumer', 'worker']
   if (attestation?.externalFileRequired !== true
     || attestation?.immutableCommitAndAnnotatedTagRequired !== true
     || attestation?.imageDigestReadbackRequired !== true
@@ -354,6 +511,7 @@ export function verifyTrustedEvidenceContract(binding = {}) {
     || attestation?.independentBuildReceiptsRequired !== true
     || attestation?.fixedRegistryAdapterRequired !== true
     || attestation?.fixedRegistryAdapter !== adapter
+    || !exactJson(attestation?.requiredImageRoles, requiredImageRoles)
     || attestation?.arbitraryReadbackJsonRejected !== true
     || attestation?.abortOnMismatch !== true
     || !Array.isArray(binding.implementationTree?.paths)
@@ -369,7 +527,7 @@ export function verifyExternalReleaseAttestation(attestation = {}, expected = {}
   if (!String(expected.gitTag ?? '').trim() || attestation.tag !== expected.gitTag) throw new Error('attestation_tag_mismatch')
   if (!/^[a-f0-9]{40}$/.test(String(expected.candidateIndexTree ?? ''))
     || attestation.tree !== expected.candidateIndexTree) throw new Error('attestation_tree_mismatch')
-  const digestFields = ['implementationTreeSha256', 'migrationSha256', 'captureOutboxHealthMigrationSha256', 'zeroFinalHeartbeatMigrationSha256', 'sameSessionOutboxBatchMigrationSha256', 'shadowHydrationMigrationSha256', 'shadowV10MigrationSha256', 'shadowV10DbValidationMigrationSha256', 'rankLedgerRecoveryMigrationSha256', 'rankSyncHydrationMigrationSha256', 'shadowV6V8RetirementMigrationSha256', 'proxyBuildInputSha256', 'workerBuildInputSha256']
+  const digestFields = ['implementationTreeSha256', 'migrationSha256', 'captureOutboxHealthMigrationSha256', 'zeroFinalHeartbeatMigrationSha256', 'sameSessionOutboxBatchMigrationSha256', 'transportRebindMigrationSha256', 'shadowHydrationMigrationSha256', 'shadowV10MigrationSha256', 'shadowV10DbValidationMigrationSha256', 'rankLedgerRecoveryMigrationSha256', 'rankSyncHydrationMigrationSha256', 'shadowV6V8RetirementMigrationSha256', 'proxyBuildInputSha256', 'formalConsumerBuildInputSha256', 'workerBuildInputSha256']
   for (const field of digestFields) {
     if (!/^[a-f0-9]{64}$/.test(String(attestation[field] ?? '')) || attestation[field] !== expected[field]) {
       throw new Error(`attestation_${field}_mismatch`)
@@ -387,7 +545,7 @@ export async function verifyTrustedImageEvidence({ buildReceipts, expected = {},
   if (!buildReceipts || !Array.isArray(buildReceipts.receipts)) throw new Error('trusted_build_receipts_required')
   if (typeof trustedReadback !== 'function') throw new Error('trusted_registry_readback_required')
   assertNoSecretMaterial(buildReceipts, 'trusted_build_receipt_secret_rejected')
-  const roles = ['proxy', 'worker']
+  const roles = ['proxy', 'formal-consumer', 'worker']
   const receipts = new Map()
   for (const role of roles) {
     const matches = buildReceipts.receipts.filter((receipt) => receipt?.role === role)
@@ -396,7 +554,11 @@ export async function verifyTrustedImageEvidence({ buildReceipts, expected = {},
     if (!isEvidenceId(receipt.receiptId) || !isEvidenceId(receipt.provenance)) throw new Error(`trusted_build_receipt_identity_invalid:${role}`)
     if (receipt.commit !== expected.commit) throw new Error(`trusted_build_receipt_commit_mismatch:${role}`)
     if (receipt.tree !== expected.tree) throw new Error(`trusted_build_receipt_tree_mismatch:${role}`)
-    const expectedInput = role === 'proxy' ? expected.proxyBuildInputSha256 : expected.workerBuildInputSha256
+    const expectedInput = {
+      proxy: expected.proxyBuildInputSha256,
+      'formal-consumer': expected.formalConsumerBuildInputSha256,
+      worker: expected.workerBuildInputSha256,
+    }[role]
     if (!/^[a-f0-9]{64}$/.test(String(receipt.buildInputSha256 ?? '')) || receipt.buildInputSha256 !== expectedInput) {
       throw new Error(`trusted_build_receipt_input_mismatch:${role}`)
     }
@@ -576,7 +738,7 @@ async function main() {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
   const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
   assertCandidateIndexClean(repoRoot, candidateIndexTree)
-  const manifestBytes = execFileSync('git', ['cat-file', 'blob', `${candidateIndexTree}:release/v105-v10-main20-source-fence-release-manifest.json`], { cwd: repoRoot })
+  const manifestBytes = execFileSync('git', ['cat-file', 'blob', `${candidateIndexTree}:release/v105-v10-main21-source-fence-release-manifest.json`], { cwd: repoRoot })
   const manifest = JSON.parse(manifestBytes.toString('utf8'))
   const mainManifestBytes = execFileSync('git', ['cat-file', 'blob', `${candidateIndexTree}:release/v105-v10-main-release-manifest.json`], { cwd: repoRoot })
   const mainManifest = JSON.parse(mainManifestBytes.toString('utf8'))
@@ -605,6 +767,7 @@ async function main() {
       commit: attestation.commit,
       tree: candidateIndexTree,
       proxyBuildInputSha256: digests.proxyBuildInputSha256,
+      formalConsumerBuildInputSha256: digests.formalConsumerBuildInputSha256,
       workerBuildInputSha256: digests.workerBuildInputSha256,
     },
     trustedReadback: createFixedRegistryReadback(adapterPath),

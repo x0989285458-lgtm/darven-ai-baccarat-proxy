@@ -18,4 +18,5 @@ test('deployment examples keep frontend public-only and backend secrets server-s
 
   assert.match(render, /type: web/)
   assert.match(render, /npm.cmd start|npm start/)
+  assert.match(render, /CAPTURE_OUTBOX_CONSUMER_ENABLED\s*\n\s*value: ["']false["']/)
 })

@@ -468,6 +468,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           if (previousScreen?.shoe !== observedShoe || previousScreen?.visibleRound !== observedRound) screenProgressChanged = true
           latestObservedScreenByTable.set(observedTableId, { shoe: observedShoe, visibleRound: observedRound })
         }
+        if (!resolvedCaptureOutboxConsumerEnabled) continue
         const tableKey = `table:${String(table?.tableId ?? '')}`
         void serviceWorkScheduler.enqueueLatest(tableKey, async () => {
           await reconcileThenSavePendingPrediction(table)
@@ -1345,12 +1346,14 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     if (method === 'POST' && pathname === '/api/cloud-capture/tick') {
       const controlError = requireControlAccess(headers)
       if (controlError) return controlError
+      if (!resolvedCaptureOutboxConsumerEnabled) return jsonResponse(409, { ok: false, error: 'capture_outbox_consumer_disabled' }, frontendOrigin)
       const parsed = await cloudCaptureClient.tick()
       return jsonResponse(200, { ok: Boolean(parsed), running: cloudCaptureClient.isRunning(), status: state.snapshot().status }, frontendOrigin)
     }
     if (method === 'POST' && pathname === '/api/cloud-capture/start') {
       const controlError = requireControlAccess(headers)
       if (controlError) return controlError
+      if (!resolvedCaptureOutboxConsumerEnabled) return jsonResponse(409, { ok: false, error: 'capture_outbox_consumer_disabled' }, frontendOrigin)
       if (!cloudBrowserUrl) return jsonResponse(400, { ok: false, error: 'CLOUD_BROWSER_URL is required before starting cloud capture' }, frontendOrigin)
       cloudCaptureClient.start()
       return jsonResponse(200, { ok: true, running: cloudCaptureClient.isRunning(), status: state.snapshot().status }, frontendOrigin)
@@ -2322,7 +2325,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     async start() {
       tablesBroadcastStopping = false
       const listeningServer = await new Promise((resolve) => server.listen(port, listenHost, () => resolve(server)))
-      if (requireVerifiedStrategy && supabaseClient?.configured === true && typeof supabaseClient.ensureInitialStrategy === 'function') {
+      if (resolvedCaptureOutboxConsumerEnabled && requireVerifiedStrategy && supabaseClient?.configured === true && typeof supabaseClient.ensureInitialStrategy === 'function') {
         try {
           await supabaseClient.ensureInitialStrategy()
           await ensureRecentPerformanceReady()
@@ -2331,14 +2334,14 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
         }
       }
-      if (v104Formal && typeof v104Formal.start === 'function') {
+      if (resolvedCaptureOutboxConsumerEnabled && v104Formal && typeof v104Formal.start === 'function') {
         try {
           await v104Formal.start()
         } catch (error) {
           state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
         }
       }
-      if (isolatedShadowProcess) {
+      if (resolvedCaptureOutboxConsumerEnabled && isolatedShadowProcess) {
         try {
           const requiredReadiness = await prepareRequiredShadowProcess()
           if (requiredReadiness) state.setStatus({ shadowProcessStatus: isolatedShadowProcess.status(), shadowProcessReadiness: requiredReadiness })
@@ -2376,16 +2379,16 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             })
         }
       }
-      if (shouldAutoConnect) {
+      if (resolvedCaptureOutboxConsumerEnabled && shouldAutoConnect) {
         if (captureSource === 'cloud_browser' && cloudBrowserUrl) cloudCaptureClient.start()
         else if (captureUrl) chromeClient.start()
         else mtClient.connect()
       }
-      if (v103Shadow?.enabled === true && typeof v103Shadow.start === 'function') void v103Shadow.start().catch(() => {})
-      if (v104Shadow?.enabled === true && typeof v104Shadow.start === 'function') void v104Shadow.start().catch(() => {})
-      if (v104IterationShadow?.enabled === true && typeof v104IterationShadow.start === 'function') void v104IterationShadow.start().catch(() => {})
-      if (v105ShadowV9?.enabled === true && typeof v105ShadowV9.start === 'function') void Promise.resolve().then(() => v105ShadowV9.start()).catch(() => {})
-      if (v105ShadowV10?.enabled === true && typeof v105ShadowV10.start === 'function') void Promise.resolve().then(() => v105ShadowV10.start()).catch(() => {})
+      if (resolvedCaptureOutboxConsumerEnabled && v103Shadow?.enabled === true && typeof v103Shadow.start === 'function') void v103Shadow.start().catch(() => {})
+      if (resolvedCaptureOutboxConsumerEnabled && v104Shadow?.enabled === true && typeof v104Shadow.start === 'function') void v104Shadow.start().catch(() => {})
+      if (resolvedCaptureOutboxConsumerEnabled && v104IterationShadow?.enabled === true && typeof v104IterationShadow.start === 'function') void v104IterationShadow.start().catch(() => {})
+      if (resolvedCaptureOutboxConsumerEnabled && v105ShadowV9?.enabled === true && typeof v105ShadowV9.start === 'function') void Promise.resolve().then(() => v105ShadowV9.start()).catch(() => {})
+      if (resolvedCaptureOutboxConsumerEnabled && v105ShadowV10?.enabled === true && typeof v105ShadowV10.start === 'function') void Promise.resolve().then(() => v105ShadowV10.start()).catch(() => {})
       if (resolvedCaptureOutboxConsumerEnabled) {
         void drainCaptureOutbox().catch((error) => {
           state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })

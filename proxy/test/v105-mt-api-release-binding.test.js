@@ -4,7 +4,7 @@ import path from 'node:path'
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
-import manifest from '../../release/v105-v10-main20-source-fence-release-manifest.json' with { type: 'json' }
+import manifest from '../../release/v105-v10-main21-source-fence-release-manifest.json' with { type: 'json' }
 import {
   computePathSetDigest,
   verifyManifestDigests,
@@ -13,9 +13,9 @@ import {
 import * as releaseVerifier from '../../scripts/verify-v105-mt-api-release.mjs'
 
 test('release scope freezes one existing session as API-only canonical capture', () => {
-  assert.equal(manifest.releaseVersion, 'v105-v10-main.20')
-  assert.equal(manifest.gitTag, 'v105-v10-main.20')
-  assert.equal(manifest.applicationVersion, '1.0.61')
+  assert.equal(manifest.releaseVersion, 'v105-v10-main.21')
+  assert.equal(manifest.gitTag, 'v105-v10-main.21')
+  assert.equal(manifest.applicationVersion, '1.0.63')
   assert.deepEqual(manifest.releaseScope, {
     mode: 'single-session-api-primary',
     canonicalSource: 'api',
@@ -25,6 +25,18 @@ test('release scope freezes one existing session as API-only canonical capture',
     recordContract: 'unverified',
     gapPolicy: 'fail-closed-stop-ack-and-alert',
     deferred: ['second-independent-session-backup', 'record-replay'],
+    httpParentExternalConsumerIsolation: true,
+    captureWorkerChanged: false,
+    frontendChanged: true,
+  })
+  assert.deepEqual(manifest.behavior, {
+    predictionRulesChanged: false,
+    predictionWeightsChanged: false,
+    predictionThresholdsChanged: false,
+    receiverOwnershipChanged: true,
+    uiChanged: false,
+    v6ToV9Changed: false,
+    versionChanged: true,
   })
   assert.deepEqual(manifest.adminSession, {
     mode: 'aes-256-gcm-stateless-with-live-db-revalidation',
@@ -124,6 +136,8 @@ test('release manifest freezes current implementation, migration, proxy, and wor
   assert.equal(result.captureOutboxHealthMigrationSha256, manifest.releaseBinding.captureOutboxHealthMigration.sha256)
   assert.equal(result.zeroFinalHeartbeatMigrationSha256, manifest.releaseBinding.zeroFinalHeartbeatMigration.sha256)
   assert.equal(result.sameSessionOutboxBatchMigrationSha256, manifest.releaseBinding.sameSessionOutboxBatchMigration.sha256)
+  assert.equal(result.transportRebindMigrationSha256, manifest.releaseBinding.transportRebindMigration.sha256)
+  assert.equal(result.formalConsumerBuildInputSha256, manifest.releaseBinding.formalConsumerBuildInput.sha256)
   const batchTampered = structuredClone(manifest)
   batchTampered.releaseBinding.sameSessionOutboxBatchMigration.sha256 = '0'.repeat(64)
   await assert.rejects(
@@ -228,12 +242,13 @@ test('Reviewer P1 attestation exact binding rejects old tag and wrong tree while
     captureOutboxHealthMigrationSha256: '9'.repeat(64),
     zeroFinalHeartbeatMigrationSha256: '8'.repeat(64),
     sameSessionOutboxBatchMigrationSha256: '7'.repeat(64),
+    transportRebindMigrationSha256: '2'.repeat(64),
     shadowHydrationMigrationSha256: 'd'.repeat(64),
     shadowV10MigrationSha256: 'e'.repeat(64), shadowV10DbValidationMigrationSha256: 'c'.repeat(64),
     rankLedgerRecoveryMigrationSha256: 'b'.repeat(64),
     rankSyncHydrationMigrationSha256: 'a'.repeat(64),
     shadowV6V8RetirementMigrationSha256: 'f'.repeat(64),
-    proxyBuildInputSha256: '5'.repeat(64), workerBuildInputSha256: '6'.repeat(64),
+    proxyBuildInputSha256: '5'.repeat(64), formalConsumerBuildInputSha256: '0'.repeat(64), workerBuildInputSha256: '6'.repeat(64),
     images: {
       proxy: { expectedDigest: `sha256:${'7'.repeat(64)}`, readbackDigest: `sha256:${'7'.repeat(64)}` },
       worker: { expectedDigest: `sha256:${'8'.repeat(64)}`, readbackDigest: `sha256:${'8'.repeat(64)}` },
@@ -244,12 +259,13 @@ test('Reviewer P1 attestation exact binding rejects old tag and wrong tree while
     captureOutboxHealthMigrationSha256: '9'.repeat(64),
     zeroFinalHeartbeatMigrationSha256: '8'.repeat(64),
     sameSessionOutboxBatchMigrationSha256: '7'.repeat(64),
+    transportRebindMigrationSha256: '2'.repeat(64),
     shadowHydrationMigrationSha256: 'd'.repeat(64),
     shadowV10MigrationSha256: 'e'.repeat(64), shadowV10DbValidationMigrationSha256: 'c'.repeat(64),
     rankLedgerRecoveryMigrationSha256: 'b'.repeat(64),
     rankSyncHydrationMigrationSha256: 'a'.repeat(64),
     shadowV6V8RetirementMigrationSha256: 'f'.repeat(64),
-    proxyBuildInputSha256: '5'.repeat(64), workerBuildInputSha256: '6'.repeat(64),
+    proxyBuildInputSha256: '5'.repeat(64), formalConsumerBuildInputSha256: '0'.repeat(64), workerBuildInputSha256: '6'.repeat(64),
     gitTag: manifest.gitTag, candidateIndexTree,
   }
   assert.equal(verifyExternalReleaseAttestation(attestation, expected).ok, true)
@@ -273,6 +289,12 @@ test('Reviewer P1 attestation exact binding rejects old tag and wrong tree while
   const missingBatchDigest = { ...attestation }
   delete missingBatchDigest.sameSessionOutboxBatchMigrationSha256
   assert.throws(() => verifyExternalReleaseAttestation(missingBatchDigest, expected), /attestation_sameSessionOutboxBatchMigrationSha256_mismatch/)
+  const missingTransportDigest = { ...attestation }
+  delete missingTransportDigest.transportRebindMigrationSha256
+  assert.throws(() => verifyExternalReleaseAttestation(missingTransportDigest, expected), /attestation_transportRebindMigrationSha256_mismatch/)
+  const missingFormalConsumerDigest = { ...attestation }
+  delete missingFormalConsumerDigest.formalConsumerBuildInputSha256
+  assert.throws(() => verifyExternalReleaseAttestation(missingFormalConsumerDigest, expected), /attestation_formalConsumerBuildInputSha256_mismatch/)
   assert.equal(verifyExternalReleaseAttestation({
     ...attestation,
     images: { ...attestation.images, worker: { ...attestation.images.worker, readbackDigest: `sha256:${'9'.repeat(64)}` } },
@@ -343,15 +365,21 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
   const commit = '1'.repeat(40)
   const tree = '2'.repeat(40)
   const proxyInput = '3'.repeat(64)
+  const formalConsumerInput = '0'.repeat(64)
   const workerInput = '4'.repeat(64)
   const proxyDigest = `sha256:${'5'.repeat(64)}`
+  const formalConsumerDigest = `sha256:${'9'.repeat(64)}`
   const workerDigest = `sha256:${'6'.repeat(64)}`
-  const expected = { commit, tree, proxyBuildInputSha256: proxyInput, workerBuildInputSha256: workerInput }
+  const expected = { commit, tree, proxyBuildInputSha256: proxyInput, formalConsumerBuildInputSha256: formalConsumerInput, workerBuildInputSha256: workerInput }
   const buildReceipts = {
     receipts: [
       {
         role: 'proxy', provenance: 'trusted-builder', receiptId: 'build-proxy-001', commit, tree,
         buildInputSha256: proxyInput, imageRef: 'registry.example/darven/proxy:v105', imageDigest: proxyDigest,
+      },
+      {
+        role: 'formal-consumer', provenance: 'trusted-builder', receiptId: 'build-formal-consumer-001', commit, tree,
+        buildInputSha256: formalConsumerInput, imageRef: 'registry.example/darven/formal-consumer:v105', imageDigest: formalConsumerDigest,
       },
       {
         role: 'worker', provenance: 'trusted-builder', receiptId: 'build-worker-001', commit, tree,
@@ -364,6 +392,10 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
       role: 'proxy', provenance: 'trusted-registry-adapter', receiptId: 'registry-proxy-001',
       imageRef: 'registry.example/darven/proxy:v105', imageDigest: proxyDigest,
     },
+    'formal-consumer': {
+      role: 'formal-consumer', provenance: 'trusted-registry-adapter', receiptId: 'registry-formal-consumer-001',
+      imageRef: 'registry.example/darven/formal-consumer:v105', imageDigest: formalConsumerDigest,
+    },
     worker: {
       role: 'worker', provenance: 'trusted-registry-adapter', receiptId: 'registry-worker-001',
       imageRef: 'registry.example/darven/worker:v105', imageDigest: workerDigest,
@@ -373,20 +405,24 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
 
   assert.deepEqual(
     await releaseVerifier.verifyTrustedImageEvidence({ buildReceipts, expected, trustedReadback }),
-    { ok: true, images: { proxy: { imageRef: registry.proxy.imageRef, imageDigest: proxyDigest }, worker: { imageRef: registry.worker.imageRef, imageDigest: workerDigest } } },
+    { ok: true, images: { proxy: { imageRef: registry.proxy.imageRef, imageDigest: proxyDigest }, 'formal-consumer': { imageRef: registry['formal-consumer'].imageRef, imageDigest: formalConsumerDigest }, worker: { imageRef: registry.worker.imageRef, imageDigest: workerDigest } } },
   )
+  await assert.rejects(releaseVerifier.verifyTrustedImageEvidence({
+    buildReceipts: { receipts: buildReceipts.receipts.filter((receipt) => receipt.role !== 'formal-consumer') }, expected, trustedReadback,
+  }), /trusted_build_receipt_role_invalid:formal-consumer/)
   const external = {
     commit, tree, tagObject: '7'.repeat(40), tag: manifest.gitTag,
     implementationTreeSha256: '8'.repeat(64), migrationSha256: '9'.repeat(64),
     captureOutboxHealthMigrationSha256: '1'.repeat(64),
     zeroFinalHeartbeatMigrationSha256: '2'.repeat(64),
     sameSessionOutboxBatchMigrationSha256: '3'.repeat(64),
+    transportRebindMigrationSha256: '7'.repeat(64),
     shadowHydrationMigrationSha256: 'd'.repeat(64),
     shadowV10MigrationSha256: 'e'.repeat(64), shadowV10DbValidationMigrationSha256: 'c'.repeat(64),
     rankLedgerRecoveryMigrationSha256: 'b'.repeat(64),
     rankSyncHydrationMigrationSha256: 'a'.repeat(64),
     shadowV6V8RetirementMigrationSha256: 'f'.repeat(64),
-    proxyBuildInputSha256: proxyInput, workerBuildInputSha256: workerInput,
+    proxyBuildInputSha256: proxyInput, formalConsumerBuildInputSha256: '0'.repeat(64), workerBuildInputSha256: workerInput,
     images: {
       proxy: { expectedDigest: proxyDigest, readbackDigest: proxyDigest },
       worker: { expectedDigest: workerDigest, readbackDigest: workerDigest },
@@ -398,13 +434,14 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
     captureOutboxHealthMigrationSha256: external.captureOutboxHealthMigrationSha256,
     zeroFinalHeartbeatMigrationSha256: external.zeroFinalHeartbeatMigrationSha256,
     sameSessionOutboxBatchMigrationSha256: external.sameSessionOutboxBatchMigrationSha256,
+    transportRebindMigrationSha256: external.transportRebindMigrationSha256,
     shadowHydrationMigrationSha256: external.shadowHydrationMigrationSha256,
     shadowV10MigrationSha256: external.shadowV10MigrationSha256,
     shadowV10DbValidationMigrationSha256: external.shadowV10DbValidationMigrationSha256,
     rankLedgerRecoveryMigrationSha256: external.rankLedgerRecoveryMigrationSha256,
     rankSyncHydrationMigrationSha256: external.rankSyncHydrationMigrationSha256,
     shadowV6V8RetirementMigrationSha256: external.shadowV6V8RetirementMigrationSha256,
-    proxyBuildInputSha256: proxyInput, workerBuildInputSha256: workerInput,
+    proxyBuildInputSha256: proxyInput, formalConsumerBuildInputSha256: external.formalConsumerBuildInputSha256, workerBuildInputSha256: workerInput,
   }).ok, true, 'external Git attestation no longer self-approves images')
   await assert.rejects(
     releaseVerifier.verifyTrustedImageEvidence({ buildReceipts: null, expected, trustedReadback }),
@@ -454,6 +491,7 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
   assert.equal(manifest.releaseBinding.attestation.phase, 'post-build-pre-cutover')
   assert.equal(manifest.releaseBinding.attestation.independentBuildReceiptsRequired, true)
   assert.equal(manifest.releaseBinding.attestation.fixedRegistryAdapterRequired, true)
+  assert.deepEqual(manifest.releaseBinding.attestation.requiredImageRoles, ['proxy', 'formal-consumer', 'worker'])
 })
 
 test('Reviewer P1 fixed trusted registry adapter uses bounded shell-free argv and rejects secret-shaped registry data', async () => {
@@ -483,6 +521,15 @@ test('Reviewer P1 fixed trusted registry adapter uses bounded shell-free argv an
     imageRef: 'registry.example/darven/proxy:v105',
     imageDigest: 'sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a',
   })
+  const formalResult = adapter.readTrustedRegistryEvidence({
+    role: 'formal-consumer', imageRef: 'registry.example/darven/formal-consumer:v105',
+    execFile: () => Buffer.from('{}'),
+  })
+  assert.equal(formalResult.role, 'formal-consumer')
+  assert.equal(formalResult.imageRef, 'registry.example/darven/formal-consumer:v105')
+  assert.throws(() => adapter.readTrustedRegistryEvidence({
+    role: 'unknown', imageRef: 'registry.example/darven/unknown:v105', execFile: () => Buffer.from('{}'),
+  }), /registry_role_invalid/)
   assert.throws(() => adapter.readTrustedRegistryEvidence({
     role: 'worker', imageRef: 'registry.example/darven/worker:v105',
     execFile: () => Buffer.from('{"token":"must-not-pass"}'),

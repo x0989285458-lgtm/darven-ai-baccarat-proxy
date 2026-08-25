@@ -47,13 +47,14 @@ test('MT session auto-refresh release freezes the two production incident fixes'
   ])
 })
 
-test('all deployable packages and worker build inputs are bound to release 1.0.62', async () => {
-  for (const path of ['../package.json', '../../frontend/package.json', '../../cloud-browser-worker/package.json']) {
-    assert.equal(readJson(path).version, '1.0.62')
-  }
-  const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
+test('current proxy/frontend packages advance while the unchanged worker remains at 1.0.62', async () => {
+  assert.equal(readJson('../package.json').version, '1.0.63')
+  assert.equal(readJson('../../frontend/package.json').version, '1.0.63')
+  assert.equal(readJson('../../cloud-browser-worker/package.json').version, '1.0.62')
+  const authorityCommit = execFileSync('git', ['log', '-1', '--format=%H', '--', 'release/v105-mt-session-auto-refresh-release-manifest.json'], { cwd: repoRoot, encoding: 'utf8' }).trim()
+  const historicalAuthorityTree = execFileSync('git', ['rev-parse', `${authorityCommit}^{tree}`], { cwd: repoRoot, encoding: 'utf8' }).trim()
   for (const key of ['implementationTree', 'workerBuildInput']) {
-    const result = await computeGitTreePathSetDigest(repoRoot, candidateIndexTree, manifest.releaseBinding[key])
+    const result = await computeGitTreePathSetDigest(repoRoot, historicalAuthorityTree, manifest.releaseBinding[key])
     assert.equal(result.sha256, manifest.releaseBinding[key].sha256)
   }
 })

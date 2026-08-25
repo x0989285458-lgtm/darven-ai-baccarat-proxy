@@ -1,16 +1,16 @@
 {
-  "releaseName": "V105主預測V10穩定版20",
-  "releaseVersion": "v105-v10-main.20",
-  "gitTag": "v105-v10-main.20",
-  "applicationVersion": "1.0.62",
-  "baseCommit": "6bdd39e8c241c6d9341229d20bb5e281022c7d58",
+  "releaseName": "V105主預測V10穩定版21接收器隔離",
+  "releaseVersion": "v105-v10-main.21",
+  "gitTag": "v105-v10-main.21",
+  "applicationVersion": "1.0.63",
+  "baseCommit": "6461574c256bcfe94e0fdb6d79d974690be77a83",
   "formalStrategyVersion": "v105",
   "releaseScope": {
-    "predictionMainOnly": true,
+    "predictionMainOnly": false,
     "productRuntimeChanged": true,
     "databaseMigrationRequired": true,
-    "captureWorkerChanged": true,
-    "frontendChanged": false,
+    "captureWorkerChanged": false,
+    "frontendChanged": true,
     "sidePredictionChanged": false,
     "formalIdentityChanged": false,
     "zeroFinalHeartbeatFastAck": true,
@@ -30,7 +30,10 @@
     "crossIdentityRankLedgerConcurrency": 3,
     "failedEnvelopeDrainsAllTableBranches": true,
     "sameSessionOutboxBatchLimit": 10,
-    "atomicOutboxBatchLeaseAck": true
+    "atomicOutboxBatchLeaseAck": true,
+    "httpParentExternalConsumerIsolation": true,
+    "externalFormalConsumerChanged": true,
+    "transportRebindMigrationBound": true
   },
   "prediction": {
     "mainSource": "v105-shadow-v10-big-road-uncommon-structure-rank-synchronized",
@@ -51,19 +54,16 @@
   },
   "deploymentOrder": [
     "verify-producer-stopped",
-    "archive-v106-backlog-evidence",
-    "run-bound-v106-terminalizer",
-    "run-bound-v106-to-v105-rollback",
-    "verify-v105-sole-active",
-    "apply-zero-final-heartbeat-outbox-migration",
-    "verify-zero-final-heartbeat-outbox-migration",
-    "same-session-outbox-batch-migration",
-    "same-session-outbox-batch-catalog-acl-readback",
-    "deploy-exact-v105-v10-main-proxy",
-    "public-readiness-v105",
-    "build-exact-v105-v10-main-worker-image",
-    "verify-exact-worker-image-commit-digest",
-    "deploy-exact-v105-v10-main-worker",
+    "verify-active-outbox-zero",
+    "transport-rebind-idempotency-migration",
+    "transport-rebind-idempotency-catalog-acl-readback",
+    "deploy-exact-v105-v10-main21-proxy",
+    "public-readiness-v105-main21",
+    "build-exact-v105-formal-consumer-image",
+    "verify-exact-formal-consumer-image-commit-digest",
+    "deploy-exact-v105-formal-consumer",
+    "verify-external-consumer-ready-self-drain",
+    "start-existing-v105-api-worker",
     "verify-worker-queue-cursor-journal-preserved",
     "ten-table-final-ack-v10-prediction-e2e",
     "member-session-frontend-e2e"
@@ -98,16 +98,29 @@
         "proxy/test/v105-formal-ingest-backpressure-contract.test.js",
         "proxy/test/v105-v10-main-release.test.js",
         "scripts/verify-v105-mt-api-release.mjs",
-        "release/v105-v10-main20-source-fence-release-manifest.json",
+        "release/v105-v10-main21-source-fence-release-manifest.json",
         "frontend/package.json",
         "frontend/package-lock.json",
         "frontend/src/lib/onlineLicenseClient.ts",
         "frontend/src/lib/onlineLicenseClient.test.ts",
         "supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql",
-        "supabase/migrations/20260824010000_v105_capture_outbox_same_session_batch.sql"
+        "supabase/migrations/20260824010000_v105_capture_outbox_same_session_batch.sql",
+        "proxy/Dockerfile.formal-consumer",
+        "proxy/Dockerfile.formal-consumer.dockerignore",
+        "frontend/src/App.tsx",
+        "frontend/src/App.test.tsx",
+        "supabase/migrations/20260824143000_v105_capture_transport_rebind_idempotency.sql",
+        "proxy/test/formal-cloud-data.test.js",
+        "proxy/test/v102-release-integrity.test.js",
+        "proxy/test/v104-iteration-shadow-release.test.js",
+        "proxy/test/v105-mt-session-auto-refresh-release.test.js",
+        "proxy/test/v105-mt-api-release-binding.test.js",
+        "release/v105-v10-main-release-report.json",
+        "proxy/deploy/render.yaml",
+        "proxy/test/deploy-config.test.js"
       ],
       "excludedPaths": [],
-      "sha256": "7e2d37043736bdbf6ae2b6ae62b1b836bf14f9d37b66ca55d08c8b1ad184a970"
+      "sha256": "2efd08d8f6462856b34f2facb01b195eee7bf7a146116093e1fe1d3be5bfb6d5"
     },
     "zeroFinalHeartbeatMigration": {
       "algorithm": "sha256",
@@ -131,6 +144,24 @@
       ],
       "excludedPaths": [],
       "sha256": "91c87399ebb4c8bb76506951fac4e082ea3e7ae52dd17a65f8ea75fa20f2566c"
+    },
+    "transportRebindMigration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260824143000_v105_capture_transport_rebind_idempotency.sql",
+      "sha256": "ee1f915dcfdfb4e99d4ab0bb2622bb678c3634a66e0b08bf7b8750f309a75725"
+    },
+    "formalConsumerBuildInput": {
+      "algorithm": "sha256",
+      "paths": [
+        "proxy/Dockerfile.formal-consumer",
+        "proxy/Dockerfile.formal-consumer.dockerignore",
+        "proxy/package.json",
+        "proxy/package-lock.json",
+        "proxy/src",
+        "shared"
+      ],
+      "excludedPaths": [],
+      "sha256": "3e5f27c55472c1c1cc6b0f3bf2f56d0d80c8d14a60a9c59f38636f2a20911937"
     }
   }
 }

@@ -8,9 +8,17 @@ test('production license client isolates authentication reads from admin reporti
   const poolFactory = (config) => {
     const index = pools.length
     const queries = []
+    let discardedClients = 0
     const pool = {
       config,
       queries,
+      async connect() {
+        return {
+          query: (sql, params = []) => pool.query(sql, params),
+          release(discard) { if (discard === true) discardedClients += 1 },
+        }
+      },
+      get discardedClients() { return discardedClients },
       async query(sql, params = []) {
         queries.push({ sql: String(sql), params })
         if (String(sql).includes('online_app_settings')) return { rows: [] }
@@ -36,6 +44,8 @@ test('production license client isolates authentication reads from admin reporti
   assert.equal(pools[1].queries.some((q) => q.sql.includes('manager_accounts')), true)
   assert.equal(pools[1].queries.some((q) => q.sql.includes('where l.code = $1')), true)
   assert.equal(pools[1].queries.some((q) => q.sql.includes('where l.id = $1')), true)
+  assert.equal(pools[1].discardedClients, pools[1].queries.length)
+  assert.ok(pools[1].discardedClients > 0)
 })
 
 test('member validation audit records only schema-supported outcomes', async () => {

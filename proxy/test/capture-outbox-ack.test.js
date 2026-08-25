@@ -97,6 +97,8 @@ test('durable raw capture and outbox ACK do not wait for formal settlement', asy
 for (const disabledValue of [false, 'false']) {
   test(`consumer-disabled ingest preserves durable raw ACK without claiming formal outbox (${JSON.stringify(disabledValue)})`, async () => {
     let claimCalls = 0
+    let lifecycleCalls = 0
+    let shadowObservationCalls = 0
     const app = createApp({
       autoConnect: false,
       captureOutboxConsumerEnabled: disabledValue,
@@ -104,10 +106,15 @@ for (const disabledValue of [false, 'false']) {
       outboxCoalesceMs: 0,
       ingestKey: 'worker-key',
       now: () => 1_000_000,
+      v105ShadowV9Runtime: {
+        enabled: true,
+        async observeTable() { shadowObservationCalls += 1 },
+      },
       supabaseClient: {
         configured: true,
         async persistCaptureEnvelope(value) { return { acceptedRoundKeys: value.roundKeys } },
         async claimCaptureOutbox() { claimCalls += 1; return [] },
+        async reconcilePredictionLifecycle() { lifecycleCalls += 1 },
         async writeCloudCaptureStatus() {},
         async writeCloudTableSnapshot() {},
         async writeCloudRoundEvent() {},
@@ -122,10 +129,51 @@ for (const disabledValue of [false, 'false']) {
     })
     assert.equal(response.statusCode, 200)
     assert.deepEqual(JSON.parse(response.body).acceptedRoundKeys, ['BAG01:88:21'])
+    const statusResponse = await app.inject({ method: 'GET', url: '/api/status' })
+    const statusBody = JSON.parse(statusResponse.body)
+    assert.equal(statusResponse.statusCode, 200)
+    assert.equal(statusBody.connected, true)
+    assert.equal(statusBody.tableCount, 1)
     await delay(20)
     assert.equal(claimCalls, 0)
+    assert.equal(lifecycleCalls, 0, 'external-consumer HTTP parent must not reconcile or issue predictions from snapshot tables')
+    assert.equal(shadowObservationCalls, 0, 'external-consumer HTTP parent must not fan snapshot tables into shadow observers')
   })
 }
+
+test('consumer-disabled HTTP parent does not start formal or shadow runtimes', async () => {
+  const starts = []
+  let cloudFetchCalls = 0
+  const runtime = (name) => ({
+    enabled: true,
+    async start() { starts.push(name) },
+    async stop() {},
+  })
+  const app = createApp({
+    autoConnect: true,
+    host: '127.0.0.1',
+    port: 0,
+    captureSource: 'cloud_browser',
+    cloudBrowserUrl: 'https://worker.invalid/snapshot',
+    fetchImpl: async () => {
+      cloudFetchCalls += 1
+      throw new Error('disabled parent must not fetch cloud capture')
+    },
+    captureOutboxConsumerEnabled: false,
+    v104FormalRuntime: runtime('formal'),
+    v105ShadowV9Runtime: runtime('v9'),
+    v105ShadowV10Runtime: runtime('v10'),
+    supabaseClient: { configured: false },
+  })
+  await app.start()
+  try {
+    await delay(0)
+    assert.deepEqual(starts, [])
+    assert.equal(cloudFetchCalls, 0)
+  } finally {
+    await app.stop()
+  }
+})
 
 test('external consumer polls for durable work that arrives without an in-process ACK wake', async () => {
   let pending = false

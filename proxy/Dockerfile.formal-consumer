@@ -2,6 +2,8 @@ FROM node:24-alpine
 
 WORKDIR /app/proxy
 ENV NODE_ENV=production
+ENV CAPTURE_OUTBOX_CONSUMER_ENABLED=true
+ENV CAPTURE_OUTBOX_POLL_MS=3000
 
 COPY proxy/package.json proxy/package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force

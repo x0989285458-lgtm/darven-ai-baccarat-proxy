@@ -14,6 +14,8 @@ services:
         value: cloud
       - key: CAPTURE_SOURCE
         value: cloud_browser
+      - key: CAPTURE_OUTBOX_CONSUMER_ENABLED
+        value: "false"
       - key: PUBLIC_FRONTEND_ORIGIN
         sync: false
       - key: CLOUD_BROWSER_URL

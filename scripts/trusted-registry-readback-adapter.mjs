@@ -6,7 +6,7 @@ import path from 'node:path'
 const MAX_RAW_BYTES = 4 * 1024 * 1024
 
 export function readTrustedRegistryEvidence({ role, imageRef, execFile = execFileSync } = {}) {
-  if (!['proxy', 'worker'].includes(role)) throw new Error('registry_role_invalid')
+  if (!['proxy', 'formal-consumer', 'worker'].includes(role)) throw new Error('registry_role_invalid')
   if (!isRegistryImageRef(imageRef)) throw new Error('registry_image_ref_invalid')
   const raw = execFile('docker', ['buildx', 'imagetools', 'inspect', '--raw', imageRef], {
     encoding: null,

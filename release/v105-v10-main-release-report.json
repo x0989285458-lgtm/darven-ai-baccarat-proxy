@@ -1,22 +1,29 @@
 {
-  "releaseVersion": "v105-v10-main.20",
+  "title": "V105主預測V10穩定版21接收器隔離正式發布報告",
+  "releaseVersion": "v105-v10-main.21",
   "formalStrategyVersion": "v105",
-  "status": "candidate-tests-pass-production-pending",
-  "scope": "V105產品與V10主預測身份不變；Raw ACK保留一條Pool checkout；Outbox歷史Final只結算不覆蓋Live；Worker每Tick只收一次Snapshot，使慢ACK期間的FIFO連續Drain能真正收斂",
+  "applicationVersion": "1.0.63",
+  "baseCommit": "6461574c256bcfe94e0fdb6d79d974690be77a83",
+  "status": "candidate-full-tests-pass-exact-review-pending",
+  "scope": "V105與V10預測規則、權重、門檻及Formal身份不變；Main21將HTTP Parent限制為被動Tables與狀態更新，Formal Outbox與Shadow lifecycle僅由External Consumer擁有",
   "tests": {
-    "proxyFullSerial": "972/972 PASS",
+    "parentExternalConsumerIsolation": "4/4 PASS",
+    "dependencyBinding": "8/8 PASS",
+    "mainBinding": "4/4 PASS",
+    "proxyFullSerial": "1005/1005 PASS",
     "frontendFull": "159/159 PASS",
-    "frontendBuild": "PASS",
-    "focusedV105V10": "13/13 PASS",
-    "v10StrategyAndStructure": "20/20 PASS",
-    "rootCauseRegression": "4/4 PASS",
-    "backpressureContract": "31/31 PASS",
-    "formalThroughputContract": "4/4 PASS",
-    "sameSessionOutboxBatch": "3/3 PASS",
-    "workerFull": "209/209 PASS",
-    "workerSlowAckBacklogRegression": "1/1 PASS"
+    "frontendBuild": "PASS"
+  },
+  "review": {
+    "predictionRulesChanged": false,
+    "predictionWeightsChanged": false,
+    "predictionThresholdsChanged": false,
+    "receiverOwnershipChanged": true,
+    "externalConsumerOwnsFormalLifecycle": true,
+    "httpParentStartsPredictionRuntimes": false
   },
   "productionGates": {
+    "exactCommitReview": false,
     "soleActiveV105": false,
     "tenTables": false,
     "newFinal": false,
