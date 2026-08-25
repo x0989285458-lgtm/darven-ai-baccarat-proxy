@@ -1,0 +1,34 @@
+{
+  "title": "V105主預測V10穩定版28 Outbox批次上限漂移修復發布報告",
+  "releaseVersion": "v105-v10-main.28",
+  "runtimeReleaseVersion": "v105-v10-main.26",
+  "baseCommit": "4ae9d2cc62460fd8b64d8c5ad38fa336ba3e3b56",
+  "status": "candidate-full-tests-pass-exact-review-pending",
+  "rootCause": "正式DB Claim函式硬限制3，與Repo及Consumer設定10漂移，導致10桌輸入高於消費吞吐。",
+  "priorBlocks": {
+    "main26FormalGate": "BLOCK",
+    "main27Review": "BLOCK"
+  },
+  "main26Evidence": {
+    "ackDelta": 855,
+    "finalDelta": 552,
+    "predictionDelta": 434,
+    "settlementDelta": 431,
+    "maxPending": 104,
+    "maxProcessing": 3,
+    "deadLetter": 0
+  },
+  "tests": {
+    "main28Contract": "4/4 PASS",
+    "main26ImmutableBinding": "6/6 PASS",
+    "proxyFullSerial": "1022/1022 PASS"
+  },
+  "productionGates": {
+    "exactCommitReview": false,
+    "migrationApplied": false,
+    "functionMax10Readback": false,
+    "queueDrainedNaturally": false,
+    "predictionSettlementAckGrowth": false,
+    "browserE2E": false
+  }
+}

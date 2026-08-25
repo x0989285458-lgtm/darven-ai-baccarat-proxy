@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "v105-v10-main-db-migration-release.1",
+  "releaseName": "V105主預測V10穩定版28 Outbox批次上限漂移修復",
+  "releaseVersion": "v105-v10-main.28",
+  "gitTag": "v105-v10-main.28",
+  "baseCommit": "4ae9d2cc62460fd8b64d8c5ad38fa336ba3e3b56",
+  "runtimeReleaseVersion": "v105-v10-main.26",
+  "applicationVersion": "1.0.65",
+  "formalStrategyVersion": "v105",
+  "releaseScope": {
+    "databaseMigrationOnly": true,
+    "proxyChanged": false,
+    "formalConsumerChanged": false,
+    "workerChanged": false,
+    "frontendChanged": false,
+    "predictionRulesChanged": false,
+    "predictionWeightsChanged": false,
+    "predictionThresholdsChanged": false,
+    "queuedWorkRewritten": false,
+    "historicalDataRewritten": false
+  },
+  "incident": {
+    "main26FormalGate": "BLOCK",
+    "main27Review": "BLOCK",
+    "main27P0": [
+      "invalid-schema-qualified-position-syntax",
+      "main26-implementation-digest-drift"
+    ],
+    "observedMaxProcessing": 3,
+    "observedMaxPending": 104,
+    "repositoryBatchLimit": 10,
+    "productionFunctionBatchLimit": 3,
+    "rootCause": "production-db-function-drift"
+  },
+  "releaseBinding": {
+    "migration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260826020000_v105_capture_outbox_batch_limit_drift_repair.sql",
+      "sha256": "100389a0062634d13471eeffd7e0fb573b5a2389a06e5c6df400202d7eeb1fd1"
+    },
+    "testPath": "proxy/test/v105-v10-main28-db-release.test.js",
+    "preconditionContract": "limit greatest(1, least(coalesce(p_limit, 3), 3))",
+    "postconditionContract": "limit greatest(1, least(coalesce(p_limit, 10), 10))"
+  },
+  "deploymentOrder": [
+    "verify-exact-main28-tag",
+    "verify-production-function-precondition-max-3",
+    "verify-active-outbox-no-dead-letter",
+    "apply-main28-migration-in-one-transaction",
+    "readback-pg-get-functiondef-max-10",
+    "verify-service-role-execute",
+    "verify-next-claim-processing-up-to-10",
+    "verify-queue-natural-drain-without-delete",
+    "verify-final-prediction-settlement-ack-growth",
+    "run-new-main28-long-window"
+  ]
+}
