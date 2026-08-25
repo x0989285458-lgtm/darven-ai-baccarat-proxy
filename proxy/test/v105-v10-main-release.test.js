@@ -116,6 +116,11 @@ test('V105 V10 main canonical verifier loads both manifests and rejects duplicat
   const unexpectedMainTopLevel = structuredClone(manifest)
   unexpectedMainTopLevel.unexpectedIdentity = 'MUTATION'
   await assert.rejects(verifyV105V10MainManifestDigests({ manifest: unexpectedMainTopLevel, dependencyManifest, repoRoot: root, candidateIndexTree }), /v105_v10_main_manifest_keys_invalid/)
+  for (const nested of ['prediction', 'rollbackFromCurrentV106']) {
+    const unexpectedNested = structuredClone(manifest)
+    unexpectedNested[nested].unexpected = true
+    await assert.rejects(verifyV105V10MainManifestDigests({ manifest: unexpectedNested, dependencyManifest, repoRoot: root, candidateIndexTree }), /v105_v10_main_nested_shape_invalid/)
+  }
   const unexpectedMainTopLevelBinding = structuredClone(manifest)
   unexpectedMainTopLevelBinding.releaseBinding.attackerControlledBinding = { algorithm: 'sha256' }
   await assert.rejects(verifyV105V10MainManifestDigests({ manifest: unexpectedMainTopLevelBinding, dependencyManifest, repoRoot: root, candidateIndexTree }), /v105_v10_main_binding_keys_invalid/)

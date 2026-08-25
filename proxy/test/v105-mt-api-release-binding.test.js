@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import path from 'node:path'
-import { mkdtemp, rm, writeFile, mkdir, readFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import manifest from '../../release/v105-v10-main21-source-fence-release-manifest.json' with { type: 'json' }
@@ -134,6 +134,9 @@ test('release manifest freezes current implementation, migration, proxy, and wor
     [(value) => { value.releaseBinding.implementationTree.unexpected = true }, /release_implementation_shape_invalid/],
     [(value) => { value.releaseBinding.migration.unexpected = true }, /release_migration_shape_invalid:migration/],
     [(value) => { value.releaseBinding.attestation.unexpected = true }, /release_attestation_shape_invalid/],
+    [(value) => { value.adminSession.unexpected = true }, /release_nested_shape_invalid:adminSession/],
+    [(value) => { value.database.sameSessionOutboxBatchMigration.unexpected = true }, /release_nested_shape_invalid:database\.sameSessionOutboxBatchMigration/],
+    [(value) => { value.rollback.order[0].unexpected = true }, /release_rollback_order_shape_invalid/],
   ]) {
     const drifted = structuredClone(manifest)
     mutate(drifted)
@@ -218,7 +221,7 @@ test('release manifest freezes current implementation, migration, proxy, and wor
   rollbackTampered.rollback.order = rollbackTampered.rollback.order.filter((step) => step.id !== 'disable-v9-shadow-before-proxy-rollback')
   await assert.rejects(
     verifyManifestDigests({ manifest: rollbackTampered, repoRoot, candidateIndexTree }),
-    /v9_shadow_rollback_contract_invalid/,
+    /release_rollback_order_shape_invalid/,
   )
 })
 
@@ -435,6 +438,16 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
   await assert.rejects(releaseVerifier.verifyTrustedImageEvidence({
     buildReceipts: { receipts: buildReceipts.receipts.filter((receipt) => receipt.role !== 'formal-consumer') }, expected, trustedReadback,
   }), /trusted_build_receipt_role_invalid:formal-consumer/)
+  const planImages = ['proxy', 'formal-consumer', 'worker'].map((role) => ({
+    role,
+    imageDigest: `sha256:${role === 'proxy' ? 'a' : role === 'formal-consumer' ? 'b' : 'c'}`.padEnd(71, role === 'proxy' ? 'a' : role === 'formal-consumer' ? 'b' : 'c'),
+  })).map((image) => ({
+    ...image,
+    immutableImageRef: `ghcr.io/x0989285458-lgtm/darven-ai-baccarat-${image.role === 'proxy' ? 'proxy' : image.role}@${image.imageDigest}`,
+  }))
+  assert.equal(releaseVerifier.buildDeploymentPlan(planImages).length, 3)
+  assert.throws(() => releaseVerifier.buildDeploymentPlan({ ...planImages }), /deployment_plan_images_invalid/)
+  assert.throws(() => releaseVerifier.buildDeploymentPlan([planImages[1], planImages[0], planImages[2]]), /deployment_plan_images_invalid/)
   const external = {
     commit, tree, tagObject: '7'.repeat(40), tag: manifest.gitTag,
     implementationTreeSha256: '8'.repeat(64), migrationSha256: '9'.repeat(64),
@@ -616,10 +629,10 @@ test('Reviewer P1 fixed trusted registry adapter binds role, immutable digest, a
     execFileSync('git', ['add', 'scripts/trusted-registry-readback-adapter.mjs'], { cwd: tempRepo })
     const candidateTree = execFileSync('git', ['write-tree'], { cwd: tempRepo, encoding: 'utf8' }).trim()
     await writeFile(candidatePath, mutableSource)
-    const materialized = await releaseVerifier.materializeCandidateAdapter(tempRepo, candidateTree)
-    assert.equal(await readFile(materialized.adapterPath, 'utf8'), candidateSource)
-    await materialized.cleanup()
-    await assert.rejects(readFile(materialized.adapterPath), /ENOENT/)
+    const loaded = releaseVerifier.loadCandidateAdapterSource(tempRepo, candidateTree)
+    assert.equal(Buffer.from(loaded.sourceBase64, 'base64').toString('utf8'), candidateSource)
+    assert.match(loaded.sha256, /^[a-f0-9]{64}$/)
+    assert.equal(Object.isFrozen(loaded), true)
   } finally {
     await rm(tempRepo, { recursive: true, force: true })
   }
