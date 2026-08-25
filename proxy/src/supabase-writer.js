@@ -3119,6 +3119,32 @@ export function createSupabaseIngestionClient({
         throw new Error('active strategy verification failed', { cause: error })
       }
     },
+    async verifyActiveStrategyReadOnly() {
+      try {
+        const activeRows = strategyDb && typeof strategyDb.query === 'function'
+          ? (await strategyDb.query(
+              'select version, status from public.ai_strategy_versions where status = $1 order by created_at desc limit 2',
+              ['active'],
+            )).rows
+          : await getRest('ai_strategy_versions', {
+              select: 'version,status',
+              status: 'eq.active',
+              order: 'created_at.desc',
+              limit: '2',
+            }, { requestTimeoutMs: startupTimeoutMs })
+        if (!Array.isArray(activeRows)
+          || activeRows.length !== 1
+          || activeRows[0]?.version !== ALL_MT_EQUAL_STRATEGY_VERSION
+          || activeRows[0]?.status !== 'active') {
+          throw new Error('active strategy read-only verification failed')
+        }
+        runtimeStatus = { ready: true, degraded: false, reason: null, activeStrategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION }
+        return { ok: true, activeStrategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION }
+      } catch (error) {
+        runtimeStatus = { ready: false, degraded: true, reason: 'active strategy read-only verification failed', activeStrategyVersion: null }
+        throw new Error('active strategy read-only verification failed', { cause: error })
+      }
+    },
     getRuntimeStatus() {
       return { ...runtimeStatus }
     },

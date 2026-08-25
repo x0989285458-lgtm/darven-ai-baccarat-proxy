@@ -1,16 +1,19 @@
 {
-  "releaseName": "V105主預測V10穩定版22 Worker2續租完整性",
-  "releaseVersion": "v105-v10-main.22",
-  "gitTag": "v105-v10-main.22",
-  "applicationVersion": "1.0.63",
-  "baseCommit": "d2fa2acaafb74db592514075a4113819e6db0290",
+  "releaseName": "V105主預測V10穩定版23 Parent只讀策略驗證",
+  "releaseVersion": "v105-v10-main.23",
+  "gitTag": "v105-v10-main.23",
+  "applicationVersion": "1.0.64",
+  "baseCommit": "fe57c25c5f6579c06b1d18bbf04376d09ec07c08",
   "formalStrategyVersion": "v105",
   "releaseScope": {
     "predictionMainOnly": false,
     "productRuntimeChanged": true,
-    "databaseMigrationRequired": true,
-    "captureWorkerChanged": true,
-    "frontendChanged": true,
+    "databaseMigrationRequired": false,
+    "proxyChanged": true,
+    "workerChanged": false,
+    "captureWorkerChanged": false,
+    "formalConsumerChanged": false,
+    "frontendChanged": false,
     "sidePredictionChanged": false,
     "formalIdentityChanged": false,
     "zeroFinalHeartbeatFastAck": true,
@@ -32,7 +35,7 @@
     "sameSessionOutboxBatchLimit": 10,
     "atomicOutboxBatchLeaseAck": true,
     "httpParentExternalConsumerIsolation": true,
-    "externalFormalConsumerChanged": true,
+    "externalFormalConsumerChanged": false,
     "transportRebindMigrationBound": true
   },
   "prediction": {
@@ -53,21 +56,14 @@
     "activeOutboxZeroRequired": true
   },
   "deploymentOrder": [
-    "verify-producer-stopped",
     "verify-active-outbox-zero",
-    "transport-rebind-idempotency-migration",
-    "transport-rebind-idempotency-catalog-acl-readback",
     "verify-sigstore-three-role-images",
     "resolve-release-tags-to-verified-digests",
     "deploy-verified-proxy-image-by-digest",
     "readback-render-proxy-image-digest",
-    "public-readiness-v105-main22",
-    "deploy-verified-formal-consumer-image-by-digest",
-    "readback-formal-consumer-image-digest",
-    "verify-external-consumer-ready-self-drain",
-    "deploy-verified-worker-image-by-digest",
-    "readback-worker-image-digest",
-    "verify-worker-queue-cursor-journal-preserved",
+    "public-readiness-v105-main23",
+    "verify-formal-consumer-unchanged-ready-self-drain",
+    "verify-worker-unchanged-queue-cursor-journal-preserved",
     "ten-table-final-ack-v10-prediction-e2e",
     "member-session-frontend-e2e"
   ],
@@ -88,6 +84,8 @@
         "proxy/src/server.js",
         "proxy/src/state-store.js",
         "proxy/src/supabase-writer.js",
+        "proxy/test/active-strategy.test.js",
+        "proxy/test/deploy-package.test.js",
         "proxy/test/admin-side-actions.test.js",
         "proxy/test/prediction-integrity.test.js",
         "proxy/test/prediction-safety.test.js",
@@ -101,9 +99,11 @@
         "proxy/test/capture-outbox-ack.test.js",
         "proxy/test/capture-outbox-writer.test.js",
         "proxy/test/v105-formal-ingest-backpressure-contract.test.js",
+        "proxy/test/v105-formal-runtime.test.js",
         "proxy/test/v105-v10-main-release.test.js",
         "scripts/verify-v105-mt-api-release.mjs",
-        "release/v105-v10-main22-source-fence-release-manifest.json",
+        "scripts/trusted-registry-readback-adapter.mjs",
+        "release/v105-v10-main23-read-only-strategy-release-manifest.json",
         "frontend/package.json",
         "frontend/package-lock.json",
         "frontend/src/lib/onlineLicenseClient.ts",
@@ -120,6 +120,7 @@
         "proxy/test/v104-iteration-shadow-release.test.js",
         "proxy/test/v105-mt-session-auto-refresh-release.test.js",
         "proxy/test/v105-mt-api-release-binding.test.js",
+        "proxy/test/v105-service-work-scheduler-release.test.js",
         "release/v105-v10-main-release-report.json",
         "proxy/deploy/render.yaml",
         "proxy/test/deploy-config.test.js",
@@ -129,7 +130,7 @@
         "cloud-browser-worker/Dockerfile.dockerignore"
       ],
       "excludedPaths": [],
-      "sha256": "1f5bd91808f614d768c19a1229a5719d735a483fb4f79d115fb208b6c2850d0f"
+      "sha256": "cb4d31a8a704e3332f000d63b88ed40780402ebec1a0dace16af2da4618602dd"
     },
     "zeroFinalHeartbeatMigration": {
       "algorithm": "sha256",
@@ -170,7 +171,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "2fae7fbac782413b9ff9f09450c1401d1b5ea128251c9c736b8d1b6215b2db4e"
+      "sha256": "463286c6f6844a6d3c6c666ea5b3ecc0c0ccc1bb0a89e3cfe1a462d09106883e"
     }
   }
 }

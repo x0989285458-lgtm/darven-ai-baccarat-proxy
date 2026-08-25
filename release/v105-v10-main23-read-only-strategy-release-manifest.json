@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "v105-v10-main-successor-overlay.1",
+  "predecessorManifest": "release/v105-v10-main22-source-fence-release-manifest.json",
+  "releaseName": "V105主預測V10穩定版23 Parent只讀策略驗證",
+  "releaseVersion": "v105-v10-main.23",
+  "gitTag": "v105-v10-main.23",
+  "applicationVersion": "1.0.64",
+  "baseCommit": "fe57c25c5f6579c06b1d18bbf04376d09ec07c08",
+  "formalStrategyVersion": "v105",
+  "applicationVersionChanged": true,
+  "releaseScope": {
+    "mode": "single-session-api-primary",
+    "canonicalSource": "api",
+    "workerEnvironment": {
+      "MT_SOURCE_MODE": "api",
+      "MT_CAPTURE_ROLE": "canonical"
+    },
+    "browserEnabled": false,
+    "backupReplayEnabled": false,
+    "recordContract": "unverified",
+    "gapPolicy": "fail-closed-stop-ack-and-alert",
+    "deferred": [
+      "second-independent-session-backup",
+      "record-replay"
+    ],
+    "httpParentExternalConsumerIsolation": true,
+    "proxyChanged": true,
+    "workerChanged": false,
+    "captureWorkerChanged": false,
+    "formalConsumerChanged": false,
+    "frontendChanged": false
+  },
+  "behavior": {
+    "predictionRulesChanged": false,
+    "predictionWeightsChanged": false,
+    "predictionThresholdsChanged": false,
+    "receiverOwnershipChanged": false,
+    "uiChanged": false,
+    "v6ToV9Changed": false,
+    "versionChanged": true
+  },
+  "releaseBinding": {
+    "implementationTree": {
+      "addPaths": [
+        "release/v105-v10-main23-read-only-strategy-release-manifest.json",
+        "proxy/test/active-strategy.test.js",
+        "proxy/test/deploy-package.test.js",
+        "proxy/test/v105-service-work-scheduler-release.test.js",
+        "proxy/test/v105-formal-runtime.test.js"
+      ],
+      "removePaths": [
+        "release/v105-v10-main22-source-fence-release-manifest.json"
+      ],
+      "excludedPaths": [
+        "release/attestations",
+        "release/v105-v10-main23-read-only-strategy-release-manifest.json"
+      ],
+      "sha256": "98083556fccdd09f243af042e7d0daa7d72beb814d2593898d86f3f9d6da9580"
+    },
+    "proxyBuildInputSha256": "5d7d0b3bb75d086aaa43bcba06f486836ece66e9464db152e502cc236a7b04ec",
+    "formalConsumerBuildInputSha256": "463286c6f6844a6d3c6c666ea5b3ecc0c0ccc1bb0a89e3cfe1a462d09106883e",
+    "workerBuildInputSha256": "40caf61b0ebae2e40c5ebedb56342549f73e9368d720bcee4ace5c2e4b08b848",
+    "attestationSourceRef": "refs/tags/v105-v10-main.23"
+  }
+}

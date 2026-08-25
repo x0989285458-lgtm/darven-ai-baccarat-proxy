@@ -2,22 +2,27 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { verifyMain22ReleaseReportContract, verifyManifestDigests, verifyV105V10MainManifestDigests } from '../../scripts/verify-v105-mt-api-release.mjs'
+import { materializeMain23SuccessorManifest, verifyMain23ReleaseReportContract, verifyManifestDigests, verifyV105V10MainManifestDigests } from '../../scripts/verify-v105-mt-api-release.mjs'
 
 const manifest = JSON.parse(readFileSync(new URL('../../release/v105-v10-main-release-manifest.json', import.meta.url)))
-const dependencyManifest = JSON.parse(readFileSync(new URL('../../release/v105-v10-main22-source-fence-release-manifest.json', import.meta.url)))
+const predecessorManifest = JSON.parse(readFileSync(new URL('../../release/v105-v10-main22-source-fence-release-manifest.json', import.meta.url)))
+const successorManifest = JSON.parse(readFileSync(new URL('../../release/v105-v10-main23-read-only-strategy-release-manifest.json', import.meta.url)))
+const dependencyManifest = materializeMain23SuccessorManifest(successorManifest, predecessorManifest)
 const releaseReport = JSON.parse(readFileSync(new URL('../../release/v105-v10-main-release-report.json', import.meta.url)))
 const formalConsumerDockerfile = readFileSync(new URL('../Dockerfile.formal-consumer', import.meta.url), 'utf8')
 
-test('V105 Main22 preserves formal prediction while releasing the Worker2 lifecycle fix', () => {
-  assert.equal(manifest.releaseVersion, 'v105-v10-main.22')
+test('V105 Main23 preserves formal prediction while releasing Parent read-only strategy verification', () => {
+  assert.equal(manifest.releaseVersion, 'v105-v10-main.23')
   assert.equal(manifest.formalStrategyVersion, 'v105')
   assert.deepEqual(manifest.releaseScope, {
     predictionMainOnly: false,
     productRuntimeChanged: true,
-    databaseMigrationRequired: true,
-    captureWorkerChanged: true,
-    frontendChanged: true,
+    databaseMigrationRequired: false,
+    proxyChanged: true,
+    workerChanged: false,
+    captureWorkerChanged: false,
+    formalConsumerChanged: false,
+    frontendChanged: false,
     sidePredictionChanged: false,
     formalIdentityChanged: false,
     zeroFinalHeartbeatFastAck: true,
@@ -39,7 +44,7 @@ test('V105 Main22 preserves formal prediction while releasing the Worker2 lifecy
     sameSessionOutboxBatchLimit: 10,
     atomicOutboxBatchLeaseAck: true,
     httpParentExternalConsumerIsolation: true,
-    externalFormalConsumerChanged: true,
+    externalFormalConsumerChanged: false,
     transportRebindMigrationBound: true,
   })
   assert.equal(manifest.prediction.mainSource, 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized')
@@ -48,16 +53,20 @@ test('V105 Main22 preserves formal prediction while releasing the Worker2 lifecy
   assert.match(formalConsumerDockerfile, /ENV CAPTURE_OUTBOX_CONSUMER_ENABLED=true/)
   assert.match(formalConsumerDockerfile, /ENV CAPTURE_OUTBOX_POLL_MS=3000/)
   assert.equal(releaseReport.releaseVersion, manifest.releaseVersion)
-  assert.equal(releaseReport.title, 'V105主預測V10穩定版22 Worker2續租完整性正式發布報告')
+  assert.equal(releaseReport.title, 'V105主預測V10穩定版23 Parent只讀策略驗證正式發布報告')
   assert.equal(releaseReport.formalStrategyVersion, 'v105')
   assert.equal(releaseReport.applicationVersion, manifest.applicationVersion)
   assert.equal(releaseReport.baseCommit, manifest.baseCommit)
-  assert.equal(releaseReport.scope, 'V105與V10預測規則、權重、門檻、Formal身份及前端行為不變；Main22發布Worker2續租失敗收束、慢續租與stop等待修正')
+  assert.equal(releaseReport.scope, 'V105與V10預測規則、權重、門檻、Formal Consumer、Worker、Capture Worker及前端業務行為不變；Main23只修正consumer-disabled Parent以只讀方式驗證唯一Active v105並恢復健康Ready')
   assert.deepEqual(releaseReport.review, {
     predictionRulesChanged: false,
     predictionWeightsChanged: false,
     predictionThresholdsChanged: false,
-    receiverOwnershipChanged: true,
+    receiverOwnershipChanged: false,
+    proxyChanged: true,
+    workerChanged: false,
+    captureWorkerChanged: false,
+    formalConsumerChanged: false,
     externalConsumerOwnsFormalLifecycle: true,
     httpParentStartsPredictionRuntimes: false,
   })
@@ -133,13 +142,13 @@ test('V105 V10 main canonical verifier loads both manifests and rejects duplicat
   const driftedDependencyZeroFinal = structuredClone(dependencyManifest)
   driftedDependencyZeroFinal.releaseBinding.zeroFinalHeartbeatMigration.algorithm = 'sha512'
   await assert.rejects(verifyV105V10MainManifestDigests({ manifest, dependencyManifest: driftedDependencyZeroFinal, repoRoot: root, candidateIndexTree }), /v105_v10_main_dependency_contract_invalid/)
-  const missingTransportReadback = structuredClone(manifest)
-  missingTransportReadback.deploymentOrder = missingTransportReadback.deploymentOrder.filter((step) => step !== 'transport-rebind-idempotency-catalog-acl-readback')
-  await assert.rejects(verifyV105V10MainManifestDigests({ manifest: missingTransportReadback, dependencyManifest, repoRoot: root, candidateIndexTree }), /v105_v10_main_deployment_order_invalid/)
+  const missingTrustedImagesGate = structuredClone(manifest)
+  missingTrustedImagesGate.deploymentOrder = missingTrustedImagesGate.deploymentOrder.filter((step) => step !== 'verify-sigstore-three-role-images')
+  await assert.rejects(verifyV105V10MainManifestDigests({ manifest: missingTrustedImagesGate, dependencyManifest, repoRoot: root, candidateIndexTree }), /v105_v10_main_deployment_order_invalid/)
 
   for (const [mutate, expected] of [
     [(value) => { value.releaseName = 'drifted' }, /v105_v10_main_release_identity_invalid/],
-    [(value) => { value.applicationVersion = '1.0.64' }, /v105_v10_main_release_identity_invalid/],
+    [(value) => { value.applicationVersion = '1.0.65' }, /v105_v10_main_release_identity_invalid/],
     [(value) => { value.releaseScope.httpParentExternalConsumerIsolation = false }, /v105_v10_main_release_scope_invalid/],
   ]) {
     const drifted = structuredClone(manifest)
@@ -149,12 +158,12 @@ test('V105 V10 main canonical verifier loads both manifests and rejects duplicat
 
   for (const [mutate, expected] of [
     [(value) => { value.releaseName = 'drifted' }, /v105_v10_main_dependency_identity_invalid/],
-    [(value) => { value.applicationVersion = '1.0.64' }, /v105_v10_main_dependency_identity_invalid/],
+    [(value) => { value.applicationVersion = '1.0.65' }, /v105_v10_main_dependency_identity_invalid/],
     [(value) => { value.releaseScope.mode = 'drifted' }, /v105_v10_main_dependency_scope_invalid/],
     [(value) => { value.behavior.predictionRulesChanged = true }, /v105_v10_main_dependency_behavior_invalid/],
     [(value) => { value.behavior.predictionWeightsChanged = true }, /v105_v10_main_dependency_behavior_invalid/],
     [(value) => { value.behavior.predictionThresholdsChanged = true }, /v105_v10_main_dependency_behavior_invalid/],
-    [(value) => { value.behavior.receiverOwnershipChanged = false }, /v105_v10_main_dependency_behavior_invalid/],
+    [(value) => { value.behavior.receiverOwnershipChanged = true }, /v105_v10_main_dependency_behavior_invalid/],
   ]) {
     const drifted = structuredClone(dependencyManifest)
     mutate(drifted)
@@ -162,11 +171,11 @@ test('V105 V10 main canonical verifier loads both manifests and rejects duplicat
   }
 })
 
-test('V105 Main22 release report is exact and cannot self-approve production gates', () => {
-  assert.deepEqual(verifyMain22ReleaseReportContract(releaseReport, manifest.releaseVersion), { ok: true })
+test('V105 Main23 release report is exact and cannot self-approve production gates', () => {
+  assert.deepEqual(verifyMain23ReleaseReportContract(releaseReport, manifest.releaseVersion), { ok: true })
   const mutations = [
     (value) => { value.status = 'review-pass' },
-    (value) => { value.tests.proxyFullSerial = '1006/1007 PASS' },
+    (value) => { value.tests.proxyFullSerial = '1013/1014 PASS' },
     (value) => { value.tests.unreviewed = 'PASS' },
     (value) => { value.productionGates.exactCommitReview = true },
     (value) => { delete value.productionGates.tenTables },
@@ -175,43 +184,39 @@ test('V105 Main22 release report is exact and cannot self-approve production gat
   for (const mutate of mutations) {
     const drifted = structuredClone(releaseReport)
     mutate(drifted)
-    assert.throws(() => verifyMain22ReleaseReportContract(drifted, manifest.releaseVersion), /v105_v10_main_release_report_invalid/)
+    assert.throws(() => verifyMain23ReleaseReportContract(drifted, manifest.releaseVersion), /v105_v10_main_release_report_invalid/)
   }
 })
 
-test('V105 Main22 deploys DB and three verified immutable role images before E2E', () => {
+test('V105 Main23 rebuilds three trusted roles but deploys only the changed proxy before E2E', () => {
   assert.deepEqual(manifest.deploymentOrder, [
-    'verify-producer-stopped',
     'verify-active-outbox-zero',
-    'transport-rebind-idempotency-migration',
-    'transport-rebind-idempotency-catalog-acl-readback',
     'verify-sigstore-three-role-images',
     'resolve-release-tags-to-verified-digests',
     'deploy-verified-proxy-image-by-digest',
     'readback-render-proxy-image-digest',
-    'public-readiness-v105-main22',
-    'deploy-verified-formal-consumer-image-by-digest',
-    'readback-formal-consumer-image-digest',
-    'verify-external-consumer-ready-self-drain',
-    'deploy-verified-worker-image-by-digest',
-    'readback-worker-image-digest',
-    'verify-worker-queue-cursor-journal-preserved',
+    'public-readiness-v105-main23',
+    'verify-formal-consumer-unchanged-ready-self-drain',
+    'verify-worker-unchanged-queue-cursor-journal-preserved',
     'ten-table-final-ack-v10-prediction-e2e',
     'member-session-frontend-e2e',
   ])
-  assert.equal(manifest.releaseScope.captureWorkerChanged, true)
+  assert.equal(manifest.releaseScope.proxyChanged, true)
+  assert.equal(manifest.releaseScope.workerChanged, false)
+  assert.equal(manifest.releaseScope.captureWorkerChanged, false)
+  assert.equal(manifest.releaseScope.formalConsumerChanged, false)
   assert.equal(manifest.releaseScope.httpParentExternalConsumerIsolation, true)
 })
 
-test('V105 Main22 trusted workflow builds all roles only from the exact frozen tag with GitHub Sigstore provenance', () => {
+test('V105 Main23 trusted workflow rebuilds all roles only from the exact frozen tag with GitHub Sigstore provenance', () => {
   const root = new URL('../..', import.meta.url)
   const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: root, encoding: 'utf8' }).trim()
   const workflow = execFileSync('git', ['show', `${candidateIndexTree}:.github/workflows/trusted-release-images.yml`], { cwd: root, encoding: 'utf8' })
-  assert.match(workflow, /tags:\s*\n\s*- v105-v10-main\.22/)
-  assert.match(workflow, /if: github\.ref == 'refs\/tags\/v105-v10-main\.22'/)
+  assert.match(workflow, /tags:\s*\n\s*- v105-v10-main\.23/)
+  assert.match(workflow, /if: github\.ref == 'refs\/tags\/v105-v10-main\.23'/)
   assert.match(workflow, /runs-on: ubuntu-latest/)
-  assert.match(workflow, /ref: refs\/tags\/v105-v10-main\.22/)
-  assert.match(workflow, /test "\$\{GITHUB_REF\}" = "refs\/tags\/v105-v10-main\.22"/)
+  assert.match(workflow, /ref: refs\/tags\/v105-v10-main\.23/)
+  assert.match(workflow, /test "\$\{GITHUB_REF\}" = "refs\/tags\/v105-v10-main\.23"/)
   assert.match(workflow, /test "\$\(git rev-parse HEAD\)" = "\$\{GITHUB_SHA\}"/)
   for (const role of ['proxy', 'formal-consumer', 'worker']) assert.match(workflow, new RegExp(`role: ${role}`))
   assert.match(workflow, /id-token: write/)

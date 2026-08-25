@@ -2326,10 +2326,14 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     async start() {
       tablesBroadcastStopping = false
       const listeningServer = await new Promise((resolve) => server.listen(port, listenHost, () => resolve(server)))
-      if (resolvedCaptureOutboxConsumerEnabled && requireVerifiedStrategy && supabaseClient?.configured === true && typeof supabaseClient.ensureInitialStrategy === 'function') {
+      if (requireVerifiedStrategy && supabaseClient?.configured === true) {
         try {
-          await supabaseClient.ensureInitialStrategy()
-          await ensureRecentPerformanceReady()
+          if (resolvedCaptureOutboxConsumerEnabled && typeof supabaseClient.ensureInitialStrategy === 'function') {
+            await supabaseClient.ensureInitialStrategy()
+            await ensureRecentPerformanceReady()
+          } else if (!resolvedCaptureOutboxConsumerEnabled && typeof supabaseClient.verifyActiveStrategyReadOnly === 'function') {
+            await supabaseClient.verifyActiveStrategyReadOnly()
+          }
         } catch (error) {
           recentPerformanceReady = false
           state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })

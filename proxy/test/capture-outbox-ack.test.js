@@ -192,6 +192,84 @@ test('consumer-disabled HTTP parent does not start formal or shadow runtimes', a
   }
 })
 
+test('consumer-disabled verified HTTP parent read-only verifies active v105 without starting runtime work', async () => {
+  const calls = {
+    verifyReadOnly: 0,
+    ensure: 0,
+    claim: 0,
+    formalStart: 0,
+    shadowStart: 0,
+    predictionRead: 0,
+    predictionWrite: 0,
+  }
+  let runtimeStatus = {
+    ready: false,
+    degraded: false,
+    reason: 'active_strategy_not_verified',
+    activeStrategyVersion: null,
+  }
+  const app = createApp({
+    autoConnect: false,
+    host: '127.0.0.1',
+    port: 0,
+    requireVerifiedStrategy: true,
+    captureOutboxConsumerEnabled: false,
+    supabaseClient: {
+      configured: true,
+      getRuntimeStatus: () => ({ ...runtimeStatus }),
+      async verifyActiveStrategyReadOnly() {
+        calls.verifyReadOnly += 1
+        runtimeStatus = { ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' }
+        return { ok: true, activeStrategyVersion: 'v105' }
+      },
+      async ensureInitialStrategy() { calls.ensure += 1 },
+      async claimCaptureOutbox() { calls.claim += 1; return [] },
+      async readIssuedPrediction() { calls.predictionRead += 1; return null },
+      async issuePrediction() { calls.predictionWrite += 1; return null },
+      async persistRound() { calls.predictionWrite += 1; return null },
+    },
+    v104FormalRuntime: {
+      enabled: true,
+      async start() { calls.formalStart += 1 },
+      async stop() {},
+    },
+    v105ShadowV9Runtime: {
+      enabled: true,
+      async start() { calls.shadowStart += 1 },
+      async stop() {},
+    },
+    v105ShadowV10Runtime: {
+      enabled: true,
+      async start() { calls.shadowStart += 1 },
+      async stop() {},
+    },
+  })
+
+  await app.start()
+  try {
+    const health = await app.inject({ method: 'GET', url: '/health' })
+    assert.equal(calls.verifyReadOnly, 1)
+    assert.equal(health.statusCode, 200)
+    assert.deepEqual(JSON.parse(health.body).runtimeStatus, {
+      ready: true,
+      degraded: false,
+      reason: null,
+      activeStrategyVersion: 'v105',
+    })
+    assert.deepEqual(calls, {
+      verifyReadOnly: 1,
+      ensure: 0,
+      claim: 0,
+      formalStart: 0,
+      shadowStart: 0,
+      predictionRead: 0,
+      predictionWrite: 0,
+    })
+  } finally {
+    await app.stop()
+  }
+})
+
 test('external consumer polls for durable work that arrives without an in-process ACK wake', async () => {
   let pending = false
   let completed = false
