@@ -1,0 +1,12 @@
+FROM node:24-alpine
+
+WORKDIR /app/proxy
+COPY proxy/package.json proxy/package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+COPY proxy/src ./src
+COPY shared /app/shared
+
+ENV NODE_ENV=production
+ENV CAPTURE_OUTBOX_CONSUMER_ENABLED=false
+ENV CAPTURE_OUTBOX_POLL_MS=0
+CMD ["node", "src/server.js"]

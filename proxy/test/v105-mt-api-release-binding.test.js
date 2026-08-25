@@ -370,7 +370,9 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
   const proxyDigest = `sha256:${'5'.repeat(64)}`
   const formalConsumerDigest = `sha256:${'9'.repeat(64)}`
   const workerDigest = `sha256:${'6'.repeat(64)}`
-  const expected = { commit, tree, proxyBuildInputSha256: proxyInput, formalConsumerBuildInputSha256: formalConsumerInput, workerBuildInputSha256: workerInput }
+  const sourceRef = 'refs/tags/v105-v10-main.21'
+  const signerWorkflow = 'x0989285458-lgtm/darven-ai-baccarat-proxy/.github/workflows/trusted-release-images.yml'
+  const expected = { commit, tree, proxyBuildInputSha256: proxyInput, formalConsumerBuildInputSha256: formalConsumerInput, workerBuildInputSha256: workerInput, sourceRef }
   const buildReceipts = {
     receipts: [
       {
@@ -389,23 +391,27 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
   }
   const registry = {
     proxy: {
-      role: 'proxy', provenance: 'trusted-registry-adapter', receiptId: 'registry-proxy-001',
+      role: 'proxy', provenance: 'github-sigstore-attestation', receiptId: 'registry-proxy-001',
       imageRef: 'registry.example/darven/proxy:v105', imageDigest: proxyDigest,
+      sourceDigest: commit, sourceRef, signerWorkflow,
     },
     'formal-consumer': {
-      role: 'formal-consumer', provenance: 'trusted-registry-adapter', receiptId: 'registry-formal-consumer-001',
+      role: 'formal-consumer', provenance: 'github-sigstore-attestation', receiptId: 'registry-formal-consumer-001',
       imageRef: 'registry.example/darven/formal-consumer:v105', imageDigest: formalConsumerDigest,
+      sourceDigest: commit, sourceRef, signerWorkflow,
     },
     worker: {
-      role: 'worker', provenance: 'trusted-registry-adapter', receiptId: 'registry-worker-001',
+      role: 'worker', provenance: 'github-sigstore-attestation', receiptId: 'registry-worker-001',
       imageRef: 'registry.example/darven/worker:v105', imageDigest: workerDigest,
+      sourceDigest: commit, sourceRef, signerWorkflow,
     },
   }
   const trustedReadback = async ({ role }) => structuredClone(registry[role])
 
-  assert.deepEqual(
-    await releaseVerifier.verifyTrustedImageEvidence({ buildReceipts, expected, trustedReadback }),
-    { ok: true, images: { proxy: { imageRef: registry.proxy.imageRef, imageDigest: proxyDigest }, 'formal-consumer': { imageRef: registry['formal-consumer'].imageRef, imageDigest: formalConsumerDigest }, worker: { imageRef: registry.worker.imageRef, imageDigest: workerDigest } } },
+  await assert.rejects(
+    releaseVerifier.verifyTrustedImageEvidence({ buildReceipts, expected, trustedReadback }),
+    /trusted_registry_readback_invalid/,
+    'caller-controlled readback cannot acquire the module-private fixed-adapter capability',
   )
   await assert.rejects(releaseVerifier.verifyTrustedImageEvidence({
     buildReceipts: { receipts: buildReceipts.receipts.filter((receipt) => receipt.role !== 'formal-consumer') }, expected, trustedReadback,
@@ -466,19 +472,27 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
   await assert.rejects(releaseVerifier.verifyTrustedImageEvidence({
     buildReceipts, expected,
     trustedReadback: async ({ role }) => ({ ...registry[role], receiptId: buildReceipts.receipts.find((item) => item.role === role).receiptId }),
-  }), /trusted_image_receipt_id_not_independent/)
+  }), /trusted_registry_readback_invalid/)
   await assert.rejects(releaseVerifier.verifyTrustedImageEvidence({
     buildReceipts, expected,
     trustedReadback: async ({ role }) => ({ ...registry[role], provenance: 'trusted-builder' }),
-  }), /trusted_image_provenance_not_independent/)
+  }), /trusted_registry_readback_invalid/)
+  await assert.rejects(releaseVerifier.verifyTrustedImageEvidence({
+    buildReceipts, expected,
+    trustedReadback: async ({ role }) => ({ ...registry[role], sourceDigest: 'f'.repeat(40) }),
+  }), /trusted_registry_readback_invalid/)
+  await assert.rejects(releaseVerifier.verifyTrustedImageEvidence({
+    buildReceipts, expected,
+    trustedReadback: async ({ role }) => ({ ...registry[role], signerWorkflow: 'attacker/repo/.github/workflows/forge.yml' }),
+  }), /trusted_registry_readback_invalid/)
   await assert.rejects(releaseVerifier.verifyTrustedImageEvidence({
     buildReceipts, expected,
     trustedReadback: async ({ role }) => ({ ...registry[role], imageRef: `${registry[role].imageRef}-wrong` }),
-  }), /trusted_image_ref_mismatch/)
+  }), /trusted_registry_readback_invalid/)
   await assert.rejects(releaseVerifier.verifyTrustedImageEvidence({
     buildReceipts, expected,
     trustedReadback: async ({ role }) => ({ ...registry[role], imageDigest: `sha256:${'d'.repeat(64)}` }),
-  }), /trusted_image_digest_mismatch/)
+  }), /trusted_registry_readback_invalid/)
 
   assert.throws(() => releaseVerifier.parseReleaseEvidenceArgs(['--attestation', 'a.json']), /build_receipts_file_required/)
   assert.throws(() => releaseVerifier.parseReleaseEvidenceArgs([
@@ -491,6 +505,12 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
   assert.equal(manifest.releaseBinding.attestation.phase, 'post-build-pre-cutover')
   assert.equal(manifest.releaseBinding.attestation.independentBuildReceiptsRequired, true)
   assert.equal(manifest.releaseBinding.attestation.fixedRegistryAdapterRequired, true)
+  assert.equal(manifest.releaseBinding.attestation.cryptographicProvenanceRequired, true)
+  assert.equal(manifest.releaseBinding.attestation.provenanceProvider, 'github-sigstore-attestation')
+  assert.equal(manifest.releaseBinding.attestation.signerWorkflow, signerWorkflow)
+  assert.equal(manifest.releaseBinding.attestation.sourceRef, sourceRef)
+  assert.equal(manifest.releaseBinding.attestation.denySelfHostedRunners, true)
+  assert.equal(manifest.releaseBinding.implementationTree.paths.includes('.github/workflows/trusted-release-images.yml'), true)
   assert.deepEqual(manifest.releaseBinding.attestation.requiredImageRoles, ['proxy', 'formal-consumer', 'worker'])
 })
 
@@ -503,38 +523,57 @@ test('Reviewer P1 fixed trusted registry adapter uses bounded shell-free argv an
   }
   assert.equal(typeof adapter?.readTrustedRegistryEvidence, 'function')
   const calls = []
+  const sourceDigest = '1'.repeat(40)
+  const sourceRef = 'refs/tags/v105-v10-main.21'
+  const signerWorkflow = 'x0989285458-lgtm/darven-ai-baccarat-proxy/.github/workflows/trusted-release-images.yml'
+  const execFile = (file, args, options) => {
+    calls.push({ file, args, options })
+    return Buffer.from(file === 'docker' ? '{}' : '[{}]')
+  }
   const result = adapter.readTrustedRegistryEvidence({
-    role: 'proxy', imageRef: 'registry.example/darven/proxy:v105',
-    execFile: (file, args, options) => {
-      calls.push({ file, args, options })
-      return Buffer.from('{}')
-    },
+    role: 'proxy', imageRef: 'registry.example/darven/proxy:v105', sourceDigest, sourceRef, execFile,
   })
-  assert.deepEqual(calls.map(({ file, args }) => ({ file, args })), [{
-    file: 'docker', args: ['buildx', 'imagetools', 'inspect', '--raw', 'registry.example/darven/proxy:v105'],
-  }])
-  assert.equal(calls[0].options.shell, false)
+  assert.deepEqual(calls.map(({ file, args }) => ({ file, args })), [
+    { file: 'docker', args: ['buildx', 'imagetools', 'inspect', '--raw', 'registry.example/darven/proxy:v105'] },
+    { file: 'gh', args: [
+      'attestation', 'verify', 'oci://registry.example/darven/proxy:v105',
+      '--repo', 'x0989285458-lgtm/darven-ai-baccarat-proxy',
+      '--signer-workflow', signerWorkflow,
+      '--source-digest', sourceDigest,
+      '--source-ref', sourceRef,
+      '--deny-self-hosted-runners', '--format', 'json',
+    ] },
+  ])
+  assert.equal(calls.every((call) => call.options.shell === false), true)
   assert.equal(calls[0].options.maxBuffer, 4 * 1024 * 1024)
   assert.deepEqual(result, {
-    role: 'proxy', provenance: 'trusted-registry-adapter',
-    receiptId: 'registry-manifest-44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a',
+    role: 'proxy', provenance: 'github-sigstore-attestation',
+    receiptId: 'github-attestation-44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a',
     imageRef: 'registry.example/darven/proxy:v105',
     imageDigest: 'sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a',
+    sourceDigest, sourceRef, signerWorkflow,
   })
   const formalResult = adapter.readTrustedRegistryEvidence({
-    role: 'formal-consumer', imageRef: 'registry.example/darven/formal-consumer:v105',
-    execFile: () => Buffer.from('{}'),
+    role: 'formal-consumer', imageRef: 'registry.example/darven/formal-consumer:v105', sourceDigest, sourceRef,
+    execFile: (file) => Buffer.from(file === 'docker' ? '{}' : '[{}]'),
   })
   assert.equal(formalResult.role, 'formal-consumer')
   assert.equal(formalResult.imageRef, 'registry.example/darven/formal-consumer:v105')
   assert.throws(() => adapter.readTrustedRegistryEvidence({
-    role: 'unknown', imageRef: 'registry.example/darven/unknown:v105', execFile: () => Buffer.from('{}'),
+    role: 'unknown', imageRef: 'registry.example/darven/unknown:v105', sourceDigest, sourceRef, execFile,
   }), /registry_role_invalid/)
   assert.throws(() => adapter.readTrustedRegistryEvidence({
-    role: 'worker', imageRef: 'registry.example/darven/worker:v105',
+    role: 'worker', imageRef: 'registry.example/darven/worker:v105', sourceDigest, sourceRef,
     execFile: () => Buffer.from('{"token":"must-not-pass"}'),
   }), /registry_readback_secret_rejected/)
   assert.throws(() => adapter.readTrustedRegistryEvidence({
-    role: 'worker', imageRef: 'registry.example/darven/worker:v105;calc.exe', execFile: () => Buffer.from('{}'),
+    role: 'worker', imageRef: 'registry.example/darven/worker:v105;calc.exe', sourceDigest, sourceRef, execFile,
   }), /registry_image_ref_invalid/)
+  assert.throws(() => adapter.readTrustedRegistryEvidence({
+    role: 'worker', imageRef: 'registry.example/darven/worker:v105', sourceDigest, sourceRef: 'refs/heads/main', execFile,
+  }), /registry_source_ref_invalid/)
+  assert.throws(() => adapter.readTrustedRegistryEvidence({
+    role: 'worker', imageRef: 'registry.example/darven/worker:v105', sourceDigest, sourceRef,
+    execFile: (file) => Buffer.from(file === 'docker' ? '{}' : '[]'),
+  }), /github_attestation_missing/)
 })

@@ -4,10 +4,17 @@ import { pathToFileURL } from 'node:url'
 import path from 'node:path'
 
 const MAX_RAW_BYTES = 4 * 1024 * 1024
+const MAX_ATTESTATION_BYTES = 4 * 1024 * 1024
+const TRUSTED_REPOSITORY = 'x0989285458-lgtm/darven-ai-baccarat-proxy'
+const TRUSTED_SIGNER_WORKFLOW = 'x0989285458-lgtm/darven-ai-baccarat-proxy/.github/workflows/trusted-release-images.yml'
+const TRUSTED_SOURCE_REF = 'refs/tags/v105-v10-main.21'
 
-export function readTrustedRegistryEvidence({ role, imageRef, execFile = execFileSync } = {}) {
+export function readTrustedRegistryEvidence({ role, imageRef, sourceDigest, sourceRef, execFile = execFileSync } = {}) {
   if (!['proxy', 'formal-consumer', 'worker'].includes(role)) throw new Error('registry_role_invalid')
   if (!isRegistryImageRef(imageRef)) throw new Error('registry_image_ref_invalid')
+  if (!/^[a-f0-9]{40}$/.test(String(sourceDigest ?? ''))) throw new Error('registry_source_digest_invalid')
+  if (sourceRef !== TRUSTED_SOURCE_REF) throw new Error('registry_source_ref_invalid')
+
   const raw = execFile('docker', ['buildx', 'imagetools', 'inspect', '--raw', imageRef], {
     encoding: null,
     shell: false,
@@ -23,12 +30,40 @@ export function readTrustedRegistryEvidence({ role, imageRef, execFile = execFil
   }
   assertNoSecretMaterial(manifest)
   const digestValue = crypto.createHash('sha256').update(bytes).digest('hex')
+
+  const attestationRaw = execFile('gh', [
+    'attestation', 'verify', `oci://${imageRef}`,
+    '--repo', TRUSTED_REPOSITORY,
+    '--signer-workflow', TRUSTED_SIGNER_WORKFLOW,
+    '--source-digest', sourceDigest,
+    '--source-ref', sourceRef,
+    '--deny-self-hosted-runners',
+    '--format', 'json',
+  ], {
+    encoding: null,
+    shell: false,
+    windowsHide: true,
+    timeout: 90_000,
+    maxBuffer: MAX_ATTESTATION_BYTES,
+  })
+  const attestationBytes = Buffer.isBuffer(attestationRaw) ? attestationRaw : Buffer.from(attestationRaw ?? '')
+  if (attestationBytes.length === 0 || attestationBytes.length > MAX_ATTESTATION_BYTES) throw new Error('github_attestation_size_invalid')
+  let attestations
+  try { attestations = JSON.parse(attestationBytes.toString('utf8')) } catch (error) {
+    throw new Error('github_attestation_json_invalid', { cause: error })
+  }
+  assertNoSecretMaterial(attestations)
+  if (!Array.isArray(attestations) || attestations.length < 1) throw new Error('github_attestation_missing')
+
   return {
     role,
-    provenance: 'trusted-registry-adapter',
-    receiptId: `registry-manifest-${digestValue}`,
+    provenance: 'github-sigstore-attestation',
+    receiptId: `github-attestation-${digestValue}`,
     imageRef,
     imageDigest: `sha256:${digestValue}`,
+    sourceDigest,
+    sourceRef,
+    signerWorkflow: TRUSTED_SIGNER_WORKFLOW,
   }
 }
 
@@ -58,7 +93,7 @@ function assertNoSecretMaterial(value) {
 }
 
 function parseArgs(argv) {
-  const allowed = new Set(['--role', '--image-ref'])
+  const allowed = new Set(['--role', '--image-ref', '--source-digest', '--source-ref'])
   const values = new Map()
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index]
@@ -66,8 +101,13 @@ function parseArgs(argv) {
     if (!allowed.has(flag) || !value || String(value).startsWith('--') || values.has(flag)) throw new Error('registry_adapter_arguments_invalid')
     values.set(flag, value)
   }
-  if (!values.has('--role') || !values.has('--image-ref')) throw new Error('registry_adapter_arguments_invalid')
-  return { role: values.get('--role'), imageRef: values.get('--image-ref') }
+  if ([...allowed].some((flag) => !values.has(flag))) throw new Error('registry_adapter_arguments_invalid')
+  return {
+    role: values.get('--role'),
+    imageRef: values.get('--image-ref'),
+    sourceDigest: values.get('--source-digest'),
+    sourceRef: values.get('--source-ref'),
+  }
 }
 
 function main() {

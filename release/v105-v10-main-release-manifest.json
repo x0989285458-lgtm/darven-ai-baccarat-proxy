@@ -117,10 +117,14 @@
         "proxy/test/v105-mt-api-release-binding.test.js",
         "release/v105-v10-main-release-report.json",
         "proxy/deploy/render.yaml",
-        "proxy/test/deploy-config.test.js"
+        "proxy/test/deploy-config.test.js",
+        ".github/workflows/trusted-release-images.yml",
+        "proxy/Dockerfile.evidence",
+        "proxy/Dockerfile.evidence.dockerignore",
+        "cloud-browser-worker/Dockerfile.dockerignore"
       ],
       "excludedPaths": [],
-      "sha256": "2efd08d8f6462856b34f2facb01b195eee7bf7a146116093e1fe1d3be5bfb6d5"
+      "sha256": "b3c9338ef263444148f40bd6968e164ab13e947e69a65c002fdad9f534037ef1"
     },
     "zeroFinalHeartbeatMigration": {
       "algorithm": "sha256",
@@ -135,15 +139,15 @@
     "workerBuildInput": {
       "algorithm": "sha256",
       "paths": [
-        "cloud-browser-worker/.dockerignore",
         "cloud-browser-worker/Dockerfile",
+        "cloud-browser-worker/Dockerfile.dockerignore",
         "cloud-browser-worker/package.json",
         "cloud-browser-worker/package-lock.json",
         "cloud-browser-worker/src",
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "91c87399ebb4c8bb76506951fac4e082ea3e7ae52dd17a65f8ea75fa20f2566c"
+      "sha256": "751ef8c19a495f86307c525419e53202399a45110a12ecdf3485159db830d420"
     },
     "transportRebindMigration": {
       "algorithm": "sha256",

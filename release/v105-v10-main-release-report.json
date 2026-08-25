@@ -9,8 +9,8 @@
   "tests": {
     "parentExternalConsumerIsolation": "4/4 PASS",
     "dependencyBinding": "8/8 PASS",
-    "mainBinding": "4/4 PASS",
-    "proxyFullSerial": "1005/1005 PASS",
+    "mainBinding": "5/5 PASS",
+    "proxyFullSerial": "1006/1006 PASS",
     "frontendFull": "159/159 PASS",
     "frontendBuild": "PASS"
   },

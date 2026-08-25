@@ -1,0 +1,5 @@
+**
+!cloud-browser-worker/package.json
+!cloud-browser-worker/package-lock.json
+!cloud-browser-worker/src/**
+!shared/**

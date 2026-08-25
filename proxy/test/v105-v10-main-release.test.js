@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { verifyV105V10MainManifestDigests } from '../../scripts/verify-v105-mt-api-release.mjs'
+import { verifyMain21ReleaseReportContract, verifyManifestDigests, verifyV105V10MainManifestDigests } from '../../scripts/verify-v105-mt-api-release.mjs'
 
 const manifest = JSON.parse(readFileSync(new URL('../../release/v105-v10-main-release-manifest.json', import.meta.url)))
 const dependencyManifest = JSON.parse(readFileSync(new URL('../../release/v105-v10-main21-source-fence-release-manifest.json', import.meta.url)))
@@ -80,7 +80,7 @@ test('V105 V10 main release binding covers the exact prediction implementation a
   ])
   assert.match(manifest.releaseBinding.formalConsumerBuildInput.sha256, /^[a-f0-9]{64}$/)
   assert.deepEqual(manifest.releaseBinding.workerBuildInput.paths, [
-    'cloud-browser-worker/.dockerignore', 'cloud-browser-worker/Dockerfile',
+    'cloud-browser-worker/Dockerfile', 'cloud-browser-worker/Dockerfile.dockerignore',
     'cloud-browser-worker/package.json', 'cloud-browser-worker/package-lock.json',
     'cloud-browser-worker/src', 'shared',
   ])
@@ -112,7 +112,13 @@ test('V105 V10 main canonical verifier loads both manifests and rejects duplicat
   for (const key of ['implementationTree', 'zeroFinalHeartbeatMigration', 'sameSessionOutboxBatchMigration', 'transportRebindMigration', 'formalConsumerBuildInput', 'workerBuildInput']) {
     unexpectedMainBindingShape.releaseBinding[key].unexpectedShapeField = 'MUTATION'
   }
-  await assert.rejects(verifyV105V10MainManifestDigests({ manifest: unexpectedMainBindingShape, dependencyManifest, repoRoot: root, candidateIndexTree }), /v105_v10_main_binding_shape_invalid/)
+  await assert.rejects(verifyV105V10MainManifestDigests({ manifest: unexpectedMainBindingShape, dependencyManifest, repoRoot: root, candidateIndexTree }), /v105_v10_main_build_input_scope_invalid/)
+  const unexpectedMainTopLevelBinding = structuredClone(manifest)
+  unexpectedMainTopLevelBinding.releaseBinding.attackerControlledBinding = { algorithm: 'sha256' }
+  await assert.rejects(verifyV105V10MainManifestDigests({ manifest: unexpectedMainTopLevelBinding, dependencyManifest, repoRoot: root, candidateIndexTree }), /v105_v10_main_binding_keys_invalid/)
+  const narrowedFormalBuildScope = structuredClone(dependencyManifest)
+  narrowedFormalBuildScope.releaseBinding.formalConsumerBuildInput.excludedPaths = ['proxy/src/server.js']
+  await assert.rejects(verifyManifestDigests({ manifest: narrowedFormalBuildScope, repoRoot: root, candidateIndexTree }), /release_build_input_scope_invalid/)
   const driftedDependencyWorker = structuredClone(dependencyManifest)
   driftedDependencyWorker.releaseBinding.workerBuildInput.excludedPaths = ['cloud-browser-worker/src/index.js']
   await assert.rejects(verifyV105V10MainManifestDigests({ manifest, dependencyManifest: driftedDependencyWorker, repoRoot: root, candidateIndexTree }), /v105_v10_main_dependency_contract_invalid/)
@@ -145,6 +151,23 @@ test('V105 V10 main canonical verifier loads both manifests and rejects duplicat
     const drifted = structuredClone(dependencyManifest)
     mutate(drifted)
     await assert.rejects(verifyV105V10MainManifestDigests({ manifest, dependencyManifest: drifted, repoRoot: root, candidateIndexTree }), expected)
+  }
+})
+
+test('V105 Main21 release report is exact and cannot self-approve production gates', () => {
+  assert.deepEqual(verifyMain21ReleaseReportContract(releaseReport, manifest.releaseVersion), { ok: true })
+  const mutations = [
+    (value) => { value.status = 'review-pass' },
+    (value) => { value.tests.proxyFullSerial = '1005/1006 PASS' },
+    (value) => { value.tests.unreviewed = 'PASS' },
+    (value) => { value.productionGates.exactCommitReview = true },
+    (value) => { delete value.productionGates.tenTables },
+    (value) => { value.unexpectedTopLevel = true },
+  ]
+  for (const mutate of mutations) {
+    const drifted = structuredClone(releaseReport)
+    mutate(drifted)
+    assert.throws(() => verifyMain21ReleaseReportContract(drifted, manifest.releaseVersion), /v105_v10_main_release_report_invalid/)
   }
 })
 

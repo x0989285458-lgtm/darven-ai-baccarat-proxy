@@ -233,13 +233,17 @@
         "proxy/test/v105-mt-api-release-binding.test.js",
         "proxy/test/v105-v10-main-release.test.js",
         "release/v105-v10-main-release-report.json",
-        "proxy/test/deploy-config.test.js"
+        "proxy/test/deploy-config.test.js",
+        ".github/workflows/trusted-release-images.yml",
+        "proxy/Dockerfile.evidence",
+        "proxy/Dockerfile.evidence.dockerignore",
+        "cloud-browser-worker/Dockerfile.dockerignore"
       ],
       "excludedPaths": [
         "release/v105-v10-main21-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "31ce2a3706e71e365b8db9c4ad9778a9999f74ff38336c86be5bd30cdaf34817"
+      "sha256": "3777f2b43d8dddb9d61a0df50698a19f380a9e398c4621652b33008daa2c7248"
     },
     "migration": {
       "algorithm": "sha256",
@@ -264,6 +268,8 @@
     "proxyBuildInput": {
       "algorithm": "sha256",
       "paths": [
+        "proxy/Dockerfile.evidence",
+        "proxy/Dockerfile.evidence.dockerignore",
         "proxy/package.json",
         "proxy/package-lock.json",
         "proxy/deploy/render.yaml",
@@ -271,20 +277,20 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "29b5cb3eeb98f79a0c66c3ad94533e21914979e60567cc48e8768118fc77b651"
+      "sha256": "9b66f23a3a38173cc4602819e9432335cc56954c3a107e19eb9d556c579b0b1b"
     },
     "workerBuildInput": {
       "algorithm": "sha256",
       "paths": [
-        "cloud-browser-worker/.dockerignore",
         "cloud-browser-worker/Dockerfile",
+        "cloud-browser-worker/Dockerfile.dockerignore",
         "cloud-browser-worker/package.json",
         "cloud-browser-worker/package-lock.json",
         "cloud-browser-worker/src",
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "91c87399ebb4c8bb76506951fac4e082ea3e7ae52dd17a65f8ea75fa20f2566c"
+      "sha256": "751ef8c19a495f86307c525419e53202399a45110a12ecdf3485159db830d420"
     },
     "attestation": {
       "externalFileRequired": true,
@@ -300,7 +306,13 @@
         "proxy",
         "formal-consumer",
         "worker"
-      ]
+      ],
+      "cryptographicProvenanceRequired": true,
+      "provenanceProvider": "github-sigstore-attestation",
+      "trustedRepository": "x0989285458-lgtm/darven-ai-baccarat-proxy",
+      "signerWorkflow": "x0989285458-lgtm/darven-ai-baccarat-proxy/.github/workflows/trusted-release-images.yml",
+      "sourceRef": "refs/tags/v105-v10-main.21",
+      "denySelfHostedRunners": true
     },
     "shadowHydrationMigration": {
       "algorithm": "sha256",

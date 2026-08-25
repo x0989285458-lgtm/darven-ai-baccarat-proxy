@@ -1,0 +1,5 @@
+**
+!proxy/package.json
+!proxy/package-lock.json
+!proxy/src/**
+!shared/**
