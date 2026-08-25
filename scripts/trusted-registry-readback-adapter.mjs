@@ -8,12 +8,18 @@ const MAX_ATTESTATION_BYTES = 4 * 1024 * 1024
 const TRUSTED_REPOSITORY = 'x0989285458-lgtm/darven-ai-baccarat-proxy'
 const TRUSTED_SIGNER_WORKFLOW = 'x0989285458-lgtm/darven-ai-baccarat-proxy/.github/workflows/trusted-release-images.yml'
 const TRUSTED_SOURCE_REF = 'refs/tags/v105-v10-main.21'
+const ROLE_REPOSITORIES = Object.freeze({
+  proxy: 'ghcr.io/x0989285458-lgtm/darven-ai-baccarat-proxy',
+  'formal-consumer': 'ghcr.io/x0989285458-lgtm/darven-ai-baccarat-formal-consumer',
+  worker: 'ghcr.io/x0989285458-lgtm/darven-ai-baccarat-worker',
+})
 
 export function readTrustedRegistryEvidence({ role, imageRef, sourceDigest, sourceRef, execFile = execFileSync } = {}) {
   if (!['proxy', 'formal-consumer', 'worker'].includes(role)) throw new Error('registry_role_invalid')
-  if (!isRegistryImageRef(imageRef)) throw new Error('registry_image_ref_invalid')
   if (!/^[a-f0-9]{40}$/.test(String(sourceDigest ?? ''))) throw new Error('registry_source_digest_invalid')
   if (sourceRef !== TRUSTED_SOURCE_REF) throw new Error('registry_source_ref_invalid')
+  const expectedImageRef = `${ROLE_REPOSITORIES[role]}:${sourceDigest}`
+  if (!isRegistryImageRef(imageRef) || imageRef !== expectedImageRef) throw new Error('registry_image_ref_invalid')
 
   const raw = execFile('docker', ['buildx', 'imagetools', 'inspect', '--raw', imageRef], {
     encoding: null,
@@ -30,9 +36,11 @@ export function readTrustedRegistryEvidence({ role, imageRef, sourceDigest, sour
   }
   assertNoSecretMaterial(manifest)
   const digestValue = crypto.createHash('sha256').update(bytes).digest('hex')
+  const imageDigest = `sha256:${digestValue}`
+  const immutableImageRef = `${ROLE_REPOSITORIES[role]}@${imageDigest}`
 
   const attestationRaw = execFile('gh', [
-    'attestation', 'verify', `oci://${imageRef}`,
+    'attestation', 'verify', `oci://${immutableImageRef}`,
     '--repo', TRUSTED_REPOSITORY,
     '--signer-workflow', TRUSTED_SIGNER_WORKFLOW,
     '--source-digest', sourceDigest,
@@ -54,13 +62,22 @@ export function readTrustedRegistryEvidence({ role, imageRef, sourceDigest, sour
   }
   assertNoSecretMaterial(attestations)
   if (!Array.isArray(attestations) || attestations.length < 1) throw new Error('github_attestation_missing')
+  const subjectMatch = attestations.some((entry) => {
+    const subjects = entry?.verificationResult?.statement?.subject
+    return Array.isArray(subjects) && subjects.some((subject) => subject?.name === ROLE_REPOSITORIES[role]
+      && subject?.digest?.sha256 === digestValue)
+  })
+  if (!subjectMatch) throw new Error('github_attestation_subject_mismatch')
 
   return {
     role,
     provenance: 'github-sigstore-attestation',
     receiptId: `github-attestation-${digestValue}`,
     imageRef,
-    imageDigest: `sha256:${digestValue}`,
+    imageDigest,
+    immutableImageRef,
+    subjectName: ROLE_REPOSITORIES[role],
+    subjectDigest: imageDigest,
     sourceDigest,
     sourceRef,
     signerWorkflow: TRUSTED_SIGNER_WORKFLOW,

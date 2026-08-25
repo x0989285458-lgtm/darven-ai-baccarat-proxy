@@ -69,6 +69,28 @@ const MAIN21_BINDING_KEYS = Object.freeze([
   'formalConsumerBuildInput', 'implementationTree', 'sameSessionOutboxBatchMigration',
   'transportRebindMigration', 'workerBuildInput', 'zeroFinalHeartbeatMigration',
 ])
+const MAIN21_MANIFEST_KEYS = Object.freeze([
+  'applicationVersion', 'baseCommit', 'deploymentOrder', 'formalStrategyVersion', 'gitTag', 'prediction',
+  'releaseBinding', 'releaseName', 'releaseScope', 'releaseVersion', 'rollbackFromCurrentV106',
+])
+const DEPENDENCY_MANIFEST_KEYS = Object.freeze([
+  'adminSession', 'applicationVersion', 'applicationVersionChanged', 'baseCommit', 'behavior', 'browserColdBackup',
+  'database', 'deploymentOrder', 'formalStrategyVersion', 'gitTag', 'newRoundDelivery', 'proxy', 'readbackGate',
+  'releaseBinding', 'releaseName', 'releaseScope', 'releaseVersion', 'rollback', 'shadowHydrationHotfix',
+  'shadowV10', 'shadowV9Isolation',
+])
+const DEPENDENCY_BINDING_KEYS = Object.freeze([
+  'attestation', 'captureOutboxHealthMigration', 'formalConsumerBuildInput', 'implementationTree', 'migration',
+  'proxyBuildInput', 'rankLedgerRecoveryMigration', 'rankSyncHydrationMigration', 'sameSessionOutboxBatchMigration',
+  'shadowHydrationMigration', 'shadowV10DbValidationMigration', 'shadowV10Migration',
+  'shadowV6V8RetirementMigration', 'transportRebindMigration', 'workerBuildInput', 'zeroFinalHeartbeatMigration',
+])
+const ATTESTATION_KEYS = Object.freeze([
+  'abortOnMismatch', 'arbitraryReadbackJsonRejected', 'cryptographicProvenanceRequired', 'denySelfHostedRunners',
+  'externalFileRequired', 'fixedRegistryAdapter', 'fixedRegistryAdapterRequired', 'imageDigestReadbackRequired',
+  'immutableCommitAndAnnotatedTagRequired', 'independentBuildReceiptsRequired', 'phase', 'provenanceProvider',
+  'requiredImageRoles', 'signerWorkflow', 'sourceRef', 'trustedRepository',
+])
 const PROXY_BUILD_PATHS = Object.freeze([
   'proxy/Dockerfile.evidence', 'proxy/Dockerfile.evidence.dockerignore',
   'proxy/package.json', 'proxy/package-lock.json',
@@ -182,6 +204,18 @@ export async function assertExternalAttestationPath({ repoRoot, attestationPath,
 export async function verifyManifestDigests({ manifest, repoRoot, candidateIndexTree } = {}) {
   const binding = manifest?.releaseBinding
   if (!binding) throw new Error('release_binding_missing')
+  if (!hasExactKeys(manifest, DEPENDENCY_MANIFEST_KEYS)) throw new Error('release_manifest_keys_invalid')
+  if (!hasExactKeys(binding, DEPENDENCY_BINDING_KEYS)) throw new Error('release_binding_keys_invalid')
+  if (!hasExactKeys(binding.implementationTree, ['algorithm', 'paths', 'excludedPaths', 'sha256'])) throw new Error('release_implementation_shape_invalid')
+  if (!hasExactKeys(binding.attestation, ATTESTATION_KEYS)) throw new Error('release_attestation_shape_invalid')
+  for (const key of [
+    'migration', 'captureOutboxHealthMigration', 'zeroFinalHeartbeatMigration', 'sameSessionOutboxBatchMigration',
+    'shadowHydrationMigration', 'shadowV10Migration', 'shadowV10DbValidationMigration',
+    'shadowV6V8RetirementMigration', 'rankLedgerRecoveryMigration', 'rankSyncHydrationMigration',
+    'transportRebindMigration',
+  ]) {
+    if (!hasExactKeys(binding[key], ['algorithm', 'path', 'sha256'])) throw new Error(`release_migration_shape_invalid:${key}`)
+  }
   if (!hasExactBuildScope(binding.proxyBuildInput, PROXY_BUILD_PATHS)
     || !hasExactBuildScope(binding.formalConsumerBuildInput, FORMAL_CONSUMER_BUILD_PATHS)
     || !hasExactBuildScope(binding.workerBuildInput, WORKER_BUILD_PATHS)) throw new Error('release_build_input_scope_invalid')
@@ -352,6 +386,7 @@ export function verifyMain21ReleaseReportContract(releaseReport, releaseVersion 
 }
 
 export async function verifyV105V10MainManifestDigests({ manifest, dependencyManifest, repoRoot, candidateIndexTree } = {}) {
+  if (!hasExactKeys(manifest, MAIN21_MANIFEST_KEYS)) throw new Error('v105_v10_main_manifest_keys_invalid')
   const binding = manifest?.releaseBinding
   if (!binding) throw new Error('v105_v10_main_release_binding_missing')
   if (!hasExactKeys(binding, MAIN21_BINDING_KEYS)) throw new Error('v105_v10_main_binding_keys_invalid')
@@ -584,6 +619,7 @@ export function verifyExternalReleaseAttestation(attestation = {}, expected = {}
     if (!/^[a-f0-9]{40}$/.test(String(value ?? ''))) throw new Error(`attestation_${field}_invalid`)
   }
   if (!String(attestation.tag ?? '').trim()) throw new Error('attestation_tag_invalid')
+  if (!/^[a-f0-9]{40}$/.test(String(expected.commit ?? '')) || attestation.commit !== expected.commit) throw new Error('attestation_commit_mismatch')
   if (!String(expected.gitTag ?? '').trim() || attestation.tag !== expected.gitTag) throw new Error('attestation_tag_mismatch')
   if (!/^[a-f0-9]{40}$/.test(String(expected.candidateIndexTree ?? ''))
     || attestation.tree !== expected.candidateIndexTree) throw new Error('attestation_tree_mismatch')
@@ -599,6 +635,15 @@ export function verifyExternalReleaseAttestation(attestation = {}, expected = {}
       || expected.resolvedTagObject !== attestation.tagObject) throw new Error('immutable_git_attestation_readback_mismatch')
   }
   return { ok: true }
+}
+
+function trustedImageRepository(role) {
+  const repositories = {
+    proxy: 'ghcr.io/x0989285458-lgtm/darven-ai-baccarat-proxy',
+    'formal-consumer': 'ghcr.io/x0989285458-lgtm/darven-ai-baccarat-formal-consumer',
+    worker: 'ghcr.io/x0989285458-lgtm/darven-ai-baccarat-worker',
+  }
+  return repositories[role] ?? ''
 }
 
 export async function verifyTrustedImageEvidence({ buildReceipts, expected = {}, trustedReadback } = {}) {
@@ -622,7 +667,8 @@ export async function verifyTrustedImageEvidence({ buildReceipts, expected = {},
     if (!/^[a-f0-9]{64}$/.test(String(receipt.buildInputSha256 ?? '')) || receipt.buildInputSha256 !== expectedInput) {
       throw new Error(`trusted_build_receipt_input_mismatch:${role}`)
     }
-    if (!isRegistryImageRef(receipt.imageRef)) throw new Error(`trusted_build_receipt_image_ref_invalid:${role}`)
+    const expectedImageRef = `${trustedImageRepository(role)}:${expected.commit}`
+    if (!isRegistryImageRef(receipt.imageRef) || receipt.imageRef !== expectedImageRef) throw new Error(`trusted_build_receipt_image_ref_invalid:${role}`)
     if (!isImageDigest(receipt.imageDigest)) throw new Error(`trusted_build_receipt_image_digest_invalid:${role}`)
     receipts.set(role, receipt)
   }
@@ -641,7 +687,10 @@ export async function verifyTrustedImageEvidence({ buildReceipts, expected = {},
       || readback.provenance !== 'github-sigstore-attestation'
       || readback.sourceDigest !== expected.commit
       || readback.sourceRef !== expected.sourceRef
-      || readback.signerWorkflow !== TRUSTED_SIGNER_WORKFLOW) {
+      || readback.signerWorkflow !== TRUSTED_SIGNER_WORKFLOW
+      || readback.subjectName !== trustedImageRepository(role)
+      || readback.subjectDigest !== build.imageDigest
+      || readback.immutableImageRef !== `${build.imageRef}@${build.imageDigest}`) {
       throw new Error(`trusted_registry_readback_invalid:${role}`)
     }
     if (readback.receiptId === build.receiptId) throw new Error(`trusted_image_receipt_id_not_independent:${role}`)
@@ -813,7 +862,10 @@ async function main() {
   const mainManifest = JSON.parse(mainManifestBytes.toString('utf8'))
   const digests = await verifyManifestDigests({ manifest, repoRoot, candidateIndexTree })
   await verifyV105V10MainManifestDigests({ manifest: mainManifest, dependencyManifest: manifest, repoRoot, candidateIndexTree })
-  const expected = { ...digests, gitTag: manifest.gitTag, candidateIndexTree }
+  const candidateCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim()
+  const candidateCommitTree = execFileSync('git', ['rev-parse', `${candidateCommit}^{tree}`], { cwd: repoRoot, encoding: 'utf8' }).trim()
+  if (!/^[a-f0-9]{40}$/.test(candidateCommit) || candidateCommitTree !== candidateIndexTree) throw new Error('candidate_commit_tree_mismatch')
+  const expected = { ...digests, commit: candidateCommit, gitTag: manifest.gitTag, candidateIndexTree }
   const evidenceArgs = parseReleaseEvidenceArgs(process.argv.slice(2))
   const attestationPath = await assertExternalAttestationPath({ repoRoot, attestationPath: evidenceArgs.attestationPath })
   const buildReceiptsPath = await assertExternalAttestationPath({ repoRoot, attestationPath: evidenceArgs.buildReceiptsPath })
@@ -833,7 +885,7 @@ async function main() {
   const trustedImages = await verifyTrustedImageEvidence({
     buildReceipts,
     expected: {
-      commit: attestation.commit,
+      commit: candidateCommit,
       tree: candidateIndexTree,
       proxyBuildInputSha256: digests.proxyBuildInputSha256,
       formalConsumerBuildInputSha256: digests.formalConsumerBuildInputSha256,
@@ -841,7 +893,7 @@ async function main() {
       sourceRef: TRUSTED_SOURCE_REF,
     },
     trustedReadback: createFixedRegistryReadback(adapterPath, {
-      sourceDigest: attestation.commit,
+      sourceDigest: candidateCommit,
       sourceRef: TRUSTED_SOURCE_REF,
     }),
   })

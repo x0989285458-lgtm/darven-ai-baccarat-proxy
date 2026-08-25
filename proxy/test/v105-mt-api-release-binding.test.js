@@ -128,6 +128,17 @@ test('release manifest freezes current implementation, migration, proxy, and wor
   const candidateIndexTree = execFileSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).trim()
   const result = await verifyManifestDigests({ manifest, repoRoot, candidateIndexTree })
   assert.equal(result.ok, true)
+  for (const [mutate, error] of [
+    [(value) => { value.unexpected = true }, /release_manifest_keys_invalid/],
+    [(value) => { value.releaseBinding.unexpected = true }, /release_binding_keys_invalid/],
+    [(value) => { value.releaseBinding.implementationTree.unexpected = true }, /release_implementation_shape_invalid/],
+    [(value) => { value.releaseBinding.migration.unexpected = true }, /release_migration_shape_invalid:migration/],
+    [(value) => { value.releaseBinding.attestation.unexpected = true }, /release_attestation_shape_invalid/],
+  ]) {
+    const drifted = structuredClone(manifest)
+    mutate(drifted)
+    await assert.rejects(verifyManifestDigests({ manifest: drifted, repoRoot, candidateIndexTree }), error)
+  }
   assert.match(manifest.releaseBinding.implementationTree.sha256, /^[a-f0-9]{64}$/)
   assert.match(manifest.releaseBinding.migration.sha256, /^[a-f0-9]{64}$/)
   assert.match(manifest.releaseBinding.proxyBuildInput.sha256, /^[a-f0-9]{64}$/)
@@ -266,6 +277,7 @@ test('Reviewer P1 attestation exact binding rejects old tag and wrong tree while
     rankSyncHydrationMigrationSha256: 'a'.repeat(64),
     shadowV6V8RetirementMigrationSha256: 'f'.repeat(64),
     proxyBuildInputSha256: '5'.repeat(64), formalConsumerBuildInputSha256: '0'.repeat(64), workerBuildInputSha256: '6'.repeat(64),
+    commit: attestation.commit,
     gitTag: manifest.gitTag, candidateIndexTree,
   }
   assert.equal(verifyExternalReleaseAttestation(attestation, expected).ok, true)
@@ -283,6 +295,7 @@ test('Reviewer P1 attestation exact binding rejects old tag and wrong tree while
     tagObjectType: 'tag',
     tagCommit: attestation.commit,
   }), /immutable_git_attestation_readback_mismatch/)
+  assert.throws(() => verifyExternalReleaseAttestation({ ...attestation, commit: 'a'.repeat(40) }, expected), /attestation_commit_mismatch/)
   assert.throws(() => verifyExternalReleaseAttestation({ ...attestation, tag: 'v105-mt-api-primary.0' }, expected), /attestation_tag_mismatch/)
   assert.throws(() => verifyExternalReleaseAttestation({ ...attestation, tree: '2'.repeat(40) }, expected), /attestation_tree_mismatch/)
   assert.throws(() => verifyExternalReleaseAttestation({ ...attestation, sameSessionOutboxBatchMigrationSha256: '0'.repeat(64) }, expected), /attestation_sameSessionOutboxBatchMigrationSha256_mismatch/)
@@ -377,32 +390,38 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
     receipts: [
       {
         role: 'proxy', provenance: 'trusted-builder', receiptId: 'build-proxy-001', commit, tree,
-        buildInputSha256: proxyInput, imageRef: 'registry.example/darven/proxy:v105', imageDigest: proxyDigest,
+        buildInputSha256: proxyInput, imageRef: `ghcr.io/x0989285458-lgtm/darven-ai-baccarat-proxy:${commit}`, imageDigest: proxyDigest,
       },
       {
         role: 'formal-consumer', provenance: 'trusted-builder', receiptId: 'build-formal-consumer-001', commit, tree,
-        buildInputSha256: formalConsumerInput, imageRef: 'registry.example/darven/formal-consumer:v105', imageDigest: formalConsumerDigest,
+        buildInputSha256: formalConsumerInput, imageRef: `ghcr.io/x0989285458-lgtm/darven-ai-baccarat-formal-consumer:${commit}`, imageDigest: formalConsumerDigest,
       },
       {
         role: 'worker', provenance: 'trusted-builder', receiptId: 'build-worker-001', commit, tree,
-        buildInputSha256: workerInput, imageRef: 'registry.example/darven/worker:v105', imageDigest: workerDigest,
+        buildInputSha256: workerInput, imageRef: `ghcr.io/x0989285458-lgtm/darven-ai-baccarat-worker:${commit}`, imageDigest: workerDigest,
       },
     ],
   }
   const registry = {
     proxy: {
       role: 'proxy', provenance: 'github-sigstore-attestation', receiptId: 'registry-proxy-001',
-      imageRef: 'registry.example/darven/proxy:v105', imageDigest: proxyDigest,
+      imageRef: `ghcr.io/x0989285458-lgtm/darven-ai-baccarat-proxy:${commit}`, imageDigest: proxyDigest,
+      immutableImageRef: `ghcr.io/x0989285458-lgtm/darven-ai-baccarat-proxy:${commit}@${proxyDigest}`,
+      subjectName: 'ghcr.io/x0989285458-lgtm/darven-ai-baccarat-proxy', subjectDigest: proxyDigest,
       sourceDigest: commit, sourceRef, signerWorkflow,
     },
     'formal-consumer': {
       role: 'formal-consumer', provenance: 'github-sigstore-attestation', receiptId: 'registry-formal-consumer-001',
-      imageRef: 'registry.example/darven/formal-consumer:v105', imageDigest: formalConsumerDigest,
+      imageRef: `ghcr.io/x0989285458-lgtm/darven-ai-baccarat-formal-consumer:${commit}`, imageDigest: formalConsumerDigest,
+      immutableImageRef: `ghcr.io/x0989285458-lgtm/darven-ai-baccarat-formal-consumer:${commit}@${formalConsumerDigest}`,
+      subjectName: 'ghcr.io/x0989285458-lgtm/darven-ai-baccarat-formal-consumer', subjectDigest: formalConsumerDigest,
       sourceDigest: commit, sourceRef, signerWorkflow,
     },
     worker: {
       role: 'worker', provenance: 'github-sigstore-attestation', receiptId: 'registry-worker-001',
-      imageRef: 'registry.example/darven/worker:v105', imageDigest: workerDigest,
+      imageRef: `ghcr.io/x0989285458-lgtm/darven-ai-baccarat-worker:${commit}`, imageDigest: workerDigest,
+      immutableImageRef: `ghcr.io/x0989285458-lgtm/darven-ai-baccarat-worker:${commit}@${workerDigest}`,
+      subjectName: 'ghcr.io/x0989285458-lgtm/darven-ai-baccarat-worker', subjectDigest: workerDigest,
       sourceDigest: commit, sourceRef, signerWorkflow,
     },
   }
@@ -435,7 +454,7 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
     },
   }
   assert.equal(verifyExternalReleaseAttestation(external, {
-    gitTag: manifest.gitTag, candidateIndexTree: tree,
+    commit, gitTag: manifest.gitTag, candidateIndexTree: tree,
     implementationTreeSha256: external.implementationTreeSha256, migrationSha256: external.migrationSha256,
     captureOutboxHealthMigrationSha256: external.captureOutboxHealthMigrationSha256,
     zeroFinalHeartbeatMigrationSha256: external.zeroFinalHeartbeatMigrationSha256,
@@ -514,29 +533,29 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
   assert.deepEqual(manifest.releaseBinding.attestation.requiredImageRoles, ['proxy', 'formal-consumer', 'worker'])
 })
 
-test('Reviewer P1 fixed trusted registry adapter uses bounded shell-free argv and rejects secret-shaped registry data', async () => {
-  let adapter = null
-  try {
-    adapter = await import('../../scripts/trusted-registry-readback-adapter.mjs')
-  } catch (error) {
-    if (error?.code !== 'ERR_MODULE_NOT_FOUND') throw error
-  }
-  assert.equal(typeof adapter?.readTrustedRegistryEvidence, 'function')
+test('Reviewer P1 fixed trusted registry adapter binds role, immutable digest, and Sigstore subject with bounded shell-free argv', async () => {
+  const adapter = await import('../../scripts/trusted-registry-readback-adapter.mjs')
+  assert.equal(typeof adapter.readTrustedRegistryEvidence, 'function')
   const calls = []
   const sourceDigest = '1'.repeat(40)
   const sourceRef = 'refs/tags/v105-v10-main.21'
   const signerWorkflow = 'x0989285458-lgtm/darven-ai-baccarat-proxy/.github/workflows/trusted-release-images.yml'
+  const digestHex = '44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a'
+  const imageDigest = `sha256:${digestHex}`
+  const proxyRepository = 'ghcr.io/x0989285458-lgtm/darven-ai-baccarat-proxy'
+  const proxyImageRef = `${proxyRepository}:${sourceDigest}`
+  const attestationFor = (repository, digest = digestHex) => JSON.stringify([{
+    verificationResult: { statement: { subject: [{ name: repository, digest: { sha256: digest } }] } },
+  }])
   const execFile = (file, args, options) => {
     calls.push({ file, args, options })
-    return Buffer.from(file === 'docker' ? '{}' : '[{}]')
+    return Buffer.from(file === 'docker' ? '{}' : attestationFor(proxyRepository))
   }
-  const result = adapter.readTrustedRegistryEvidence({
-    role: 'proxy', imageRef: 'registry.example/darven/proxy:v105', sourceDigest, sourceRef, execFile,
-  })
+  const result = adapter.readTrustedRegistryEvidence({ role: 'proxy', imageRef: proxyImageRef, sourceDigest, sourceRef, execFile })
   assert.deepEqual(calls.map(({ file, args }) => ({ file, args })), [
-    { file: 'docker', args: ['buildx', 'imagetools', 'inspect', '--raw', 'registry.example/darven/proxy:v105'] },
+    { file: 'docker', args: ['buildx', 'imagetools', 'inspect', '--raw', proxyImageRef] },
     { file: 'gh', args: [
-      'attestation', 'verify', 'oci://registry.example/darven/proxy:v105',
+      'attestation', 'verify', `oci://${proxyRepository}@${imageDigest}`,
       '--repo', 'x0989285458-lgtm/darven-ai-baccarat-proxy',
       '--signer-workflow', signerWorkflow,
       '--source-digest', sourceDigest,
@@ -545,35 +564,42 @@ test('Reviewer P1 fixed trusted registry adapter uses bounded shell-free argv an
     ] },
   ])
   assert.equal(calls.every((call) => call.options.shell === false), true)
-  assert.equal(calls[0].options.maxBuffer, 4 * 1024 * 1024)
   assert.deepEqual(result, {
     role: 'proxy', provenance: 'github-sigstore-attestation',
-    receiptId: 'github-attestation-44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a',
-    imageRef: 'registry.example/darven/proxy:v105',
-    imageDigest: 'sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a',
+    receiptId: `github-attestation-${digestHex}`,
+    imageRef: proxyImageRef, imageDigest,
+    immutableImageRef: `${proxyRepository}@${imageDigest}`,
+    subjectName: proxyRepository, subjectDigest: imageDigest,
     sourceDigest, sourceRef, signerWorkflow,
   })
+
+  const formalRepository = 'ghcr.io/x0989285458-lgtm/darven-ai-baccarat-formal-consumer'
+  const formalImageRef = `${formalRepository}:${sourceDigest}`
   const formalResult = adapter.readTrustedRegistryEvidence({
-    role: 'formal-consumer', imageRef: 'registry.example/darven/formal-consumer:v105', sourceDigest, sourceRef,
-    execFile: (file) => Buffer.from(file === 'docker' ? '{}' : '[{}]'),
+    role: 'formal-consumer', imageRef: formalImageRef, sourceDigest, sourceRef,
+    execFile: (file) => Buffer.from(file === 'docker' ? '{}' : attestationFor(formalRepository)),
   })
-  assert.equal(formalResult.role, 'formal-consumer')
-  assert.equal(formalResult.imageRef, 'registry.example/darven/formal-consumer:v105')
+  assert.equal(formalResult.subjectName, formalRepository)
   assert.throws(() => adapter.readTrustedRegistryEvidence({
-    role: 'unknown', imageRef: 'registry.example/darven/unknown:v105', sourceDigest, sourceRef, execFile,
-  }), /registry_role_invalid/)
+    role: 'proxy', imageRef: formalImageRef, sourceDigest, sourceRef, execFile,
+  }), /registry_image_ref_invalid/)
   assert.throws(() => adapter.readTrustedRegistryEvidence({
-    role: 'worker', imageRef: 'registry.example/darven/worker:v105', sourceDigest, sourceRef,
+    role: 'proxy', imageRef: proxyImageRef, sourceDigest, sourceRef,
+    execFile: (file) => Buffer.from(file === 'docker' ? '{}' : attestationFor(formalRepository)),
+  }), /github_attestation_subject_mismatch/)
+  assert.throws(() => adapter.readTrustedRegistryEvidence({
+    role: 'proxy', imageRef: proxyImageRef, sourceDigest, sourceRef,
+    execFile: (file) => Buffer.from(file === 'docker' ? '{}' : attestationFor(proxyRepository, 'f'.repeat(64))),
+  }), /github_attestation_subject_mismatch/)
+  assert.throws(() => adapter.readTrustedRegistryEvidence({
+    role: 'worker', imageRef: `ghcr.io/x0989285458-lgtm/darven-ai-baccarat-worker:${sourceDigest}`, sourceDigest, sourceRef,
     execFile: () => Buffer.from('{"token":"must-not-pass"}'),
   }), /registry_readback_secret_rejected/)
   assert.throws(() => adapter.readTrustedRegistryEvidence({
-    role: 'worker', imageRef: 'registry.example/darven/worker:v105;calc.exe', sourceDigest, sourceRef, execFile,
-  }), /registry_image_ref_invalid/)
-  assert.throws(() => adapter.readTrustedRegistryEvidence({
-    role: 'worker', imageRef: 'registry.example/darven/worker:v105', sourceDigest, sourceRef: 'refs/heads/main', execFile,
+    role: 'worker', imageRef: `ghcr.io/x0989285458-lgtm/darven-ai-baccarat-worker:${sourceDigest}`, sourceDigest, sourceRef: 'refs/heads/main', execFile,
   }), /registry_source_ref_invalid/)
   assert.throws(() => adapter.readTrustedRegistryEvidence({
-    role: 'worker', imageRef: 'registry.example/darven/worker:v105', sourceDigest, sourceRef,
+    role: 'proxy', imageRef: proxyImageRef, sourceDigest, sourceRef,
     execFile: (file) => Buffer.from(file === 'docker' ? '{}' : '[]'),
   }), /github_attestation_missing/)
 })

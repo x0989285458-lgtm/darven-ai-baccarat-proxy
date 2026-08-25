@@ -113,6 +113,9 @@ test('V105 V10 main canonical verifier loads both manifests and rejects duplicat
     unexpectedMainBindingShape.releaseBinding[key].unexpectedShapeField = 'MUTATION'
   }
   await assert.rejects(verifyV105V10MainManifestDigests({ manifest: unexpectedMainBindingShape, dependencyManifest, repoRoot: root, candidateIndexTree }), /v105_v10_main_build_input_scope_invalid/)
+  const unexpectedMainTopLevel = structuredClone(manifest)
+  unexpectedMainTopLevel.unexpectedIdentity = 'MUTATION'
+  await assert.rejects(verifyV105V10MainManifestDigests({ manifest: unexpectedMainTopLevel, dependencyManifest, repoRoot: root, candidateIndexTree }), /v105_v10_main_manifest_keys_invalid/)
   const unexpectedMainTopLevelBinding = structuredClone(manifest)
   unexpectedMainTopLevelBinding.releaseBinding.attackerControlledBinding = { algorithm: 'sha256' }
   await assert.rejects(verifyV105V10MainManifestDigests({ manifest: unexpectedMainTopLevelBinding, dependencyManifest, repoRoot: root, candidateIndexTree }), /v105_v10_main_binding_keys_invalid/)
