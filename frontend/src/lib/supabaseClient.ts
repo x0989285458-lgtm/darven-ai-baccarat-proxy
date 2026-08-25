@@ -17,7 +17,7 @@ export async function checkSupabaseConnection(adminSessionToken?: string, fetchI
     const endpoint = adminSessionToken ? '/api/online-license/status' : '/api/online-license/health'
     const request = () => fetchImpl(`${proxyApiUrl}${endpoint}`, requestOptions)
     let backendResponse = await request()
-    if (adminSessionToken && [401, 403].includes(backendResponse.status)) {
+    for (let retry = 0; adminSessionToken && [401, 403].includes(backendResponse.status) && retry < 2; retry += 1) {
       await new Promise((resolve) => setTimeout(resolve, 750))
       backendResponse = await request()
     }

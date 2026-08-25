@@ -1212,14 +1212,16 @@ describe('AI百家預測軟體', () => {
     expect(screen.queryByText('Agent001_001')).not.toBeInTheDocument()
   })
 
-  it('admin shows Supabase error message instead of staying at 檢查中', async () => {
-    vi.stubGlobal('fetch', vi.fn((url: string) => {
+  it('admin shows Supabase error message after bounded retries instead of staying at 檢查中', async () => {
+    const fetchMock = vi.fn((url: string) => {
       if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) })
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: [], reports: [], strategies: [] }) })
-    }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
 
     await renderApp('/admin', false)
-    expect(await screen.findByText('授權後端連線失敗 (401)')).toBeInTheDocument()
+    expect(await screen.findByText('授權後端連線失敗 (401)', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/api/online-license/status'))).toHaveLength(6)
     expect(screen.queryByText('檢查中')).not.toBeInTheDocument()
   })
 

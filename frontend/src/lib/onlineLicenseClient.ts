@@ -94,7 +94,7 @@ export async function getOnlineLicenseStatus(adminAccountOrFetch?: string | { ad
     const headers = adminSessionToken ? { Authorization: `Bearer ${adminSessionToken}` } : undefined
     const request = () => resolvedFetch(`${proxyUrl}/api/online-license/status${suffix}`, { headers })
     let response = await request()
-    if (adminSessionToken && [401, 403].includes(response.status)) {
+    for (let retry = 0; adminSessionToken && [401, 403].includes(response.status) && retry < 2; retry += 1) {
       await new Promise((resolve) => setTimeout(resolve, 750))
       response = await request()
     }
