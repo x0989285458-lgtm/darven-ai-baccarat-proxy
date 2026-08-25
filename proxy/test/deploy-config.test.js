@@ -17,6 +17,8 @@ test('deployment examples keep frontend public-only and backend secrets server-s
   assert.match(backend, /CLOUD_BROWSER_URL=/)
 
   assert.match(render, /type: web/)
-  assert.match(render, /npm.cmd start|npm start/)
+  assert.match(render, /runtime: image/)
+  assert.match(render, /ghcr\.io\/x0989285458-lgtm\/darven-ai-baccarat-proxy:v105-v10-main\.21/)
+  assert.doesNotMatch(render, /buildCommand:|startCommand:|runtime: node/)
   assert.match(render, /CAPTURE_OUTBOX_CONSUMER_ENABLED\s*\n\s*value: ["']false["']/)
 })

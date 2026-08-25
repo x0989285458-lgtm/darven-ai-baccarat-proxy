@@ -144,10 +144,14 @@ for (const disabledValue of [false, 'false']) {
 test('consumer-disabled HTTP parent does not start formal or shadow runtimes', async () => {
   const starts = []
   let cloudFetchCalls = 0
+  let issuedReads = 0
+  let persistedRounds = 0
+  let shadowSettlements = 0
   const runtime = (name) => ({
     enabled: true,
     async start() { starts.push(name) },
     async stop() {},
+    async settleRound() { shadowSettlements += 1 },
   })
   const app = createApp({
     autoConnect: true,
@@ -163,13 +167,26 @@ test('consumer-disabled HTTP parent does not start formal or shadow runtimes', a
     v104FormalRuntime: runtime('formal'),
     v105ShadowV9Runtime: runtime('v9'),
     v105ShadowV10Runtime: runtime('v10'),
-    supabaseClient: { configured: false },
+    supabaseClient: {
+      configured: true,
+      async readIssuedPrediction() { issuedReads += 1; return null },
+      async persistRound() { persistedRounds += 1; return null },
+    },
   })
   await app.start()
   try {
     await delay(0)
+    app.state.setTables([{ tableId: 'BAG01', shoe: 1, round: 1 }])
+    app.state.upsertRoundEvent({
+      tableId: 'BAG01', shoe: 1, round: 1, sourceAction: 'summary', winner: 'banker',
+      rawResult: [1, 2, 3, 4, -1, -1, -1, -1, 4, 6],
+    })
+    await delay(10)
     assert.deepEqual(starts, [])
     assert.equal(cloudFetchCalls, 0)
+    assert.equal(issuedReads, 0)
+    assert.equal(persistedRounds, 0)
+    assert.equal(shadowSettlements, 0)
   } finally {
     await app.stop()
   }

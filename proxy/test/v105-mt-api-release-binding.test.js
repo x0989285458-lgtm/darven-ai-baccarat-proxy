@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import path from 'node:path'
-import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile, mkdir, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import manifest from '../../release/v105-v10-main21-source-fence-release-manifest.json' with { type: 'json' }
@@ -602,4 +602,25 @@ test('Reviewer P1 fixed trusted registry adapter binds role, immutable digest, a
     role: 'proxy', imageRef: proxyImageRef, sourceDigest, sourceRef,
     execFile: (file) => Buffer.from(file === 'docker' ? '{}' : '[]'),
   }), /github_attestation_missing/)
+
+  const tempRepo = await mkdtemp(path.join(tmpdir(), 'adapter-materialization-'))
+  try {
+    execFileSync('git', ['init'], { cwd: tempRepo })
+    execFileSync('git', ['config', 'user.email', 'test@example.invalid'], { cwd: tempRepo })
+    execFileSync('git', ['config', 'user.name', 'test'], { cwd: tempRepo })
+    await mkdir(path.join(tempRepo, 'scripts'), { recursive: true })
+    const candidateSource = 'export const source = "candidate"\n'
+    const mutableSource = 'export const source = "tampered-working-tree"\n'
+    const candidatePath = path.join(tempRepo, 'scripts', 'trusted-registry-readback-adapter.mjs')
+    await writeFile(candidatePath, candidateSource)
+    execFileSync('git', ['add', 'scripts/trusted-registry-readback-adapter.mjs'], { cwd: tempRepo })
+    const candidateTree = execFileSync('git', ['write-tree'], { cwd: tempRepo, encoding: 'utf8' }).trim()
+    await writeFile(candidatePath, mutableSource)
+    const materialized = await releaseVerifier.materializeCandidateAdapter(tempRepo, candidateTree)
+    assert.equal(await readFile(materialized.adapterPath, 'utf8'), candidateSource)
+    await materialized.cleanup()
+    await assert.rejects(readFile(materialized.adapterPath), /ENOENT/)
+  } finally {
+    await rm(tempRepo, { recursive: true, force: true })
+  }
 })

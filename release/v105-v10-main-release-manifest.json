@@ -57,13 +57,16 @@
     "verify-active-outbox-zero",
     "transport-rebind-idempotency-migration",
     "transport-rebind-idempotency-catalog-acl-readback",
-    "deploy-exact-v105-v10-main21-proxy",
+    "verify-sigstore-three-role-images",
+    "resolve-release-tags-to-verified-digests",
+    "deploy-verified-proxy-image-by-digest",
+    "readback-render-proxy-image-digest",
     "public-readiness-v105-main21",
-    "build-exact-v105-formal-consumer-image",
-    "verify-exact-formal-consumer-image-commit-digest",
-    "deploy-exact-v105-formal-consumer",
+    "deploy-verified-formal-consumer-image-by-digest",
+    "readback-formal-consumer-image-digest",
     "verify-external-consumer-ready-self-drain",
-    "start-existing-v105-api-worker",
+    "deploy-verified-worker-image-by-digest",
+    "readback-worker-image-digest",
     "verify-worker-queue-cursor-journal-preserved",
     "ten-table-final-ack-v10-prediction-e2e",
     "member-session-frontend-e2e"
@@ -124,7 +127,7 @@
         "cloud-browser-worker/Dockerfile.dockerignore"
       ],
       "excludedPaths": [],
-      "sha256": "ad0242113d13f443a3f9894e858ec79520d48fcb754349ab04ca656d5600c0cc"
+      "sha256": "dbe64d6bccc7d6b12244d94af61f31b9b9aaf1aa0202a3fda9972245a483d520"
     },
     "zeroFinalHeartbeatMigration": {
       "algorithm": "sha256",
@@ -165,7 +168,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "3e5f27c55472c1c1cc6b0f3bf2f56d0d80c8d14a60a9c59f38636f2a20911937"
+      "sha256": "c904f9ed6e2c13cad15890d682b78f1cb00496320052a3a515f8b6af1394f748"
     }
   }
 }

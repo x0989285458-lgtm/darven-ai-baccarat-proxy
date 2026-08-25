@@ -243,7 +243,7 @@
         "release/v105-v10-main21-source-fence-release-manifest.json",
         "release/attestations"
       ],
-      "sha256": "3427a5736a5d23da113e625808f07d68cffe036b4991dd641c1642d48caa8c02"
+      "sha256": "1e28dafbf03a915fee68961a179e6dce39d6449414596927fe1709e407ea7594"
     },
     "migration": {
       "algorithm": "sha256",
@@ -277,7 +277,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "9b66f23a3a38173cc4602819e9432335cc56954c3a107e19eb9d556c579b0b1b"
+      "sha256": "1883a11cc7c1f496c8d7afd0a5acc6d72bda9f6f55a41956f0d63ddac5259fe1"
     },
     "workerBuildInput": {
       "algorithm": "sha256",
@@ -360,7 +360,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "3e5f27c55472c1c1cc6b0f3bf2f56d0d80c8d14a60a9c59f38636f2a20911937"
+      "sha256": "c904f9ed6e2c13cad15890d682b78f1cb00496320052a3a515f8b6af1394f748"
     }
   },
   "rollback": {

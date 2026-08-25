@@ -500,6 +500,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       if (screenProgressChanged) requestTablesRefresh()
     },
     onRoundEvent: async (round, table) => {
+      if (!resolvedCaptureOutboxConsumerEnabled) return
       if (!supabaseClient?.configured && !supabaseClient?.persistRound) return
       if (!isVerifiedFinalRoundAction(round?.sourceAction)) return
       if (strictRealCardRounds && !hasRealCardCodes(round)) return

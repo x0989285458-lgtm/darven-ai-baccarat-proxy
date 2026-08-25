@@ -93,8 +93,8 @@ test('V105 V10 main canonical verifier loads both manifests and rejects duplicat
   const result = await verifyV105V10MainManifestDigests({ manifest, dependencyManifest, repoRoot: root, candidateIndexTree })
   assert.equal(result.mainImplementationTreeSha256, manifest.releaseBinding.implementationTree.sha256)
   const duplicateProxy = structuredClone(manifest)
-  duplicateProxy.deploymentOrder.unshift('deploy-exact-v105-v10-main21-proxy')
-  await assert.rejects(verifyV105V10MainManifestDigests({ manifest: duplicateProxy, dependencyManifest, repoRoot: root, candidateIndexTree }), /v105_v10_main_deployment_order_duplicate/)
+  duplicateProxy.deploymentOrder.unshift('deploy-verified-proxy-image-by-digest')
+  await assert.rejects(verifyV105V10MainManifestDigests({ manifest: duplicateProxy, dependencyManifest, repoRoot: root, candidateIndexTree }), /v105_v10_main_deployment_order_invalid/)
   const driftedDependency = structuredClone(dependencyManifest)
   driftedDependency.gitTag = 'v105-v10-main.18'
   await assert.rejects(verifyV105V10MainManifestDigests({ manifest, dependencyManifest: driftedDependency, repoRoot: root, candidateIndexTree }), /v105_v10_main_dependency_identity_invalid/)
@@ -130,7 +130,7 @@ test('V105 V10 main canonical verifier loads both manifests and rejects duplicat
   await assert.rejects(verifyV105V10MainManifestDigests({ manifest, dependencyManifest: driftedDependencyZeroFinal, repoRoot: root, candidateIndexTree }), /v105_v10_main_dependency_contract_invalid/)
   const missingTransportReadback = structuredClone(manifest)
   missingTransportReadback.deploymentOrder = missingTransportReadback.deploymentOrder.filter((step) => step !== 'transport-rebind-idempotency-catalog-acl-readback')
-  await assert.rejects(verifyV105V10MainManifestDigests({ manifest: missingTransportReadback, dependencyManifest, repoRoot: root, candidateIndexTree }), /v105_v10_main_deployment_order_duplicate/)
+  await assert.rejects(verifyV105V10MainManifestDigests({ manifest: missingTransportReadback, dependencyManifest, repoRoot: root, candidateIndexTree }), /v105_v10_main_deployment_order_invalid/)
 
   for (const [mutate, expected] of [
     [(value) => { value.releaseName = 'drifted' }, /v105_v10_main_release_identity_invalid/],
@@ -174,19 +174,22 @@ test('V105 Main21 release report is exact and cannot self-approve production gat
   }
 })
 
-test('V105 Main21 deploys DB and receiver ownership before restarting the unchanged worker', () => {
+test('V105 Main21 deploys DB and three verified immutable role images before E2E', () => {
   assert.deepEqual(manifest.deploymentOrder, [
     'verify-producer-stopped',
     'verify-active-outbox-zero',
     'transport-rebind-idempotency-migration',
     'transport-rebind-idempotency-catalog-acl-readback',
-    'deploy-exact-v105-v10-main21-proxy',
+    'verify-sigstore-three-role-images',
+    'resolve-release-tags-to-verified-digests',
+    'deploy-verified-proxy-image-by-digest',
+    'readback-render-proxy-image-digest',
     'public-readiness-v105-main21',
-    'build-exact-v105-formal-consumer-image',
-    'verify-exact-formal-consumer-image-commit-digest',
-    'deploy-exact-v105-formal-consumer',
+    'deploy-verified-formal-consumer-image-by-digest',
+    'readback-formal-consumer-image-digest',
     'verify-external-consumer-ready-self-drain',
-    'start-existing-v105-api-worker',
+    'deploy-verified-worker-image-by-digest',
+    'readback-worker-image-digest',
     'verify-worker-queue-cursor-journal-preserved',
     'ten-table-final-ack-v10-prediction-e2e',
     'member-session-frontend-e2e',

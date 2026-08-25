@@ -1,7 +1,8 @@
 import crypto from 'node:crypto'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { readdir, readFile, lstat, realpath } from 'node:fs/promises'
+import { readdir, readFile, lstat, realpath, mkdtemp, writeFile, rm, chmod } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const MAIN21_RELEASE_NAME = 'V105主預測V10穩定版21接收器隔離'
@@ -11,7 +12,7 @@ const MAIN21_REPORT_TITLE = 'V105主預測V10穩定版21接收器隔離正式發
 const MAIN21_REPORT_SCOPE = 'V105與V10預測規則、權重、門檻及Formal身份不變；Main21將HTTP Parent限制為被動Tables與狀態更新，Formal Outbox與Shadow lifecycle僅由External Consumer擁有'
 const TRUSTED_SIGNER_WORKFLOW = 'x0989285458-lgtm/darven-ai-baccarat-proxy/.github/workflows/trusted-release-images.yml'
 const TRUSTED_SOURCE_REF = 'refs/tags/v105-v10-main.21'
-const TRUSTED_WORKFLOW_SHA256 = 'f1fa92544af0f8d88fd4d7a782f93331d094d7a053099e276eaa9cab865e3350'
+const TRUSTED_WORKFLOW_SHA256 = 'cc90d7bb624529f7986124bdb84542c1d97c3de484ee4dae7af627040960e620'
 const TRUSTED_READBACK_CAPABILITY = Symbol('trusted-readback-capability')
 const MAIN21_SCOPE = Object.freeze({
   predictionMainOnly: false,
@@ -431,7 +432,10 @@ export async function verifyV105V10MainManifestDigests({ manifest, dependencyMan
   } catch (error) {
     throw new Error('v105_v10_main_deployment_role_invalid', { cause: error })
   }
-  if (!/CAPTURE_OUTBOX_CONSUMER_ENABLED[\s\S]*?value:\s*["']false["']/.test(renderConfig)
+  if (!/runtime:\s*image/.test(renderConfig)
+    || !/url:\s*ghcr\.io\/x0989285458-lgtm\/darven-ai-baccarat-proxy:v105-v10-main\.21/.test(renderConfig)
+    || /buildCommand:|startCommand:|runtime:\s*node/.test(renderConfig)
+    || !/CAPTURE_OUTBOX_CONSUMER_ENABLED[\s\S]*?value:\s*["']false["']/.test(renderConfig)
     || !/ENV CAPTURE_OUTBOX_CONSUMER_ENABLED=true/.test(formalConsumerDockerfile)
     || !/ENV CAPTURE_OUTBOX_POLL_MS=3000/.test(formalConsumerDockerfile)) throw new Error('v105_v10_main_deployment_role_invalid')
   if (crypto.createHash('sha256').update(trustedWorkflow).digest('hex') !== TRUSTED_WORKFLOW_SHA256) {
@@ -444,10 +448,8 @@ export async function verifyV105V10MainManifestDigests({ manifest, dependencyMan
   const formalConsumer = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.formalConsumerBuildInput, 'v105_v10_main_formal_consumer_build_input')
   const worker = await verifyGitTreeDigest(rootValue(repoRoot), candidateIndexTree, binding.workerBuildInput, 'v105_v10_main_worker_build_input')
   const deployment = Array.isArray(manifest?.deploymentOrder) ? manifest.deploymentOrder : []
-  const requiredUnique = ['verify-producer-stopped', 'verify-active-outbox-zero', 'transport-rebind-idempotency-migration', 'transport-rebind-idempotency-catalog-acl-readback', 'deploy-exact-v105-v10-main21-proxy', 'public-readiness-v105-main21', 'build-exact-v105-formal-consumer-image', 'verify-exact-formal-consumer-image-commit-digest', 'deploy-exact-v105-formal-consumer', 'verify-external-consumer-ready-self-drain', 'start-existing-v105-api-worker']
-  if (requiredUnique.some((step) => deployment.filter((entry) => entry === step).length !== 1)) throw new Error('v105_v10_main_deployment_order_duplicate')
-  const ordered = requiredUnique.map((step) => deployment.indexOf(step))
-  if (!ordered.every((value, index) => index === 0 || value > ordered[index - 1])) throw new Error('v105_v10_main_deployment_order_invalid')
+  const expectedDeployment = ['verify-producer-stopped', 'verify-active-outbox-zero', 'transport-rebind-idempotency-migration', 'transport-rebind-idempotency-catalog-acl-readback', 'verify-sigstore-three-role-images', 'resolve-release-tags-to-verified-digests', 'deploy-verified-proxy-image-by-digest', 'readback-render-proxy-image-digest', 'public-readiness-v105-main21', 'deploy-verified-formal-consumer-image-by-digest', 'readback-formal-consumer-image-digest', 'verify-external-consumer-ready-self-drain', 'deploy-verified-worker-image-by-digest', 'readback-worker-image-digest', 'verify-worker-queue-cursor-journal-preserved', 'ten-table-final-ack-v10-prediction-e2e', 'member-session-frontend-e2e']
+  if (JSON.stringify(deployment) !== JSON.stringify(expectedDeployment)) throw new Error('v105_v10_main_deployment_order_invalid')
   const requiredImplementationPaths = [binding.sameSessionOutboxBatchMigration?.path, binding.transportRebindMigration?.path, '.github/workflows/trusted-release-images.yml', 'proxy/Dockerfile.evidence', 'proxy/Dockerfile.evidence.dockerignore', 'cloud-browser-worker/Dockerfile.dockerignore', 'proxy/Dockerfile.formal-consumer', 'proxy/Dockerfile.formal-consumer.dockerignore', 'proxy/deploy/render.yaml', 'proxy/src/server.js', 'proxy/src/supabase-writer.js', 'proxy/test/capture-outbox-ack.test.js', 'proxy/test/capture-outbox-writer.test.js', 'proxy/test/deploy-config.test.js', 'scripts/verify-v105-mt-api-release.mjs', 'release/v105-v10-main21-source-fence-release-manifest.json', 'release/v105-v10-main-release-report.json']
   if (requiredImplementationPaths.some((required) => !binding.implementationTree.paths?.includes(required))) throw new Error('v105_v10_main_implementation_contract_invalid')
   const dependencyBinding = dependencyManifest?.releaseBinding?.sameSessionOutboxBatchMigration
@@ -833,6 +835,27 @@ async function readBoundedJson(filePath, label, maxBytes = 64 * 1024) {
   }
 }
 
+export async function materializeCandidateAdapter(repoRoot, candidateIndexTree) {
+  const bytes = execFileSync('git', ['cat-file', 'blob', `${candidateIndexTree}:scripts/trusted-registry-readback-adapter.mjs`], {
+    cwd: repoRoot, encoding: null, shell: false, windowsHide: true, maxBuffer: 256 * 1024,
+  })
+  if (!Buffer.isBuffer(bytes) || bytes.length === 0 || bytes.length > 256 * 1024) throw new Error('trusted_adapter_blob_invalid')
+  const directory = await mkdtemp(path.join(tmpdir(), 'darven-trusted-adapter-'))
+  const adapterPath = path.join(directory, 'trusted-registry-readback-adapter.mjs')
+  try {
+    await writeFile(adapterPath, bytes, { flag: 'wx', mode: 0o500 })
+    await chmod(adapterPath, 0o500).catch(() => {})
+    const written = await readFile(adapterPath)
+    const expectedHash = crypto.createHash('sha256').update(bytes).digest('hex')
+    const writtenHash = crypto.createHash('sha256').update(written).digest('hex')
+    if (writtenHash !== expectedHash) throw new Error('trusted_adapter_materialization_mismatch')
+    return { adapterPath, cleanup: () => rm(directory, { recursive: true, force: true }) }
+  } catch (error) {
+    await rm(directory, { recursive: true, force: true }).catch(() => {})
+    throw error
+  }
+}
+
 function createFixedRegistryReadback(adapterPath, { sourceDigest, sourceRef } = {}) {
   return async ({ role, imageRef }) => {
     const output = execFileSync(process.execPath, [
@@ -881,24 +904,40 @@ async function main() {
   verifyExternalReleaseAttestation(attestation, {
     ...expected, commitTree, resolvedTagObject, tagObjectType, tagCommit,
   })
-  const adapterPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'trusted-registry-readback-adapter.mjs')
-  const trustedImages = await verifyTrustedImageEvidence({
-    buildReceipts,
-    expected: {
-      commit: candidateCommit,
-      tree: candidateIndexTree,
-      proxyBuildInputSha256: digests.proxyBuildInputSha256,
-      formalConsumerBuildInputSha256: digests.formalConsumerBuildInputSha256,
-      workerBuildInputSha256: digests.workerBuildInputSha256,
-      sourceRef: TRUSTED_SOURCE_REF,
-    },
-    trustedReadback: createFixedRegistryReadback(adapterPath, {
-      sourceDigest: candidateCommit,
-      sourceRef: TRUSTED_SOURCE_REF,
-    }),
-  })
+  const materializedAdapter = await materializeCandidateAdapter(repoRoot, candidateIndexTree)
+  let trustedImages
+  try {
+    trustedImages = await verifyTrustedImageEvidence({
+      buildReceipts,
+      expected: {
+        commit: candidateCommit,
+        tree: candidateIndexTree,
+        proxyBuildInputSha256: digests.proxyBuildInputSha256,
+        formalConsumerBuildInputSha256: digests.formalConsumerBuildInputSha256,
+        workerBuildInputSha256: digests.workerBuildInputSha256,
+        sourceRef: TRUSTED_SOURCE_REF,
+      },
+      trustedReadback: createFixedRegistryReadback(materializedAdapter.adapterPath, {
+        sourceDigest: candidateCommit,
+        sourceRef: TRUSTED_SOURCE_REF,
+      }),
+    })
+  } finally {
+    await materializedAdapter.cleanup()
+  }
+  const deploymentTargets = Object.freeze({ proxy: 'render:darven-ai-baccarat-api', 'formal-consumer': 'external-consumer', worker: 'gcp:darven-mt-taiwan-worker-5' })
+  const deploymentPlan = trustedImages.images.map((image) => ({
+    role: image.role,
+    target: deploymentTargets[image.role],
+    immutableImageRef: image.immutableImageRef,
+    imageDigest: image.imageDigest,
+    requiredProviderReadback: true,
+  }))
+  if (deploymentPlan.length !== 3 || deploymentPlan.some((entry) => !entry.target || entry.immutableImageRef !== `${trustedImageRepository(entry.role)}@${entry.imageDigest}`)) {
+    throw new Error('deployment_plan_invalid')
+  }
   process.stdout.write(`${JSON.stringify({
-    ok: true, commit: attestation.commit, tree: attestation.tree, tag: attestation.tag, images: trustedImages.images,
+    ok: true, commit: attestation.commit, tree: attestation.tree, tag: attestation.tag, images: trustedImages.images, deploymentPlan,
   })}\n`)
 }
 

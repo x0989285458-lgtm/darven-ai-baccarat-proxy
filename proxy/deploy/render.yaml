@@ -1,11 +1,10 @@
 services:
   - type: web
     name: darven-ai-baccarat-api
-    runtime: node
+    runtime: image
     plan: starter
-    rootDir: proxy
-    buildCommand: npm install
-    startCommand: npm start
+    image:
+      url: ghcr.io/x0989285458-lgtm/darven-ai-baccarat-proxy:v105-v10-main.21
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
