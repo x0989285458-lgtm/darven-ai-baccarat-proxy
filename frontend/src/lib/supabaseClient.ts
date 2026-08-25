@@ -15,7 +15,12 @@ export async function checkSupabaseConnection(adminSessionToken?: string, fetchI
     const requestOptions: RequestInit = { cache: 'no-store' }
     if (adminSessionToken) requestOptions.headers = { Authorization: `Bearer ${adminSessionToken}` }
     const endpoint = adminSessionToken ? '/api/online-license/status' : '/api/online-license/health'
-    const backendResponse = await fetchImpl(`${proxyApiUrl}${endpoint}`, requestOptions)
+    const request = () => fetchImpl(`${proxyApiUrl}${endpoint}`, requestOptions)
+    let backendResponse = await request()
+    if (adminSessionToken && [401, 403].includes(backendResponse.status)) {
+      await new Promise((resolve) => setTimeout(resolve, 750))
+      backendResponse = await request()
+    }
     if (backendResponse.ok) {
       const backendStatus = await backendResponse.json().catch(() => ({}))
       if (backendStatus.error) return { ok: false, message: `授權後端連線失敗：${backendStatus.error}` }

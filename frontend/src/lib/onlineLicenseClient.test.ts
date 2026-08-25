@@ -94,6 +94,29 @@ describe('onlineLicenseClient ', () => {
     }))
   })
 
+  it('retries one transient authenticated 401 when loading the admin license status', async () => {
+    vi.useFakeTimers()
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 401, json: () => Promise.resolve({ error: 'admin session is required' }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({
+        configured: true,
+        managers: [], agents: [], plans: [],
+        licenses: [{ code: 'DVAI1788_001', member_account: 'User001', status: 'active' }],
+      }) }) as unknown as typeof fetch
+    try {
+      const pending = getOnlineLicenseStatus({ adminAccount: 'dv1788', adminSessionToken: 'opaque-admin-session' }, fetchImpl)
+      await vi.runAllTimersAsync()
+      const status = await pending
+      expect(fetchImpl).toHaveBeenCalledTimes(2)
+      expect((fetchImpl as any).mock.calls[0][1].headers).toEqual({ Authorization: 'Bearer opaque-admin-session' })
+      expect((fetchImpl as any).mock.calls[1][1].headers).toEqual({ Authorization: 'Bearer opaque-admin-session' })
+      expect(status.configured).toBe(true)
+      expect(status.licenseRows[0].code).toBe('DVAI1788_001')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('maps online license status into display rows', async () => {
     const fetchImpl = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({
       managers: [{ username: 'DV1788', role: 'total', is_active: true }],
