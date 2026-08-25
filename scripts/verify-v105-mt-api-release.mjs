@@ -13,6 +13,8 @@ const TRUSTED_SIGNER_WORKFLOW = 'x0989285458-lgtm/darven-ai-baccarat-proxy/.gith
 const TRUSTED_SOURCE_REF = 'refs/tags/v105-v10-main.21'
 const TRUSTED_WORKFLOW_SHA256 = 'cc90d7bb624529f7986124bdb84542c1d97c3de484ee4dae7af627040960e620'
 const TRUSTED_READBACK_CAPABILITIES = new WeakSet()
+const HAS_TRUSTED_READBACK_CAPABILITY = TRUSTED_READBACK_CAPABILITIES.has.bind(TRUSTED_READBACK_CAPABILITIES)
+const ADD_TRUSTED_READBACK_CAPABILITY = TRUSTED_READBACK_CAPABILITIES.add.bind(TRUSTED_READBACK_CAPABILITIES)
 const MAIN21_SCOPE = Object.freeze({
   predictionMainOnly: false,
   productRuntimeChanged: true,
@@ -745,7 +747,7 @@ export async function verifyTrustedImageEvidence({ buildReceipts, expected = {},
     const build = receipts.get(role)
     const readback = await trustedReadback({ role, imageRef: build.imageRef })
     assertNoSecretMaterial(readback, 'trusted_registry_readback_secret_rejected')
-    if (!readback || !TRUSTED_READBACK_CAPABILITIES.has(readback)
+    if (!readback || !HAS_TRUSTED_READBACK_CAPABILITY(readback)
       || readback.role !== role || !isEvidenceId(readback.receiptId)
       || readback.provenance !== 'github-sigstore-attestation'
       || readback.sourceDigest !== expected.commit
@@ -962,7 +964,7 @@ function createFixedRegistryReadback(adapterSource, { sourceDigest, sourceRef } 
       throw new Error('trusted_registry_readback_json_invalid', { cause: error })
     }
     assertNoSecretMaterial(value, 'trusted_registry_readback_secret_rejected')
-    TRUSTED_READBACK_CAPABILITIES.add(value)
+    ADD_TRUSTED_READBACK_CAPABILITY(value)
     return value
   }
 }

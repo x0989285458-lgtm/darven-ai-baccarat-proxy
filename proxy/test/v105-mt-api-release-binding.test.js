@@ -445,6 +445,17 @@ test('Reviewer P1 trusted image evidence rejects self-attestation and requires i
     /trusted_registry_readback_invalid/,
     'a Proxy get trap cannot forge WeakSet object identity',
   )
+  const originalWeakSetHas = WeakSet.prototype.has
+  try {
+    WeakSet.prototype.has = () => true
+    await assert.rejects(
+      releaseVerifier.verifyTrustedImageEvidence({ buildReceipts, expected, trustedReadback: proxyForgedReadback }),
+      /trusted_registry_readback_invalid/,
+      'prototype poisoning cannot replace the module-bound WeakSet identity check',
+    )
+  } finally {
+    WeakSet.prototype.has = originalWeakSetHas
+  }
   await assert.rejects(releaseVerifier.verifyTrustedImageEvidence({
     buildReceipts: { receipts: buildReceipts.receipts.filter((receipt) => receipt.role !== 'formal-consumer') }, expected, trustedReadback,
   }), /trusted_build_receipt_role_invalid:formal-consumer/)
