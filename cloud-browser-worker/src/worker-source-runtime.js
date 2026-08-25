@@ -32,16 +32,25 @@ export function createWorkerSourceRuntime({
   let leaseTimer = null
   let leaseRenewTail = Promise.resolve()
   let leaseRenewalError = null
+  let ownerLeaseStopped = false
   let sourceProgressTracker = null
   const freshBaselineTables = new Set(allowFreshBaseline ? PRODUCTION_TABLE_IDS : [])
   let freshBaselineReadyAt = null
   void startBrowser
+
+  async function stopOwnerLeaseOnce() {
+    if (ownerLeaseStopped) return
+    ownerLeaseStopped = true
+    const current = sourceOwner.lease?.()
+    if (current) await sourceOwner.stop(current)
+  }
 
   async function start() {
     if (started) return
     lease = typeof sourceOwner.acquireOrRecover === 'function'
       ? await sourceOwner.acquireOrRecover()
       : await sourceOwner.acquire()
+    ownerLeaseStopped = false
     leaseRenewalError = null
     leaseRenewTail = Promise.resolve()
     leaseTimer = setIntervalFn(() => {
@@ -51,9 +60,12 @@ export function createWorkerSourceRuntime({
           lease = await sourceOwner.renew(sourceOwner.lease?.() ?? lease)
         } catch (error) {
           leaseRenewalError = error
+          if (leaseTimer) clearIntervalFn(leaseTimer)
+          leaseTimer = null
           apiClient?.stop?.()
           lastReplayGate = 'source_lease_renewal_failed'
           started = false
+          try { await stopOwnerLeaseOnce() } catch {}
         }
       })
       return leaseRenewTail
@@ -78,10 +90,7 @@ export function createWorkerSourceRuntime({
       leaseTimer = null
       await leaseRenewTail
       apiClient?.stop?.()
-      const current = sourceOwner.lease?.()
-      if (current) {
-        try { await sourceOwner.stop(current) } catch {}
-      }
+      try { await stopOwnerLeaseOnce() } catch {}
       apiClient = null
       started = false
       throw error
@@ -93,8 +102,7 @@ export function createWorkerSourceRuntime({
     leaseTimer = null
     await leaseRenewTail
     apiClient?.stop?.()
-    const current = sourceOwner.lease?.()
-    if (current) await sourceOwner.stop(current)
+    await stopOwnerLeaseOnce()
     apiClient = null
     started = false
   }

@@ -383,6 +383,37 @@ test('startup arms lease renewal before pending journal rebind and API start', a
   assert.deepEqual(order, ['lease', 'renewal_armed', 'rebind', 'renew', 'rebind_done', 'api'])
 })
 
+test('renewal failure clears the timer and stops the active owner lease exactly once', async () => {
+  let renewTick = null
+  let clearCalls = 0
+  let ownerStops = 0
+  const lease = { mode: 'api', ownerId: 'api-primary', epoch: 2, fence: 'new-fence', status: 'active', expiresAt: 10_000 }
+  const sourceOwner = {
+    acquireOrRecover: async () => lease,
+    lease: () => lease,
+    assertCurrent: () => true,
+    renew: async () => { throw new Error('renew_failed') },
+    stop: async () => { ownerStops += 1 },
+  }
+  const runtime = createWorkerSourceRuntime({
+    sourceOwner,
+    journal: { pending: () => [], cursor: () => null, append: async () => {}, ack: async () => {}, rebindPending: async () => {} },
+    gapDetector: { detect: () => [] },
+    replayProvider: { replay: async () => ({ ok: true, events: [] }) },
+    createApiClient: () => ({ start: async () => {}, stop: () => {} }),
+    setIntervalFn: (callback) => { renewTick = callback; return { unref: () => {} } },
+    clearIntervalFn: () => { clearCalls += 1 },
+  })
+
+  await runtime.start()
+  await renewTick()
+
+  assert.equal(runtime.snapshot().started, false)
+  assert.equal(runtime.snapshot().liveGate, 'source_lease_renewal_failed')
+  assert.equal(clearCalls, 1)
+  assert.equal(ownerStops, 1)
+})
+
 test('restart rebinds old-fence pending Finals after new lease acquisition and before API delivery', async () => {
   const order = []
   const oldSource = { mode: 'api', ownerId: 'api-primary', epoch: 1, fence: 'old-fence', sequence: 7 }
