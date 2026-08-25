@@ -1,20 +1,20 @@
 {
-  "title": "V105主預測V10穩定版23 Parent只讀策略驗證正式發布報告",
-  "releaseVersion": "v105-v10-main.23",
+  "title": "V105主預測V10穩定版26 後端Final自動發行修復正式發布報告",
+  "releaseVersion": "v105-v10-main.26",
   "formalStrategyVersion": "v105",
-  "applicationVersion": "1.0.64",
-  "baseCommit": "fe57c25c5f6579c06b1d18bbf04376d09ec07c08",
+  "applicationVersion": "1.0.65",
+  "baseCommit": "350772316e074a2ae6322b0e73c88722fdbae8a7",
   "status": "candidate-full-tests-pass-exact-review-pending",
-  "scope": "V105與V10預測規則、權重、門檻、Formal Consumer、Worker、Capture Worker及前端業務行為不變；Main23只修正consumer-disabled Parent以只讀方式驗證唯一Active v105並恢復健康Ready",
+  "scope": "V105與V10預測規則、權重、門檻、Worker、Capture Worker及前端業務行為不變；Main26修正External Formal Consumer在每筆Final後由後端自動發行下一局Prediction，發行失敗保留Exact Outbox Lease重試，不再依賴前台輪詢",
   "tests": {
-    "parentExternalConsumerIsolation": "5/5 PASS",
+    "parentExternalConsumerIsolation": "9/9 PASS",
     "readOnlyActiveStrategy": "6/6 PASS",
     "dependencyBinding": "8/8 PASS",
     "mainBinding": "6/6 PASS",
     "canonicalReleaseGate": "14/14 PASS",
     "workerFull": "214/214 PASS",
-    "proxyFullSerial": "1014/1014 PASS",
-    "frontendFull": "159/159 PASS",
+    "proxyFullSerial": "1018/1018 PASS",
+    "frontendFull": "163/163 PASS",
     "frontendBuild": "PASS"
   },
   "review": {
@@ -25,7 +25,7 @@
     "proxyChanged": true,
     "workerChanged": false,
     "captureWorkerChanged": false,
-    "formalConsumerChanged": false,
+    "formalConsumerChanged": true,
     "externalConsumerOwnsFormalLifecycle": true,
     "httpParentStartsPredictionRuntimes": false
   },

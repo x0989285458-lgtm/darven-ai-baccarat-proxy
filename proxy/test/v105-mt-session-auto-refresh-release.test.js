@@ -48,8 +48,8 @@ test('MT session auto-refresh release freezes the two production incident fixes'
 })
 
 test('current proxy advances while the unchanged frontend and worker retain their versions', async () => {
-  assert.equal(readJson('../package.json').version, '1.0.64')
-  assert.equal(readJson('../../frontend/package.json').version, '1.0.63')
+  assert.equal(readJson('../package.json').version, '1.0.65')
+  assert.equal(readJson('../../frontend/package.json').version, '1.0.65')
   assert.equal(readJson('../../cloud-browser-worker/package.json').version, '1.0.62')
   const authorityCommit = execFileSync('git', ['log', '-1', '--format=%H', '--', 'release/v105-mt-session-auto-refresh-release-manifest.json'], { cwd: repoRoot, encoding: 'utf8' }).trim()
   const historicalAuthorityTree = execFileSync('git', ['rev-parse', `${authorityCommit}^{tree}`], { cwd: repoRoot, encoding: 'utf8' }).trim()

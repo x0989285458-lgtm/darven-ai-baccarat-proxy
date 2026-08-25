@@ -270,6 +270,186 @@ test('consumer-disabled verified HTTP parent read-only verifies active v105 with
   }
 })
 
+test('external consumer publishes a finalized screen and issues the next prediction without frontend polling', async () => {
+  let claimed = false
+  const order = []
+  const issued = []
+  const snapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: snapshot } })]
+      },
+      async completeCaptureOutbox() { order.push('complete') },
+      async failCaptureOutbox() { assert.fail('valid finalized work must not fail') },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async readIssuedPrediction() { return null },
+      async reconcilePredictionLifecycle() { order.push('reconcile') },
+      async issuePrediction(candidate) {
+        issued.push(candidate)
+        order.push('issue')
+        return { ...candidate, predictionId: 'pid-BAG01-88-22', issuedAt: '2026-08-25T16:00:01.000Z' }
+      },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) { return { enabled: true, predictions: [], tables } },
+    },
+  })
+
+  await app.drainCaptureOutbox()
+  await app.waitForServiceWorkIdle()
+
+  assert.equal(issued.length, 1)
+  assert.equal(issued[0].targetTableId, 'BAG01')
+  assert.equal(issued[0].targetShoe, '88')
+  assert.equal(issued[0].targetRound, 22)
+  assert.deepEqual(order, ['reconcile', 'issue', 'complete'])
+})
+
+test('external consumer retains the exact outbox lease when next prediction issuance fails', async () => {
+  let claimed = false
+  let completed = 0
+  let failed = 0
+  const snapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: snapshot } })]
+      },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox() { failed += 1 },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async readIssuedPrediction() { return null },
+      async reconcilePredictionLifecycle() {},
+      async issuePrediction() { throw new Error('temporary issuance failure') },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) { return { enabled: true, predictions: [], tables } },
+    },
+  })
+
+  await app.drainCaptureOutbox()
+  await app.waitForServiceWorkIdle()
+
+  assert.equal(completed, 0)
+  assert.equal(failed, 1)
+  assert.match(app.state.snapshot().status.persistenceError, /prediction issuance failed before outbox acknowledgement/)
+})
+
+test('external consumer retains the exact outbox lease when prediction reconciliation fails', async () => {
+  let claimed = false
+  let completed = 0
+  let failed = 0
+  let issued = 0
+  const snapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: snapshot } })]
+      },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox() { failed += 1 },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async readIssuedPrediction() { return null },
+      async reconcilePredictionLifecycle() { throw new Error('temporary reconciliation failure') },
+      async issuePrediction() { issued += 1; return null },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) { return { enabled: true, predictions: [], tables } },
+    },
+  })
+
+  await app.drainCaptureOutbox()
+  await app.waitForServiceWorkIdle()
+
+  assert.equal(issued, 0)
+  assert.equal(completed, 0)
+  assert.equal(failed, 1)
+  assert.match(app.state.snapshot().status.persistenceError, /temporary reconciliation failure/)
+})
+
+test('external consumer retains the exact outbox lease when a finalized identity is missing from published tables', async () => {
+  let claimed = false
+  let completed = 0
+  let failed = 0
+  let issued = 0
+  const snapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG02', shoe: 91, round: 7, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: snapshot } })]
+      },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox() { failed += 1 },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async readIssuedPrediction() { return null },
+      async reconcilePredictionLifecycle() {},
+      async issuePrediction() { issued += 1; return null },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot() {
+        return {
+          enabled: true,
+          predictions: [],
+          tables: [{ tableId: 'BAG02', shoe: 91, round: 7, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+        }
+      },
+    },
+  })
+
+  await app.drainCaptureOutbox()
+  await app.waitForServiceWorkIdle()
+
+  assert.equal(issued, 0)
+  assert.equal(completed, 0)
+  assert.equal(failed, 1)
+  assert.match(app.state.snapshot().status.persistenceError, /finalized identity missing from published tables/)
+})
+
 test('external consumer polls for durable work that arrives without an in-process ACK wake', async () => {
   let pending = false
   let completed = false
@@ -607,10 +787,15 @@ test('same-session outbox batch merges ordered envelopes and completes every exa
     rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9],
     sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
   })
+  const makeWork = (tableId, round) => ({
+    ...envelope().snapshot,
+    tables: [{ ...envelope().snapshot.tables[0], tableId, shoe: 88, round }],
+    rounds: [makeFinal(tableId, round)],
+  })
   const rows = [
-    claimedRow(21, { payload: { work: { ...envelope().snapshot, rounds: [makeFinal('BAG01', 21)] } } }),
-    claimedRow(22, { payload: { work: { ...envelope().snapshot, rounds: [makeFinal('BAG02', 22)] } } }),
-    claimedRow(23, { payload: { work: { ...envelope().snapshot, rounds: [makeFinal('BAG01', 23)] } } }),
+    claimedRow(21, { payload: { work: makeWork('BAG01', 21) } }),
+    claimedRow(22, { payload: { work: makeWork('BAG02', 22) } }),
+    claimedRow(23, { payload: { work: makeWork('BAG01', 23) } }),
   ]
   const app = createApp({
     autoConnect: false,
@@ -628,6 +813,11 @@ test('same-session outbox batch merges ordered envelopes and completes every exa
         return { completed: true, count: claims.length }
       },
       async failCaptureOutboxBatch() { assert.fail('successful batch must not fail') },
+      async readIssuedPrediction() { return null },
+      async reconcilePredictionLifecycle() {},
+      async issuePrediction(candidate) {
+        return { ...candidate, predictionId: `pid-${candidate.targetTableId}`, issuedAt: '2026-08-25T16:00:01.000Z' }
+      },
     },
     v100FormalRuntime: {
       enabled: true,
@@ -1135,7 +1325,7 @@ test('formal deadline waits for the underlying work to settle before failure ACK
   let failureAckWhileFormalActive = false
   const completed = []
   const app = createApp({
-    autoConnect: false, outboxWorkDeadlineMs: 10, outboxBackoffMs: 1,
+    autoConnect: false, outboxWorkDeadlineMs: 50, outboxBackoffMs: 1,
     supabaseClient: {
       configured: true,
       async claimCaptureOutbox() {
@@ -1152,6 +1342,11 @@ test('formal deadline waits for the underlying work to settle before failure ACK
         failureAckWhileFormalActive = activeFormal > 0
         return { failed: true, retry_after_ms: 0 }
       },
+      async readIssuedPrediction() { return null },
+      async reconcilePredictionLifecycle() {},
+      async issuePrediction(candidate) {
+        return { ...candidate, predictionId: 'pid-BAG01-88-22', issuedAt: '2026-08-25T16:00:01.000Z' }
+      },
     },
     v100FormalRuntime: {
       enabled: true,
@@ -1160,7 +1355,7 @@ test('formal deadline waits for the underlying work to settle before failure ACK
         const call = formalCalls
         activeFormal += 1
         maxActiveFormal = Math.max(maxActiveFormal, activeFormal)
-        if (call === 1) await delay(40)
+        if (call === 1) await delay(150)
         activeFormal -= 1
         return { tables }
       },

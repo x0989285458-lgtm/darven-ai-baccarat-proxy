@@ -7,7 +7,7 @@ const MAX_RAW_BYTES = 4 * 1024 * 1024
 const MAX_ATTESTATION_BYTES = 4 * 1024 * 1024
 const TRUSTED_REPOSITORY = 'x0989285458-lgtm/darven-ai-baccarat-proxy'
 const TRUSTED_SIGNER_WORKFLOW = 'x0989285458-lgtm/darven-ai-baccarat-proxy/.github/workflows/trusted-release-images.yml'
-const TRUSTED_SOURCE_REF = 'refs/tags/v105-v10-main.23'
+const TRUSTED_SOURCE_REF = 'refs/tags/v105-v10-main.26'
 const ROLE_REPOSITORIES = Object.freeze({
   proxy: 'ghcr.io/x0989285458-lgtm/darven-ai-baccarat-proxy',
   'formal-consumer': 'ghcr.io/x0989285458-lgtm/darven-ai-baccarat-formal-consumer',

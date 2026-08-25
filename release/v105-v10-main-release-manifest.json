@@ -1,9 +1,9 @@
 {
-  "releaseName": "V105主預測V10穩定版23 Parent只讀策略驗證",
-  "releaseVersion": "v105-v10-main.23",
-  "gitTag": "v105-v10-main.23",
-  "applicationVersion": "1.0.64",
-  "baseCommit": "fe57c25c5f6579c06b1d18bbf04376d09ec07c08",
+  "releaseName": "V105主預測V10穩定版26 後端Final自動發行修復",
+  "releaseVersion": "v105-v10-main.26",
+  "gitTag": "v105-v10-main.26",
+  "applicationVersion": "1.0.65",
+  "baseCommit": "350772316e074a2ae6322b0e73c88722fdbae8a7",
   "formalStrategyVersion": "v105",
   "releaseScope": {
     "predictionMainOnly": false,
@@ -12,7 +12,7 @@
     "proxyChanged": true,
     "workerChanged": false,
     "captureWorkerChanged": false,
-    "formalConsumerChanged": false,
+    "formalConsumerChanged": true,
     "frontendChanged": false,
     "sidePredictionChanged": false,
     "formalIdentityChanged": false,
@@ -35,8 +35,10 @@
     "sameSessionOutboxBatchLimit": 10,
     "atomicOutboxBatchLeaseAck": true,
     "httpParentExternalConsumerIsolation": true,
-    "externalFormalConsumerChanged": false,
-    "transportRebindMigrationBound": true
+    "externalFormalConsumerChanged": true,
+    "transportRebindMigrationBound": true,
+    "backendFinalTriggersPredictionBeforeOutboxAck": true,
+    "predictionIssuanceFailureRetainsExactLease": true
   },
   "prediction": {
     "mainSource": "v105-shadow-v10-big-road-uncommon-structure-rank-synchronized",
@@ -61,8 +63,11 @@
     "resolve-release-tags-to-verified-digests",
     "deploy-verified-proxy-image-by-digest",
     "readback-render-proxy-image-digest",
-    "public-readiness-v105-main23",
-    "verify-formal-consumer-unchanged-ready-self-drain",
+    "public-readiness-v105-main26",
+    "verify-active-outbox-zero-before-formal-consumer-cutover",
+    "deploy-verified-formal-consumer-image-by-digest",
+    "readback-formal-consumer-image-digest",
+    "verify-formal-consumer-ready-self-drain",
     "verify-worker-unchanged-queue-cursor-journal-preserved",
     "ten-table-final-ack-v10-prediction-e2e",
     "member-session-frontend-e2e"
@@ -103,7 +108,7 @@
         "proxy/test/v105-v10-main-release.test.js",
         "scripts/verify-v105-mt-api-release.mjs",
         "scripts/trusted-registry-readback-adapter.mjs",
-        "release/v105-v10-main23-read-only-strategy-release-manifest.json",
+        "release/v105-v10-main26-formal-prediction-release-manifest.json",
         "frontend/package.json",
         "frontend/package-lock.json",
         "frontend/src/lib/onlineLicenseClient.ts",
@@ -130,7 +135,7 @@
         "cloud-browser-worker/Dockerfile.dockerignore"
       ],
       "excludedPaths": [],
-      "sha256": "cb4d31a8a704e3332f000d63b88ed40780402ebec1a0dace16af2da4618602dd"
+      "sha256": "11bf7a989ebf733243fe6ad3aeb301a059ee91f0dfa00b57643be83dc5ae990c"
     },
     "zeroFinalHeartbeatMigration": {
       "algorithm": "sha256",
@@ -171,7 +176,7 @@
         "shared"
       ],
       "excludedPaths": [],
-      "sha256": "463286c6f6844a6d3c6c666ea5b3ecc0c0ccc1bb0a89e3cfe1a462d09106883e"
+      "sha256": "a31e3fa6169528f946452023222f008cdbfe1642534dd82fb326a2fd5494d516"
     }
   }
 }

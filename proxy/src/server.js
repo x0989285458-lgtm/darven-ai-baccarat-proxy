@@ -444,6 +444,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const adminSessionTtlMs = Math.min(30 * 60 * 1000, Math.max(60000, Number.isFinite(resolvedAdminSessionTtlInput) ? resolvedAdminSessionTtlInput : 30 * 60 * 1000))
   let requestTablesBroadcast = () => {}
   let requestTablesRefresh = () => {}
+  let suppressTableUpdateWork = false
   let latestStreamScreenSignature = ''
   const state = createProxyState({
     inferSnapshotRounds: !strictRealCardRounds,
@@ -468,7 +469,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           if (previousScreen?.shoe !== observedShoe || previousScreen?.visibleRound !== observedRound) screenProgressChanged = true
           latestObservedScreenByTable.set(observedTableId, { shoe: observedShoe, visibleRound: observedRound })
         }
-        if (!resolvedCaptureOutboxConsumerEnabled) continue
+        if (!resolvedCaptureOutboxConsumerEnabled || suppressTableUpdateWork) continue
         const tableKey = `table:${String(table?.tableId ?? '')}`
         void serviceWorkScheduler.enqueueLatest(tableKey, async () => {
           await reconcileThenSavePendingPrediction(table)
@@ -891,6 +892,39 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                   }),
                 })
               ))
+              leaseDeadline.assertActive()
+              const publishedTables = Array.isArray(applied?.tables) ? applied.tables : parsed.tables
+              state.setStatus(parsed.status)
+              suppressTableUpdateWork = true
+              try {
+                state.setTables(publishedTables)
+              } finally {
+                suppressTableUpdateWork = false
+              }
+              const finalizedIdentities = new Set(parsed.rounds.map((round) => JSON.stringify([
+                String(round?.tableId ?? ''),
+                String(round?.shoe ?? ''),
+              ])))
+              const publishedTableByIdentity = new Map(publishedTables.map((table) => [JSON.stringify([
+                String(table?.tableId ?? ''),
+                String(table?.shoe ?? ''),
+              ]), table]))
+              const missingFinalizedIdentities = [...finalizedIdentities]
+                .filter((identity) => !publishedTableByIdentity.has(identity))
+              if (missingFinalizedIdentities.length > 0) {
+                throw new Error('finalized identity missing from published tables before outbox acknowledgement')
+              }
+              const predictionTables = [...finalizedIdentities].map((identity) => publishedTableByIdentity.get(identity))
+              const nextPredictions = await runLeasePhase('formal_prediction', async () => {
+                const predictions = await Promise.all(predictionTables.map((table) => (
+                  reconcileThenSavePendingPrediction(table, { failOnReconciliationError: true })
+                )))
+                await serviceWorkScheduler.waitForIdle()
+                return predictions
+              })
+              if (nextPredictions.some((prediction) => !prediction)) {
+                throw new Error('prediction issuance failed before outbox acknowledgement')
+              }
               leaseDeadline.assertActive()
               if (isolatedShadowProcess) {
                 const shadowPayload = {
@@ -1755,7 +1789,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     })
   }
 
-  async function reconcileThenSavePendingPrediction(table) {
+  async function reconcileThenSavePendingPrediction(table, { failOnReconciliationError = false } = {}) {
     let reconciliationError = null
     const tableId = canonicalProductionTableId(table?.tableId)
     const shoe = table?.shoe == null ? '' : String(table.shoe)
@@ -1771,7 +1805,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       const exactDuplicate = guard?.latestShoe === shoe && guard?.latestRound === visibleRound
       const accepted = acceptLifecycleScreenIdentity(lifecycleGuardsByTable, { tableId, shoe, visibleRound })
       if (!accepted && !exactDuplicate) return
-      if (accepted) {
+      if (accepted || (failOnReconciliationError && exactDuplicate)) {
         try {
           await supabaseClient.reconcilePredictionLifecycle({
             source: 'ofalive99',
@@ -1780,6 +1814,10 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             currentVisibleRound: visibleRound,
           })
         } catch (error) {
+          if (failOnReconciliationError) {
+            state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+            throw error
+          }
           reconciliationError = error
         }
       }

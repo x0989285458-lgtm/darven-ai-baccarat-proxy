@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "v105-v10-main-successor-overlay.1",
+  "predecessorManifest": "release/v105-v10-main22-source-fence-release-manifest.json",
+  "releaseName": "V105主預測V10穩定版26 後端Final自動發行修復",
+  "releaseVersion": "v105-v10-main.26",
+  "gitTag": "v105-v10-main.26",
+  "applicationVersion": "1.0.65",
+  "baseCommit": "350772316e074a2ae6322b0e73c88722fdbae8a7",
+  "formalStrategyVersion": "v105",
+  "applicationVersionChanged": true,
+  "releaseScope": {
+    "mode": "single-session-api-primary",
+    "canonicalSource": "api",
+    "workerEnvironment": {
+      "MT_SOURCE_MODE": "api",
+      "MT_CAPTURE_ROLE": "canonical"
+    },
+    "browserEnabled": false,
+    "backupReplayEnabled": false,
+    "recordContract": "unverified",
+    "gapPolicy": "fail-closed-stop-ack-and-alert",
+    "deferred": [
+      "second-independent-session-backup",
+      "record-replay"
+    ],
+    "httpParentExternalConsumerIsolation": true,
+    "proxyChanged": true,
+    "workerChanged": false,
+    "captureWorkerChanged": false,
+    "formalConsumerChanged": true,
+    "frontendChanged": false
+  },
+  "behavior": {
+    "predictionRulesChanged": false,
+    "predictionWeightsChanged": false,
+    "predictionThresholdsChanged": false,
+    "receiverOwnershipChanged": false,
+    "uiChanged": false,
+    "v6ToV9Changed": false,
+    "versionChanged": true
+  },
+  "releaseBinding": {
+    "implementationTree": {
+      "addPaths": [
+        "release/v105-v10-main26-formal-prediction-release-manifest.json",
+        "proxy/package.json",
+        "proxy/package-lock.json",
+        "proxy/src/server.js",
+        "proxy/test/active-strategy.test.js",
+        "proxy/test/capture-outbox-ack.test.js",
+        "proxy/test/deploy-package.test.js",
+        "proxy/test/v102-release-integrity.test.js",
+        "proxy/test/v104-iteration-shadow-release.test.js",
+        "proxy/test/v105-mt-session-auto-refresh-release.test.js",
+        "proxy/test/v105-service-work-scheduler-release.test.js",
+        "proxy/test/v105-formal-runtime.test.js",
+        "proxy/test/v105-mt-api-release-binding.test.js",
+        "proxy/test/v105-v10-main-release.test.js",
+        "scripts/verify-v105-mt-api-release.mjs",
+        "proxy/deploy/render.yaml",
+        "release/v105-v10-main-release-report.json"
+      ],
+      "removePaths": [
+        "release/v105-v10-main22-source-fence-release-manifest.json"
+      ],
+      "excludedPaths": [
+        "release/attestations",
+        "release/v105-v10-main26-formal-prediction-release-manifest.json"
+      ],
+      "sha256": "c56d71bee574f9d95099b62fd0c8b3c4e748efc5bb012886968cf8538142f0f5"
+    },
+    "proxyBuildInputSha256": "0b717713e60e7b0d8bd9b6423fc7b04029f3ebf9bfde4e6ca4a5ad14c67750c5",
+    "formalConsumerBuildInputSha256": "a31e3fa6169528f946452023222f008cdbfe1642534dd82fb326a2fd5494d516",
+    "workerBuildInputSha256": "40caf61b0ebae2e40c5ebedb56342549f73e9368d720bcee4ace5c2e4b08b848",
+    "attestationSourceRef": "refs/tags/v105-v10-main.26"
+  }
+}

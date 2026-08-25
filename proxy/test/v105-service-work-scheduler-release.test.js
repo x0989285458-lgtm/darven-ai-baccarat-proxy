@@ -77,8 +77,8 @@ test('service work scheduler release freezes strategy while bounding proxy work'
   assert.equal(manifest.rollback.preserveOutboxHistory, true)
 })
 
-test('current proxy uses 1.0.64 while unchanged frontend and worker retain their versions', () => {
-  assert.equal(readJson('../package.json').version, '1.0.64')
-  assert.equal(readJson('../../frontend/package.json').version, '1.0.63')
+test('current proxy uses 1.0.65 while unchanged frontend and worker retain their versions', () => {
+  assert.equal(readJson('../package.json').version, '1.0.65')
+  assert.equal(readJson('../../frontend/package.json').version, '1.0.65')
   assert.equal(readJson('../../cloud-browser-worker/package.json').version, '1.0.62')
 })
