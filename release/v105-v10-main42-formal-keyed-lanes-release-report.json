@@ -1,0 +1,54 @@
+{
+  "releaseVersion": "v105-v10-main.42",
+  "releasePurpose": "解除Formal Consumer跨桌reconcile與issue被單一全域writeQueue完全串行造成的Head-of-Line阻塞；保留同桌順序、跨桌最多四路並行，並要求任一桌失敗時所有已啟動兄弟完成後才送Exact Lease Fail ACK。",
+  "predecessor": {
+    "releaseVersion": "v105-v10-main.41",
+    "status": "CANDIDATE_PASS_PRODUCTION_BLOCK",
+    "reason": "Main41三路Fresh Review與1055/1055測試通過並完成不可變Commit／Tag／Push，但正式Consumer因全域writeQueue吞吐缺陷維持停止，未部署。"
+  },
+  "runtimeEvidence": {
+    "globalWriteQueueRegressionRed": "10 tables; 20 durable RPC; maxActive=1",
+    "crossTableBoundedConcurrency": "PASS",
+    "sameTableConcurrentOrdering": "PASS",
+    "rejectedTailRecovery": "PASS",
+    "directDbSchedulerBudgets": "PASS",
+    "siblingAllSettledBeforeFailureAck": "PASS",
+    "writerSuite": "6/6 PASS",
+    "captureOutboxSuite": "54/54 PASS",
+    "proxySuite": "1062/1062 PASS"
+  },
+  "throughputEvidence": {
+    "globalQueueSpike": {
+      "tables": 10,
+      "durableRpcCount": 20,
+      "fixedRpcDelayMs": 25,
+      "maxActive": 1,
+      "elapsedMs": 648
+    },
+    "formalLifecycleConcurrency": 4,
+    "directDbStandardEffectiveLimit": 4,
+    "directDbPriorityLimit": 3,
+    "sameTableKey": "tableId"
+  },
+  "quiesceEvidence": {
+    "activeRowsAtPreimage": 740,
+    "pendingAtPreimage": 720,
+    "processingAtPreimage": 10,
+    "deadLetterAtPreimage": 10,
+    "uncompressedSha256": "2bce1bfaf020404b3152274e36c6ca772061717002dd4ff34ef648096d2abb46",
+    "gzipSha256": "3758f8d9ea6347f3e7b4f08dc29f3099462bc43162edb89dfa4f36bca0ed8975"
+  },
+  "productionGates": {
+    "freshReview": "PENDING",
+    "trustedBuild": "PENDING",
+    "registryReadback": "PENDING",
+    "sigstoreProvenance": "PENDING",
+    "formalConsumerDeployment": "BLOCK",
+    "frontendDeployment": "BLOCK",
+    "freshOutboxTakeover": "BLOCK",
+    "queueConvergence": "BLOCK",
+    "tenTableFinalParity": "BLOCK",
+    "frontendBrowserE2E": "BLOCK",
+    "adminBrowserE2E": "BLOCK"
+  }
+}

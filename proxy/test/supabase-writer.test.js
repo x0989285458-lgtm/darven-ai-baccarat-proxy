@@ -109,3 +109,150 @@ test('Supabase client posts strategy, roadmap event and prediction result with s
   assert.equal(requests[3].url.includes('/rest/v1/rpc/persist_v105_settled_round'), true)
   assert.equal(requests[3].init.headers.Authorization, 'Bearer sb_secret_test_key')
 })
+
+test('formal lifecycle writes preserve same-table order while using bounded cross-table concurrency', async () => {
+  const delayMs = 8
+  let active = 0
+  let maxActive = 0
+  const calls = []
+  let candidates = new Map()
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co',
+    serviceKey: 'sb_secret_test_key',
+    retryAttempts: 1,
+    requireVerifiedStrategy: false,
+    formalLifecycleConcurrency: 4,
+    fetchImpl: async (url, init) => {
+      const body = JSON.parse(init.body)
+      const reconcile = String(url).includes('/rpc/reconcile_v105_prediction_lifecycle')
+      const tableId = reconcile ? body.p_table_id : body.p_prediction.table_id
+      const operation = reconcile ? 'reconcile' : 'issue'
+      active += 1
+      maxActive = Math.max(maxActive, active)
+      calls.push(`${tableId}:${operation}:start`)
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+      calls.push(`${tableId}:${operation}:end`)
+      active -= 1
+      if (reconcile) {
+        return { ok: true, status: 200, text: async () => JSON.stringify({
+          source: body.p_source,
+          table_id: tableId,
+          current_shoe: body.p_current_shoe,
+          current_visible_round: body.p_current_visible_round,
+          pending: 0,
+          expired_no_final: 0,
+          abandoned_shoe_change: 0,
+          updated_total: 0,
+        }) }
+      }
+      const predictionId = `pid-${tableId}`
+      const issuedAt = '2026-08-26T17:00:00.000Z'
+      return { ok: true, status: 200, text: async () => JSON.stringify({
+        prediction_id: predictionId,
+        prediction_issued_at: issuedAt,
+        prediction: { ...candidates.get(tableId), predictionId, issuedAt },
+      }) }
+    },
+  })
+  const tables = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
+    .map((tableId, index) => ({ ...table, tableId, shoe: 100, round: index + 1 }))
+  candidates = new Map(tables.map((currentTable) => [currentTable.tableId, buildLivePrediction(currentTable)]))
+
+  await Promise.all(tables.map((currentTable) => Promise.all([
+    client.reconcilePredictionLifecycle({
+      source: 'ofalive99',
+      tableId: currentTable.tableId,
+      currentShoe: currentTable.shoe,
+      currentVisibleRound: currentTable.round,
+    }),
+    client.issuePrediction(candidates.get(currentTable.tableId)),
+  ])))
+
+  assert.ok(maxActive >= 2, `cross-table writes stayed globally serialized: maxActive=${maxActive}`)
+  assert.ok(maxActive <= 4, `formal write concurrency exceeded the configured bound: maxActive=${maxActive}`)
+  for (const currentTable of tables) {
+    const prefix = `${currentTable.tableId}:`
+    assert.deepEqual(calls.filter((value) => value.startsWith(prefix)), [
+      `${prefix}reconcile:start`,
+      `${prefix}reconcile:end`,
+      `${prefix}issue:start`,
+      `${prefix}issue:end`,
+    ])
+  }
+})
+
+test('formal lifecycle keyed tail continues after a rejected operation', async () => {
+  let requests = 0
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'sb_secret_test_key', retryAttempts: 1,
+    requireVerifiedStrategy: false, formalLifecycleConcurrency: 2,
+    fetchImpl: async (_url, init) => {
+      requests += 1
+      const body = JSON.parse(init.body)
+      if (requests === 1) return { ok: false, status: 500, text: async () => 'temporary failure' }
+      return { ok: true, status: 200, text: async () => JSON.stringify({
+        source: body.p_source, table_id: body.p_table_id,
+        current_shoe: body.p_current_shoe, current_visible_round: body.p_current_visible_round,
+        pending: 0, expired_no_final: 0, abandoned_shoe_change: 0, updated_total: 0,
+      }) }
+    },
+  })
+  const identity = { source: 'ofalive99', tableId: 'BAG01', currentShoe: 100, currentVisibleRound: 8 }
+
+  await assert.rejects(client.reconcilePredictionLifecycle(identity), /temporary failure/)
+  const acknowledgement = await client.reconcilePredictionLifecycle(identity)
+
+  assert.equal(requests, 2)
+  assert.equal(acknowledgement.counts.updatedTotal, 0)
+})
+
+test('formal lifecycle concurrency remains bounded by direct DB standard and priority budgets', async () => {
+  let active = 0
+  let reconcileMaxActive = 0
+  let issueMaxActive = 0
+  let candidates = new Map()
+  const strategyPool = {
+    async query(query) {
+      const isIssue = /issue_v105_prediction/.test(query.text)
+      active += 1
+      if (isIssue) issueMaxActive = Math.max(issueMaxActive, active)
+      else reconcileMaxActive = Math.max(reconcileMaxActive, active)
+      await new Promise((resolve) => setTimeout(resolve, 8))
+      active -= 1
+      if (!isIssue) {
+        const [source, tableId, shoe, visibleRound] = query.values
+        return { rows: [{ reconcile_v105_prediction_lifecycle: {
+          source, table_id: tableId, current_shoe: shoe, current_visible_round: visibleRound,
+          pending: 0, expired_no_final: 0, abandoned_shoe_change: 0, updated_total: 0,
+        } }] }
+      }
+      const row = query.values[0]
+      const candidate = candidates.get(row.table_id)
+      const predictionId = `pid-${row.table_id}`
+      const issuedAt = '2026-08-26T17:00:00.000Z'
+      return { rows: [{ issue_v105_prediction: {
+        prediction_id: predictionId, prediction_issued_at: issuedAt,
+        prediction: { ...candidate, predictionId, issuedAt },
+      } }] }
+    },
+  }
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'sb_secret_test_key',
+    fetchImpl: async () => { throw new Error('Direct DB test must not use REST') },
+    strategyPool, retryAttempts: 1, requireVerifiedStrategy: false, formalLifecycleConcurrency: 4,
+  })
+  const tables = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
+    .map((tableId, index) => ({ ...table, tableId, shoe: 101, round: index + 1 }))
+  candidates = new Map(tables.map((currentTable) => [currentTable.tableId, buildLivePrediction(currentTable)]))
+
+  await Promise.all(tables.map((currentTable) => client.reconcilePredictionLifecycle({
+    source: 'ofalive99', tableId: currentTable.tableId,
+    currentShoe: currentTable.shoe, currentVisibleRound: currentTable.round,
+  })))
+  assert.ok(reconcileMaxActive >= 2)
+  assert.ok(reconcileMaxActive <= 4, `Direct DB standard work exceeded Formal bound: ${reconcileMaxActive}`)
+
+  await Promise.all(tables.map((currentTable) => client.issuePrediction(candidates.get(currentTable.tableId))))
+  assert.ok(issueMaxActive >= 2)
+  assert.ok(issueMaxActive <= 3, `Direct DB priority work exceeded reserved priority budget: ${issueMaxActive}`)
+})

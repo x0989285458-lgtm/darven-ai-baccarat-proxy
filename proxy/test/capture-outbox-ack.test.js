@@ -641,6 +641,66 @@ test('external consumer retains the exact outbox lease when prediction reconcili
   assert.match(app.state.snapshot().status.persistenceError, /temporary reconciliation failure/)
 })
 
+test('external consumer settles every cross-table prediction sibling before failure ACK', async () => {
+  let claimed = false
+  let siblingFinished = false
+  let failureAckBeforeSibling = null
+  let failed = 0
+  const base = envelope().snapshot
+  const firstRound = base.rounds[0]
+  const snapshot = {
+    ...base,
+    tables: [
+      { tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' },
+      { tableId: 'BAG02', shoe: 99, round: 7, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'PB' },
+    ],
+    rounds: [
+      { ...firstRound, tableId: 'BAG01', shoe: 88, round: 21 },
+      { ...firstRound, tableId: 'BAG02', shoe: 99, round: 7 },
+    ],
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: snapshot } })]
+      },
+      async completeCaptureOutbox() { assert.fail('failed sibling batch must not complete') },
+      async failCaptureOutbox() {
+        failureAckBeforeSibling = !siblingFinished
+        failed += 1
+      },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async readIssuedPrediction() { return null },
+      async reconcilePredictionLifecycle({ tableId }) {
+        if (tableId === 'BAG01') throw new Error('BAG01 reconciliation failed')
+        await new Promise((resolve) => setTimeout(resolve, 30))
+        siblingFinished = true
+      },
+      async issuePrediction(candidate) {
+        return { ...candidate, predictionId: `pid-${candidate.targetTableId}`, issuedAt: '2026-08-25T16:00:01.000Z' }
+      },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) { return { enabled: true, predictions: [], tables } },
+    },
+  })
+
+  await app.drainCaptureOutbox()
+  await new Promise((resolve) => setTimeout(resolve, 40))
+
+  assert.equal(failed, 1)
+  assert.equal(failureAckBeforeSibling, false)
+  assert.equal(siblingFinished, true)
+})
+
 test('external consumer acknowledges a durable old-shoe final without issuing from a newer published shoe', async () => {
   let claimed = false
   let completed = 0

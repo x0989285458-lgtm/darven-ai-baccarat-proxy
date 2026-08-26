@@ -7,33 +7,24 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '../..')
-const releaseCommit = '7e81b01a12b98bdd4a58815d4cc7ff7f5b90d767'
-const parentCommit = '30aa84d4224e65557806a9b3865426802767674d'
-const workflowPath = '.github/workflows/trusted-release-images-main41.yml'
-const manifestPath = 'release/v105-v10-main41-old-shoe-ack-release-manifest.json'
-const reportPath = 'release/v105-v10-main41-old-shoe-ack-release-report.json'
-const releaseTestPath = 'proxy/test/v105-v10-main41-old-shoe-ack-release.test.js'
+const parentCommit = '7e81b01a12b98bdd4a58815d4cc7ff7f5b90d767'
+const workflowPath = '.github/workflows/trusted-release-images-main42.yml'
+const manifestPath = 'release/v105-v10-main42-formal-keyed-lanes-release-manifest.json'
+const reportPath = 'release/v105-v10-main42-formal-keyed-lanes-release-report.json'
+const releaseTestPath = 'proxy/test/v105-v10-main42-formal-keyed-lanes-release.test.js'
 const expectedDelta = [
   workflowPath,
-  'frontend/src/lib/liveClient.test.ts',
-  'frontend/src/lib/liveClient.ts',
-  'proxy/src/cloud-capture.js',
   'proxy/src/server.js',
-  'proxy/src/state-store.js',
+  'proxy/src/supabase-writer.js',
   'proxy/test/capture-outbox-ack.test.js',
-  'proxy/test/cloud-ingest-snapshot.test.js',
-  'proxy/test/ingest-ack.test.js',
-  'proxy/test/ingest-source-fence.test.js',
-  'proxy/test/security-contract.test.js',
-  'proxy/test/v104-formal-server.test.js',
-  'proxy/test/v105-formal-memory-runtime-contract.test.js',
-  'proxy/test/v105-v10-main39-formal-scheduler-release.test.js',
+  'proxy/test/supabase-writer.test.js',
+  'proxy/test/v105-v10-main41-old-shoe-ack-release.test.js',
   releaseTestPath,
   manifestPath,
   reportPath,
 ]
 const expectedBindings = expectedDelta.filter((relativePath) => relativePath !== manifestPath)
-const gitBlob = (relativePath) => execFileSync('git', ['show', `${releaseCommit}:${relativePath}`], {
+const gitBlob = (relativePath) => execFileSync('git', ['show', `:${relativePath}`], {
   cwd: root,
   encoding: null,
   windowsHide: true,
@@ -55,11 +46,11 @@ function verifierArgs(workflow) {
   return args
 }
 
-test('Main41 workflow builds only Formal Consumer from exact tag and Main39 parent', async () => {
+test('Main42 workflow builds only Formal Consumer from exact tag and Main41 parent', async () => {
   const workflow = await readText(workflowPath)
-  assert.match(workflow, /tags:\n\s+- v105-v10-main\.41/)
-  assert.match(workflow, /if: github\.ref == 'refs\/tags\/v105-v10-main\.41'/)
-  assert.match(workflow, /ref: refs\/tags\/v105-v10-main\.41/)
+  assert.match(workflow, /tags:\n\s+- v105-v10-main\.42/)
+  assert.match(workflow, /if: github\.ref == 'refs\/tags\/v105-v10-main\.42'/)
+  assert.match(workflow, /ref: refs\/tags\/v105-v10-main\.42/)
   assert.match(workflow, /IMAGE: darven-ai-baccarat-formal-consumer/)
   assert.match(workflow, /file: proxy\/Dockerfile\.formal-consumer/)
   assert.doesNotMatch(workflow, /IMAGE: darven-ai-baccarat-(?:proxy|worker)/)
@@ -70,13 +61,13 @@ test('Main41 workflow builds only Formal Consumer from exact tag and Main39 pare
   assert.deepEqual(verifierArgs(workflow), ['"${GITHUB_SHA}"', parentCommit, ...expectedDelta])
 })
 
-test('Main41 manifest binds every changed normalized Git blob except itself', async () => {
+test('Main42 manifest binds every changed normalized Git blob except itself', async () => {
   const manifest = JSON.parse(await readText(manifestPath))
-  assert.equal(manifest.releaseVersion, 'v105-v10-main.41')
-  assert.equal(manifest.gitTag, 'v105-v10-main.41')
+  assert.equal(manifest.releaseVersion, 'v105-v10-main.42')
+  assert.equal(manifest.gitTag, 'v105-v10-main.42')
   assert.equal(manifest.parentCommit, parentCommit)
   assert.equal(manifest.releaseScope.formalConsumerChanged, true)
-  assert.equal(manifest.releaseScope.frontendChanged, true)
+  assert.equal(manifest.releaseScope.frontendChanged, false)
   assert.equal(manifest.releaseScope.proxyDeploymentChanged, false)
   assert.equal(manifest.releaseScope.databaseChanged, false)
   assert.equal(manifest.releaseScope.workerChanged, false)
@@ -87,19 +78,18 @@ test('Main41 manifest binds every changed normalized Git blob except itself', as
   }
 })
 
-test('Main41 report preserves the Main39 production block and closes no production gate', async () => {
+test('Main42 report preserves production blocks and binds throughput evidence', async () => {
   const report = JSON.parse(await readText(reportPath))
-  assert.equal(report.releaseVersion, 'v105-v10-main.41')
-  assert.equal(report.predecessor.releaseVersion, 'v105-v10-main.39')
-  assert.equal(report.predecessor.status, 'BLOCK')
-  assert.equal(report.productionIncidentEvidence.deadLetterRows, 2)
-  assert.equal(report.productionIncidentEvidence.roundKeys, 10)
-  assert.equal(report.productionIncidentEvidence.allRawRoadmapSettlementPresent, true)
-  assert.equal(report.runtimeEvidence.oldShoeAndMissingTableBranches, '8/8 PASS')
-  assert.equal(report.runtimeEvidence.captureOutboxSuite, '53/53 PASS')
-  assert.equal(report.runtimeEvidence.exactReaderHttpContracts, '31/31 PASS')
-  assert.equal(report.runtimeEvidence.proxySuite, '1055/1055 PASS')
-  assert.equal(report.runtimeEvidence.frontendSuite, '164/164 PASS')
+  assert.equal(report.releaseVersion, 'v105-v10-main.42')
+  assert.equal(report.predecessor.releaseVersion, 'v105-v10-main.41')
+  assert.equal(report.predecessor.status, 'CANDIDATE_PASS_PRODUCTION_BLOCK')
+  assert.equal(report.runtimeEvidence.writerSuite, '6/6 PASS')
+  assert.equal(report.runtimeEvidence.captureOutboxSuite, '54/54 PASS')
+  assert.equal(report.runtimeEvidence.proxySuite, '1062/1062 PASS')
+  assert.equal(report.throughputEvidence.globalQueueSpike.maxActive, 1)
+  assert.equal(report.throughputEvidence.globalQueueSpike.elapsedMs, 648)
+  assert.equal(report.throughputEvidence.formalLifecycleConcurrency, 4)
+  assert.equal(report.throughputEvidence.directDbPriorityLimit, 3)
   for (const value of Object.values(report.productionGates)) assert.match(value, /^(?:PENDING|BLOCK)$/)
   assert.ok(!JSON.stringify(report.productionGates).includes('PASS'))
 })

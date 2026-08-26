@@ -1,0 +1,45 @@
+{
+  "releaseVersion": "v105-v10-main.42",
+  "gitTag": "v105-v10-main.42",
+  "parentCommit": "7e81b01a12b98bdd4a58815d4cc7ff7f5b90d767",
+  "runtimeSourceVersion": "v105-v10-main.42",
+  "releaseScope": {
+    "formalConsumerChanged": true,
+    "frontendChanged": false,
+    "workflowChanged": true,
+    "proxyDeploymentChanged": false,
+    "databaseChanged": false,
+    "workerChanged": false
+  },
+  "workflowContract": {
+    "verifierArgumentOrder": [
+      "head-sha",
+      "required-parent-sha",
+      "allowed-paths"
+    ],
+    "allowedChangedPaths": [
+      ".github/workflows/trusted-release-images-main42.yml",
+      "proxy/src/server.js",
+      "proxy/src/supabase-writer.js",
+      "proxy/test/capture-outbox-ack.test.js",
+      "proxy/test/supabase-writer.test.js",
+      "proxy/test/v105-v10-main41-old-shoe-ack-release.test.js",
+      "proxy/test/v105-v10-main42-formal-keyed-lanes-release.test.js",
+      "release/v105-v10-main42-formal-keyed-lanes-release-manifest.json",
+      "release/v105-v10-main42-formal-keyed-lanes-release-report.json"
+    ]
+  },
+  "releaseBinding": {
+    "hashInput": "normalized immutable Git index blob bytes",
+    "changedFileSha256": {
+      ".github/workflows/trusted-release-images-main42.yml": "b781e7ea8620372b95db1cfe3d0f66eaee7eb77805b0155a3bf7a56ec8189813",
+      "proxy/src/server.js": "b29e7eca37c580c09abd33a8769de812964a57179515c70d01167e7c3863061a",
+      "proxy/src/supabase-writer.js": "cc0f1eec3b90a38f433ba6bcc50e76981a7d719f001739dd01c7e14140f5c6ce",
+      "proxy/test/capture-outbox-ack.test.js": "5a23c0a7babd58e118231f07048ed8d28ff0c8b166909ee7fce5e8db4ec4648e",
+      "proxy/test/supabase-writer.test.js": "c7d8daeae202e4061366803a1d8d195d3e0207b72ab9de845c2c1b73bfbaec1b",
+      "proxy/test/v105-v10-main41-old-shoe-ack-release.test.js": "0a015dd11f4ab17b46aca846da676164b5c44db685eca4a80d6584877fbbf829",
+      "proxy/test/v105-v10-main42-formal-keyed-lanes-release.test.js": "24fb89df8558a0a02ebc184f4c7cd271fbbb60272dabe925fd23cf6482254af3",
+      "release/v105-v10-main42-formal-keyed-lanes-release-report.json": "e9dd95994c2a08e1e1ab2f0321e50f4de194acf8fd5c818ca31327f5320e54b9"
+    }
+  }
+}

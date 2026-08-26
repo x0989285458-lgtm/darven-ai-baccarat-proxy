@@ -2015,6 +2015,34 @@ function createStrategyQueryScheduler(strategyDb, { maxConcurrent = 10, maxStand
   }
 }
 
+function createBoundedOperationScheduler(maxConcurrent) {
+  const queue = []
+  let active = 0
+
+  function drain() {
+    while (active < maxConcurrent && queue.length > 0) {
+      const item = queue.shift()
+      active += 1
+      Promise.resolve()
+        .then(item.operation)
+        .then(item.resolve, item.reject)
+        .finally(() => {
+          active -= 1
+          drain()
+        })
+    }
+  }
+
+  return {
+    run(operation) {
+      return new Promise((resolve, reject) => {
+        queue.push({ operation, resolve, reject })
+        drain()
+      })
+    },
+  }
+}
+
 export function createSupabaseIngestionClient({
   url = process.env.SUPABASE_URL,
   serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY,
@@ -2034,7 +2062,11 @@ export function createSupabaseIngestionClient({
   strategyPool = null,
   strategyPoolFactory = (config) => new pg.Pool(config),
   strategyPoolMax = 10,
+  formalLifecycleConcurrency = 4,
 } = {}) {
+  if (!Number.isInteger(formalLifecycleConcurrency) || formalLifecycleConcurrency < 1 || formalLifecycleConcurrency > 10) {
+    throw new Error('formal lifecycle concurrency must be an integer between 1 and 10')
+  }
   const configured = Boolean(url && serviceKey && fetchImpl)
   const rawStrategyDb = strategyPool ?? (dbConnectionString ? strategyPoolFactory({
     connectionString: resolveBackendReadConnectionString(dbConnectionString),
@@ -2059,6 +2091,8 @@ export function createSupabaseIngestionClient({
   let v104IterationShadowWriteQueue = Promise.resolve()
   const v105ShadowV9WriteQueues = new Map()
   const v105ShadowV10WriteQueues = new Map()
+  const formalLifecycleWriteQueues = new Map()
+  const formalLifecycleScheduler = createBoundedOperationScheduler(formalLifecycleConcurrency)
   const completedRoundKeyLimit = Math.max(1, Number(maxCompletedRoundKeys) || 10000)
   const formalTimeoutMs = Math.max(1, Number(defaultRequestTimeoutMs) || 3500)
   const durableWriteTimeoutMs = Math.max(formalTimeoutMs, Number(durableWriteRequestTimeoutMs) || formalTimeoutMs)
@@ -2349,7 +2383,7 @@ export function createSupabaseIngestionClient({
     return next
   }
 
-  function enqueueKeyedShadowWrite(queues, key, operation) {
+  function enqueueKeyedWrite(queues, key, operation) {
     const queueKey = String(key ?? '') || 'global'
     const previous = queues.get(queueKey) ?? Promise.resolve()
     const next = previous.catch(() => {}).then(operation)
@@ -2362,11 +2396,15 @@ export function createSupabaseIngestionClient({
   }
 
   function enqueueV105ShadowV9Write(key, operation) {
-    return enqueueKeyedShadowWrite(v105ShadowV9WriteQueues, key, operation)
+    return enqueueKeyedWrite(v105ShadowV9WriteQueues, key, operation)
   }
 
   function enqueueV105ShadowV10Write(key, operation) {
-    return enqueueKeyedShadowWrite(v105ShadowV10WriteQueues, key, operation)
+    return enqueueKeyedWrite(v105ShadowV10WriteQueues, key, operation)
+  }
+
+  function enqueueFormalLifecycleWrite(key, operation) {
+    return enqueueKeyedWrite(formalLifecycleWriteQueues, key, () => formalLifecycleScheduler.run(operation))
   }
 
   async function withRetry(operation) {
@@ -2605,7 +2643,7 @@ export function createSupabaseIngestionClient({
       if (!source || !tableId || !normalizedShoe || !Number.isSafeInteger(visibleRound) || visibleRound < 1) {
         throw new Error('prediction lifecycle reconciliation identity is incomplete')
       }
-      const acknowledgement = await enqueueWrite(() => postDurableRest('rpc/reconcile_v105_prediction_lifecycle', {
+      const acknowledgement = await enqueueFormalLifecycleWrite(tableId, () => postDurableRest('rpc/reconcile_v105_prediction_lifecycle', {
         p_source: String(source),
         p_table_id: String(tableId),
         p_current_shoe: normalizedShoe,
@@ -2635,7 +2673,7 @@ export function createSupabaseIngestionClient({
         || !row.strategy_version || !['banker', 'player'].includes(row.predicted_result)) {
         throw new Error('prediction issuance payload is incomplete')
       }
-      const acknowledgement = await enqueueWrite(() => postDurableRest('rpc/issue_v105_prediction', { p_prediction: row }, undefined, { requireObject: true, priority: true }))
+      const acknowledgement = await enqueueFormalLifecycleWrite(candidate.targetTableId, () => postDurableRest('rpc/issue_v105_prediction', { p_prediction: row }, undefined, { requireObject: true, priority: true }))
       const prediction = acknowledgement?.prediction
       if (!prediction || typeof prediction !== 'object' || Array.isArray(prediction)
         || !acknowledgement.prediction_id || !acknowledgement.prediction_issued_at

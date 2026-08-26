@@ -838,11 +838,13 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                 ]))
               ))
               const nextPredictions = await runLeasePhase('formal_prediction', async () => {
-                const predictions = await Promise.all(predictionTables.map((table) => (
+                const predictionResults = await Promise.allSettled(predictionTables.map((table) => (
                   reconcileThenResolveOutboxPrediction(table)
                 )))
                 await serviceWorkScheduler.waitForIdle()
-                return predictions
+                const failedPrediction = predictionResults.find((result) => result.status === 'rejected')
+                if (failedPrediction) throw failedPrediction.reason
+                return predictionResults.map((result) => result.value)
               })
               if (nextPredictions.some((prediction) => !prediction)) {
                 throw new Error('prediction issuance failed before outbox acknowledgement')
