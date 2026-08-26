@@ -1,0 +1,28 @@
+{
+  "releaseVersion": "v105-v10-main.34",
+  "releasePurpose": "修正Main33可信Workflow呼叫release delta verifier時顛倒HEAD與required parent參數的發布Gate錯誤；產品Runtime與DB Migration精確沿用不可變Main33。",
+  "main33FormalRun": "BLOCK",
+  "main33FormalRunId": 32956116328,
+  "rootCause": "Main33 workflow passed required parent before HEAD although verify-trusted-release-delta.sh requires HEAD first.",
+  "evidence": {
+    "main33Reproduction": "same exact Main33 verifier invocation exits 1 locally",
+    "tddRed": "Main34 verifier unit: correct order PASS; reversed Main33 order FAIL; Main34 artifacts initially absent",
+    "runtimeSource": "v105-v10-main.33 commit 9510ed1b97b1ecc9f87a861944f11da8fbb4d088",
+    "focusedGreen": "3/3 PASS, fail 0, duration 951.388ms",
+    "proxyFullSerial": "1027/1027 PASS, fail 0, duration 69017.2963ms",
+    "gitDiffCheck": "PASS",
+    "freshReviewFirst": "BLOCK tree 5183634f2d47ba38419eca1c880333e6471675bb: P1 workflow test did not assert exact verifier allowlist",
+    "allowlistTestRemediation": "Parses full verifier invocation, deep-compares exact HEAD/parent/four paths, and proves a fifth path is rejected",
+    "focusedGreenAfterReview": "3/3 PASS, fail 0, duration 1014.0149ms",
+    "proxyFullSerialAfterReview": "1027/1027 PASS, fail 0, duration 67902.2348ms"
+  },
+  "productionGates": {
+    "freshReview": "PENDING",
+    "trustedBuild": "PENDING",
+    "provenanceReadback": "PENDING",
+    "runtimeDeployment": "PENDING",
+    "databaseTeardown": "PENDING",
+    "liveE2E": "PENDING",
+    "finalVerdict": "BLOCK"
+  }
+}

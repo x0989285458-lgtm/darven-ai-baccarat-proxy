@@ -1,0 +1,33 @@
+{
+  "releaseVersion": "v105-v10-main.34",
+  "gitTag": "v105-v10-main.34",
+  "baseCommit": "9510ed1b97b1ecc9f87a861944f11da8fbb4d088",
+  "runtimeSourceVersion": "v105-v10-main.33",
+  "releaseScope": {
+    "trustedWorkflowChanged": true,
+    "runtimeChanged": false,
+    "databaseChanged": false,
+    "frontendChanged": false,
+    "workerChanged": false
+  },
+  "workflowContract": {
+    "verifierArgumentOrder": [
+      "head-sha",
+      "required-parent-sha",
+      "allowed-paths"
+    ],
+    "allowedChangedPaths": [
+      ".github/workflows/trusted-release-images-main34.yml",
+      "proxy/test/v105-v10-main34-trusted-workflow-release.test.js",
+      "release/v105-v10-main34-trusted-workflow-release-manifest.json",
+      "release/v105-v10-main34-trusted-workflow-release-report.json"
+    ]
+  },
+  "releaseBinding": {
+    "changedFileSha256": {
+      ".github/workflows/trusted-release-images-main34.yml": "f0fea14e776dfcc1d554f71232d681cb63e209407e3927291957b85575aa9945",
+      "proxy/test/v105-v10-main34-trusted-workflow-release.test.js": "27d9f5e34e7bc20b108918f371ef1fa343c6122e6dac2847469abfd27c29274b",
+      "release/v105-v10-main34-trusted-workflow-release-report.json": "f03a1750da8b5dfa7048b7d2ed96701d61faf981b5da97c694e6825482b347cc"
+    }
+  }
+}
