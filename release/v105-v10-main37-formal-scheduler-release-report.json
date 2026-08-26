@@ -1,0 +1,31 @@
+{
+  "releaseVersion": "v105-v10-main.37",
+  "releasePurpose": "以Git不可變Blob重新綁定Main36的Formal Consumer重複預測排程修正，避免Windows CRLF工作樹Hash污染可信發布證據。",
+  "predecessor": {
+    "releaseVersion": "v105-v10-main.36",
+    "status": "BLOCK",
+    "reason": "Fresh exact clone發現Manifest使用Windows CRLF工作樹SHA-256，與Git Blob位元組不一致；Main36未Tag、未Push、未建映像、未部署。"
+  },
+  "runtimeSource": {
+    "commit": "17cf53c339e125cedd07fbd994c973411f69c008",
+    "behavior": "Settlement整段抑制背景桌台預測排程，finally恢復；顯式Final預測與ACK順序不變。"
+  },
+  "ownerEvidence": {
+    "main35RegressionRed": "2 !== 1",
+    "targetRegression": "2/2 PASS",
+    "proxySuite": "1035/1035 PASS",
+    "frontendSuite": "163/163 PASS",
+    "frontendBuild": "PASS"
+  },
+  "productionGates": {
+    "freshReview": "PENDING",
+    "trustedBuild": "PENDING",
+    "registryReadback": "PENDING",
+    "sigstoreProvenance": "PENDING",
+    "formalConsumerDeployment": "BLOCK",
+    "queueConvergence": "BLOCK",
+    "tenTableFinalParity": "BLOCK",
+    "frontendBrowserE2E": "BLOCK",
+    "adminBrowserE2E": "BLOCK"
+  }
+}
