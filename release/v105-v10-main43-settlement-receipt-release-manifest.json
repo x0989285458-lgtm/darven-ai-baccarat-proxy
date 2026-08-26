@@ -1,0 +1,41 @@
+{
+  "releaseVersion": "v105-v10-main.43",
+  "gitTag": "v105-v10-main.43",
+  "parentCommit": "2065cc1f4fe773cd0ca7b20e8dadc5a0478707fd",
+  "runtimeSourceVersion": "v105-v10-main.43",
+  "releaseScope": {
+    "formalConsumerChanged": true,
+    "frontendChanged": false,
+    "workflowChanged": true,
+    "proxyDeploymentChanged": false,
+    "databaseChanged": false,
+    "workerChanged": false
+  },
+  "workflowContract": {
+    "verifierArgumentOrder": [
+      "head-sha",
+      "required-parent-sha",
+      "allowed-paths"
+    ],
+    "allowedChangedPaths": [
+      ".github/workflows/trusted-release-images-main43.yml",
+      "proxy/src/supabase-writer.js",
+      "proxy/test/supabase-writer.test.js",
+      "proxy/test/v105-v10-main42-formal-keyed-lanes-release.test.js",
+      "proxy/test/v105-v10-main43-settlement-receipt-release.test.js",
+      "release/v105-v10-main43-settlement-receipt-release-manifest.json",
+      "release/v105-v10-main43-settlement-receipt-release-report.json"
+    ]
+  },
+  "releaseBinding": {
+    "hashInput": "normalized immutable Git index blob bytes",
+    "changedFileSha256": {
+      ".github/workflows/trusted-release-images-main43.yml": "247a914e69fec9560a3ead1453dfa544d39f8d8eca29fe9d354dfabe00529d29",
+      "proxy/src/supabase-writer.js": "50b6fa5db6668466b9beecfc77bc94723f083b8b959aceb021fff1865251ce14",
+      "proxy/test/supabase-writer.test.js": "6108ada3ae03d13be6ff5072ae403542c4dfd55aed21db313e48f453c92b3b50",
+      "proxy/test/v105-v10-main42-formal-keyed-lanes-release.test.js": "fc9b56f62d8ae929f0d7ff8571ebe836cc48cad234285c86dde6addb84370ac1",
+      "proxy/test/v105-v10-main43-settlement-receipt-release.test.js": "e38fcb8f3e67f9c997bff27e65545a277464fec06709e6ea3d2cbf99f3e7cb04",
+      "release/v105-v10-main43-settlement-receipt-release-report.json": "bfb288aae9fc6077692d074a00212590c4220c7a189753c5ac62d20d1f52ad83"
+    }
+  }
+}

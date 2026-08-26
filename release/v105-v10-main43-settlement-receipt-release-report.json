@@ -1,0 +1,43 @@
+{
+  "releaseVersion": "v105-v10-main.43",
+  "releasePurpose": "修正Formal Settlement Writer在DB ACK成功後回給Server的Receipt遺失predictionId，導致所有Final被Strict Identity Gate拒絕；保留首次Durable與同Process duplicate replay的完整Issued identity。",
+  "predecessor": {
+    "releaseVersion": "v105-v10-main.42",
+    "status": "LIVE_GATE_FAIL",
+    "reason": "Main42可信映像與並行Scheduler皆通過，但正式啟動後persistRound回傳prediction缺predictionId，60筆新Final在Strict Receipt Identity Gate形成Dead Letter；Consumer已立即停止。"
+  },
+  "runtimeEvidence": {
+    "receiptIdentityRegressionRed": "predictionId actual undefined; expected issued UUID",
+    "durableAndDuplicateReceiptGreen": "1/1 PASS",
+    "writerSuite": "7/7 PASS",
+    "proxySuite": "1066/1066 PASS"
+  },
+  "productionIncidentEvidence": {
+    "main42ImageDigest": "sha256:9a011348b51e2be902da21eeaad22ad98691a899c1c6eaea52b532bfd34b79d1",
+    "main42Commit": "2065cc1f4fe773cd0ca7b20e8dadc5a0478707fd",
+    "deadLetterRowsAtStop": 60,
+    "errorRowsAtStop": 10,
+    "pendingRowsAtStop": 69,
+    "formalConsumerStopped": true,
+    "rawCaptureContinued": true
+  },
+  "main42TakeoverEvidence": {
+    "archivedRows": 2268,
+    "roundKeys": 2286,
+    "uncompressedSha256": "8cfd5779c139984c2748b6247eed1e0b18dc5b7f8641a74de9bb43a48731f4e6",
+    "gzipSha256": "2c5ea31c93ab283820854242fb1263e6367f1decfb306ed386d1673d661b97d4"
+  },
+  "productionGates": {
+    "freshReview": "PENDING",
+    "trustedBuild": "PENDING",
+    "registryReadback": "PENDING",
+    "sigstoreProvenance": "PENDING",
+    "formalConsumerDeployment": "BLOCK",
+    "freshOutboxTakeover": "BLOCK",
+    "queueConvergence": "BLOCK",
+    "tenTableFinalParity": "BLOCK",
+    "frontendDeployment": "BLOCK",
+    "frontendBrowserE2E": "BLOCK",
+    "adminBrowserE2E": "BLOCK"
+  }
+}

@@ -110,6 +110,45 @@ test('Supabase client posts strategy, roadmap event and prediction result with s
   assert.equal(requests[3].init.headers.Authorization, 'Bearer sb_secret_test_key')
 })
 
+test('persistRound returns exact issued identity for durable and same-process duplicate receipts', async () => {
+  const issued = {
+    ...buildLivePrediction(table),
+    predictionId: '11111111-1111-4111-8111-111111111111',
+    issuedAt: '2026-08-26T19:00:00.000Z',
+  }
+  let writes = 0
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co',
+    serviceKey: 'sb_secret_test_key',
+    requireVerifiedStrategy: false,
+    retryAttempts: 1,
+    fetchImpl: async (url) => {
+      assert.equal(String(url).includes('/rpc/settle_v105_prediction'), true)
+      writes += 1
+      return { ok: true, status: 200, text: async () => JSON.stringify({
+        persisted: true,
+        roadmapDurable: true,
+        predictionDurable: true,
+        prediction_id: issued.predictionId,
+      }) }
+    },
+  })
+
+  const first = await client.persistRound(round, table, issued)
+  const duplicate = await client.persistRound(round, table, issued)
+
+  for (const receipt of [first, duplicate]) {
+    assert.equal(receipt.prediction.predictionId, issued.predictionId)
+    assert.equal(receipt.prediction.table_id, issued.targetTableId)
+    assert.equal(receipt.prediction.shoe_no, String(issued.targetShoe))
+    assert.equal(receipt.prediction.round_no, issued.targetRound)
+    assert.equal(receipt.prediction.strategy_version, issued.strategyVersion)
+  }
+  assert.equal(duplicate.skipped, true)
+  assert.equal(duplicate.reason, 'duplicate_round')
+  assert.equal(writes, 1)
+})
+
 test('formal lifecycle writes preserve same-table order while using bounded cross-table concurrency', async () => {
   const delayMs = 8
   let active = 0

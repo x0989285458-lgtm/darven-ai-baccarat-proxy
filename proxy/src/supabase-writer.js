@@ -209,6 +209,7 @@ export function buildPredictionResultRow(round = {}, table = {}, precomputedPred
   const sideActualResults = buildSideActualResults(round, facts)
   const predictionFeatures = structuredClone(precomputedPrediction.predictionFeatures)
   return {
+    predictionId: precomputedPrediction.predictionId,
     source: SOURCE,
     table_id: target.tableId,
     shoe_no: target.shoe,
