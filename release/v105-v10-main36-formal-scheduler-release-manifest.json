@@ -1,0 +1,38 @@
+{
+  "releaseVersion": "v105-v10-main.36",
+  "gitTag": "v105-v10-main.36",
+  "baseCommit": "7c81b01bbc605d1aff7a1ca0ed2bf8a918e9af0f",
+  "runtimeSourceVersion": "v105-v10-main.36",
+  "releaseScope": {
+    "runtimeChanged": true,
+    "formalConsumerChanged": true,
+    "proxyDeploymentChanged": false,
+    "databaseChanged": false,
+    "frontendChanged": false,
+    "workerChanged": false
+  },
+  "workflowContract": {
+    "verifierArgumentOrder": [
+      "head-sha",
+      "required-parent-sha",
+      "allowed-paths"
+    ],
+    "allowedChangedPaths": [
+      ".github/workflows/trusted-release-images-main36.yml",
+      "proxy/src/server.js",
+      "proxy/test/capture-outbox-ack.test.js",
+      "proxy/test/v105-v10-main36-formal-scheduler-release.test.js",
+      "release/v105-v10-main36-formal-scheduler-release-manifest.json",
+      "release/v105-v10-main36-formal-scheduler-release-report.json"
+    ]
+  },
+  "releaseBinding": {
+    "changedFileSha256": {
+      ".github/workflows/trusted-release-images-main36.yml": "3e14d8903e4bc77df37510f1f2d59efabffaea59d88fa79a97300a4d569847db",
+      "proxy/src/server.js": "e5f1d1b90684bde480767a7543d252b000d7eb740e2e86e44fa05daf50541f96",
+      "proxy/test/capture-outbox-ack.test.js": "51a318eb9ccbd3fe9e187db874902507c22cdccac6b26fbfe1897f008da3c763",
+      "proxy/test/v105-v10-main36-formal-scheduler-release.test.js": "f77daefbc3a9117e59aae418662db57f68c5a0d7015b762eb83cb52e5883e2d6",
+      "release/v105-v10-main36-formal-scheduler-release-report.json": "9ef4d465fe8125166b9386bb9576299f85d97a659f7acc487bbb76042fe42278"
+    }
+  }
+}

@@ -326,6 +326,105 @@ test('external consumer publishes a finalized screen and issues the next predict
   assert.deepEqual(order, ['reconcile', 'issue', 'complete'])
 })
 
+test('formal settlement state publication does not enqueue duplicate background prediction work', async () => {
+  let claimed = false
+  const order = []
+  const reconciliations = []
+  const issued = []
+  const snapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+  }
+  let app
+  app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: snapshot } })]
+      },
+      async completeCaptureOutbox() { order.push('complete') },
+      async failCaptureOutbox() { assert.fail('valid finalized work must not fail') },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async readIssuedPrediction(identity) {
+        if (identity.round !== 21) return null
+        return {
+          predictionId: 'pid-BAG01-88-21',
+          targetTableId: 'BAG01',
+          targetShoe: '88',
+          targetRound: 21,
+          strategyVersion: 'v105',
+        }
+      },
+      async persistRound() {
+        order.push('settle')
+        app.state.setTables(snapshot.tables)
+        return null
+      },
+      async reconcilePredictionLifecycle(identity) {
+        reconciliations.push(identity)
+        order.push('reconcile')
+      },
+      async issuePrediction(candidate) {
+        issued.push(candidate)
+        order.push('issue')
+        return { ...candidate, predictionId: 'pid-BAG01-88-22', issuedAt: '2026-08-25T16:00:01.000Z' }
+      },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) { return { enabled: true, predictions: [], tables } },
+    },
+  })
+
+  await app.drainCaptureOutbox()
+  await app.waitForServiceWorkIdle()
+
+  assert.equal(reconciliations.length, 1, 'only the explicit finalized identity may reconcile prediction work')
+  assert.equal(issued.length, 1)
+  assert.deepEqual(order, ['settle', 'reconcile', 'issue', 'complete'])
+})
+
+test('formal apply failure restores background prediction scheduling', async () => {
+  let claimed = false
+  let failed = 0
+  let reconciled = 0
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: envelope().snapshot } })]
+      },
+      async completeCaptureOutbox() { assert.fail('failed formal apply must not complete') },
+      async failCaptureOutbox() { failed += 1; return { failed: true, isolated: true } },
+      async readIssuedPrediction() { return null },
+      async reconcilePredictionLifecycle() { reconciled += 1 },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot() { throw new Error('formal apply failure') },
+    },
+  })
+
+  const result = await app.drainCaptureOutbox()
+  app.state.setTables([{ tableId: 'BAG01', shoe: 88, round: 22 }])
+  await app.waitForServiceWorkIdle()
+
+  assert.deepEqual(result, { processed: 0, failed: 1 })
+  assert.equal(failed, 1)
+  assert.equal(reconciled, 1, 'normal table updates must schedule prediction work after formal failure')
+})
+
 test('external consumer completes an idempotent replay when exact next issuance exists after its acknowledgement was lost', async () => {
   let claimed = false
   let completed = 0

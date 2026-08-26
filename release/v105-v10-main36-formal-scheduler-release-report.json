@@ -1,0 +1,23 @@
+{
+  "releaseVersion": "v105-v10-main.36",
+  "releasePurpose": "修正Formal Consumer在Outbox settlement期間誤排全桌背景預測，造成第一輪formal_prediction超過45秒並使前台Final長期落後。",
+  "rootCause": "Settlement state publication triggered background prediction scheduling before suppressTableUpdateWork was enabled; the explicit finalized-identity prediction then waited for duplicate global scheduler work.",
+  "evidence": {
+    "productionIncident": "Raw Final entered DB in 0.5-4.9 seconds while V105 settlements lagged 14-22 rounds and the Outbox plateaued near 160 rows.",
+    "phaseTrace": "Attempt 1 stayed in formal_prediction for more than 45 seconds and failed; retry completed in about 1.5 seconds.",
+    "builderBenchmark": "10-table V105 builder completed in 157ms; reconciliation and issuance rollback probes each completed in under 750ms.",
+    "tddRed": "Main35 reconciled the finalized identity twice (2 !== 1)",
+    "focusedGreen": "2/2 PASS",
+    "proxyFullSerial": "1032/1032 PASS"
+  },
+  "productionGates": {
+    "freshReview": "PENDING",
+    "trustedBuild": "PENDING",
+    "provenanceReadback": "PENDING",
+    "formalConsumerDeployment": "PENDING",
+    "queueZero": "PENDING",
+    "tenTableFinalParity": "PENDING",
+    "browserE2E": "PENDING",
+    "finalVerdict": "BLOCK"
+  }
+}

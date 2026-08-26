@@ -710,24 +710,25 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               await runLeasePhase('heartbeat_complete_ack', completeClaims)
               processed += claimedRows.length
             } else {
-              const applied = await runLeasePhase('formal', () => (
-                applyCloudCapturePayload({
-                  parsed, state, writer: supabaseClient, v100Formal,
-                  persistAncillary: false,
-                  publishSnapshot: false,
-                  onDurablePhase: ({ phase }) => state.setStatus({
-                    captureOutboxPhase: {
-                      phase: `formal_${phase}`,
-                      startedAt: new Date(Number(now())).toISOString(),
-                    },
-                  }),
-                })
-              ))
-              leaseDeadline.assertActive()
-              const publishedTables = Array.isArray(applied?.tables) ? applied.tables : parsed.tables
-              state.setStatus(parsed.status)
+              let publishedTables
               suppressTableUpdateWork = true
               try {
+                const applied = await runLeasePhase('formal', () => (
+                  applyCloudCapturePayload({
+                    parsed, state, writer: supabaseClient, v100Formal,
+                    persistAncillary: false,
+                    publishSnapshot: false,
+                    onDurablePhase: ({ phase }) => state.setStatus({
+                      captureOutboxPhase: {
+                        phase: `formal_${phase}`,
+                        startedAt: new Date(Number(now())).toISOString(),
+                      },
+                    }),
+                  })
+                ))
+                leaseDeadline.assertActive()
+                publishedTables = Array.isArray(applied?.tables) ? applied.tables : parsed.tables
+                state.setStatus(parsed.status)
                 state.setTables(publishedTables)
               } finally {
                 suppressTableUpdateWork = false
