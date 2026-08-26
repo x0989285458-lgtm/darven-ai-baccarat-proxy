@@ -390,6 +390,69 @@ test('formal settlement state publication does not enqueue duplicate background 
   assert.deepEqual(order, ['settle', 'reconcile', 'issue', 'complete'])
 })
 
+test('concurrent external table update is not dropped while formal settlement suppresses its own publication', async () => {
+  let claimed = false
+  let releaseSettlement
+  let markSettlementStarted
+  const settlementStarted = new Promise((resolve) => { markSettlementStarted = resolve })
+  const settlementGate = new Promise((resolve) => { releaseSettlement = resolve })
+  const reconciledTables = []
+  const snapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: snapshot } })]
+      },
+      async completeCaptureOutbox() {},
+      async failCaptureOutbox() { assert.fail('valid concurrent work must not fail') },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async readIssuedPrediction(identity) {
+        if (identity.round !== 21) return null
+        return {
+          predictionId: 'pid-BAG01-88-21',
+          targetTableId: 'BAG01',
+          targetShoe: '88',
+          targetRound: 21,
+          strategyVersion: 'v105',
+        }
+      },
+      async persistRound() {
+        markSettlementStarted()
+        await settlementGate
+        return null
+      },
+      async reconcilePredictionLifecycle(identity) { reconciledTables.push(identity.tableId) },
+      async issuePrediction(candidate) {
+        return { ...candidate, predictionId: `pid-${candidate.targetTableId}-${candidate.targetRound}`, issuedAt: '2026-08-25T16:00:01.000Z' }
+      },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) { return { enabled: true, predictions: [], tables } },
+    },
+  })
+
+  const drain = app.drainCaptureOutbox()
+  await settlementStarted
+  app.state.setTables([{ tableId: 'BAG02', shoe: 99, round: 7, sourceUpdatedAt: '2026-08-25T16:00:00.500Z' }])
+  releaseSettlement()
+  const result = await drain
+  await app.waitForServiceWorkIdle()
+
+  assert.deepEqual(result, { processed: 1, failed: 0 })
+  assert.deepEqual(reconciledTables, ['BAG02', 'BAG01'])
+})
+
 test('formal apply failure restores background prediction scheduling', async () => {
   let claimed = false
   let failed = 0

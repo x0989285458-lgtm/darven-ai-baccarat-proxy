@@ -1,0 +1,46 @@
+{
+  "releaseVersion": "v105-v10-main.38",
+  "gitTag": "v105-v10-main.38",
+  "liveBaseCommit": "7c81b01bbc605d1aff7a1ca0ed2bf8a918e9af0f",
+  "predecessorCommit": "ec316d8ce647216dd2ab2c540fb1eb4a2133b468",
+  "runtimeSourceVersion": "v105-v10-main.38",
+  "releaseScope": {
+    "runtimeChangedFromLiveBase": true,
+    "formalConsumerChanged": true,
+    "proxyDeploymentChanged": false,
+    "databaseChanged": false,
+    "frontendChanged": false,
+    "workerChanged": false
+  },
+  "workflowContract": {
+    "verifierArgumentOrder": [
+      "head-sha",
+      "required-parent-sha",
+      "allowed-paths"
+    ],
+    "allowedChangedPaths": [
+      ".github/workflows/trusted-release-images-main38.yml",
+      "proxy/src/server.js",
+      "proxy/test/capture-outbox-ack.test.js",
+      "proxy/test/v105-v10-main33-decommission-release.test.js",
+      "proxy/test/v105-v10-main36-formal-scheduler-release.test.js",
+      "proxy/test/v105-v10-main37-formal-scheduler-release.test.js",
+      "proxy/test/v105-v10-main38-formal-scheduler-release.test.js",
+      "release/v105-v10-main38-formal-scheduler-release-manifest.json",
+      "release/v105-v10-main38-formal-scheduler-release-report.json"
+    ]
+  },
+  "releaseBinding": {
+    "hashInput": "normalized immutable Git index blob bytes",
+    "changedFileSha256": {
+      ".github/workflows/trusted-release-images-main38.yml": "91d0f6d2db3dbc19656dde8734493b39df3f7a50d9598d761e980e60b869d603",
+      "proxy/src/server.js": "a831c300533c4affc4dce74524fe86898cd89e425a10d3f943005beca4382f6c",
+      "proxy/test/capture-outbox-ack.test.js": "dac40849c3116a70b7502689d206e035f684a15425ee3afa516ed70eaf2918c9",
+      "proxy/test/v105-v10-main33-decommission-release.test.js": "da0ded011d213893f23f37d2076e8fc3af45ec6903d8cccd63cf6063cd529dad",
+      "proxy/test/v105-v10-main36-formal-scheduler-release.test.js": "4866aa1c075d64bbb7e714785d339c37991bbdbe8bdfe73a4253c3daa32df205",
+      "proxy/test/v105-v10-main37-formal-scheduler-release.test.js": "5d819a4cbbfd225587217d907d6fda2267687cbc6919ca507c38c9d8d30fa68e",
+      "proxy/test/v105-v10-main38-formal-scheduler-release.test.js": "bbe116c0a1b8cef3a08b8a203e20b438d42cbfa9474a782a286964653fa3f6b8",
+      "release/v105-v10-main38-formal-scheduler-release-report.json": "e3e3b37fd7faf1e8e3ceb62f634e5ec6937472b4bf0a4be636f2f62257b65173"
+    }
+  }
+}

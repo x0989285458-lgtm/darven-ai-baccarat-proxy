@@ -10,7 +10,8 @@ import { buildV105V10MainPrediction } from '../src/v105-v10-main-strategy.js'
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const read = (relativePath) => readFile(path.join(root, relativePath), 'utf8')
 const readJson = async (relativePath) => JSON.parse(await read(relativePath))
-const readIndexBlob = (relativePath) => execFileSync('git', ['show', `:${relativePath}`], { cwd: root })
+const main33Commit = '9510ed1b97b1ecc9f87a861944f11da8fbb4d088'
+const readIndexBlob = (relativePath) => execFileSync('git', ['show', `${main33Commit}:${relativePath}`], { cwd: root })
 const disableMigrationPath = 'supabase/migrations/20260826035000_v105_main33_disable_legacy_runtime_settings.sql'
 const migrationPath = 'supabase/migrations/20260826040000_v105_main33_legacy_runtime_teardown.sql'
 const workflowPath = '.github/workflows/trusted-release-images-main33.yml'

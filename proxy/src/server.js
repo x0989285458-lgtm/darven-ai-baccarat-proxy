@@ -1,5 +1,6 @@
 import http from 'node:http'
 import crypto from 'node:crypto'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { fileURLToPath } from 'node:url'
 import { createProxyState } from './state-store.js'
 import { createMtClient } from './mt-client.js'
@@ -412,7 +413,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const adminSessionTtlMs = Math.min(30 * 60 * 1000, Math.max(60000, Number.isFinite(resolvedAdminSessionTtlInput) ? resolvedAdminSessionTtlInput : 30 * 60 * 1000))
   let requestTablesBroadcast = () => {}
   let requestTablesRefresh = () => {}
-  let suppressTableUpdateWork = false
+  const tableUpdateWorkContext = new AsyncLocalStorage()
   let latestStreamScreenSignature = ''
   const state = createProxyState({
     inferSnapshotRounds: !strictRealCardRounds,
@@ -437,7 +438,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           if (previousScreen?.shoe !== observedShoe || previousScreen?.visibleRound !== observedRound) screenProgressChanged = true
           latestObservedScreenByTable.set(observedTableId, { shoe: observedShoe, visibleRound: observedRound })
         }
-        if (!resolvedCaptureOutboxConsumerEnabled || suppressTableUpdateWork) continue
+        if (!resolvedCaptureOutboxConsumerEnabled || tableUpdateWorkContext.getStore()?.suppressPredictionWork) continue
         const tableKey = `table:${String(table?.tableId ?? '')}`
         void serviceWorkScheduler.enqueueLatest(tableKey, async () => {
           await reconcileThenSavePendingPrediction(table)
@@ -711,8 +712,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               processed += claimedRows.length
             } else {
               let publishedTables
-              suppressTableUpdateWork = true
-              try {
+              await tableUpdateWorkContext.run({ suppressPredictionWork: true }, async () => {
                 const applied = await runLeasePhase('formal', () => (
                   applyCloudCapturePayload({
                     parsed, state, writer: supabaseClient, v100Formal,
@@ -730,9 +730,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                 publishedTables = Array.isArray(applied?.tables) ? applied.tables : parsed.tables
                 state.setStatus(parsed.status)
                 state.setTables(publishedTables)
-              } finally {
-                suppressTableUpdateWork = false
-              }
+              })
               const finalizedIdentities = new Set(parsed.rounds.map((round) => JSON.stringify([
                 String(round?.tableId ?? ''),
                 String(round?.shoe ?? ''),

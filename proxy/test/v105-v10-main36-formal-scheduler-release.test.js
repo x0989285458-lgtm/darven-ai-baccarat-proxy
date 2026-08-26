@@ -1,11 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
+const main36Commit = '17cf53c339e125cedd07fbd994c973411f69c008'
 const workflowPath = '.github/workflows/trusted-release-images-main36.yml'
 const manifestPath = 'release/v105-v10-main36-formal-scheduler-release-manifest.json'
 const reportPath = 'release/v105-v10-main36-formal-scheduler-release-report.json'
@@ -17,7 +17,8 @@ const expectedPaths = [
   manifestPath,
   reportPath,
 ]
-const read = (relativePath) => readFile(path.join(root, relativePath), 'utf8')
+const readBlob = (relativePath) => execFileSync('git', ['show', `${main36Commit}:${relativePath}`], { cwd: root })
+const read = async (relativePath) => readBlob(relativePath).toString('utf8')
 const readJson = async (relativePath) => JSON.parse(await read(relativePath))
 const sha256 = (text) => createHash('sha256').update(text).digest('hex')
 
@@ -47,7 +48,7 @@ test('Main36 trusted workflow builds only the Formal Consumer from the exact fro
   ])
 })
 
-test('Main36 manifest binds the exact minimal runtime delta and every non-self artifact', async () => {
+test('Main36 immutable evidence preserves the CRLF manifest mismatch that blocked release', async () => {
   const manifest = await readJson(manifestPath)
   assert.equal(manifest.releaseVersion, 'v105-v10-main.36')
   assert.equal(manifest.gitTag, 'v105-v10-main.36')
@@ -64,7 +65,11 @@ test('Main36 manifest binds the exact minimal runtime delta and every non-self a
   const bindings = manifest.releaseBinding.changedFileSha256
   const boundPaths = expectedPaths.filter((value) => value !== manifestPath)
   assert.deepEqual(Object.keys(bindings).sort(), [...boundPaths].sort())
-  for (const relativePath of boundPaths) assert.equal(bindings[relativePath], sha256(await read(relativePath)), relativePath)
+  const mismatches = boundPaths.filter((relativePath) => bindings[relativePath] !== sha256(readBlob(relativePath)))
+  assert.deepEqual(mismatches, [
+    'proxy/src/server.js',
+    'proxy/test/capture-outbox-ack.test.js',
+  ])
 })
 
 test('Main36 report records evidence without self-approving production gates', async () => {
