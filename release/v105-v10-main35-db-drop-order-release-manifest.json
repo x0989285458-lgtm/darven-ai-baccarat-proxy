@@ -1,0 +1,34 @@
+{
+  "releaseVersion": "v105-v10-main.35",
+  "gitTag": "v105-v10-main.35",
+  "baseCommit": "ed4d5650c8891eadb33715177d254c47cbfe912e",
+  "runtimeSourceVersion": "v105-v10-main.34",
+  "releaseScope": {
+    "databaseMigrationChanged": true,
+    "runtimeChanged": false,
+    "trustedWorkflowChanged": false,
+    "frontendChanged": false,
+    "workerChanged": false
+  },
+  "releaseContract": {
+    "allowedChangedPaths": [
+      "proxy/test/v105-v10-main35-db-drop-order-release.test.js",
+      "release/v105-v10-main35-db-drop-order-release-manifest.json",
+      "release/v105-v10-main35-db-drop-order-release-report.json",
+      "supabase/migrations/20260826105000_v105_main35_legacy_runtime_teardown_drop_order.sql"
+    ],
+    "dropOrder": [
+      "function",
+      "view",
+      "table"
+    ],
+    "cascadeForbidden": true
+  },
+  "releaseBinding": {
+    "changedFileSha256": {
+      "proxy/test/v105-v10-main35-db-drop-order-release.test.js": "e46b69a0937c1dd0b56910ef0e7d81a154971791573674216a2a8f57a829e274",
+      "release/v105-v10-main35-db-drop-order-release-report.json": "6850afcad1456b264a4e32fabf6ad60228c6d0a9744214360f5dcba7694f7bd2",
+      "supabase/migrations/20260826105000_v105_main35_legacy_runtime_teardown_drop_order.sql": "9e842e6a4ccad6299e1dc0fe0391245db7bdb412fcc8c6384a5d2807d0559477"
+    }
+  }
+}

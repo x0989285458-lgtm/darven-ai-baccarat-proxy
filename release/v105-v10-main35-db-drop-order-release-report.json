@@ -1,0 +1,32 @@
+{
+  "releaseVersion": "v105-v10-main.35",
+  "releasePurpose": "修正Main33 teardown在依賴Function尚存在時先Drop View造成的DependentObjectsStillExist；只重排精確Drop Allowlist，不使用CASCADE，不改Main34 Runtime。",
+  "main33TeardownFormal": "BLOCK_ROLLED_BACK",
+  "formalError": "get_v103_shadow_history(integer) depends on type v103_shadow_history",
+  "rollbackEvidence": {
+    "targetRelationsPresent": "64/64",
+    "targetFunctionNamesPresent": "51/51",
+    "partialDrop": false,
+    "v105ShadowSettingsRemainDisabled": true
+  },
+  "evidence": {
+    "red": "Main33 immutable teardown failed and rolled back because view preceded dependent function",
+    "correctiveOrder": "51 functions then 11 views then 53 tables",
+    "cascade": false,
+    "runtimeSource": "v105-v10-main.34 ed4d5650c8891eadb33715177d254c47cbfe912e",
+    "focusedGreen": "3/3 PASS, fail 0, duration 200.7302ms",
+    "rollbackOnly": "PASS: all drops executed then ROLLBACK; target relations 64/64 and function names 51/51 remained",
+    "triggerDependency": "exact trigger v104_iteration_shadow_2000_settlement_cap removed before dependent function",
+    "settingsGate": "enabled and non-shadow_disabled counts must both be zero",
+    "focusedFinal": "3/3 PASS, fail 0, duration 188.1892ms",
+    "proxyFullSerial": "1030/1030 PASS, fail 0, duration 69859.5101ms"
+  },
+  "productionGates": {
+    "focusedTests": "PASS",
+    "fullTests": "PASS",
+    "freshReview": "PENDING",
+    "databaseMigration": "PENDING",
+    "liveE2E": "PENDING",
+    "finalVerdict": "BLOCK"
+  }
+}
