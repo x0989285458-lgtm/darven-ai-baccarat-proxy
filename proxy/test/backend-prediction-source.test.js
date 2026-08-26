@@ -29,6 +29,37 @@ test('tables expose only a complete backend prediction for the exact screen roun
   assert.deepEqual(Object.keys(table.prediction.sideActions).sort(), ['bankerDragon', 'bankerPair', 'playerDragon', 'playerPair', 'superSix', 'tie'])
 })
 
+test('read-only tables endpoint does not initiate durable next issuance when formal consumer is disabled', async () => {
+  let issueCalls = 0
+  const tableState = { tableId: 'BAG01', shoe: 88, round: 20, sourceUpdatedAt: issuedAt }
+  const exact = {
+    ...buildLivePrediction({ ...tableState, round: 19 }),
+    predictionId: 'pid-screen-round-20',
+    issuedAt,
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: false,
+    supabaseClient: {
+      configured: true,
+      issuePrediction: async (candidate) => {
+        issueCalls += 1
+        return { ...candidate, predictionId: `pid-${candidate.targetRound}`, issuedAt }
+      },
+      readIssuedPrediction: async () => exact,
+    },
+  })
+  app.state.setTables([tableState])
+
+  const response = await app.inject({ url: '/api/tables' })
+  await new Promise((resolve) => setImmediate(resolve))
+  const [table] = JSON.parse(response.body)
+
+  assert.equal(response.statusCode, 200)
+  assert.equal(table.prediction.predictionId, 'pid-screen-round-20')
+  assert.equal(issueCalls, 0)
+})
+
 test('tables return current live data without waiting for a hung durable prediction issuance', async () => {
   let issuanceStarted = false
   const never = new Promise(() => {})

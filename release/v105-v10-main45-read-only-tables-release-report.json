@@ -1,0 +1,64 @@
+{
+  "releaseVersion": "v105-v10-main.45",
+  "releasePurpose": "當Formal Consumer停用的Render只讀Proxy處理GET /api/tables時，不再從讀取路徑同步啟動下一局durable issuance；目前畫面只讀VM Formal Consumer已建立的精確v105 issuance，避免10桌buildPrediction阻塞會員API與round-ready SSE。",
+  "predecessor": {
+    "releaseVersion": "v105-v10-main.44",
+    "formalConsumerStatus": "LIVE_PASS",
+    "productionStatus": "LIVE_GATE_FAIL",
+    "reason": "Main44 Formal長窗與10桌Final已PASS，但中央trusted production review連續量到member tables 14125/17078ms、round-ready SSE 11321/17535ms，超過既定5000/10000ms門檻。"
+  },
+  "runtimeEvidence": {
+    "readOnlyIssuanceRed": "issueCalls actual 1; expected 0",
+    "readOnlyIssuanceGreen": "1/1 PASS",
+    "adjacentSuite": "83/83 PASS",
+    "proxySuite": "1074/1074 PASS"
+  },
+  "main44FormalEvidence": {
+    "commit": "594ce187145449bd6d2afab7a12b348cf8e2e08e",
+    "imageDigest": "sha256:85a0e0b5aaa434691b2b4b1a95a8b327ed87d73e4d83b62a8c134ad454247a8c",
+    "observationSeconds": 320,
+    "completedStart": 21,
+    "completedEnd": 160,
+    "maxActive": 4,
+    "maxOldestActiveSeconds": 2,
+    "errorOrDeadObserved": 0,
+    "finalActive": 0,
+    "tenTableRoadmap": "10/10",
+    "tenTableSettlement": "10/10",
+    "containerRestarts": 0
+  },
+  "productionLatencyEvidence": {
+    "statusSamplesMs": [250, 218, 250, 235, 343],
+    "memberSessionSamplesMs": [328, 312, 438],
+    "memberTablesSamplesMs": [19359, 10657, 2391, 469, 11234, 22266, 9672, 343],
+    "trustedReviewV1": {
+      "memberTablesMs": 14125,
+      "roundReadySseMs": 11321
+    },
+    "trustedReviewV2": {
+      "memberTablesMs": 17078,
+      "roundReadySseMs": 17535
+    },
+    "rootCause": "Render CAPTURE_OUTBOX_CONSUMER_ENABLED=false時，readBestTables仍呼叫savePendingPrediction；10桌GET在Promise.race建立前同步進入buildPrediction，timeout無法中斷Event Loop。"
+  },
+  "releaseScope": {
+    "proxyDeploymentChanged": true,
+    "formalConsumerChanged": false,
+    "frontendChanged": false,
+    "databaseChanged": false,
+    "workerChanged": false
+  },
+  "productionGates": {
+    "freshReview": "PENDING",
+    "trustedProxyBuild": "PENDING",
+    "registryReadback": "PENDING",
+    "sigstoreProvenance": "PENDING",
+    "renderProxyDeployment": "BLOCK",
+    "main44FormalContinuity": "BLOCK",
+    "queueConvergence": "BLOCK",
+    "tenTableFinalParity": "BLOCK",
+    "fixedAliasBrowserE2E": "BLOCK",
+    "trustedProductionAdapter": "BLOCK",
+    "watchdog": "BLOCK"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "releaseVersion": "v105-v10-main.45",
+  "gitTag": "v105-v10-main.45",
+  "parentCommit": "594ce187145449bd6d2afab7a12b348cf8e2e08e",
+  "runtimeSourceVersion": "v105-v10-main.45",
+  "releaseScope": {
+    "formalConsumerChanged": false,
+    "frontendChanged": false,
+    "workflowChanged": true,
+    "proxyDeploymentChanged": true,
+    "databaseChanged": false,
+    "workerChanged": false
+  },
+  "workflowContract": {
+    "verifierArgumentOrder": [
+      "head-sha",
+      "required-parent-sha",
+      "allowed-paths"
+    ],
+    "allowedChangedPaths": [
+      ".github/workflows/trusted-release-images-main45.yml",
+      "proxy/src/server.js",
+      "proxy/test/backend-prediction-source.test.js",
+      "proxy/test/v105-v10-main44-lease-scoped-barrier-release.test.js",
+      "proxy/test/v105-v10-main45-read-only-tables-release.test.js",
+      "release/v105-v10-main45-read-only-tables-release-manifest.json",
+      "release/v105-v10-main45-read-only-tables-release-report.json"
+    ]
+  },
+  "releaseBinding": {
+    "hashInput": "normalized immutable Git index blob bytes",
+    "changedFileSha256": {
+      ".github/workflows/trusted-release-images-main45.yml": "99eb8bc2bec88d346d9337daa80cb4b90e58da0124490b55175e04a891082fdf",
+      "proxy/src/server.js": "2734c19dd0cc17c514ef4e22df7fc444ad2f47922df4a05c6fcdcf4105a903fc",
+      "proxy/test/backend-prediction-source.test.js": "90e3c10390cd8d2cac812203012c407976aa2a14134aaa78c0a1cfb9be44bbac",
+      "proxy/test/v105-v10-main44-lease-scoped-barrier-release.test.js": "de54ed96a391f055b35e04af776b9cceb754fff06fb3d658b3cc531126e83a7f",
+      "proxy/test/v105-v10-main45-read-only-tables-release.test.js": "fecfec6127fbab6a40803d130b72c775aae585cd3e40de80a56279f5f8dbf32f",
+      "release/v105-v10-main45-read-only-tables-release-report.json": "3a522a490060c0a662c4d25158607d513d9da0e2e3f3190add0363401e5963fe"
+    }
+  }
+}

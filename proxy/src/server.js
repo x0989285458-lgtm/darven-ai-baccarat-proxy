@@ -1793,10 +1793,12 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       return { ...table, buildVersion: BUILD_VERSION, prediction: null }
     }
 
-    await Promise.race([
-      savePendingPrediction(table),
-      new Promise((resolve) => setTimeout(() => resolve(null), 25)),
-    ])
+    if (resolvedCaptureOutboxConsumerEnabled) {
+      await Promise.race([
+        savePendingPrediction(table),
+        new Promise((resolve) => setTimeout(() => resolve(null), 25)),
+      ])
+    }
     const targetRound = Number(table.round)
     const key = predictionTargetKey(table.tableId, table.shoe, targetRound)
     const durableIssuanceRequired = isDurablePredictionIssuanceRequired()
