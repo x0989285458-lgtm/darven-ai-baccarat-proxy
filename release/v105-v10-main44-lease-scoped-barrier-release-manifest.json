@@ -1,0 +1,41 @@
+{
+  "releaseVersion": "v105-v10-main.44",
+  "gitTag": "v105-v10-main.44",
+  "parentCommit": "3d8be3a0059eb93528cad04c8bb3e0933f747849",
+  "runtimeSourceVersion": "v105-v10-main.44",
+  "releaseScope": {
+    "formalConsumerChanged": true,
+    "frontendChanged": false,
+    "workflowChanged": true,
+    "proxyDeploymentChanged": false,
+    "databaseChanged": false,
+    "workerChanged": false
+  },
+  "workflowContract": {
+    "verifierArgumentOrder": [
+      "head-sha",
+      "required-parent-sha",
+      "allowed-paths"
+    ],
+    "allowedChangedPaths": [
+      ".github/workflows/trusted-release-images-main44.yml",
+      "proxy/src/server.js",
+      "proxy/test/capture-outbox-ack.test.js",
+      "proxy/test/v105-v10-main43-settlement-receipt-release.test.js",
+      "proxy/test/v105-v10-main44-lease-scoped-barrier-release.test.js",
+      "release/v105-v10-main44-lease-scoped-barrier-release-manifest.json",
+      "release/v105-v10-main44-lease-scoped-barrier-release-report.json"
+    ]
+  },
+  "releaseBinding": {
+    "hashInput": "normalized immutable Git index blob bytes",
+    "changedFileSha256": {
+      ".github/workflows/trusted-release-images-main44.yml": "afad818fc0c52f0bd5ce55e4c572c56ec4e5273dbe1ec8432975f3195380b387",
+      "proxy/src/server.js": "825a09896704b44dfadf480c77091b8d0c837161f5fde77916a87e56245a2c40",
+      "proxy/test/capture-outbox-ack.test.js": "6f2b87e23908e237df1c932ff20d1ad9614ca8f19abd3f12e73d5547b3c2fb95",
+      "proxy/test/v105-v10-main43-settlement-receipt-release.test.js": "31e59416b9a5e7b257eb2f261f9061fa8f582cbe1ce8348cbf2617cffc59b851",
+      "proxy/test/v105-v10-main44-lease-scoped-barrier-release.test.js": "6605b3b744526e0bd23a566c905231b2fd6d417381a7dd8f352a3844bfdd8288",
+      "release/v105-v10-main44-lease-scoped-barrier-release-report.json": "09d12a213d24edf1547f68b9f990df04c244da6418196bc3341a7662e08df466"
+    }
+  }
+}

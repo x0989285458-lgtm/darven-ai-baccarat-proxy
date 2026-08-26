@@ -471,6 +471,89 @@ test('concurrent external table update is not dropped while formal settlement su
   assert.deepEqual(reconciledTables, ['BAG02', 'BAG01'])
 })
 
+test('formal completion does not wait for unrelated background service work to become idle', async () => {
+  let claimed = false
+  let completed = 0
+  let releaseBackground
+  let markBackgroundStarted
+  let markFormalIssued
+  const backgroundStarted = new Promise((resolve) => { markBackgroundStarted = resolve })
+  const backgroundGate = new Promise((resolve) => { releaseBackground = resolve })
+  const formalIssued = new Promise((resolve) => { markFormalIssued = resolve })
+  const snapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: snapshot } })]
+      },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox() { assert.fail('unrelated background work must not fail the exact lease') },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async readIssuedPrediction(identity) {
+        if (identity.tableId !== 'BAG01' || identity.round !== 21) return null
+        return {
+          predictionId: 'pid-BAG01-88-21',
+          targetTableId: 'BAG01',
+          targetShoe: '88',
+          targetRound: 21,
+          strategyVersion: 'v105',
+        }
+      },
+      async persistRound() {
+        return {
+          prediction: {
+            predictionId: 'pid-BAG01-88-21',
+            targetTableId: 'BAG01',
+            targetShoe: '88',
+            targetRound: 21,
+            strategyVersion: 'v105',
+            prediction_features: { settlement_final: true },
+          },
+        }
+      },
+      async reconcilePredictionLifecycle(identity) {
+        if (identity.tableId === 'BAG02') {
+          markBackgroundStarted()
+          await backgroundGate
+        }
+      },
+      async issuePrediction(candidate) {
+        if (candidate.targetTableId === 'BAG01') markFormalIssued()
+        return { ...candidate, predictionId: `pid-${candidate.targetTableId}-${candidate.targetRound}`, issuedAt: '2026-08-25T16:00:01.000Z' }
+      },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) { return { enabled: true, predictions: [], tables } },
+    },
+  })
+
+  app.state.setTables([{ tableId: 'BAG02', shoe: 99, round: 7, sourceUpdatedAt: '2026-08-25T16:00:00.500Z' }])
+  await backgroundStarted
+  const drain = app.drainCaptureOutbox()
+  let completedBeforeBackgroundRelease
+  try {
+    await formalIssued
+    await new Promise((resolve) => setImmediate(resolve))
+    completedBeforeBackgroundRelease = completed
+  } finally {
+    releaseBackground()
+    await drain
+    await app.waitForServiceWorkIdle()
+  }
+
+  assert.equal(completedBeforeBackgroundRelease, 1, 'exact lease must complete after its own prediction work settles')
+})
+
 test('formal apply failure restores background prediction scheduling', async () => {
   let claimed = false
   let failed = 0

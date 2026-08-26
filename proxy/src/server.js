@@ -841,7 +841,6 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                 const predictionResults = await Promise.allSettled(predictionTables.map((table) => (
                   reconcileThenResolveOutboxPrediction(table)
                 )))
-                await serviceWorkScheduler.waitForIdle()
                 const failedPrediction = predictionResults.find((result) => result.status === 'rejected')
                 if (failedPrediction) throw failedPrediction.reason
                 return predictionResults.map((result) => result.value)

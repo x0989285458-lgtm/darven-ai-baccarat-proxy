@@ -1,0 +1,49 @@
+{
+  "releaseVersion": "v105-v10-main.44",
+  "releasePurpose": "移除Formal Exact Lease在本批prediction promises全部settled後對全域serviceWorkScheduler idle的額外等待；Formal只等待本Lease建立的reconcile/issue工作，背景桌台觀察仍由既有Scheduler與Shutdown追蹤。",
+  "predecessor": {
+    "releaseVersion": "v105-v10-main.43",
+    "status": "LIVE_GATE_FAIL",
+    "reason": "Main43 Receipt identity已修復且短窗10桌Settlement 10/10；長窗一批10 processing超過88秒、Active 40秒由11增至22且HTTP status timeout，故止血停止Consumer。"
+  },
+  "runtimeEvidence": {
+    "unrelatedBackgroundBarrierRed": "completedBeforeBackgroundRelease actual 0; expected 1",
+    "leaseScopedBarrierGreen": "1/1 PASS",
+    "captureOutboxSuite": "55/55 PASS",
+    "proxySuite": "1070/1070 PASS"
+  },
+  "productionIncidentEvidence": {
+    "main43ImageDigest": "sha256:5a898cdd6b42335fab42c0f59b238a8e87f2ab104d32abf9a73cf917725f1b91",
+    "main43Commit": "3d8be3a0059eb93528cad04c8bb3e0933f747849",
+    "completedRowsBeforeLongWindowFailure": 703,
+    "pendingRowsAtStopReadback": 28,
+    "processingRowsAtStopReadback": 10,
+    "deadLetterDelta": 0,
+    "processingBatchAgeSeconds": 88,
+    "activeSlopeOverFortySeconds": 11,
+    "formalConsumerStopped": true,
+    "rawCaptureContinued": true
+  },
+  "databaseTimingEvidence": {
+    "reconcileMeanMs": 110.88,
+    "reconcileMaxMs": 117897.26,
+    "issueMeanMs": 22.06,
+    "issueMaxMs": 35106.30,
+    "settleMeanMs": 21.12,
+    "settleMaxMs": 102814.65,
+    "interpretation": "SQL mean不支持策略計算本身需45秒；極端尾延遲與RED證明Exact Lease被無關全域Scheduler工作拖住。"
+  },
+  "productionGates": {
+    "freshReview": "PENDING",
+    "trustedBuild": "PENDING",
+    "registryReadback": "PENDING",
+    "sigstoreProvenance": "PENDING",
+    "formalConsumerDeployment": "BLOCK",
+    "freshOutboxTakeover": "BLOCK",
+    "queueConvergence": "BLOCK",
+    "tenTableFinalParity": "BLOCK",
+    "frontendFixedAlias": "BLOCK",
+    "frontendBrowserE2E": "BLOCK",
+    "adminBrowserE2E": "BLOCK"
+  }
+}
