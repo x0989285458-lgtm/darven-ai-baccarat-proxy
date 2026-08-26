@@ -1,0 +1,36 @@
+{
+  "releaseVersion": "v105-v10-main.41",
+  "releasePurpose": "修正已持久化舊靴Final因目前發布桌台已進入新靴而無法ACK、空靴身份被誤判、Issued Final缺持久化回執仍ACK，以及跨靴Batch對舊靴執行Lifecycle；同時補齊V105 V10正式來源鍵的前台中文預測理由映射。",
+  "predecessor": {
+    "releaseVersion": "v105-v10-main.39",
+    "status": "BLOCK",
+    "reason": "Main39正式鏈路曾產生2筆、共10個Round Key的Dead Letter；10個身份在Raw、Roadmap與V105 Settlement均存在，錯誤為finalized identity missing from published tables before outbox acknowledgement。另正式前台未識別V10來源鍵，預測理由為0。"
+  },
+  "runtimeEvidence": {
+    "oldShoeRegressionRed": "completed 0; expected 1",
+    "oldShoeAndMissingTableBranches": "8/8 PASS",
+    "captureOutboxSuite": "53/53 PASS",
+    "exactReaderHttpContracts": "31/31 PASS",
+    "proxySuite": "1055/1055 PASS",
+    "frontendSuite": "164/164 PASS",
+    "frontendBuild": "PASS"
+  },
+  "productionIncidentEvidence": {
+    "deadLetterRows": 2,
+    "roundKeys": 10,
+    "allRawRoadmapSettlementPresent": true,
+    "preimageSha256": "4e41ad17c5ef948a4335e1c74a15c11dd8a7378d4a4cac115e5bb106ba175f1c"
+  },
+  "productionGates": {
+    "freshReview": "PENDING",
+    "trustedBuild": "PENDING",
+    "registryReadback": "PENDING",
+    "sigstoreProvenance": "PENDING",
+    "formalConsumerDeployment": "BLOCK",
+    "frontendDeployment": "BLOCK",
+    "queueConvergence": "BLOCK",
+    "tenTableFinalParity": "BLOCK",
+    "frontendBrowserE2E": "BLOCK",
+    "adminBrowserE2E": "BLOCK"
+  }
+}

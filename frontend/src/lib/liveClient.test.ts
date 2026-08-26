@@ -29,6 +29,34 @@ describe('LiveRoadClient status messages', () => {
     ])
   })
 
+  it('explains the active v105 v10 prediction from its issued source keys', () => {
+    const table = {
+      prediction: {
+        source: 'backend', strategyVersion: 'v105', predictedResult: 'banker', confidence: 38,
+        featureWeights: {
+          v8AskRoad: 0.315,
+          v7RoadCycle: 0.315,
+          shoeBankerPlayerBias: 0.09,
+          uncommonRoadStructure: 0.1,
+          recentPracticalCalibration: 0.18,
+        },
+        scoreSources: {
+          v8AskRoad: { banker: 0.55, player: 0.45 },
+          v7RoadCycle: { banker: 0.55, player: 0.45 },
+          shoeBankerPlayerBias: { banker: 0.5, player: 0.5 },
+          uncommonRoadStructure: { banker: 0.55, player: 0.45 },
+          recentPracticalCalibration: { banker: 0.4737, player: 0.4625 },
+        },
+      },
+    }
+
+    expect(backendPredictionReasonsFromTable(table as any)).toEqual([
+      { key: 'v8AskRoad', text: 'V8問路訊號支持莊', weight: 0.315 },
+      { key: 'v7RoadCycle', text: 'V7路單週期支持莊', weight: 0.315 },
+      { key: 'uncommonRoadStructure', text: '大路非常見結構支持莊', weight: 0.1 },
+    ])
+  })
+
   it('uses the exact formal v105 big-road cycle reason instead of the generic roadmap label', () => {
     const table = {
       prediction: {

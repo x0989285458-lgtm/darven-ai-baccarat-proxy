@@ -200,6 +200,7 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
     if (!roundsByTable.has(tableId)) roundsByTable.set(tableId, [])
     roundsByTable.get(tableId).push(round)
   }
+  const settlementReceipts = []
   const settlementStartedAt = Date.now()
   reportDurablePhase('formal_settlement', { roundCount: parsed.rounds.length, tableCount: roundsByTable.size })
   await runDurableStage('durable_formal_settlement', () => withFormalSettlementTail(state, async () => {
@@ -224,6 +225,11 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
         if (typeof settleRound !== 'function') throw new Error('formal settlement state handler is unavailable')
         const settlement = await settleRound.call(state, round, settlementTable)
         if (settlement?.ok === false) throw settlement.error ?? new Error('formal settlement failed before ingest acknowledgement')
+        settlementReceipts.push(
+          settlement?.receipt && typeof settlement.receipt === 'object'
+            ? structuredClone(settlement.receipt)
+            : { receipt: null },
+        )
         await new Promise((resolve) => setImmediate(resolve))
       }
     }))
@@ -235,6 +241,7 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
     v100Formal: v100Result,
     tables: structuredClone(formalTables),
     rounds: structuredClone(parsed.rounds),
+    settlementReceipts: structuredClone(settlementReceipts),
     durableTimings,
   }
   const sessionId = parsed.sessionId ?? 'cloud-browser'
@@ -262,6 +269,7 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
     v100Formal: v100Result,
     tables: structuredClone(formalTables),
     rounds: structuredClone(parsed.rounds),
+    settlementReceipts: structuredClone(settlementReceipts),
     durableTimings,
   }
 }

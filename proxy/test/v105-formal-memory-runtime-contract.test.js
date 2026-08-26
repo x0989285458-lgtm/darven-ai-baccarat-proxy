@@ -15,7 +15,7 @@ test('durable authoritative Final triggers daily rollover without allowing memor
     async persistRound() {
       persisted += 1
       return { prediction: {
-        table_id: 'BAG01', shoe_no: '88', round_no: 21, strategy_version: 'v105',
+        prediction_id: 'pid-daily-rollover', table_id: 'BAG01', shoe_no: '88', round_no: 21, strategy_version: 'v105',
         predicted_result: issued.predictedResult, actual_result: 'banker', is_hit: true,
         prediction_features: { settlement_final: true }, resolved_at: '2026-07-24T16:00:01.000Z',
       } }
@@ -65,7 +65,7 @@ test('server assembles the default rollover from Online Core and Online Core exp
     configured: true,
     async readIssuedPrediction() { return issued },
     async persistRound() {
-      return { prediction: { table_id: 'BAG01', shoe_no: '88', round_no: 21, strategy_version: 'v105', predicted_result: issued.predictedResult, actual_result: 'banker', is_hit: true, prediction_features: { settlement_final: true }, resolved_at: '2026-07-24T16:00:01.000Z' } }
+      return { prediction: { prediction_id: 'pid-default-daily-rollover', table_id: 'BAG01', shoe_no: '88', round_no: 21, strategy_version: 'v105', predicted_result: issued.predictedResult, actual_result: 'banker', is_hit: true, prediction_features: { settlement_final: true }, resolved_at: '2026-07-24T16:00:01.000Z' } }
     },
   }
   const app = createApp({ autoConnect: false, supabaseClient: writer, onlineCoreClient })

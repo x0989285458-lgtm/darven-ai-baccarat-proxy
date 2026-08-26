@@ -36,7 +36,15 @@ export type LiveTable = {
 export type SidePredictionKey = 'tie' | 'superSix' | 'bankerPair' | 'playerPair' | 'bankerDragon' | 'playerDragon'
 export type BackendSidePredictions = Record<SidePredictionKey, number>
 export type BackendSideActions = Record<SidePredictionKey, boolean>
-export type MainPredictionReasonKey = 'shoe_banker_player_bias' | 'ask_road_signals' | 'roadmap_trend_signals'
+export type MainPredictionReasonKey =
+  | 'shoe_banker_player_bias'
+  | 'ask_road_signals'
+  | 'roadmap_trend_signals'
+  | 'v8AskRoad'
+  | 'v7RoadCycle'
+  | 'shoeBankerPlayerBias'
+  | 'uncommonRoadStructure'
+  | 'recentPracticalCalibration'
 export type MainPredictionSourceScores = { banker?: number; player?: number }
 export type BackendPredictionReason = { key: MainPredictionReasonKey; text: string; weight: number }
 export type BackendRoadCycleMain = { detected?: boolean; direction?: 'banker' | 'player'; reasonText?: string | null }
@@ -326,6 +334,11 @@ export function backendPredictionReasonsFromTable(table?: Pick<LiveTable, 'predi
     { key: 'shoe_banker_player_bias', label: '靴內莊閒偏態' },
     { key: 'ask_road_signals', label: '問路訊號' },
     { key: 'roadmap_trend_signals', label: '路單趨勢' },
+    { key: 'v8AskRoad', label: 'V8問路訊號' },
+    { key: 'v7RoadCycle', label: 'V7路單週期' },
+    { key: 'shoeBankerPlayerBias', label: '靴內莊閒偏態' },
+    { key: 'uncommonRoadStructure', label: '大路非常見結構' },
+    { key: 'recentPracticalCalibration', label: '近期實戰校準' },
   ]
 
   return configs.flatMap(({ key, label }) => {

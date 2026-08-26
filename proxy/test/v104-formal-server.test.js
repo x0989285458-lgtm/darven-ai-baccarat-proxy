@@ -349,7 +349,10 @@ test('server links a durable Final settlement back to the original v105 predicti
     configured: true,
     async issuePrediction(candidate) { return { ...candidate, predictionId: 'formal-v105-20', issuedAt: '2026-07-21T01:00:01.000Z' } },
     async readIssuedPrediction() { return null },
-    async persistRound() { return { prediction: { strategy_version: 'v105', predicted_result: 'banker', settlement_final: true } } },
+    async persistRound() { return { prediction: {
+      prediction_id: 'formal-v105-20', table_id: 'BAG01', shoe_no: '88', round_no: 20,
+      strategy_version: 'v105', predicted_result: 'banker', settlement_final: true,
+    } } },
     async writeCloudCaptureStatus() {}, async writeCloudTableSnapshot() {}, async writeCloudRoundEvent() {},
   }
   const app = createApp({ autoConnect: false, ingestKey: 'worker-key', now: () => 1_000_000,

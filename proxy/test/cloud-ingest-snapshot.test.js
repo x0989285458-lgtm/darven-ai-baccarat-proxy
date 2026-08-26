@@ -64,6 +64,7 @@ test('duplicate accepted sequence returns only the retried subset of previously 
   const roundKeys = rounds.map((round) => `${round.tableId}:${round.shoe}:${round.round}`)
   const supabaseClient = {
     configured: true,
+    readIssuedPrediction: async () => null,
     writeCloudCaptureStatus: async () => {},
     writeCloudTableSnapshot: async () => {},
     writeCloudRoundEvent: async () => {},

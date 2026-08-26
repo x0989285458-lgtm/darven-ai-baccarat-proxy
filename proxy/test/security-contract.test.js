@@ -32,6 +32,7 @@ function ingestEnvelope(overrides = {}) {
 function durableWriter(overrides = {}) {
   return {
     configured: true,
+    readIssuedPrediction: async () => null,
     writeCloudCaptureStatus: async () => {},
     writeCloudTableSnapshot: async () => {},
     writeCloudRoundEvent: async () => {},

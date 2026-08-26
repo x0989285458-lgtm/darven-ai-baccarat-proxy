@@ -6,6 +6,7 @@ test('ingest ACK follows durable writes and exactly echoes validated round keys'
   const order = []
   const app = createApp({ autoConnect: false, ingestKey: 'worker-key', now: () => 1_000_000, supabaseClient: {
     configured: true,
+    readIssuedPrediction: async () => null,
     writeCloudCaptureStatus: async () => { order.push('status') },
     writeCloudTableSnapshot: async () => { order.push('snapshot') },
     writeCloudRoundEvent: async () => { order.push('round') },

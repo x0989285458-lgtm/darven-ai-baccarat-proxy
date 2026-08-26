@@ -30,6 +30,7 @@ test('cloud ingest exact-ACKs current fence and rejects a stale epoch from anoth
     autoConnect: false, ingestKey: 'worker-key', now: () => now, requireFencedIngest: true,
     supabaseClient: {
       configured: true,
+      readIssuedPrediction: async () => null,
       writeCloudCaptureStatus: async () => { writes += 1 },
       writeCloudTableSnapshot: async () => { writes += 1 },
       writeCloudRoundEvent: async () => { writes += 1 },

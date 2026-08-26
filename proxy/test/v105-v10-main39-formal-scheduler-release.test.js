@@ -21,7 +21,8 @@ const expectedBindings = [
   releaseTestPath,
   reportPath,
 ]
-const gitBlob = (relativePath) => execFileSync('git', ['show', `:${relativePath}`], {
+const main39Commit = '30aa84d4224e65557806a9b3865426802767674d'
+const gitBlob = (relativePath) => execFileSync('git', ['show', `${main39Commit}:${relativePath}`], {
   cwd: root,
   encoding: null,
   windowsHide: true,

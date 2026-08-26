@@ -364,7 +364,16 @@ test('formal settlement state publication does not enqueue duplicate background 
       async persistRound() {
         order.push('settle')
         app.state.setTables(snapshot.tables)
-        return null
+        return {
+          prediction: {
+            predictionId: 'pid-BAG01-88-21',
+            targetTableId: 'BAG01',
+            targetShoe: '88',
+            targetRound: 21,
+            strategyVersion: 'v105',
+            prediction_features: { settlement_final: true },
+          },
+        }
       },
       async reconcilePredictionLifecycle(identity) {
         reconciliations.push(identity)
@@ -429,7 +438,16 @@ test('concurrent external table update is not dropped while formal settlement su
       async persistRound() {
         markSettlementStarted()
         await settlementGate
-        return null
+        return {
+          prediction: {
+            predictionId: 'pid-BAG01-88-21',
+            targetTableId: 'BAG01',
+            targetShoe: '88',
+            targetRound: 21,
+            strategyVersion: 'v105',
+            prediction_features: { settlement_final: true },
+          },
+        }
       },
       async reconcilePredictionLifecycle(identity) { reconciledTables.push(identity.tableId) },
       async issuePrediction(candidate) {
@@ -623,7 +641,341 @@ test('external consumer retains the exact outbox lease when prediction reconcili
   assert.match(app.state.snapshot().status.persistenceError, /temporary reconciliation failure/)
 })
 
-test('external consumer retains the exact outbox lease when a finalized identity is missing from published tables', async () => {
+test('external consumer acknowledges a durable old-shoe final without issuing from a newer published shoe', async () => {
+  let claimed = false
+  let completed = 0
+  let failed = 0
+  let issued = 0
+  const snapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG01', shoe: 89, round: 1, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '01', bigRoadRaw: 'B' }],
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: snapshot } })]
+      },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox() { failed += 1 },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async readIssuedPrediction() { return null },
+      async reconcilePredictionLifecycle() {},
+      async issuePrediction() { issued += 1; return null },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot() {
+        return {
+          enabled: true,
+          predictions: [],
+          tables: [{ tableId: 'BAG01', shoe: 89, round: 1, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '01', bigRoadRaw: 'B' }],
+        }
+      },
+    },
+  })
+
+  await app.drainCaptureOutbox()
+  await app.waitForServiceWorkIdle()
+
+  assert.equal(issued, 0)
+  assert.equal(completed, 1)
+  assert.equal(failed, 0)
+  assert.equal(app.state.snapshot().status.persistenceError, undefined)
+})
+
+test('external consumer fails closed when a finalized shoe identity is empty', async () => {
+  let claimed = false
+  let completed = 0
+  let failed = 0
+  const base = envelope().snapshot
+  const snapshot = {
+    ...base,
+    rounds: base.rounds.map((round) => ({ ...round, shoe: '' })),
+    tables: [{ tableId: 'BAG01', shoe: 89, round: 1, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '01', bigRoadRaw: 'B' }],
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: snapshot } })]
+      },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox() { failed += 1 },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async readIssuedPrediction() { return null },
+      async reconcilePredictionLifecycle() {},
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot() { return { enabled: true, predictions: [], tables: snapshot.tables } },
+    },
+  })
+
+  await app.drainCaptureOutbox()
+
+  assert.equal(completed, 0)
+  assert.equal(failed, 1)
+  assert.match(app.state.snapshot().status.persistenceError, /finalized identity missing from published tables/)
+})
+
+test('external consumer fails closed when exact issuance read capability is unavailable', async () => {
+  let claimed = false
+  let completed = 0
+  let failed = 0
+  const snapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG01', shoe: 89, round: 1, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '01', bigRoadRaw: 'B' }],
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: snapshot } })]
+      },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox() { failed += 1 },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async reconcilePredictionLifecycle() {},
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot() { return { enabled: true, predictions: [], tables: snapshot.tables } },
+    },
+  })
+
+  await app.drainCaptureOutbox()
+
+  assert.equal(completed, 0)
+  assert.equal(failed, 1)
+  assert.match(app.state.snapshot().status.persistenceError, /issuance read capability/i)
+})
+
+test('external consumer fails closed when exact issuance read returns undefined instead of null', async () => {
+  let claimed = false
+  let completed = 0
+  let failed = 0
+  const snapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG01', shoe: 89, round: 1, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '01', bigRoadRaw: 'B' }],
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: snapshot } })]
+      },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox() { failed += 1 },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async readIssuedPrediction() { return undefined },
+      async reconcilePredictionLifecycle() {},
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot() { return { enabled: true, predictions: [], tables: snapshot.tables } },
+    },
+  })
+
+  await app.drainCaptureOutbox()
+
+  assert.equal(completed, 0)
+  assert.equal(failed, 1)
+  assert.match(app.state.snapshot().status.persistenceError, /exact issuance read/i)
+})
+
+test('external consumer requires a matching Final persistence receipt before acknowledging an issued Final', async () => {
+  let claimed = false
+  let completed = 0
+  let failed = 0
+  const snapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: snapshot } })]
+      },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox() { failed += 1 },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async readIssuedPrediction(identity) {
+        if (identity.round !== 21) return null
+        return {
+          predictionId: 'pid-BAG01-88-21',
+          targetTableId: 'BAG01',
+          targetShoe: '88',
+          targetRound: 21,
+          strategyVersion: 'v105',
+        }
+      },
+      async persistRound() { return null },
+      async reconcilePredictionLifecycle() {},
+      async issuePrediction(candidate) {
+        return { ...candidate, predictionId: 'pid-BAG01-88-22', issuedAt: '2026-08-25T16:00:01.000Z' }
+      },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) { return { enabled: true, predictions: [], tables } },
+    },
+  })
+
+  await app.drainCaptureOutbox()
+
+  assert.equal(completed, 0)
+  assert.equal(failed, 1)
+  assert.match(app.state.snapshot().status.persistenceError, /durable settlement receipt/i)
+})
+
+test('external consumer rejects a Final persistence receipt with the wrong prediction identity', async () => {
+  let claimed = false
+  let completed = 0
+  let failed = 0
+  const snapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: snapshot } })]
+      },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox() { failed += 1 },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async readIssuedPrediction(identity) {
+        if (identity.round !== 21) return null
+        return {
+          predictionId: 'pid-BAG01-88-21',
+          targetTableId: 'BAG01',
+          targetShoe: '88',
+          targetRound: 21,
+          strategyVersion: 'v105',
+        }
+      },
+      async persistRound() {
+        return {
+          prediction: {
+            predictionId: 'pid-OTHER-999-7',
+            targetTableId: 'OTHER',
+            targetShoe: '999',
+            targetRound: 7,
+            strategyVersion: 'v105',
+            prediction_features: { settlement_final: true },
+          },
+        }
+      },
+      async reconcilePredictionLifecycle() {},
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) { return { enabled: true, predictions: [], tables } },
+    },
+  })
+
+  await app.drainCaptureOutbox()
+
+  assert.equal(completed, 0)
+  assert.equal(failed, 1)
+  assert.match(app.state.snapshot().status.persistenceError, /settlement receipt identity/i)
+})
+
+test('external consumer reconciles and predicts only the newest shoe when one batch crosses a shoe boundary', async () => {
+  let claimed = false
+  let completed = 0
+  let failed = 0
+  const reconciledShoes = []
+  const issuedShoes = []
+  const oldSnapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+  }
+  const base = envelope().snapshot
+  const newSnapshot = {
+    ...base,
+    rounds: base.rounds.map((round) => ({ ...round, shoe: 89, round: 1 })),
+    tables: [{ tableId: 'BAG01', shoe: 89, round: 1, sourceUpdatedAt: '2026-08-25T16:00:01.000Z', beadPlateRaw: '01', bigRoadRaw: 'B' }],
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    captureOutboxBatchLimit: 10,
+    outboxCoalesceMs: 0,
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [
+          claimedRow(8, { payload: { work: oldSnapshot } }),
+          claimedRow(9, { payload: { work: newSnapshot } }),
+        ]
+      },
+      async completeCaptureOutboxBatch() { completed += 1 },
+      async failCaptureOutboxBatch() { failed += 1 },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async readIssuedPrediction() { return null },
+      async reconcilePredictionLifecycle(identity) { reconciledShoes.push(String(identity.currentShoe)) },
+      async issuePrediction(candidate) {
+        issuedShoes.push(String(candidate.targetShoe))
+        return { ...candidate, predictionId: `pid-${candidate.targetTableId}-${candidate.targetShoe}-${candidate.targetRound}`, issuedAt: '2026-08-25T16:00:02.000Z' }
+      },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) { return { enabled: true, predictions: [], tables } },
+    },
+  })
+
+  await app.drainCaptureOutbox()
+  await app.waitForServiceWorkIdle()
+
+  assert.equal(completed, 1)
+  assert.equal(failed, 0)
+  assert.deepEqual(reconciledShoes, ['89'])
+  assert.deepEqual(issuedShoes, ['89'])
+})
+
+test('external consumer retains the lease when the finalized table is absent from published tables', async () => {
   let claimed = false
   let completed = 0
   let failed = 0
@@ -837,6 +1189,7 @@ test('fresh durable ACK cannot delay an existing immediate backlog continuation'
       },
       async completeCaptureOutbox() { return { completed: true } },
       async failCaptureOutbox() { assert.fail('backlog continuation must not fail') },
+      async readIssuedPrediction() { return null },
     },
     v100FormalRuntime: {
       enabled: true,
@@ -1144,6 +1497,7 @@ test('restart drains a pending durable outbox item before marking it complete', 
       },
       async completeCaptureOutbox(identity) { completed.push(identity); return { completed: true } },
       async failCaptureOutbox() { assert.fail('valid pending work must not fail') },
+      async readIssuedPrediction() { return null },
     },
     v100FormalRuntime: {
       enabled: true,
@@ -1731,6 +2085,7 @@ test('shutdown stops new wakeups and waits for in-flight work', async () => {
       },
       async completeCaptureOutbox() { completed += 1; return { completed: true } },
       async failCaptureOutbox() { assert.fail('released work must not fail') },
+      async readIssuedPrediction() { return null },
     },
     v100FormalRuntime: { enabled: true, async processSnapshot() { await gate } },
   })
@@ -1761,6 +2116,7 @@ test('outbox consumer preserves raw source fence and canonicalizes formal round 
       },
       async completeCaptureOutbox() { return { completed: true } },
       async failCaptureOutbox() { assert.fail('canonical source work must not fail') },
+      async readIssuedPrediction() { return null },
     },
     v100FormalRuntime: {
       enabled: true,

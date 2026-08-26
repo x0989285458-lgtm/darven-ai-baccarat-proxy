@@ -1,0 +1,61 @@
+{
+  "releaseVersion": "v105-v10-main.41",
+  "gitTag": "v105-v10-main.41",
+  "parentCommit": "30aa84d4224e65557806a9b3865426802767674d",
+  "runtimeSourceVersion": "v105-v10-main.41",
+  "releaseScope": {
+    "formalConsumerChanged": true,
+    "frontendChanged": true,
+    "workflowChanged": true,
+    "proxyDeploymentChanged": false,
+    "databaseChanged": false,
+    "workerChanged": false
+  },
+  "workflowContract": {
+    "verifierArgumentOrder": [
+      "head-sha",
+      "required-parent-sha",
+      "allowed-paths"
+    ],
+    "allowedChangedPaths": [
+      ".github/workflows/trusted-release-images-main41.yml",
+      "frontend/src/lib/liveClient.test.ts",
+      "frontend/src/lib/liveClient.ts",
+      "proxy/src/cloud-capture.js",
+      "proxy/src/server.js",
+      "proxy/src/state-store.js",
+      "proxy/test/capture-outbox-ack.test.js",
+      "proxy/test/cloud-ingest-snapshot.test.js",
+      "proxy/test/ingest-ack.test.js",
+      "proxy/test/ingest-source-fence.test.js",
+      "proxy/test/security-contract.test.js",
+      "proxy/test/v104-formal-server.test.js",
+      "proxy/test/v105-formal-memory-runtime-contract.test.js",
+      "proxy/test/v105-v10-main39-formal-scheduler-release.test.js",
+      "proxy/test/v105-v10-main41-old-shoe-ack-release.test.js",
+      "release/v105-v10-main41-old-shoe-ack-release-manifest.json",
+      "release/v105-v10-main41-old-shoe-ack-release-report.json"
+    ]
+  },
+  "releaseBinding": {
+    "hashInput": "normalized immutable Git index blob bytes",
+    "changedFileSha256": {
+      ".github/workflows/trusted-release-images-main41.yml": "60f395b6bf9255830ceb8432a19dae706f461e61f4384932c43f75cbee62fb4c",
+      "frontend/src/lib/liveClient.test.ts": "4c9c31203e4b53b66f99f6abdf9a30dc4cfa2cce74f200dc9af274fca96d3f44",
+      "frontend/src/lib/liveClient.ts": "3e18bf66e998c2dcd7caf5539dbc1ba67c2ce68c00a555aaa2286c1be2eaa5c4",
+      "proxy/src/cloud-capture.js": "97596264f520868df00425d75b01da693443d1f9320d2e59c312b8a4f75ce183",
+      "proxy/src/server.js": "ef83c62226ca739dcaae999bd37d39f0cf169c654e49158c45c9140d2caae4de",
+      "proxy/src/state-store.js": "ef6e86702c9ebf0712606c4a0453bbaa9e8373c82fe579a38fa6c0426a41155c",
+      "proxy/test/capture-outbox-ack.test.js": "36d0af72edeedf8b3006cde69ed949b7f73225bd082edb004aabed3c043f6b82",
+      "proxy/test/cloud-ingest-snapshot.test.js": "9a5b32ffa9ed670104d784267202297e2c6feed1e8d7ff0dce6ba73b80759b2e",
+      "proxy/test/ingest-ack.test.js": "eb6fc59ddaa3a0c02d6f6f2498170f2db225e0196d88f1e295200ea2629d486e",
+      "proxy/test/ingest-source-fence.test.js": "10d2c6a967d8766a5ff54413478aa751ef94e85b90daab3058f81f63f41cce0c",
+      "proxy/test/security-contract.test.js": "9c903b8852cd799a0856d1f98a2600431f03dbe4f775ab292a3337eb894d02f2",
+      "proxy/test/v104-formal-server.test.js": "9d4ec619904036ed84b8c8cf5b1d26fdf5133d618a9328dec04960e86066c6a4",
+      "proxy/test/v105-formal-memory-runtime-contract.test.js": "fe894d85ac9e2d4cb2b28a0526dd9e65b524868725c80a9f8cf5988a630dbd73",
+      "proxy/test/v105-v10-main39-formal-scheduler-release.test.js": "699143dbf906b5d8379d94f39c58fea3f26b6016a95cf6a981fcea0c960b31b0",
+      "proxy/test/v105-v10-main41-old-shoe-ack-release.test.js": "b1d13332ad628a8af309bdec6557b277cc6f861f59bc9a447ae6321face702fe",
+      "release/v105-v10-main41-old-shoe-ack-release-report.json": "9d839f1c7e1c6d7b1ceb0e4ac5cd24ea7f19db486137e15a687e867d7f4d0d4e"
+    }
+  }
+}

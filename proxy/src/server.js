@@ -455,17 +455,22 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       if (strictRealCardRounds && !hasRealCardCodes(round)) return
       const pendingKey = predictionTargetKey(round.tableId ?? table.tableId, round.shoe, round.round)
       let issuedCandidate
+      let exactIssuanceReadPerformed = false
       try {
         if (preparingPredictionPromises.has(pendingKey)) await preparingPredictionPromises.get(pendingKey)
         issuedCandidate = pendingPredictions.get(pendingKey)
         if (!issuedCandidate && issuingPredictionPromises.has(pendingKey)) issuedCandidate = await issuingPredictionPromises.get(pendingKey)
-        if (!issuedCandidate && typeof supabaseClient?.readIssuedPrediction === 'function') {
+        if (!issuedCandidate) {
+          if (typeof supabaseClient?.readIssuedPrediction !== 'function') {
+            throw new Error('exact issuance read capability is unavailable')
+          }
           issuedCandidate = await supabaseClient.readIssuedPrediction({
             tableId: round.tableId ?? table.tableId,
             shoe: round.shoe,
             round: round.round,
             strategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION,
           }, { priority: 'settlement' })
+          exactIssuanceReadPerformed = true
         }
       } catch (error) {
         state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
@@ -476,22 +481,55 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         && issuedCandidate.strategyVersion === ALL_MT_EQUAL_STRATEGY_VERSION
         ? issuedCandidate
         : null
-      if (!precomputedPrediction) return
+      if (!precomputedPrediction && issuedCandidate) {
+        throw new Error('durable prediction issuance identity mismatch')
+      }
+      if (!precomputedPrediction && exactIssuanceReadPerformed && issuedCandidate !== null) {
+        throw new Error('exact issuance read must return null when no issuance exists')
+      }
+      if (!precomputedPrediction) {
+        return {
+          durable: true,
+          disposition: 'no_issuance',
+          tableId: String(round.tableId ?? table.tableId ?? ''),
+          shoe: String(round.shoe ?? ''),
+          round: Number(round.round),
+        }
+      }
       const existingSettlement = settlingPredictionPromises.get(pendingKey)
       if (existingSettlement) return existingSettlement
       const settlementPromise = (async () => {
         try {
           const persisted = await supabaseClient.persistRound?.(round, table, precomputedPrediction)
-          if (persisted?.prediction) {
+          const persistedPrediction = persisted?.prediction ?? persisted?.compactPrediction
+          const nestedSettlementFinal = persistedPrediction?.prediction_features?.settlement_final
+          const settlementFinal = nestedSettlementFinal === true
+            || (nestedSettlementFinal == null && persistedPrediction?.settlement_final === true)
+          if (!persisted || typeof persisted !== 'object' || !persistedPrediction || settlementFinal !== true) {
+            throw new Error('durable settlement receipt is required before outbox acknowledgement')
+          }
+          const persistedIdentity = {
+            predictionId: String(persistedPrediction.predictionId ?? persistedPrediction.prediction_id ?? persistedPrediction.id ?? ''),
+            tableId: String(persistedPrediction.targetTableId ?? persistedPrediction.table_id ?? ''),
+            shoe: String(persistedPrediction.targetShoe ?? persistedPrediction.shoe_no ?? ''),
+            round: Number(persistedPrediction.targetRound ?? persistedPrediction.round_no),
+            strategyVersion: String(persistedPrediction.strategyVersion ?? persistedPrediction.strategy_version ?? ''),
+          }
+          if (!persistedIdentity.predictionId
+            || persistedIdentity.predictionId !== String(precomputedPrediction.predictionId ?? '')
+            || persistedIdentity.tableId !== String(precomputedPrediction.targetTableId ?? round.tableId ?? table.tableId ?? '')
+            || persistedIdentity.shoe !== String(precomputedPrediction.targetShoe ?? round.shoe ?? '')
+            || persistedIdentity.round !== Number(precomputedPrediction.targetRound ?? round.round)
+            || persistedIdentity.strategyVersion !== String(precomputedPrediction.strategyVersion ?? ALL_MT_EQUAL_STRATEGY_VERSION)) {
+            throw new Error('durable settlement receipt identity mismatch')
+          }
+          if (persisted.prediction) {
             recentTablePerformance.record(persisted.prediction)
             v104Formal?.recordSettlement?.({
               ...persisted.prediction,
               predictionId: persisted.prediction.predictionId ?? persisted.prediction.prediction_id ?? persisted.prediction.id ?? precomputedPrediction.predictionId,
             })
             const resolvedAt = persisted.prediction.resolved_at ?? persisted.prediction.resolvedAt
-            const nestedSettlementFinal = persisted.prediction.prediction_features?.settlement_final
-            const settlementFinal = nestedSettlementFinal === true
-              || (nestedSettlementFinal == null && persisted.prediction.settlement_final === true)
             if (settlementFinal && resolvedAt && typeof resolvedDailyMemoryRollover?.observe === 'function') {
               void Promise.resolve()
                 .then(() => resolvedDailyMemoryRollover.observe({ settlementFinal: true, resolvedAt }))
@@ -500,7 +538,15 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           }
           pendingPredictions.delete(pendingKey)
           state.setStatus({ persistenceStatus: 'ok', persistenceError: null })
-          return persisted
+          return {
+            durable: true,
+            disposition: 'settled_final',
+            tableId: persistedIdentity.tableId,
+            shoe: persistedIdentity.shoe,
+            round: persistedIdentity.round,
+            predictionId: persistedIdentity.predictionId,
+            strategyVersion: persistedIdentity.strategyVersion,
+          }
         } catch (error) {
           state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
           throw error
@@ -712,6 +758,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               processed += claimedRows.length
             } else {
               let publishedTables
+              let settlementReceipts
               await tableUpdateWorkContext.run({ suppressPredictionWork: true }, async () => {
                 const applied = await runLeasePhase('formal', () => (
                   applyCloudCapturePayload({
@@ -728,6 +775,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                 ))
                 leaseDeadline.assertActive()
                 publishedTables = Array.isArray(applied?.tables) ? applied.tables : parsed.tables
+                settlementReceipts = Array.isArray(applied?.settlementReceipts) ? applied.settlementReceipts : []
                 state.setStatus(parsed.status)
                 state.setTables(publishedTables)
               })
@@ -739,12 +787,56 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                 String(table?.tableId ?? ''),
                 String(table?.shoe ?? ''),
               ]), table]))
-              const missingFinalizedIdentities = [...finalizedIdentities]
-                .filter((identity) => !publishedTableByIdentity.has(identity))
+              const currentPublishedTableByTableId = new Map()
+              for (const table of publishedTables) {
+                currentPublishedTableByTableId.set(String(table?.tableId ?? ''), table)
+              }
+              const parsePositiveIntegerShoe = (value) => {
+                const text = String(value ?? '').trim()
+                if (!/^\d+$/.test(text)) return null
+                const number = Number(text)
+                return Number.isSafeInteger(number) && number > 0 ? number : null
+              }
+              const missingFinalizedIdentities = []
+              for (const identity of finalizedIdentities) {
+                const [tableId, finalizedShoe] = JSON.parse(identity)
+                const finalizedShoeNumber = parsePositiveIntegerShoe(finalizedShoe)
+                if (!tableId || finalizedShoeNumber == null) {
+                  missingFinalizedIdentities.push(identity)
+                  continue
+                }
+                if (publishedTableByIdentity.has(identity)) continue
+                const advancedTable = currentPublishedTableByTableId.get(tableId)
+                const advancedShoeNumber = parsePositiveIntegerShoe(advancedTable?.shoe)
+                if (advancedShoeNumber == null || advancedShoeNumber <= finalizedShoeNumber) {
+                  missingFinalizedIdentities.push(identity)
+                }
+              }
               if (missingFinalizedIdentities.length > 0) {
                 throw new Error('finalized identity missing from published tables before outbox acknowledgement')
               }
-              const predictionTables = [...finalizedIdentities].map((identity) => publishedTableByIdentity.get(identity))
+              const receiptByRoundIdentity = new Map(settlementReceipts.map((receipt) => [JSON.stringify([
+                String(receipt?.tableId ?? ''),
+                String(receipt?.shoe ?? ''),
+                Number(receipt?.round),
+              ]), receipt]))
+              const missingSettlementReceipts = parsed.rounds.filter((round) => {
+                const receipt = receiptByRoundIdentity.get(JSON.stringify([
+                  String(round?.tableId ?? ''),
+                  String(round?.shoe ?? ''),
+                  Number(round?.round),
+                ]))
+                return receipt?.durable !== true || !['no_issuance', 'settled_final'].includes(receipt?.disposition)
+              })
+              if (missingSettlementReceipts.length > 0) {
+                throw new Error('durable settlement receipt is required before outbox acknowledgement')
+              }
+              const predictionTables = [...currentPublishedTableByTableId.values()].filter((table) => (
+                finalizedIdentities.has(JSON.stringify([
+                  String(table?.tableId ?? ''),
+                  String(table?.shoe ?? ''),
+                ]))
+              ))
               const nextPredictions = await runLeasePhase('formal_prediction', async () => {
                 const predictions = await Promise.all(predictionTables.map((table) => (
                   reconcileThenResolveOutboxPrediction(table)

@@ -24,10 +24,10 @@ export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotR
   }
 
   async function emitRoundEvent(round, table) {
-    if (typeof onRoundEvent !== 'function') return { ok: true }
+    if (typeof onRoundEvent !== 'function') return { ok: true, receipt: null }
     try {
-      await onRoundEvent(round, table)
-      return { ok: true }
+      const receipt = await onRoundEvent(round, table)
+      return { ok: true, receipt: receipt ?? null }
     } catch (error) {
       state.status.persistenceError = redactSecrets(error?.message ?? String(error))
       return { ok: false, error }
