@@ -2,9 +2,13 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-const migrationUrl = new URL('../../supabase/migrations/20260826020000_v105_capture_outbox_batch_limit_drift_repair.sql', import.meta.url)
+import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+const root = fileURLToPath(new URL('../../', import.meta.url))
+const migrationPath = 'supabase/migrations/20260826020000_v105_capture_outbox_batch_limit_drift_repair.sql'
+const migrationBytes = () => execFileSync('git', ['show', `v105-v10-main.28:${migrationPath}`], { cwd: root })
 test('Main28 corrective migration restores ten, uses valid strpos verification, and preserves queued history', () => {
-  const sql = readFileSync(migrationUrl, 'utf8')
+  const sql = migrationBytes().toString('utf8')
   assert.match(sql, /claim_v105_capture_settlement_outbox_batch\(p_limit integer default 10\)/i)
   assert.match(sql, /limit greatest\(1, least\(coalesce\(p_limit, 10\), 10\)\)/i)
   assert.match(sql, /pg_catalog\.strpos\([\s\S]*limitgreatest\(1,least\(coalesce\(p_limit,10\),10\)\)/i)
@@ -24,7 +28,7 @@ test('Main28 is migration-only over Main26 and records both prior blocks', () =>
   assert.equal(manifest.incident.main27Review, 'BLOCK')
 })
 test('Main28 binds the exact migration bytes and pre/post production contracts', () => {
-  const bytes = readFileSync(migrationUrl)
+  const bytes = migrationBytes()
   assert.equal(createHash('sha256').update(bytes).digest('hex'), manifest.releaseBinding.migration.sha256)
   assert.equal(manifest.releaseBinding.preconditionContract, 'limit greatest(1, least(coalesce(p_limit, 3), 3))')
   assert.equal(manifest.releaseBinding.postconditionContract, 'limit greatest(1, least(coalesce(p_limit, 10), 10))')

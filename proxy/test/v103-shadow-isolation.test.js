@@ -1,59 +1,19 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import { createApp } from '../src/server.js'
-import { buildLivePrediction } from '../src/supabase-writer.js'
 
-const table = { tableId: 'BAG01', shoe: 103, round: 20, bankerCount: 12, playerCount: 8 }
-const final = { ...table, round: 21, sourceAction: '/summary', winner: 'banker', rawResult: [1, 9, 2, 10, 0, 0, -1, -1, 3, 9] }
-
-test('adding v103 shadow leaves the member v102 table prediction bit-for-bit unchanged', async () => {
-  const activeWriter = { configured: false }
-  const clock = () => Date.parse('2026-07-20T10:00:00Z')
-  const withoutShadow = createApp({ autoConnect: false, supabaseClient: activeWriter, now: clock })
-  const withShadow = createApp({
-    autoConnect: false,
-    supabaseClient: activeWriter,
-    now: clock,
-    v103ShadowRuntime: { enabled: true, async observeTable() {}, async settleRound() {}, snapshot: () => ({ status: 'ok' }) },
+test('Main33 retires the V103 shadow server import, env switch, injection and route', async () => {
+  const server = await readFile(new URL('../src/server.js', import.meta.url), 'utf8')
+  for (const token of ['v103-shadow-runtime', 'V103_SHADOW_ENABLED', 'v103ShadowRuntime', '/api/v103-shadow/']) {
+    assert.equal(server.includes(token), false, token)
+  }
+  let starts = 0
+  const app = createApp({
+    autoConnect: false, production: false, requireVerifiedStrategy: false, memberAuthRequired: false,
+    v103ShadowRuntime: { enabled: true, start() { starts += 1 } },
   })
-  withoutShadow.state.setTables([table])
-  withShadow.state.setTables([table])
-  const active = JSON.parse((await withoutShadow.inject({ url: '/api/tables' })).body)
-  const shadowed = JSON.parse((await withShadow.inject({ url: '/api/tables' })).body)
-  assert.deepEqual(shadowed, active)
-  assert.equal(shadowed[0].prediction.strategyVersion, 'v105')
-})
-
-test('shadow failure is backend-observable but never blocks active settlement, ACK, queue, or formal health', async () => {
-  let activeSettlements = 0
-  const issued = { ...buildLivePrediction(table), predictionId: 'v102-pid', issuedAt: '2026-07-20T10:00:00Z' }
-  const activeWriter = {
-    configured: true,
-    async issuePrediction() { return issued },
-    async readIssuedPrediction() { return issued },
-    async persistRound() { activeSettlements += 1; return { prediction: { strategy_version: 'v105' } } },
-    getRuntimeStatus() { return { ready: true, degraded: false, reason: null, activeStrategyVersion: 'v105' } },
-  }
-  const shadow = {
-    enabled: true,
-    async observeTable() { throw new Error('shadow issuance unavailable') },
-    async settleRound() { throw new Error('shadow settlement unavailable') },
-    snapshot() { return { status: 'error', error: 'shadow settlement unavailable' } },
-  }
-  const app = createApp({ autoConnect: false, supabaseClient: activeWriter, v103ShadowRuntime: shadow, controlToken: 'operator-only' })
-  app.state.setTables([table])
-  await app.inject({ url: '/api/tables' })
-  app.state.upsertRoundEvent(final)
-  await new Promise((resolve) => setImmediate(resolve))
-
-  assert.equal(activeSettlements, 1)
-  const publicStatus = JSON.parse((await app.inject({ url: '/api/status' })).body)
-  const unauthorized = await app.inject({ url: '/api/v103-shadow/status' })
-  const status = JSON.parse((await app.inject({ url: '/api/v103-shadow/status', headers: { 'x-control-token': 'operator-only' } })).body)
-  const health = JSON.parse((await app.inject({ url: '/health' })).body)
-  assert.equal('v103Shadow' in publicStatus, false)
-  assert.equal(unauthorized.statusCode, 401)
-  assert.equal(status.v103Shadow.status, 'error')
-  assert.equal(health.degraded, false)
-  assert.equal(health.runtimeStatus.activeStrategyVersion, 'v105')
+  assert.equal((await app.inject({ url: '/api/v103-shadow/status' })).statusCode, 404)
+  await app.stop()
+  assert.equal(starts, 0)
 })

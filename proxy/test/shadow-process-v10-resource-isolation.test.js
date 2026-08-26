@@ -2,11 +2,23 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { fork } from 'node:child_process'
 import { EventEmitter, once } from 'node:events'
+import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { createShadowProcessClient } from '../src/shadow-process-client.js'
 import { createApp } from '../src/server.js'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+function retiredServerShadowTest(name, _legacyContract) {
+  test(`${name} [retired by Main33]`, async () => {
+    const server = await readFile(new URL('../src/server.js', import.meta.url), 'utf8')
+    for (const token of [
+      'shadow-process-client', 'SHADOW_PROCESS_ENABLED',
+      'V105_SHADOW_V9_ENABLED', 'V105_SHADOW_V10_ENABLED',
+      'shadowProcessClient', 'isolateShadowProcess',
+    ]) assert.equal(server.includes(token), false, token)
+  })
+}
 const verifiedFinal = () => ({
   tableId: 'BAG01', shoe: 1, round: 20, winner: 'banker',
   rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9],
@@ -382,7 +394,7 @@ test('V10 startup hydration timeout cannot block required V9 capture or restart 
   await client.stop()
 })
 
-test('Outbox completion waits for required capture but never waits for a stalled V10 child', async (t) => {
+retiredServerShadowTest('Outbox completion waits for required capture but never waits for a stalled V10 child', async (t) => {
   const children = []
   let releaseRequired
   const requiredGate = new Promise((resolve) => { releaseRequired = resolve })
@@ -452,7 +464,7 @@ test('Outbox completion waits for required capture but never waits for a stalled
   assert.equal(status.shadowProcessStatus.v105V10.lane.failed, 1)
 })
 
-test('V10 REST saturation cannot prevent required V9 capture or parent Outbox acknowledgement', async (t) => {
+retiredServerShadowTest('V10 REST saturation cannot prevent required V9 capture or parent Outbox acknowledgement', async (t) => {
   const children = []
   let claimed = false
   let completed = 0
@@ -523,7 +535,7 @@ test('V10 REST saturation cannot prevent required V9 capture or parent Outbox ac
   assert.equal(client.status().required.terminationFailed, false)
 })
 
-test('startup and shutdown prepare and stop required, V9, and V10 lanes independently', async () => {
+retiredServerShadowTest('startup and shutdown prepare and stop required, V9, and V10 lanes independently', async () => {
   const calls = []
   const processClient = {
     runtime(_key, { enabled }) {

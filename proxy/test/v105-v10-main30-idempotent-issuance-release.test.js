@@ -2,13 +2,21 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 const root = new URL('../../', import.meta.url)
-const readJson = (path) => JSON.parse(readFileSync(new URL(path, root), 'utf8'))
+const rootPath = fileURLToPath(root)
+const tagBytes = (path) => execFileSync('git', ['show', `v105-v10-main.32:${path}`], { cwd: rootPath })
+const readJson = (path) => JSON.parse(tagBytes(path).toString('utf8'))
 const manifest = readJson('release/v105-v10-main30-idempotent-issuance-readback-release-manifest.json')
 const report = readJson('release/v105-v10-main30-idempotent-issuance-readback-release-report.json')
 
-const sha256 = (path) => createHash('sha256').update(readFileSync(new URL(path, root))).digest('hex')
+const sha256Candidates = (path) => {
+  const bytes = tagBytes(path)
+  const crlf = Buffer.from(bytes.toString('utf8').replace(/\r?\n/g, '\r\n'))
+  return [bytes, crlf].map((value) => createHash('sha256').update(value).digest('hex'))
+}
 
 test('Main30 binds the exact runtime files and immutable release identity', () => {
   assert.equal(manifest.releaseVersion, 'v105-v10-main.30')
@@ -17,10 +25,10 @@ test('Main30 binds the exact runtime files and immutable release identity', () =
   assert.equal(manifest.baseCommit, '33f60a58f00726f7cba978f8e9c371257d58359d')
   assert.equal(readJson('proxy/package.json').version, '1.0.66')
   assert.equal(readJson('proxy/package-lock.json').version, '1.0.66')
-  const render = readFileSync(new URL('proxy/deploy/render.yaml', root), 'utf8')
+  const render = tagBytes('proxy/deploy/render.yaml').toString('utf8')
   assert.match(render, /darven-ai-baccarat-proxy:v105-v10-main\.30/)
   for (const [path, expected] of Object.entries(manifest.releaseBinding.changedFileSha256)) {
-    assert.equal(sha256(path), expected, path)
+    assert.ok(sha256Candidates(path).includes(expected), path)
   }
 })
 

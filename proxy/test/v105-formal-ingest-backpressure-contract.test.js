@@ -10,6 +10,15 @@ const lifecycleIndexMigrationUrl = new URL('../../supabase/migrations/2026072901
 const lifecycleIndexRollbackUrl = new URL('../../supabase/operations/rollback_v105_lifecycle_pending_index.sql', import.meta.url)
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+function retiredServerShadowTest(name, _legacyContract) {
+  test(`${name} [retired by Main33]`, () => {
+    const server = readFileSync(new URL('../src/server.js', import.meta.url), 'utf8')
+    for (const token of ['shadow-process-client', 'shadowProcessClient', 'v103ShadowRuntime', 'v105ShadowV10Runtime']) {
+      assert.equal(server.includes(token), false, token)
+    }
+  })
+}
 const finalRound = (tableId, round) => ({
   source: 'ofalive99', tableId, shoe: 'S1', round,
   sourceAction: '/api/v1/gametype/3/game/1/room/1/table/1/summary',
@@ -205,7 +214,7 @@ test('closing the service scheduler rejects new work and drains work already acc
   await Promise.all([accepted, closing])
 })
 
-test('table updates coalesce to the latest snapshot and run all shadow observations through one service slot', async () => {
+retiredServerShadowTest('table updates coalesce to the latest snapshot and run all shadow observations through one service slot', async () => {
   let active = 0
   let maxActive = 0
   let calls = 0
@@ -243,7 +252,7 @@ test('table updates coalesce to the latest snapshot and run all shadow observati
   await app.stop()
 })
 
-test('one table observer failure does not skip later shadow observers', async () => {
+retiredServerShadowTest('one table observer failure does not skip later shadow observers', async () => {
   const observed = []
   const app = createApp({
     autoConnect: false,
@@ -311,7 +320,7 @@ test('a stale issuance acknowledgement reconciles the latest screen before it ca
   await app.stop()
 })
 
-test('round shadow settlements use the priority service slot without detached fan-out', async () => {
+retiredServerShadowTest('round shadow settlements use the priority service slot without detached fan-out', async () => {
   let active = 0
   let maxActive = 0
   let calls = 0
@@ -354,7 +363,7 @@ test('round shadow settlements use the priority service slot without detached fa
   await app.stop()
 })
 
-test('a hung shadow settlement times out and cannot block later shadows or formal work', async () => {
+retiredServerShadowTest('a hung shadow settlement times out and cannot block later shadows or formal work', async () => {
   let laterShadowSettlements = 0
   let timedOutShadowSettled = false
   const app = createApp({
@@ -399,7 +408,7 @@ test('a hung shadow settlement times out and cannot block later shadows or forma
   await app.stop()
 })
 
-test('a Final queued behind a timed-out observation on the same shadow runtime is not dropped', async () => {
+retiredServerShadowTest('a Final queued behind a timed-out observation on the same shadow runtime is not dropped', async () => {
   let observationSettled = false
   let finalSettlements = 0
   const runtime = {
@@ -440,7 +449,7 @@ test('a Final queued behind a timed-out observation on the same shadow runtime i
   await app.stop()
 })
 
-test('shutdown waits for queued service work before returning', async () => {
+retiredServerShadowTest('shutdown waits for queued service work before returning', async () => {
   let releaseObservation
   const observationGate = new Promise((resolve) => { releaseObservation = resolve })
   let observationStarted = false
@@ -472,7 +481,7 @@ test('shutdown waits for queued service work before returning', async () => {
   assert.equal(stopped, true)
 })
 
-test('shutdown is bounded and observable when a shadow ignores AbortSignal forever', async () => {
+retiredServerShadowTest('shutdown is bounded and observable when a shadow ignores AbortSignal forever', async () => {
   const app = createApp({
     autoConnect: false,
     production: false,

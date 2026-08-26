@@ -1,0 +1,104 @@
+{
+  "schemaVersion": "v105-v10-main-successor-overlay.1",
+  "predecessorManifest": "release/v105-v10-main32-trusted-workflow-release-manifest.json",
+  "runtimePredecessorManifest": "release/v105-v10-main30-idempotent-issuance-readback-release-manifest.json",
+  "releaseName": "V105主預測V10穩定版33舊Runtime與DB影子物件下架",
+  "releaseVersion": "v105-v10-main.33",
+  "gitTag": "v105-v10-main.33",
+  "applicationVersion": "1.0.66",
+  "baseCommit": "fe2d6aed2098630d755fef8398bb0bb9ce46d42c",
+  "runtimeSourceVersion": "v105-v10-main.30",
+  "releaseScope": {
+    "runtimeCodeChanged": true,
+    "predictionChanged": false,
+    "databaseChanged": true,
+    "frontendChanged": false,
+    "trustedWorkflowChanged": true,
+    "legacyRuntimeDecommissioned": true
+  },
+  "workflowContract": {
+    "exactTag": "v105-v10-main.33",
+    "requiredParentCommit": "fe2d6aed2098630d755fef8398bb0bb9ce46d42c",
+    "allowedChangedPaths": [
+      ".github/workflows/trusted-release-images-main33.yml",
+      "proxy/src/server.js",
+      "proxy/test/capture-outbox-ack.test.js",
+      "proxy/test/immediate-round-ready.test.js",
+      "proxy/test/shadow-process-isolation.test.js",
+      "proxy/test/shadow-process-v10-resource-isolation.test.js",
+      "proxy/test/v103-shadow-isolation.test.js",
+      "proxy/test/v104-iteration-shadow-server.test.js",
+      "proxy/test/v104-shadow-isolation.test.js",
+      "proxy/test/v105-formal-ingest-backpressure-contract.test.js",
+      "proxy/test/v105-formal-startup-performance-contract.test.js",
+      "proxy/test/v105-shadow-v10-server.test.js",
+      "proxy/test/v105-shadow-v9-server.test.js",
+      "proxy/test/v105-v10-main28-db-release.test.js",
+      "proxy/test/v105-v10-main29-db-release.test.js",
+      "proxy/test/v105-v10-main30-idempotent-issuance-release.test.js",
+      "proxy/test/v105-v10-main31-trusted-workflow-release.test.js",
+      "proxy/test/v105-v10-main32-trusted-workflow-release.test.js",
+      "proxy/test/v105-v10-main33-decommission-release.test.js",
+      "release/v105-v10-main33-decommission-release-manifest.json",
+      "release/v105-v10-main33-decommission-release-report.json",
+      "supabase/migrations/20260826035000_v105_main33_disable_legacy_runtime_settings.sql",
+      "supabase/migrations/20260826040000_v105_main33_legacy_runtime_teardown.sql"
+    ],
+    "renameDetectionDisabled": true,
+    "pipelineFailurePropagated": true,
+    "nulDelimitedPaths": true,
+    "roles": [
+      "proxy",
+      "formal-consumer",
+      "worker"
+    ],
+    "provenanceReadback": {
+      "repository": "x0989285458-lgtm/darven-ai-baccarat-proxy",
+      "workflow": ".github/workflows/trusted-release-images-main33.yml",
+      "sourceRef": "refs/tags/v105-v10-main.33",
+      "sourceDigest": "resolved-tag-commit-equals-github-sha",
+      "denySelfHostedRunners": true
+    }
+  },
+  "decommissionContract": {
+    "activeStrategyRequired": "v105",
+    "activeStrategyCountRequired": 1,
+    "legacyRuntimeSettingsRequiredDisabled": true,
+    "migration": "supabase/migrations/20260826040000_v105_main33_legacy_runtime_teardown.sql",
+    "predictionFixtureSha256": "560fe320361263e87e9c897bf6378f088c92ebbb004a73e1f0698569ef572cb2",
+    "disableMigration": "supabase/migrations/20260826035000_v105_main33_disable_legacy_runtime_settings.sql",
+    "deploymentOrder": [
+      "deploy-main33-runtime",
+      "disable-legacy-runtime-settings",
+      "verify-all-legacy-settings-disabled",
+      "drop-explicit-legacy-allowlist",
+      "post-teardown-readback"
+    ]
+  },
+  "releaseBinding": {
+    "changedFileSha256": {
+      ".github/workflows/trusted-release-images-main33.yml": "2ae6495d583b575d24f06d4f9b342f7fea6de8d78f517fb831f4f97c72ffcfe2",
+      "proxy/src/server.js": "34cac17ed696cd02821b577ac64fe015059fd25d7f09f7cd870c0275b5dbc360",
+      "proxy/test/capture-outbox-ack.test.js": "b2c7f4d0ef622026a7692ea326435b9d6a690e1214f47a99a322b6bb7710bac2",
+      "proxy/test/immediate-round-ready.test.js": "a09d907da2e97ec8e799675f5164a452a9e491d4cd4f105330ce2ceb60838cf7",
+      "proxy/test/shadow-process-isolation.test.js": "9a27de8bdbd9656145fab2bb83e2af6844eb25d6f6ba4bce16ce8561c3f03d7b",
+      "proxy/test/shadow-process-v10-resource-isolation.test.js": "0fa73c0c20fe5462449b81e0ec180a6c732db655e2e06154c44223764d1c7f13",
+      "proxy/test/v103-shadow-isolation.test.js": "72fbccbde44b7ca7f522f98384537af56cf85e5ad00a8d4b04a53ae6b647cbc9",
+      "proxy/test/v104-iteration-shadow-server.test.js": "8a4d02752fa48944e77412113496e7400f7b4aac78b6211d33a3f0f4d0add6cf",
+      "proxy/test/v104-shadow-isolation.test.js": "57e693d4539443cf48baa39ee4596b9e17bb035c5acb42e278e55dcabe38102a",
+      "proxy/test/v105-formal-ingest-backpressure-contract.test.js": "22663011acba424f745e8f7820ed1e89147eea3adb59f80bc56bd2554c753f62",
+      "proxy/test/v105-formal-startup-performance-contract.test.js": "a9edadba7279e8ecfc98b7840f74e7d618e04833eb6389f1ab3418da1992c40c",
+      "proxy/test/v105-shadow-v10-server.test.js": "1068219cac1614bbbdcb136dc810b8607feac8dfac0dee08185aebd4ad872447",
+      "proxy/test/v105-shadow-v9-server.test.js": "7d67a0ab21de78e009524a5b8e0195fa9ecf620a46c3e85b9ab21ca3d21b14fe",
+      "proxy/test/v105-v10-main28-db-release.test.js": "da92d97cf8c16e76b7a004e8e452867d5a8c5c03a7e8bf3a4d9305c1d5e9736f",
+      "proxy/test/v105-v10-main29-db-release.test.js": "adbdf98266ca2fa9416d547be87bf3f4bfa8f3b740879fdb33ac7b7b82536efe",
+      "proxy/test/v105-v10-main30-idempotent-issuance-release.test.js": "9910ab22c210cead674949c8bc0bdc569eebba44c7bc4ede03bda6a0b4509170",
+      "proxy/test/v105-v10-main31-trusted-workflow-release.test.js": "b8dc7a9f0210eb25266d41c9cc30d8b93cdd05ad9d725ea978b1b7ccf283b0e4",
+      "proxy/test/v105-v10-main32-trusted-workflow-release.test.js": "86e8df8601c7d5d51b06c21c6007151cc0d91885d55745e4ce7601f718f4dc64",
+      "proxy/test/v105-v10-main33-decommission-release.test.js": "4409673509925eacbc6d323a25bb20b19393309047721847920369931fa2dcc4",
+      "release/v105-v10-main33-decommission-release-report.json": "ae909d100f52edc954c5cd3e85a8a4f93ef257dd4adca9c20c81569600eb0709",
+      "supabase/migrations/20260826035000_v105_main33_disable_legacy_runtime_settings.sql": "f6d1bbb9db5fd831065383fd12c8c5754d0a64a1272cf97ace7cf36ae78c96b5",
+      "supabase/migrations/20260826040000_v105_main33_legacy_runtime_teardown.sql": "d1a49c32c97ba0874044b4327881da2e68dbacf579cdba9095bacb4ebd512ceb"
+    }
+  }
+}

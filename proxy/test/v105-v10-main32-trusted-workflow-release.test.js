@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const verifier = path.join(root, 'scripts', 'verify-trusted-release-delta.sh')
-const workflowPath = path.join(root, '.github', 'workflows', 'trusted-release-images-main32.yml')
+const tagBytes = (relativePath) => execFileSync('git', ['show', `v105-v10-main.32:${relativePath}`], { cwd: root })
 const expectedPaths = [
   '.github/workflows/trusted-release-images-main32.yml',
   'proxy/test/v105-v10-main32-trusted-workflow-release.test.js',
@@ -40,7 +40,7 @@ function verify(cwd, parent, head, paths = expectedPaths, env = {}) {
 }
 
 test('Main32 workflow delegates exact delta verification to the pinned fail-closed script', async () => {
-  const workflow = await readFile(workflowPath, 'utf8')
+  const workflow = tagBytes('.github/workflows/trusted-release-images-main32.yml').toString('utf8')
   assert.equal(workflow.slice(workflow.indexOf('on:\n'), workflow.indexOf('\npermissions:')).trim(), [
     'on:', '  push:', '    tags:', '      - v105-v10-main.32',
   ].join('\n'))
@@ -146,7 +146,7 @@ test('Main32 manifest binds the exact release-gate files without changing runtim
   assert.deepEqual(manifest.workflowContract.allowedChangedPaths, expectedPaths)
   assert.deepEqual(Object.keys(manifest.releaseBinding.changedFileSha256).sort(), expectedPaths.filter((value) => !value.endsWith('manifest.json')).sort())
   for (const [changedPath, expected] of Object.entries(manifest.releaseBinding.changedFileSha256)) {
-    const bytes = await readFile(path.join(root, changedPath))
+    const bytes = tagBytes(changedPath)
     assert.equal(createHash('sha256').update(bytes).digest('hex'), expected, changedPath)
   }
 })

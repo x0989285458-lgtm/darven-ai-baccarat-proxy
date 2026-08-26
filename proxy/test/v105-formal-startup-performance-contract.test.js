@@ -7,6 +7,14 @@ const repo = new URL('../../', import.meta.url)
 const read = (path) => readFileSync(new URL(path, repo), 'utf8')
 const manifest = JSON.parse(read('release/v105-formal-release-manifest.json'))
 
+function retiredServerShadowTest(name, _legacyContract) {
+  test(`${name} [retired by Main33]`, () => {
+    const server = read('proxy/src/server.js')
+    assert.equal(server.includes('shadow-process-client'), false)
+    assert.equal(server.includes('shadowProcessClient'), false)
+  })
+}
+
 test('formal.14 installs the recent-performance index and JSON-free RPC before proxy cutover', () => {
   assert.equal(manifest.releaseVersion, 'v105.0.0-formal.14')
   assert.equal(manifest.databasePerformanceAdditive, 'frontend/supabase/migrate_v105_formal_recent_performance_index.sql')
@@ -112,7 +120,7 @@ test('formal production Supabase reads and durable writes both use a bounded thi
   assert.match(server, /durableWriteRequestTimeoutMs:\s*Number\(process\.env\.DURABLE_INGEST_REQUEST_TIMEOUT_MS\s*\?\?\s*30000\)/)
 })
 
-test('formal startup hydration completes before non-blocking shadows may query the database', async () => {
+retiredServerShadowTest('formal startup hydration completes before non-blocking shadows may query the database', async () => {
   const events = []
   let releaseRecent
   const recentGate = new Promise((resolve) => { releaseRecent = resolve })

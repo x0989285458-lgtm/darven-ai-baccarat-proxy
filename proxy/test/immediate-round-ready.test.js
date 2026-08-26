@@ -417,7 +417,7 @@ test('shutdown bounds an in-flight immediate broadcast authorization check', asy
     port: 0,
     requireVerifiedStrategy: true,
     memberAuthRequired: true,
-    shadowShutdownDeadlineMs: 50,
+    serviceShutdownDeadlineMs: 50,
     licenseAdminClient,
     supabaseClient,
   })

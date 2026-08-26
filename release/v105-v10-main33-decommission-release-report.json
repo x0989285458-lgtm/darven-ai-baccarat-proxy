@@ -1,0 +1,38 @@
+{
+  "title": "V105主預測V10穩定版33舊Runtime與DB影子物件下架報告",
+  "releaseVersion": "v105-v10-main.33",
+  "runtimeSourceVersion": "v105-v10-main.30",
+  "applicationVersion": "1.0.66",
+  "baseCommit": "fe2d6aed2098630d755fef8398bb0bb9ce46d42c",
+  "status": "local-candidate-tests-pass",
+  "scope": {
+    "runtimeCodeChanged": true,
+    "predictionRulesChanged": false,
+    "weightsChanged": false,
+    "thresholdsChanged": false,
+    "databaseChanged": true,
+    "frontendChanged": false,
+    "deploymentPerformed": false
+  },
+  "evidence": {
+    "tddRed": "4/5 PASS, 1/5 expected FAIL: V104 formal retirement objects missing from teardown allowlist",
+    "focusedGreen": "6/6 PASS, fail 0, duration 991.5746ms",
+    "proxyFullSerial": "1024/1024 PASS, fail 0, duration 75374.1173ms",
+    "disableMigrationTddRed": "5/6 PASS, 1/6 expected FAIL: disable migration file absent",
+    "obsoleteTreeReview": "tree 0b542c201c08a4178b0b83b7b08a8b923a5bf839 BLOCK: 3 P1 reproduced; fixed by Git index blob digest verification and CRLF-normalized workflow parsing",
+    "freshPacketReview": "BLOCK tree 97705c31bba684c3757b05bba53fdb85c81570a8: P1 migration preflight TOCTOU; prior 3 P1 closed",
+    "migrationLockTddRed": "4/6 PASS, 2/6 expected FAIL: both migrations lacked preflight transaction locks",
+    "migrationLockRemediation": "Both migrations lock ai_strategy_versions and all affected runtime_settings tables in SHARE ROW EXCLUSIVE mode before preflight and hold locks through COMMIT"
+  },
+  "productionGates": {
+    "freshReview": "PENDING",
+    "trustedImageBuild": "PENDING",
+    "localProvenanceReadback": "PENDING",
+    "databaseMigration": "PENDING",
+    "formalConsumerDeployment": "PENDING",
+    "queueRecovery": "PENDING",
+    "tenMinuteLiveWindow": "PENDING",
+    "browserE2E": "PENDING",
+    "finalVerdict": "BLOCK"
+  }
+}

@@ -1,49 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createApp } from '../src/server.js'
-import { buildV105FormalPrediction } from '../src/v105-formal-strategy.js'
+import { readFile } from 'node:fs/promises'
 
-const TABLE_IDS = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
-const table = (tableId = 'BAG01') => ({
-  tableId, shoe: 105, round: 20, sourceUpdatedAt: '2026-08-02T01:00:00.000Z',
-  bankerCount: 12, playerCount: 8, tieCount: 1, beadPlateRaw: '020102010201', bigRoadRaw: 'B#P#B#P#B#P',
-})
-
-test('the same ten-table snapshot and verified Final fan out to V10 while V10 failure cannot block formal or V9', async () => {
-  const seen = { v9: [], v10: [] }
-  const finals = { v9: 0, v10: 0 }
-  const issued = []
-  let persisted = 0
-  const runtime = (key, fail = false) => ({
-    enabled: true,
-    async observeTable(value) { seen[key].push(value.tableId); if (fail) throw new Error('expected V10 issuance failure') },
-    async settleRound() { finals[key] += 1; if (fail) throw new Error('expected V10 Final failure') },
-    snapshot: () => ({ status: fail ? 'error' : 'ready' }),
-  })
-  const formalRuntime = {
-    async start() {},
-    async buildPrediction(input) { return buildV105FormalPrediction(input) },
-    recordIssuance() {}, recordSettlement() {}, snapshot: () => ({ strategyVersion: 'v105', status: 'ready' }),
+test('Main33 keeps the V10 strategy builder but retires its independent server runtime', async () => {
+  const server = await readFile(new URL('../src/server.js', import.meta.url), 'utf8')
+  const main = await readFile(new URL('../src/v105-v10-main-strategy.js', import.meta.url), 'utf8')
+  for (const token of ['v105-shadow-v10-runtime', 'V105_SHADOW_V10_ENABLED', 'v105ShadowV10Runtime', 'issueV105ShadowV10Prediction']) {
+    assert.equal(server.includes(token), false, token)
   }
-  const writer = {
-    configured: true,
-    async issuePrediction(candidate) { issued.push(candidate.targetTableId); return { ...candidate, predictionId: `formal-${candidate.targetTableId}`, issuedAt: '2026-08-02T01:00:01.000Z' } },
-    async readIssuedPrediction() { return null },
-    async persistRound() { persisted += 1; return { prediction: { strategy_version: 'v105', predicted_result: 'banker', settlement_final: true, resolved_at: '2026-08-02T01:00:02.000Z' } } },
-  }
-  const app = createApp({
-    autoConnect: false, requireVerifiedStrategy: false, memberAuthRequired: false,
-    supabaseClient: writer, v104FormalRuntime: formalRuntime,
-    v105ShadowV9Runtime: runtime('v9'), v105ShadowV10Runtime: runtime('v10', true),
-  })
-  app.state.setTables(TABLE_IDS.map(table))
-  await app.waitForServiceWorkIdle()
-  await app.state.upsertRoundEvent({ ...table(), round: 21, sourceAction: '/summary', winner: 'banker', rawResult: [1, 9, 2, 10, 0, 0, -1, -1, 3, 9] })
-  await app.waitForServiceWorkIdle()
-  assert.deepEqual(seen.v9, TABLE_IDS)
-  assert.equal(finals.v9, 1)
-  assert.deepEqual(seen.v10, TABLE_IDS)
-  assert.equal(finals.v10, 1)
-  assert.deepEqual(issued, TABLE_IDS)
-  assert.equal(persisted, 1)
+  assert.match(main, /buildV105ShadowV10Prediction/)
+  assert.match(main, /v105-shadow-v10-contract\.js/)
 })

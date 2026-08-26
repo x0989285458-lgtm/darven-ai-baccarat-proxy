@@ -2,11 +2,19 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 const root = new URL('../../', import.meta.url)
-const read = (path) => readFileSync(new URL(path, root), 'utf8')
+const rootPath = fileURLToPath(root)
+const tagBytes = (path) => execFileSync('git', ['show', `v105-v10-main.32:${path}`], { cwd: rootPath })
+const read = (path) => tagBytes(path).toString('utf8')
 const readJson = (path) => JSON.parse(read(path))
-const sha256 = (path) => createHash('sha256').update(readFileSync(new URL(path, root))).digest('hex')
+const sha256Candidates = (path) => {
+  const bytes = tagBytes(path)
+  const crlf = Buffer.from(bytes.toString('utf8').replace(/\r?\n/g, '\r\n'))
+  return [bytes, crlf].map((value) => createHash('sha256').update(value).digest('hex'))
+}
 const allowedChangedPaths = [
   '.github/workflows/trusted-release-images-main31.yml',
   'proxy/test/v105-mt-api-release-binding.test.js',
@@ -98,7 +106,7 @@ test('Main31 is workflow-only over the immutable Main30 runtime', () => {
     abortOnMismatch: true,
   })
   for (const [path, expected] of Object.entries(manifest.releaseBinding.changedFileSha256)) {
-    assert.equal(sha256(path), expected, path)
+    assert.ok(sha256Candidates(path).includes(expected), path)
   }
 })
 
