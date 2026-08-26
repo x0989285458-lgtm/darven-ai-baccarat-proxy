@@ -7,24 +7,21 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '../..')
-const workflowPath = '.github/workflows/trusted-release-images-main38.yml'
-const manifestPath = 'release/v105-v10-main38-formal-scheduler-release-manifest.json'
-const reportPath = 'release/v105-v10-main38-formal-scheduler-release-report.json'
-const releaseTestPath = 'proxy/test/v105-v10-main38-formal-scheduler-release.test.js'
-const expectedDelta = [
+const workflowPath = '.github/workflows/trusted-release-images-main39.yml'
+const manifestPath = 'release/v105-v10-main39-formal-scheduler-release-manifest.json'
+const reportPath = 'release/v105-v10-main39-formal-scheduler-release-report.json'
+const releaseTestPath = 'proxy/test/v105-v10-main39-formal-scheduler-release.test.js'
+const main38HistoricalTestPath = 'proxy/test/v105-v10-main38-formal-scheduler-release.test.js'
+const expectedDelta = [workflowPath, main38HistoricalTestPath, releaseTestPath, manifestPath, reportPath]
+const expectedBindings = [
   workflowPath,
   'proxy/src/server.js',
   'proxy/test/capture-outbox-ack.test.js',
-  'proxy/test/v105-v10-main33-decommission-release.test.js',
-  'proxy/test/v105-v10-main36-formal-scheduler-release.test.js',
-  'proxy/test/v105-v10-main37-formal-scheduler-release.test.js',
+  main38HistoricalTestPath,
   releaseTestPath,
-  manifestPath,
   reportPath,
 ]
-const expectedBindings = expectedDelta.filter((relativePath) => relativePath !== manifestPath)
-const main38Commit = '5f25bee269db9f55aedd5d6f1ff4345d16077a88'
-const gitBlob = (relativePath) => execFileSync('git', ['show', `${main38Commit}:${relativePath}`], {
+const gitBlob = (relativePath) => execFileSync('git', ['show', `:${relativePath}`], {
   cwd: root,
   encoding: null,
   windowsHide: true,
@@ -46,11 +43,11 @@ function verifierArgs(workflow) {
   return args
 }
 
-test('Main38 workflow builds only Formal Consumer from exact tag, parent, and nine-file delta', async () => {
+test('Main39 workflow builds only Formal Consumer from exact tag and Main38 parent', async () => {
   const workflow = await readText(workflowPath)
-  assert.match(workflow, /tags:\n\s+- v105-v10-main\.38/)
-  assert.match(workflow, /if: github\.ref == 'refs\/tags\/v105-v10-main\.38'/)
-  assert.match(workflow, /ref: refs\/tags\/v105-v10-main\.38/)
+  assert.match(workflow, /tags:\n\s+- v105-v10-main\.39/)
+  assert.match(workflow, /if: github\.ref == 'refs\/tags\/v105-v10-main\.39'/)
+  assert.match(workflow, /ref: refs\/tags\/v105-v10-main\.39/)
   assert.match(workflow, /IMAGE: darven-ai-baccarat-formal-consumer/)
   assert.match(workflow, /file: proxy\/Dockerfile\.formal-consumer/)
   assert.doesNotMatch(workflow, /IMAGE: darven-ai-baccarat-(?:proxy|worker)/)
@@ -60,21 +57,20 @@ test('Main38 workflow builds only Formal Consumer from exact tag, parent, and ni
   assert.match(workflow, /--deny-self-hosted-runners/)
   assert.deepEqual(verifierArgs(workflow), [
     '"${GITHUB_SHA}"',
-    'ec316d8ce647216dd2ab2c540fb1eb4a2133b468',
+    '5f25bee269db9f55aedd5d6f1ff4345d16077a88',
     ...expectedDelta,
   ])
 })
 
-test('Main38 manifest binds every non-self delta path from normalized Git blobs', async () => {
+test('Main39 manifest binds inherited Main38 runtime and every normalized Git blob', async () => {
   const manifest = JSON.parse(await readText(manifestPath))
-  assert.equal(manifest.releaseVersion, 'v105-v10-main.38')
-  assert.equal(manifest.gitTag, 'v105-v10-main.38')
+  assert.equal(manifest.releaseVersion, 'v105-v10-main.39')
+  assert.equal(manifest.gitTag, 'v105-v10-main.39')
   assert.equal(manifest.liveBaseCommit, '7c81b01bbc605d1aff7a1ca0ed2bf8a918e9af0f')
-  assert.equal(manifest.predecessorCommit, 'ec316d8ce647216dd2ab2c540fb1eb4a2133b468')
+  assert.equal(manifest.inheritedRuntimeCommit, '5f25bee269db9f55aedd5d6f1ff4345d16077a88')
   assert.equal(manifest.releaseScope.runtimeChangedFromLiveBase, true)
-  assert.equal(manifest.releaseScope.formalConsumerChanged, true)
-  assert.equal(manifest.releaseScope.databaseChanged, false)
-  assert.equal(manifest.releaseScope.frontendChanged, false)
+  assert.equal(manifest.releaseScope.overlayRuntimeChanged, false)
+  assert.equal(manifest.releaseScope.formalConsumerChangedFromLiveBase, true)
   assert.deepEqual(manifest.workflowContract.allowedChangedPaths, expectedDelta)
   assert.deepEqual(Object.keys(manifest.releaseBinding.changedFileSha256), expectedBindings)
   for (const relativePath of expectedBindings) {
@@ -82,16 +78,14 @@ test('Main38 manifest binds every non-self delta path from normalized Git blobs'
   }
 })
 
-test('Main38 report records Main37 P1 BLOCK and leaves production gates closed', async () => {
+test('Main39 report preserves Main38 release-test BLOCK and closes no production gate', async () => {
   const report = JSON.parse(await readText(reportPath))
-  assert.equal(report.releaseVersion, 'v105-v10-main.38')
-  assert.equal(report.predecessor.releaseVersion, 'v105-v10-main.37')
+  assert.equal(report.releaseVersion, 'v105-v10-main.39')
+  assert.equal(report.predecessor.releaseVersion, 'v105-v10-main.38')
   assert.equal(report.predecessor.status, 'BLOCK')
-  assert.match(report.predecessor.reason, /BAG02|concurrent external table update/i)
-  assert.equal(report.ownerEvidence.main37ConcurrencyRed, "actual ['BAG01']; expected ['BAG02','BAG01']")
-  assert.equal(report.ownerEvidence.targetRegression, '3/3 PASS')
-  assert.equal(report.ownerEvidence.historicalReleaseGates, '12/12 PASS')
-  assert.equal(report.ownerEvidence.proxySuite, '1039/1039 PASS')
+  assert.match(report.predecessor.reason, /CRLF|checkout|worktree/i)
+  assert.equal(report.runtimeEvidence.targetRegression, '3/3 PASS')
+  assert.equal(report.runtimeEvidence.proxySuite, '1042/1042 PASS')
   for (const value of Object.values(report.productionGates)) assert.match(value, /^(?:PENDING|BLOCK)$/)
   assert.ok(!JSON.stringify(report.productionGates).includes('PASS'))
 })

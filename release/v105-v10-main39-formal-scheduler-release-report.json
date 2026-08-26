@@ -1,0 +1,32 @@
+{
+  "releaseVersion": "v105-v10-main.39",
+  "releasePurpose": "以Git Blob讀取修正Main38發布測試的Windows CRLF Checkout相依性，發布已於Main38完成並通過1042項測試的AsyncLocalStorage Formal Consumer修正。",
+  "predecessor": {
+    "releaseVersion": "v105-v10-main.38",
+    "status": "BLOCK",
+    "reason": "Main38 Exact Clone的發布測試讀Checkout worktree文字，Windows CRLF使Workflow regex失敗；Runtime核心3/3 PASS，但Main38未Tag、未Push、未建映像、未部署。"
+  },
+  "runtimeSource": {
+    "commit": "5f25bee269db9f55aedd5d6f1ff4345d16077a88",
+    "mechanism": "Node AsyncLocalStorage scoped suppression",
+    "runtimeBytesChangedInOverlay": false
+  },
+  "runtimeEvidence": {
+    "main37ConcurrencyRed": "actual ['BAG01']; expected ['BAG02','BAG01']",
+    "targetRegression": "3/3 PASS",
+    "proxySuite": "1042/1042 PASS",
+    "frontendSuite": "163/163 PASS",
+    "frontendBuild": "PASS"
+  },
+  "productionGates": {
+    "freshReview": "PENDING",
+    "trustedBuild": "PENDING",
+    "registryReadback": "PENDING",
+    "sigstoreProvenance": "PENDING",
+    "formalConsumerDeployment": "BLOCK",
+    "queueConvergence": "BLOCK",
+    "tenTableFinalParity": "BLOCK",
+    "frontendBrowserE2E": "BLOCK",
+    "adminBrowserE2E": "BLOCK"
+  }
+}

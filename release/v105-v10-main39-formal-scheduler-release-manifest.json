@@ -1,0 +1,42 @@
+{
+  "releaseVersion": "v105-v10-main.39",
+  "gitTag": "v105-v10-main.39",
+  "liveBaseCommit": "7c81b01bbc605d1aff7a1ca0ed2bf8a918e9af0f",
+  "inheritedRuntimeCommit": "5f25bee269db9f55aedd5d6f1ff4345d16077a88",
+  "runtimeSourceVersion": "v105-v10-main.39",
+  "releaseScope": {
+    "runtimeChangedFromLiveBase": true,
+    "formalConsumerChangedFromLiveBase": true,
+    "overlayRuntimeChanged": false,
+    "workflowChanged": true,
+    "proxyDeploymentChanged": false,
+    "databaseChanged": false,
+    "frontendChanged": false,
+    "workerChanged": false
+  },
+  "workflowContract": {
+    "verifierArgumentOrder": [
+      "head-sha",
+      "required-parent-sha",
+      "allowed-paths"
+    ],
+    "allowedChangedPaths": [
+      ".github/workflows/trusted-release-images-main39.yml",
+      "proxy/test/v105-v10-main38-formal-scheduler-release.test.js",
+      "proxy/test/v105-v10-main39-formal-scheduler-release.test.js",
+      "release/v105-v10-main39-formal-scheduler-release-manifest.json",
+      "release/v105-v10-main39-formal-scheduler-release-report.json"
+    ]
+  },
+  "releaseBinding": {
+    "hashInput": "normalized immutable Git index blob bytes",
+    "changedFileSha256": {
+      ".github/workflows/trusted-release-images-main39.yml": "41d70cedbff9c53730c6be64f92e680f4f7d23db6183de2ac40b67021a648539",
+      "proxy/src/server.js": "a831c300533c4affc4dce74524fe86898cd89e425a10d3f943005beca4382f6c",
+      "proxy/test/capture-outbox-ack.test.js": "dac40849c3116a70b7502689d206e035f684a15425ee3afa516ed70eaf2918c9",
+      "proxy/test/v105-v10-main38-formal-scheduler-release.test.js": "a522c7a2832731bec25355ad299d4ed12881b051bf2fc90f98ccf3bfa7fb6b80",
+      "proxy/test/v105-v10-main39-formal-scheduler-release.test.js": "a58f936789ba0aa785191480d3cf1a5952a699e2960226d65b58ec7db6275245",
+      "release/v105-v10-main39-formal-scheduler-release-report.json": "a66cd665317c2cb3a0851df7f45a9dabec7485784a995267c2ac4ac92aa7d35a"
+    }
+  }
+}
