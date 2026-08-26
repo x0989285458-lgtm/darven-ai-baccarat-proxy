@@ -1,0 +1,75 @@
+{
+  "releaseVersion": "v105-v10-main.46",
+  "releasePurpose": "將Formal Consumer同Session Outbox批次安全上限由10提高至30，以一次合併處理攤提每批10桌reconcile／prediction固定成本；每一列仍保留Exact Lease identity並以batch completion/failure原子ACK。",
+  "predecessor": {
+    "release": "v105-v10-main.45",
+    "commit": "76d064960ee21908a78f96d79d5ce476b623c627",
+    "status": "PROXY_CANDIDATE_FORMAL_STOPPED"
+  },
+  "productionIncident": {
+    "main44Image": "ghcr.io/x0989285458-lgtm/darven-ai-baccarat-formal-consumer@sha256:85a0e0b5aaa434691b2b4b1a95a8b327ed87d73e4d83b62a8c134ad454247a8c",
+    "shortWindow": "320秒曾PASS，Completed 21→160、最大Active 4、最老Active 2秒、最終Active 0、10桌10/10",
+    "longWindowFailure": {
+      "observedAt": "2026-08-26T21:36:00Z",
+      "active": 57,
+      "pending": 47,
+      "processing": 10,
+      "nearFiveMinuteRaw": 77,
+      "nearFiveMinuteFinal": 41,
+      "statusEndpoint": "15秒timeout"
+    },
+    "stopEvidence": {
+      "container": "darven-formal-main44-live",
+      "state": "exited",
+      "port8791Listeners": 0,
+      "main42": "exited",
+      "main43": "exited"
+    },
+    "postStopForensics": {
+      "pending": 65,
+      "processing": 10,
+      "processingLockedAt": "2026-08-26T21:36:58.566719Z",
+      "processingAttempts": 1,
+      "processingLastError": "empty",
+      "arrivalRatePerMinute": "近段多為24至30",
+      "completionRatePerMinute": "退化後多為17至22",
+      "capacityConclusion": "持續服務率不足，不是單次尖峰"
+    }
+  },
+  "changes": [
+    "captureOutboxBatchLimit fail-closed安全上限由10提高為30；預設值仍由環境明確控制。",
+    "同Session 30列依sequence有序合併為一次Formal input；30個Exact Lease仍以單一batch ACK原子完成。",
+    "31、空字串、NaN、0與小數仍fail closed。",
+    "Main45 Proxy-only候選與Main44歷史Release binding改讀不可變Main45 commit，不重標歷史。"
+  ],
+  "tests": {
+    "red": "2/2 FAIL：Main45回傳上限1..10，30列無法建立App",
+    "green": "2/2 PASS",
+    "captureOutbox": "55/55 PASS",
+    "proxySuite": "1077/1077 PASS",
+    "releaseBinding": "6/6 PASS"
+  },
+  "releaseScope": {
+    "proxyDeploymentChanged": false,
+    "formalConsumerDeploymentChanged": true,
+    "cloudflareDeploymentChanged": false,
+    "databaseMigrationChanged": false,
+    "workerProducerChanged": false
+  },
+  "productionStatus": "LIVE_GATE_FAIL",
+  "productionGates": {
+    "codeReview": "PENDING",
+    "trustedImageBuild": "PENDING",
+    "attestationVerification": "PENDING",
+    "freshTakeover": "PENDING",
+    "tenMinuteCapacityWindow": "PENDING",
+    "exactImageReadback": "PENDING",
+    "databaseFinal": "PENDING",
+    "frontend": "BLOCKED_BY_MAIN45_AND_FORMAL_GATES"
+  },
+  "notes": [
+    "本候選不清空正式Queue；Fresh Takeover前另建Archive並從新邊界開始，舊Processing/Pending依既有營運決策隔離。",
+    "短窗綠燈不再視為正式完成；至少10分鐘同時驗Arrival、Completed、Active斜率與10桌Roadmap/Settlement。",
+    "任何Production Gate在本Report均不得為PASS。"
+  ]
+}

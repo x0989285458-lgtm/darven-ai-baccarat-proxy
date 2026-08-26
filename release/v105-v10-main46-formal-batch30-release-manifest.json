@@ -1,0 +1,29 @@
+{
+  "releaseVersion": "v105-v10-main.46",
+  "parentCommit": "76d064960ee21908a78f96d79d5ce476b623c627",
+  "changedFiles": [
+    ".github/workflows/trusted-release-images-main46.yml",
+    "proxy/src/server.js",
+    "proxy/test/capture-outbox-ack.test.js",
+    "proxy/test/v105-v10-main45-read-only-tables-release.test.js",
+    "proxy/test/v105-v10-main46-formal-batch30-release.test.js",
+    "release/v105-v10-main46-formal-batch30-release-manifest.json",
+    "release/v105-v10-main46-formal-batch30-release-report.json"
+  ],
+  "blobSha256": {
+    ".github/workflows/trusted-release-images-main46.yml": "5d68b0787f20579285437c29aadcc10a6d9ece2719d7f26e7370b318e492429b",
+    "proxy/src/server.js": "0cbed2192a354d2fda75afc6d17994d97c495682d03f143b6237caf1505b6685",
+    "proxy/test/capture-outbox-ack.test.js": "e85d4426feb21e35ddfc6d737d8fb06e4f1b42cde1c237b7f0e47e43647d0f0f",
+    "proxy/test/v105-v10-main45-read-only-tables-release.test.js": "6692c05bcb6246c74b2c872dc04cd4f2c63aab9f39f9fd4451f623ec2d4bb8ab",
+    "proxy/test/v105-v10-main46-formal-batch30-release.test.js": "4d0378ef67d9025739ed52ab6ad38aba84eddf2efee8ef230f946ad3dff89138",
+    "release/v105-v10-main46-formal-batch30-release-report.json": "12613f3f071a6bf653f4ef110ca7c23299853c2c7d5030e439a5efdab78db63b"
+  },
+  "releaseScope": {
+    "proxyDeploymentChanged": false,
+    "formalConsumerDeploymentChanged": true,
+    "cloudflareDeploymentChanged": false,
+    "databaseMigrationChanged": false,
+    "workerProducerChanged": false
+  },
+  "productionStatus": "LIVE_GATE_FAIL"
+}

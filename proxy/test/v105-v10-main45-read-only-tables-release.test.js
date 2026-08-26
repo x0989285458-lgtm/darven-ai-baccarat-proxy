@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '../..')
+const candidateCommit = '76d064960ee21908a78f96d79d5ce476b623c627'
 const parentCommit = '594ce187145449bd6d2afab7a12b348cf8e2e08e'
 const workflowPath = '.github/workflows/trusted-release-images-main45.yml'
 const manifestPath = 'release/v105-v10-main45-read-only-tables-release-manifest.json'
@@ -22,7 +23,7 @@ const expectedDelta = [
   reportPath,
 ]
 const expectedBindings = expectedDelta.filter((relativePath) => relativePath !== manifestPath)
-const gitBlob = (relativePath) => execFileSync('git', ['show', `:${relativePath}`], { cwd: root, encoding: null, windowsHide: true })
+const gitBlob = (relativePath) => execFileSync('git', ['show', `${candidateCommit}:${relativePath}`], { cwd: root, encoding: null, windowsHide: true })
 const readText = async (relativePath) => gitBlob(relativePath).toString('utf8')
 const sha256 = (value) => createHash('sha256').update(value).digest('hex')
 

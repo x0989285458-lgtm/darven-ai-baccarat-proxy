@@ -1486,13 +1486,13 @@ test('outbox coalescing rejects invalid or unbounded configuration', async () =>
 })
 
 test('outbox batch limit rejects invalid or unbounded configuration', async () => {
-  for (const value of ['', Number.NaN, 0, 1.5, 11]) {
+  for (const value of ['', Number.NaN, 0, 1.5, 31]) {
     assert.throws(
       () => createApp({ autoConnect: false, captureOutboxBatchLimit: value }),
-      /outbox batch limit.*integer.*1.*10/i,
+      /outbox batch limit.*integer.*1.*30/i,
     )
   }
-  const app = createApp({ autoConnect: false, captureOutboxBatchLimit: 3 })
+  const app = createApp({ autoConnect: false, captureOutboxBatchLimit: 30 })
   await app.stop()
 })
 
@@ -1510,18 +1510,18 @@ test('same-session outbox batch merges ordered envelopes and completes every exa
     tables: [{ ...envelope().snapshot.tables[0], tableId, shoe: 88, round }],
     rounds: [makeFinal(tableId, round)],
   })
-  const rows = [
-    claimedRow(21, { payload: { work: makeWork('BAG01', 21) } }),
-    claimedRow(22, { payload: { work: makeWork('BAG02', 22) } }),
-    claimedRow(23, { payload: { work: makeWork('BAG01', 23) } }),
-  ]
+  const tableIds = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
+  const rows = Array.from({ length: 30 }, (_, index) => {
+    const sequence = 21 + index
+    return claimedRow(sequence, { payload: { work: makeWork(tableIds[index % tableIds.length], sequence) } })
+  })
   const app = createApp({
     autoConnect: false,
-    captureOutboxBatchLimit: 3,
+    captureOutboxBatchLimit: 30,
     supabaseClient: {
       configured: true,
       async claimCaptureOutbox({ limit }) {
-        assert.equal(limit, 3)
+        assert.equal(limit, 30)
         if (claimed) return []
         claimed = true
         return rows
@@ -1550,12 +1550,11 @@ test('same-session outbox batch merges ordered envelopes and completes every exa
   await app.waitForCaptureOutboxIdle()
 
   assert.equal(formalInputs.length, 1)
-  assert.deepEqual(formalInputs[0].rounds.map((round) => `${round.tableId}:${round.round}`), ['BAG01:21', 'BAG02:22', 'BAG01:23'])
-  assert.deepEqual(completedBatches, [[
-    { sessionId: 'outbox-worker', sequence: 21, claimToken: 'lease-21', attempt: 1 },
-    { sessionId: 'outbox-worker', sequence: 22, claimToken: 'lease-22', attempt: 1 },
-    { sessionId: 'outbox-worker', sequence: 23, claimToken: 'lease-23', attempt: 1 },
-  ]])
+  assert.equal(formalInputs[0].rounds.length, 30)
+  assert.deepEqual(formalInputs[0].rounds.map((round) => round.round), Array.from({ length: 30 }, (_, index) => 21 + index))
+  assert.equal(completedBatches.length, 1)
+  assert.equal(completedBatches[0].length, 30)
+  assert.deepEqual(completedBatches[0].map((claim) => claim.sequence), Array.from({ length: 30 }, (_, index) => 21 + index))
 })
 
 test('same-session outbox batch failure drains merged work then fails every exact lease atomically', async () => {
