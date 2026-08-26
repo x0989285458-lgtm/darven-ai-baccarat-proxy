@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '../..')
+const candidateCommit = 'ca52d05714de9a91b394159994c44710ee74e0aa'
 const parentCommit = '76d064960ee21908a78f96d79d5ce476b623c627'
 const workflowPath = '.github/workflows/trusted-release-images-main46.yml'
 const manifestPath = 'release/v105-v10-main46-formal-batch30-release-manifest.json'
@@ -21,7 +22,7 @@ const expectedDelta = [
   reportPath,
 ]
 const expectedBindings = expectedDelta.filter((relativePath) => relativePath !== manifestPath)
-const gitBlob = (relativePath) => execFileSync('git', ['show', `:${relativePath}`], { cwd: root, encoding: null, windowsHide: true })
+const gitBlob = (relativePath) => execFileSync('git', ['show', `${candidateCommit}:${relativePath}`], { cwd: root, encoding: null, windowsHide: true })
 const readText = async (relativePath) => gitBlob(relativePath).toString('utf8')
 const sha256 = (value) => createHash('sha256').update(value).digest('hex')
 
@@ -37,8 +38,8 @@ test('Main46 workflow builds only Formal Consumer from exact tag and Main45 pare
   assert.doesNotMatch(workflow, /darven-ai-baccarat-proxy/)
   assert.doesNotMatch(workflow, /Dockerfile\.evidence/)
 
-  const staged = execFileSync('git', ['diff', '--cached', '--name-only'], { cwd: root, encoding: 'utf8', windowsHide: true }).trim().split(/\r?\n/).filter(Boolean).sort()
-  assert.deepEqual(staged, [...expectedDelta].sort())
+  const immutableDelta = execFileSync('git', ['diff-tree', '--no-commit-id', '--name-only', '-r', candidateCommit], { cwd: root, encoding: 'utf8', windowsHide: true }).trim().split('\n').map((item) => item.trim()).filter(Boolean).sort()
+  assert.deepEqual(immutableDelta, [...expectedDelta].sort())
 })
 
 test('Main46 manifest binds every changed normalized Git blob except itself', async () => {

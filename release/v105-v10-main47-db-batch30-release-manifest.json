@@ -1,0 +1,31 @@
+{
+  "releaseVersion": "v105-v10-main.47",
+  "parentCommit": "ca52d05714de9a91b394159994c44710ee74e0aa",
+  "changedFiles": [
+    ".github/workflows/trusted-release-images-main47.yml",
+    "proxy/test/capture-outbox-writer.test.js",
+    "proxy/test/v105-v10-main46-formal-batch30-release.test.js",
+    "proxy/test/v105-v10-main47-db-batch30-release.test.js",
+    "scripts/test-main47-batch30-migration.mjs",
+    "supabase/migrations/20260827010000_v105_capture_outbox_batch30_contract.sql",
+    "release/v105-v10-main47-db-batch30-release-manifest.json",
+    "release/v105-v10-main47-db-batch30-release-report.json"
+  ],
+  "blobSha256": {
+    ".github/workflows/trusted-release-images-main47.yml": "edce668b2015f4d532ed2f6c299fc8abf99efc3e6d22853cde971abb8b88a9a0",
+    "proxy/test/capture-outbox-writer.test.js": "a173ac4788189d46d7159d34c87cf09f99e822d7c3de208f43c0bee5c7b26dab",
+    "proxy/test/v105-v10-main46-formal-batch30-release.test.js": "1d394da72708249da9c46349c1598f188e50aae43808bbf5abf8dfadf780df38",
+    "proxy/test/v105-v10-main47-db-batch30-release.test.js": "7bfaa552507c1492a61159e708ed64d0bf5a7e874005aae7cea7ba4375b83094",
+    "scripts/test-main47-batch30-migration.mjs": "5421e4a70cb2f57cd1ad05f71a3eab32dff6353a386e8dd0bdab7a264892af97",
+    "supabase/migrations/20260827010000_v105_capture_outbox_batch30_contract.sql": "734f5c8eb1f8fc41c5efc4ef8c4b99b90b1097740e93a5e3561c801a4221359d",
+    "release/v105-v10-main47-db-batch30-release-report.json": "26616e71e35595ab9ebedc102623ec232eb4d7abe38d0b72835d180e78cda9a2"
+  },
+  "releaseScope": {
+    "proxyDeploymentChanged": false,
+    "formalConsumerDeploymentChanged": true,
+    "cloudflareDeploymentChanged": false,
+    "databaseMigrationChanged": true,
+    "workerProducerChanged": false
+  },
+  "productionStatus": "LIVE_GATE_FAIL"
+}

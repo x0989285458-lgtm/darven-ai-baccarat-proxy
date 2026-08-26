@@ -6,6 +6,8 @@ import { createSupabaseIngestionClient } from '../src/supabase-writer.js'
 const migrationUrl = new URL('../../supabase/migrations/20260729043000_v105_capture_settlement_outbox.sql', import.meta.url)
 const zeroFinalHeartbeatMigrationUrl = new URL('../../supabase/migrations/20260823113000_v105_zero_final_heartbeat_outbox_fast_complete.sql', import.meta.url)
 const sameSessionBatchMigrationUrl = new URL('../../supabase/migrations/20260824010000_v105_capture_outbox_same_session_batch.sql', import.meta.url)
+const batch30MigrationUrl = new URL('../../supabase/migrations/20260827010000_v105_capture_outbox_batch30_contract.sql', import.meta.url)
+const batch30HarnessUrl = new URL('../../scripts/test-main47-batch30-migration.mjs', import.meta.url)
 const transportRebindMigrationUrl = new URL('../../supabase/migrations/20260824143000_v105_capture_transport_rebind_idempotency.sql', import.meta.url)
 
 const response = (payload) => ({
@@ -58,6 +60,26 @@ test('same-session batch migration claims one ordered prefix and atomically comp
   assert.match(sql, /if affected <> expected then raise exception 'capture outbox stale batch failure rejected'/i)
   assert.match(sql, /grant execute on function public\.claim_v105_capture_settlement_outbox_batch\(integer\) to service_role/i)
   assert.doesNotMatch(sql, /\b(drop|truncate|delete\s+from)\b/i)
+})
+
+test('Main47 migration and rollback-only harness bind claim, completion, and failure to batch30', () => {
+  const sql = readFileSync(batch30MigrationUrl, 'utf8')
+  const harness = readFileSync(batch30HarnessUrl, 'utf8')
+  assert.match(sql, /claim_v105_capture_settlement_outbox_batch\(p_limit integer default 10\)/i)
+  assert.match(sql, /limit greatest\(1, least\(coalesce\(p_limit, 10\), 30\)\)/i)
+  assert.equal((sql.match(/expected > 30/g) ?? []).length, 2)
+  assert.match(sql, /update public\.v105_capture_settlement_outbox as poison[\s\S]*set status = 'dead_letter'[\s\S]*poison\.attempts >= 5/i)
+  assert.match(sql, /batch30 claim contract verification failed/i)
+  assert.match(sql, /batch30 completion contract verification failed/i)
+  assert.match(sql, /batch30 failure contract verification failed/i)
+  assert.doesNotMatch(sql, /\b(drop|truncate|delete\s+from|insert\s+into|alter\s+table)\b/i)
+  assert.match(harness, /lock table public\.v105_capture_settlement_outbox in share row exclusive mode/i)
+  assert.match(harness, /ROLLBACK_ONLY_NO_COMMIT/)
+  assert.match(harness, /claim_v105_capture_settlement_outbox_batch\(30\)/)
+  assert.match(harness, /completed[^\n]*30|completed: 30/)
+  assert.match(harness, /failed[^\n]*30|failed: 30/)
+  assert.match(harness, /length: 31/)
+  assert.match(harness, /await db\.query\('rollback'\)/)
 })
 
 test('zero-Final heartbeat keeps an idempotency row but completes it without settlement work', () => {

@@ -1,0 +1,71 @@
+{
+  "releaseVersion": "v105-v10-main.47",
+  "releasePurpose": "補齊Main46遺漏的正式DB batch30契約：claim、complete與fail三個RPC同時支援1至30並拒絕31；以Rollback-only真實Supabase測試驗證，不再以Mock代替SQL/RPC。",
+  "predecessor": {
+    "release": "v105-v10-main.46",
+    "commit": "ca52d05714de9a91b394159994c44710ee74e0aa",
+    "status": "BLOCKED_P1_DB_BATCH_LIMIT_DRIFT"
+  },
+  "main46Incident": {
+    "reviewFinding": "應用層接受30，但正式DB claim硬限10，complete/fail拒絕超過10；Mock測試形成假綠。",
+    "image": "ghcr.io/x0989285458-lgtm/darven-ai-baccarat-formal-consumer@sha256:ef254a4446b58e9b6aa5db5765bb4338225c366900396e6707379f5101d8f9fb",
+    "containerStopped": true,
+    "port8791ListenersAfterStop": 0,
+    "briefRuntimeQueueAfterStop": { "pending": 3, "processing": 1 },
+    "tagAndDigestDisposition": "保留為不可變BLOCK證據，不重用、不覆寫"
+  },
+  "freshBoundaryArchive": {
+    "reason": "main46_batch30_capacity_fresh_takeover",
+    "boundary": "2026-08-26T22:06:55.297444Z",
+    "moved": { "pending": 508, "processing": 10 },
+    "total": 518,
+    "archiveTable": "public.v105_operator_abandoned_capture_outbox_archive"
+  },
+  "changes": [
+    "新增corrective migration，以CREATE OR REPLACE覆蓋claim/complete/fail batch RPC；不改寫Queue資料。",
+    "claim仍預設10，但顯式p_limit可安全上限30；31以上clamp或拒絕。",
+    "complete/fail各自限制1至30、要求Exact session/sequence/claim_token/attempt且全數affected才原子成功。",
+    "Migration內以pg_get_functiondef自驗三個正式函式均綁定30。",
+    "新增Rollback-only真DB Harness：隔離既有Active、30筆Exact Session Claim、30 Complete、30 Fail、attempts>=5 Poison隔離與次列解阻、31拒絕；最後ROLLBACK。"
+  ],
+  "tests": {
+    "main46ReviewerRegression": "BLOCK reproduced: production DB definitions bind 10",
+    "rollbackOnlySupabase": "PASS exactSessionClaims=true claimed=30 completed=30 failed=30 poisonIsolated=true rejected31=true rollback=true",
+    "staticMigrationContract": "2/2 PASS",
+    "proxySuite": "1081/1081 PASS",
+    "releaseBinding": "6/6 PASS"
+  },
+  "deploymentOrder": [
+    "main47-corrective-database-migration",
+    "read-back-three-installed-function-definitions",
+    "rollback-only-production-database-probe",
+    "trusted-formal-consumer-image",
+    "fresh-outbox-boundary",
+    "formal-consumer-takeover",
+    "ten-minute-capacity-window",
+    "central-live-review-and-browser-e2e"
+  ],
+  "releaseScope": {
+    "proxyDeploymentChanged": false,
+    "formalConsumerDeploymentChanged": true,
+    "cloudflareDeploymentChanged": false,
+    "databaseMigrationChanged": true,
+    "workerProducerChanged": false
+  },
+  "productionStatus": "LIVE_GATE_FAIL",
+  "productionGates": {
+    "codeReview": "PENDING",
+    "trustedImageBuild": "PENDING",
+    "databaseMigration": "PENDING",
+    "databaseDefinitionReadback": "PENDING",
+    "freshTakeover": "PENDING",
+    "tenMinuteCapacityWindow": "PENDING",
+    "centralLiveReview": "PENDING",
+    "browserE2E": "PENDING"
+  },
+  "notes": [
+    "任何Production Gate在本Report均不得為PASS。",
+    "Main46的Reviewer PASS票已因第二位Reviewer P1 finding失效；Main47需從零Fresh Review。",
+    "正式Consumer目前維持停止，Raw Producer與Main45 Render Proxy獨立運作。"
+  ]
+}
