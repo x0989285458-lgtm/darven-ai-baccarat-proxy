@@ -118,12 +118,20 @@ describe('live frontend contract', () => {
     const sse = `event: tables\ndata: ${JSON.stringify({ tables: [proxyTable] })}\n\nevent: heartbeat\ndata: {}\n\n`
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
       expect(String(url)).not.toContain('opaque-member-token')
-      if (!url.includes('/api/tables/stream')) throw new Error(`unexpected fallback request: ${url}`)
       expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer opaque-member-token')
-      return Promise.resolve({
-        ok: true, status: 200,
-        body: new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(sse)); controller.close() } }),
-      })
+      if (url.includes('/api/tables/stream')) {
+        return Promise.resolve({
+          ok: true, status: 200,
+          body: new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(sse)); controller.close() } }),
+        })
+      }
+      if (url.endsWith('/api/status')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v105' }) })
+      }
+      if (url.endsWith('/api/tables')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([proxyTable]) })
+      }
+      throw new Error(`unexpected heartbeat refresh request: ${url}`)
     })
     vi.stubGlobal('EventSource', eventSource)
     vi.stubGlobal('fetch', fetchMock)
@@ -135,8 +143,157 @@ describe('live frontend contract', () => {
     client.disconnect(false)
 
     expect(eventSource).not.toHaveBeenCalled()
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(received[0]?.[0].prediction?.targetRound).toBe(18)
+  })
+
+  it('refreshes durable public tables on heartbeat so a cross-process DB update is not delayed until stream timeout', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-27T16:00:30.000Z'))
+    const initial = validTable({ sourceUpdatedAt: '2026-08-27T16:00:00.000Z' })
+    const advanced = validTable({
+      sourceUpdatedAt: '2026-08-27T16:00:01.000Z',
+      trend: { ...initial.trend, current_round: Number(initial.trend.current_round) + 1 },
+      prediction: { ...initial.prediction!, targetRound: Number(initial.trend.current_round) + 1, predictionId: 'cross-process-ready' },
+    })
+    const toProxy = (item: LiveTable) => ({
+      tableId: item.table_id,
+      tableType: item.table_type,
+      shoe: item.trend.current_shoe,
+      round: item.trend.current_round,
+      beadPlateRaw: item.trend.bead_plate2,
+      bigRoadRaw: item.trend.big2,
+      sourceUpdatedAt: item.sourceUpdatedAt,
+      buildVersion: item.buildVersion,
+      prediction: item.prediction,
+    })
+    const sse = `event: tables\ndata: ${JSON.stringify({ tables: [toProxy(initial)] })}\n\nevent: heartbeat\ndata: {}\n\n`
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/api/tables/stream')) {
+        expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer opaque-member-token')
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          body: new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(sse)) } }),
+        })
+      }
+      if (url.endsWith('/api/status')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v105' }) })
+      }
+      if (url.endsWith('/api/tables')) {
+        expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer opaque-member-token')
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([toProxy(advanced)]) })
+      }
+      throw new Error(`unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const received: LiveTable[][] = []
+    const client = new LiveRoadClient({ memberSessionToken: 'opaque-member-token', onTables: (tables) => received.push(tables), onStatus: vi.fn() })
+
+    client.connect()
+    await vi.advanceTimersByTimeAsync(1)
+    client.disconnect(false)
+
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/api/tables'))).toBe(true)
+    expect(received.at(-1)?.[0].trend.current_round).toBe(advanced.trend.current_round)
+    expect(received.at(-1)?.[0].prediction?.predictionId).toBe('cross-process-ready')
+  })
+
+  it('coalesces repeated heartbeats while the durable public table refresh is still in flight', async () => {
+    vi.useFakeTimers()
+    let tableReads = 0
+    let releaseTableRead!: () => void
+    const tableGate = new Promise<void>((resolve) => { releaseTableRead = resolve })
+    const heartbeats = 'event: heartbeat\ndata: {}\n\n'.repeat(3)
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/tables/stream')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          body: new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(heartbeats)) } }),
+        })
+      }
+      if (url.endsWith('/api/status')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 0, buildVersion: 'v105' }) })
+      }
+      if (url.endsWith('/api/tables')) {
+        tableReads += 1
+        return tableGate.then(() => ({ ok: true, status: 200, json: () => Promise.resolve([]) }))
+      }
+      throw new Error(`unexpected request: ${url}`)
+    }))
+    const client = new LiveRoadClient({ memberSessionToken: 'opaque-member-token', onTables: vi.fn(), onStatus: vi.fn() })
+
+    client.connect()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(tableReads).toBe(1)
+    releaseTableRead()
+    await vi.advanceTimersByTimeAsync(1)
+    client.disconnect(false)
+  })
+
+  it('does not reuse or publish an in-flight heartbeat refresh across a disconnect and reconnect generation', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-27T16:00:30.000Z'))
+    let tableReads = 0
+    let releaseOldRead!: () => void
+    const oldReadGate = new Promise<void>((resolve) => { releaseOldRead = resolve })
+    const advanced = validTable({
+      sourceUpdatedAt: '2026-08-27T16:00:02.000Z',
+      trend: { ...validTable().trend, current_round: 19 },
+      prediction: { ...validTable().prediction!, targetRound: 19, predictionId: 'new-generation-ready' },
+    })
+    const toProxy = (item: LiveTable) => ({
+      tableId: item.table_id,
+      tableType: item.table_type,
+      shoe: item.trend.current_shoe,
+      round: item.trend.current_round,
+      beadPlateRaw: item.trend.bead_plate2,
+      bigRoadRaw: item.trend.big2,
+      sourceUpdatedAt: item.sourceUpdatedAt,
+      buildVersion: item.buildVersion,
+      prediction: item.prediction,
+    })
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/tables/stream')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          body: new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('event: heartbeat\ndata: {}\n\n')) } }),
+        })
+      }
+      if (url.endsWith('/api/status')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v105' }) })
+      }
+      if (url.endsWith('/api/tables')) {
+        tableReads += 1
+        if (tableReads === 1) return oldReadGate.then(() => ({ ok: false, status: 401, json: () => Promise.resolve({}) }))
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([toProxy(advanced)]) })
+      }
+      throw new Error(`unexpected request: ${url}`)
+    }))
+    const received: LiveTable[][] = []
+    const unauthorized = vi.fn()
+    const client = new LiveRoadClient({
+      memberSessionToken: 'opaque-member-token',
+      onTables: (tables) => received.push(tables),
+      onStatus: vi.fn(),
+      onUnauthorized: unauthorized,
+    })
+
+    client.connect()
+    await vi.advanceTimersByTimeAsync(1)
+    client.disconnect(false)
+    client.connect()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(tableReads).toBe(2)
+    expect(received.at(-1)?.[0].prediction?.predictionId).toBe('new-generation-ready')
+    releaseOldRead()
+    await vi.advanceTimersByTimeAsync(1)
+    client.disconnect(false)
+
+    expect(unauthorized).not.toHaveBeenCalled()
+    expect(received.at(-1)?.[0].prediction?.predictionId).toBe('new-generation-ready')
   })
 
   it('rejects per-table sourceUpdatedAt rollback from SSE while keeping other tables and allows a newer shoe', async () => {

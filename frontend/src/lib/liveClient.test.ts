@@ -238,7 +238,7 @@ describe('LiveRoadClient status messages', () => {
     expect(statuses.at(-1)?.message).toMatch(/stale|過期/i)
   })
 
-  it('throttles backup polling while SSE heartbeat is fresh', async () => {
+  it('uses each SSE heartbeat as a cross-process durable table refresh signal', async () => {
     vi.useFakeTimers()
     let streamController: ReadableStreamDefaultController<Uint8Array>
     const fetchMock = vi.fn((url: string) => {
@@ -264,10 +264,10 @@ describe('LiveRoadClient status messages', () => {
     client.disconnect(false)
     streamController!.close()
 
-    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/tables'))).toHaveLength(0)
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/tables'))).toHaveLength(2)
   })
 
-  it('polls when heartbeats continue but no tables event arrives before the stale deadline', async () => {
+  it('keeps refreshing durable tables while heartbeats continue without a tables event', async () => {
     vi.useFakeTimers()
     let streamController!: ReadableStreamDefaultController<Uint8Array>
     const fetchMock = vi.fn((url: string) => {
@@ -290,7 +290,7 @@ describe('LiveRoadClient status messages', () => {
     client.disconnect(false)
     streamController.close()
 
-    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/tables'))).toHaveLength(1)
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/tables'))).toHaveLength(6)
   })
 
   it('retains the first durable prediction when equal-time same-id content conflicts', async () => {

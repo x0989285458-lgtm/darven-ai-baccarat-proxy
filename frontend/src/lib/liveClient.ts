@@ -126,6 +126,8 @@ export class LiveRoadClient {
   private streamAbort?: AbortController
   private reconnectTimer?: number
   private streamWatchdog?: number
+  private pollPromise?: Promise<void>
+  private connectionGeneration = 0
   private lastTablesAt = 0
   private stopped = true
   private authorizationLost = false
@@ -149,6 +151,8 @@ export class LiveRoadClient {
 
   disconnect(notify = true) {
     this.stopped = true
+    this.connectionGeneration += 1
+    this.pollPromise = undefined
     if (this.timer) window.clearInterval(this.timer)
     if (this.streamWatchdog) window.clearInterval(this.streamWatchdog)
     if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer)
@@ -180,7 +184,10 @@ export class LiveRoadClient {
           this.streamAbort?.abort()
           return
         }
-        if (event === 'heartbeat') return
+        if (event === 'heartbeat') {
+          void this.poll()
+          return
+        }
         if (event !== 'tables') return
         this.lastTablesAt = Date.now()
         const payload = JSON.parse(data)
@@ -203,7 +210,19 @@ export class LiveRoadClient {
     }, 2000)
   }
 
-  private async poll() {
+  private poll() {
+    if (this.stopped) return Promise.resolve()
+    if (this.pollPromise) return this.pollPromise
+    const generation = this.connectionGeneration
+    const active = this.pollOnce(generation)
+    this.pollPromise = active
+    void active.finally(() => {
+      if (this.pollPromise === active) this.pollPromise = undefined
+    })
+    return active
+  }
+
+  private async pollOnce(generation: number) {
     if (this.stopped) return
     try {
       const headers = this.options.memberSessionToken ? { Authorization: `Bearer ${this.options.memberSessionToken}` } : undefined
@@ -212,12 +231,14 @@ export class LiveRoadClient {
         fetch(`${proxyApiUrl}/api/tables`, { cache: 'no-store', headers }),
         statusPromise,
       ])
+      if (this.stopped || generation !== this.connectionGeneration) return
       if (response.status === 401) {
         this.handleUnauthorized()
         return
       }
       if (!response.ok) throw new Error(`proxy ${response.status}`)
       const payload = await response.json()
+      if (this.stopped || generation !== this.connectionGeneration) return
       const tables = normalizeProxyTables(Array.isArray(payload) ? payload : [])
       this.lastTablesAt = Date.now()
       if (proxyStatus && /stale|過期|建置版本不符/i.test(proxyStatus.message)) {
@@ -226,8 +247,11 @@ export class LiveRoadClient {
         return
       }
       if (this.publishTables(tables, `雲端資料已連線（${tables.length}桌）`)) return
-      this.options.onStatus(proxyStatus ?? await readProxyStatus())
+      const fallbackStatus = proxyStatus ?? await readProxyStatus()
+      if (this.stopped || generation !== this.connectionGeneration) return
+      this.options.onStatus(fallbackStatus)
     } catch {
+      if (this.stopped || generation !== this.connectionGeneration) return
       this.options.onTables([])
       this.options.onStatus({ state: 'error', message: '雲端代理暫時無法讀取資料' })
     }
