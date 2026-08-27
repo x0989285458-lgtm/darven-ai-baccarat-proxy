@@ -1,0 +1,68 @@
+{
+  "releaseVersion": "v105-v10-main.49",
+  "releasePurpose": "補足Main48多筆Formal Batch在正式Probe並行負載下的抖動預算；保留1至10筆45秒，11至20筆135秒，21至30筆180秒，硬上限240秒低於DB五分鐘stale lease。",
+  "predecessor": {
+    "releaseVersion": "v105-v10-main.48",
+    "commit": "c08733972a5a1efedd10ecc84bf2bc9a00745b03",
+    "status": "BLOCKED_LIVE_BATCH_JITTER_RETRY"
+  },
+  "productionIncident": {
+    "main48CleanWindow": {
+      "observedMinutes": 20.705,
+      "finalArrivalDelta": 295,
+      "finalCompletedDelta": 294,
+      "maxFinalActive": 3,
+      "maxOldestFinalActiveSeconds": 8,
+      "deadLetter": 0,
+      "tenTableParity": true
+    },
+    "laterProbeEvidence": {
+      "completedAt": "2026-08-27T08:21:32.229013Z",
+      "batchSize": 23,
+      "maxAttempts": 2,
+      "containerRestartCount": 0,
+      "deadLetter": 0,
+      "interpretation": "同一容器未重啟但23筆批次以Attempt2完成，證明Main48的135秒多批預算仍會在正式Probe負載下觸發重試。"
+    },
+    "containment": {
+      "formalConsumerStopped": true,
+      "rawProducerPreserved": true,
+      "activeQueueDeleted": false,
+      "operatorInterruptedProcessingRows": 12
+    }
+  },
+  "fix": {
+    "singleBatchUnitMaxClaims": 10,
+    "baseDeadlineMs": 45000,
+    "claims1To10DeadlineMs": 45000,
+    "claims11To20DeadlineMs": 135000,
+    "claims21To30DeadlineMs": 180000,
+    "hardCapMs": 240000,
+    "databaseStaleLeaseMs": 300000,
+    "failureAckUsesBaseDeadline": true,
+    "exactLeaseSemanticsChanged": false,
+    "databaseContractChanged": false
+  },
+  "tests": {
+    "red": "Main48 helper回90/135秒且30筆90ms Formal整合完成數為0。",
+    "focusedGreen": "4/4 PASS",
+    "captureOutbox": "57/57 PASS",
+    "proxySuite": "1089/1089 PASS",
+    "releaseBinding": "6/6 PASS"
+  },
+  "productionStatus": "PENDING",
+  "productionGates": {
+    "trustedImageAndAttestation": "PENDING",
+    "staleLeaseRecovery": "PENDING",
+    "freshFinalCapacityWindow": "PENDING",
+    "tenTableParity": "PENDING",
+    "centralLiveAdapter": "PENDING",
+    "browserE2E": "PENDING"
+  },
+  "notes": [
+    "Heartbeat Arrival／Completed仍與round_keys大於0的Final-bearing容量分開計算。",
+    "Main48的20.705分鐘PASS已被後續Attempt2證據推翻，不能沿用為Main49 Production PASS。",
+    "Main49只增加多批抖動預算；Exact Claim token／attempt、同Session FIFO、原子Complete／Fail與底層settle fence均不變。",
+    "Main48停止時由操作者中斷的12筆processing須由DB五分鐘stale lease自然重領，不手改狀態。"
+  ]
+}

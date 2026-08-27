@@ -2372,7 +2372,8 @@ export function resolveCaptureOutboxLeaseDeadlineMs(baseDeadlineMs, claimCount) 
   const normalizedBase = Math.max(1, Number(baseDeadlineMs) || 1)
   const normalizedClaimCount = Math.max(1, Number(claimCount) || 1)
   const batchUnits = Math.max(1, Math.ceil(normalizedClaimCount / 10))
-  return Math.min(240_000, normalizedBase * batchUnits)
+  const bufferedBatchUnits = batchUnits > 1 ? batchUnits + 1 : batchUnits
+  return Math.min(240_000, normalizedBase * bufferedBatchUnits)
 }
 
 function createLeaseDeadline(timeoutMs, message = 'outbox work deadline exceeded') {

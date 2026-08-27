@@ -1,0 +1,29 @@
+{
+  "releaseVersion": "v105-v10-main.49",
+  "parentCommit": "c08733972a5a1efedd10ecc84bf2bc9a00745b03",
+  "changedFiles": [
+    ".github/workflows/trusted-release-images-main49.yml",
+    "proxy/src/server.js",
+    "proxy/test/capture-outbox-ack.test.js",
+    "proxy/test/v105-v10-main48-batch-deadline-release.test.js",
+    "proxy/test/v105-v10-main49-batch-jitter-budget-release.test.js",
+    "release/v105-v10-main49-batch-jitter-budget-release-manifest.json",
+    "release/v105-v10-main49-batch-jitter-budget-release-report.json"
+  ],
+  "blobSha256": {
+    ".github/workflows/trusted-release-images-main49.yml": "e92bf0c96732372ee851c4dedbfc280bc0d2189ba92eb46a29cc06471b02c819",
+    "proxy/src/server.js": "66e3db697bc5978cb2da1b8cdada6b520766a03ff7940eb91469430a575e219f",
+    "proxy/test/capture-outbox-ack.test.js": "d2b003f792e7376e543934c2db1a4e7cb98d8303b34142fad368c8a03f9ff694",
+    "proxy/test/v105-v10-main48-batch-deadline-release.test.js": "cf8c5e5ab468735a0fc2535de5f0ffb3d3f9d8d987b44466ec6fcb734f2568af",
+    "proxy/test/v105-v10-main49-batch-jitter-budget-release.test.js": "5f567194d797a6d3cd2ac8c5203576dbb5865085bd9d225f79287ff1cfcf40d6",
+    "release/v105-v10-main49-batch-jitter-budget-release-report.json": "e1217b229b30cbb4a59292edb99432256b1867528b6adaf9d818594e89f16d65"
+  },
+  "releaseScope": {
+    "proxyDeploymentChanged": false,
+    "formalConsumerDeploymentChanged": true,
+    "cloudflareDeploymentChanged": false,
+    "databaseMigrationChanged": false,
+    "workerProducerChanged": false
+  },
+  "productionStatus": "PENDING"
+}

@@ -1,0 +1,92 @@
+name: Trusted release image Main49 Batch Jitter Budget
+
+on:
+  push:
+    tags:
+      - v105-v10-main.49
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: darven-ai-baccarat-formal-consumer
+
+jobs:
+  build-and-attest:
+    if: github.ref == 'refs/tags/v105-v10-main.49'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact tagged source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: refs/tags/v105-v10-main.49
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify exact frozen tag source and fail-closed Main49 delta
+        shell: bash
+        run: |
+          test "${GITHUB_REF}" = "refs/tags/v105-v10-main.49"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          bash scripts/verify-trusted-release-delta.sh \
+            "${GITHUB_SHA}" \
+            c08733972a5a1efedd10ecc84bf2bc9a00745b03 \
+            .github/workflows/trusted-release-images-main49.yml \
+            proxy/src/server.js \
+            proxy/test/capture-outbox-ack.test.js \
+            proxy/test/v105-v10-main48-batch-deadline-release.test.js \
+            proxy/test/v105-v10-main49-batch-jitter-budget-release.test.js \
+            release/v105-v10-main49-batch-jitter-budget-release-manifest.json \
+            release/v105-v10-main49-batch-jitter-budget-release-report.json
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Authenticate to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push exact Formal Consumer image
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: .
+          file: proxy/Dockerfile.formal-consumer
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE }}:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE }}:v105-v10-main.49
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=v105-v10-main.49
+
+      - name: Attest GitHub-hosted build provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Verify exact provenance before deployment
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          SUBJECT_NAME: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE }}
+        run: |
+          [[ "${IMAGE_DIGEST}" =~ ^sha256:[a-f0-9]{64}$ ]]
+          test "${GITHUB_REF}" = "refs/tags/v105-v10-main.49"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          gh attestation verify "oci://${SUBJECT_NAME}@${IMAGE_DIGEST}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/trusted-release-images-main49.yml" \
+            --source-digest "${GITHUB_SHA}" \
+            --source-ref "${GITHUB_REF}" \
+            --deny-self-hosted-runners

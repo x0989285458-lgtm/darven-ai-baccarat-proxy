@@ -1496,11 +1496,11 @@ test('outbox batch limit rejects invalid or unbounded configuration', async () =
   await app.stop()
 })
 
-test('batch lease deadline scales per ten exact claims and stays below stale-lease recovery', () => {
+test('batch lease deadline preserves single-unit work and adds bounded multi-batch jitter budget', () => {
   assert.equal(resolveCaptureOutboxLeaseDeadlineMs(45_000, 1), 45_000)
   assert.equal(resolveCaptureOutboxLeaseDeadlineMs(45_000, 10), 45_000)
-  assert.equal(resolveCaptureOutboxLeaseDeadlineMs(45_000, 11), 90_000)
-  assert.equal(resolveCaptureOutboxLeaseDeadlineMs(45_000, 30), 135_000)
+  assert.equal(resolveCaptureOutboxLeaseDeadlineMs(45_000, 11), 135_000)
+  assert.equal(resolveCaptureOutboxLeaseDeadlineMs(45_000, 30), 180_000)
   assert.equal(resolveCaptureOutboxLeaseDeadlineMs(100_000, 30), 240_000)
 })
 
@@ -1601,7 +1601,7 @@ test('thirty-row formal batch scales the bounded lease deadline instead of reusi
     v100FormalRuntime: {
       enabled: true,
       async processSnapshot({ tables }) {
-        await delay(65)
+        await delay(90)
         return { tables }
       },
     },
