@@ -1,0 +1,100 @@
+{
+  "schemaVersion": "v105-v10-main-db-migration-release.1",
+  "releaseName": "V105主預測V10穩定版50 前台即時路單Lifecycle熱路徑修復",
+  "releaseVersion": "v105-v10-main.50",
+  "gitTag": "v105-v10-main.50",
+  "baseCommit": "45ef192378e90162df6be4f71f3c8f782ba6ab0c",
+  "runtimeReleaseVersion": "v105-v10-main.49",
+  "runtimeEvidence": {
+    "sourceCommit": "45ef192378e90162df6be4f71f3c8f782ba6ab0c",
+    "sourceTag": "refs/tags/v105-v10-main.49",
+    "workflowRunId": 33055051482,
+    "registrySubject": "ghcr.io/x0989285458-lgtm/darven-ai-baccarat-formal-consumer",
+    "imageDigest": "sha256:46a681db23a8db631f75fe590e7781bacc45bc62e11cdca11c592eb023ba193e",
+    "attestationRepository": "x0989285458-lgtm/darven-ai-baccarat-proxy",
+    "attestationWorkflow": "x0989285458-lgtm/darven-ai-baccarat-proxy/.github/workflows/trusted-release-images-main49.yml",
+    "externalAttestationResult": "PASS",
+    "productionVmDigestReadback": "PENDING"
+  },
+  "formalStrategyVersion": "v105",
+  "changedFiles": [
+    "supabase/migrations/20260827103000_v105_lifecycle_hotpath.sql",
+    "supabase/operations/rollback_v105_main50_lifecycle_hotpath.sql",
+    "scripts/apply-v105-main50-lifecycle-hotpath.mjs",
+    "proxy/test/capture-outbox-ack.test.js",
+    "proxy/test/immediate-round-ready.test.js",
+    "proxy/test/v105-main50-migration-runner.test.js",
+    "proxy/test/v105-v10-main49-batch-jitter-budget-release.test.js",
+    "proxy/test/v105-main50-lifecycle-hotpath.test.js",
+    "proxy/test/v105-v10-main50-lifecycle-hotpath-release.test.js",
+    "release/v105-v10-main50-lifecycle-hotpath-release-manifest.json",
+    "release/v105-v10-main50-lifecycle-hotpath-release-report.json"
+  ],
+  "blobSha256": {
+    "supabase/migrations/20260827103000_v105_lifecycle_hotpath.sql": "7a9275b44efd5e9d254dfe4e22b541b730c0700f3c7f24ac407186203afb4292",
+    "supabase/operations/rollback_v105_main50_lifecycle_hotpath.sql": "4b17ae036ff621dc9cfc689e23202c36bb2d3b02d72e741346df517ca81da02f",
+    "scripts/apply-v105-main50-lifecycle-hotpath.mjs": "60a1da9d44157545cded875eafdc899cf493ae967ba7b8e1fd5346ecd960415d",
+    "proxy/test/capture-outbox-ack.test.js": "261a34bb4e6c498ebe2498438ec0b4f12e3981ca448464754e465af52bcdb0de",
+    "proxy/test/immediate-round-ready.test.js": "f86ecce7536cb9ed3a9d4f95c012dc6ebcd729c57447e0ed3c338a4fbbcc8b0b",
+    "proxy/test/v105-main50-migration-runner.test.js": "43410ca16530e130ff9db05d808c05c84ca1bb66065aa3a30b2287c9bddbfe9f",
+    "proxy/test/v105-v10-main49-batch-jitter-budget-release.test.js": "3664e6f8ca4faa5b000c2c2ada3dd661f2ab2aba8efb1a741e21f3655f4eab71",
+    "proxy/test/v105-main50-lifecycle-hotpath.test.js": "96a7be9767eee4217b18824e3beb37a25b4a752a4e352864dfa72a094ccd0aac",
+    "proxy/test/v105-v10-main50-lifecycle-hotpath-release.test.js": "8b07d5f233490a03edf94f07cb0ff9508938192df00da98a644d07f8b6832a16",
+    "release/v105-v10-main50-lifecycle-hotpath-release-report.json": "2695e46f9c45b46cdf7583b7edb75030205aef77eb802194a0135e0b795bab67"
+  },
+  "releaseScope": {
+    "databaseMigrationOnly": true,
+    "proxyChanged": false,
+    "formalConsumerChanged": false,
+    "workerChanged": false,
+    "frontendChanged": false,
+    "predictionRulesChanged": false,
+    "predictionWeightsChanged": false,
+    "predictionThresholdsChanged": false,
+    "queuedWorkRewritten": false,
+    "historicalDataRewritten": false
+  },
+  "incident": {
+    "frontendSymptom": "牌路與下一局預測停止即時更新",
+    "captureAgeSeconds": 2.8,
+    "roadmapAgeSeconds": 4369.2,
+    "predictionAgeSeconds": 4369.6,
+    "pendingOutbox": 1035,
+    "processingOutbox": 20,
+    "reconcileCalls": 66524,
+    "reconcileMeanMs": 107.981136122257,
+    "reconcileMaxMs": 117897.259622,
+    "abandonedRowsPerTableMin": 878,
+    "abandonedRowsPerTableMax": 1064
+  },
+  "releaseBinding": {
+    "migration": {
+      "algorithm": "sha256",
+      "path": "supabase/migrations/20260827103000_v105_lifecycle_hotpath.sql",
+      "sha256": "7a9275b44efd5e9d254dfe4e22b541b730c0700f3c7f24ac407186203afb4292"
+    },
+    "rollback": {
+      "algorithm": "sha256",
+      "path": "supabase/operations/rollback_v105_main50_lifecycle_hotpath.sql",
+      "sha256": "4b17ae036ff621dc9cfc689e23202c36bb2d3b02d72e741346df517ca81da02f"
+    },
+    "testPath": "proxy/test/v105-main50-lifecycle-hotpath.test.js",
+    "preconditionContract": "broad lifecycle reclassification scans terminal abandoned rows",
+    "postconditionContract": "only null, pending transitions, and expired shoe transitions are updated"
+  },
+  "deploymentOrder": [
+    "verify-exact-main50-tag-head-and-clean-worktree",
+    "verify-formal-consumer-stopped",
+    "verify-no-new-dead-letter",
+    "verify-main49-external-attestation-source-commit-and-registry-subject",
+    "execute-scripts-apply-v105-main50-lifecycle-hotpath-with-required-confirmations",
+    "verify-runner-receipt-index-function-acl-and-migration-ledger",
+    "verify-vm-image-digest-before-consumer-start",
+    "start-existing-main49-immutable-consumer",
+    "verify-stale-lease-recovery-without-delete",
+    "verify-queue-natural-drain-without-rewrite",
+    "verify-final-roadmap-prediction-ack-growth",
+    "verify-round-ready-sse-and-member-ui",
+    "run-main50-twenty-minute-capacity-window"
+  ]
+}

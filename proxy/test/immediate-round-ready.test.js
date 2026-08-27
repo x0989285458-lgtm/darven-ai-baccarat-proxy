@@ -12,19 +12,37 @@ const table = {
   sourceUpdatedAt: new Date().toISOString(),
 }
 
+const sseBuffers = new WeakMap()
+
 async function readSseEvent(reader, timeoutMs = 4500) {
   const decoder = new TextDecoder()
-  let text = ''
-  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timed out waiting for SSE event')), timeoutMs))
+  let text = sseBuffers.get(reader) ?? ''
+  let timeoutId
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('timed out waiting for SSE event')), timeoutMs)
+  })
   while (!text.includes('\n\n')) {
     const result = await Promise.race([reader.read(), timeout])
     if (result.done) return { event: 'closed', data: null }
-    text += decoder.decode(result.value, { stream: true }).replace(/\r\n/g, '\n')
+    text += decoder.decode(result.value, { stream: true }).split(String.fromCharCode(13, 10)).join('\n')
   }
-  const block = text.slice(0, text.indexOf('\n\n'))
+  clearTimeout(timeoutId)
+  const boundary = text.indexOf('\n\n')
+  const block = text.slice(0, boundary)
+  sseBuffers.set(reader, text.slice(boundary + 2))
   const event = block.split('\n').find((line) => line.startsWith('event:'))?.slice(6).trim() ?? 'message'
   const data = block.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('\n')
   return { event, data: data ? JSON.parse(data) : null }
+}
+
+async function readSseEventUntil(reader, predicate, timeoutMs = 1500) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const event = await readSseEvent(reader, Math.max(1, deadline - Date.now()))
+    if (predicate(event)) return event
+    if (event.event !== 'heartbeat') throw new Error(`unexpected SSE event while waiting for tables: ${event.event}`)
+  }
+  throw new Error('timed out waiting for matching SSE event')
 }
 
 function issued(candidate) {
@@ -292,8 +310,7 @@ test('slow durable prediction read-back triggers an immediate full tables broadc
     const initial = await readSseEvent(reader)
     assert.equal(initial.event, 'tables')
     assert.equal(initial.data.tables[0].prediction, null)
-    const ready = await readSseEvent(reader, 500)
-    assert.equal(ready.event, 'tables')
+    const ready = await readSseEventUntil(reader, (event) => event.event === 'tables' && event.data?.tables?.[0]?.prediction?.predictionId === 'slow-read-back-20')
     assert.equal(ready.data.tables[0].prediction.predictionId, 'slow-read-back-20')
   } finally {
     controller.abort()

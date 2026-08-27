@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '../..')
 const parentCommit = 'c08733972a5a1efedd10ecc84bf2bc9a00745b03'
+const candidateCommit = '45ef192378e90162df6be4f71f3c8f782ba6ab0c'
 const workflowPath = '.github/workflows/trusted-release-images-main49.yml'
 const manifestPath = 'release/v105-v10-main49-batch-jitter-budget-release-manifest.json'
 const reportPath = 'release/v105-v10-main49-batch-jitter-budget-release-report.json'
@@ -21,11 +22,11 @@ const expectedDelta = [
   reportPath,
 ]
 const expectedBindings = expectedDelta.filter((relativePath) => relativePath !== manifestPath)
-const gitBlob = (relativePath) => execFileSync('git', ['show', `:${relativePath}`], { cwd: root, encoding: null, windowsHide: true })
+const gitBlob = (relativePath) => execFileSync('git', ['show', `${candidateCommit}:${relativePath}`], { cwd: root, encoding: null, windowsHide: true })
 const readText = async (relativePath) => gitBlob(relativePath).toString('utf8')
 const sha256 = (value) => createHash('sha256').update(value).digest('hex')
 
-test('Main49 workflow is Formal-only and binds batch jitter artifacts to exact tag and Main48 parent', async () => {
+test('immutable Main49 workflow is Formal-only and binds batch jitter artifacts to exact tag and Main48 parent', async () => {
   const workflow = await readText(workflowPath)
   assert.match(workflow, /v105-v10-main\.49/g)
   assert.match(workflow, new RegExp(parentCommit, 'g'))
@@ -33,8 +34,9 @@ test('Main49 workflow is Formal-only and binds batch jitter artifacts to exact t
   assert.match(workflow, /file: proxy\/Dockerfile\.formal-consumer/)
   assert.match(workflow, /trusted-release-images-main49\.yml/)
   assert.doesNotMatch(workflow, /darven-ai-baccarat-proxy/)
-  const staged = execFileSync('git', ['diff', '--cached', '--name-only'], { cwd: root, encoding: 'utf8', windowsHide: true }).trim().split(/\r?\n/).filter(Boolean).sort()
-  assert.deepEqual(staged, [...expectedDelta].sort())
+  const immutableDelta = execFileSync('git', ['diff-tree', '--no-commit-id', '--name-only', '-r', candidateCommit], { cwd: root, encoding: 'utf8', windowsHide: true })
+    .split('\n').map((value) => value.trim()).filter(Boolean).sort()
+  assert.deepEqual(immutableDelta, [...expectedDelta].sort())
 })
 
 test('Main49 manifest binds seven changed files and all six non-self Git blobs', async () => {

@@ -4,6 +4,13 @@ import { readFileSync } from 'node:fs'
 import { createApp, resolveCaptureOutboxLeaseDeadlineMs } from '../src/server.js'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const waitFor = async (predicate, timeoutMs = 1000) => {
+  const deadline = Date.now() + timeoutMs
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error('timed out waiting for test condition')
+    await delay(5)
+  }
+}
 
 function retiredServerShadowTest(name, _legacyContract) {
   test(`${name} [retired by Main33]`, () => {
@@ -1315,7 +1322,7 @@ test('fresh durable ACK cannot delay an existing immediate backlog continuation'
     autoConnect: false,
     ingestKey: 'worker-key',
     now: () => 1_000_000,
-    outboxCoalesceMs: 100,
+    outboxCoalesceMs: 1000,
     supabaseClient: {
       configured: true,
       async persistCaptureEnvelope(value) {
@@ -1366,7 +1373,7 @@ test('fresh durable ACK cannot delay an existing immediate backlog continuation'
 
   const continuedImmediately = await Promise.race([
     secondClaimStarted.then(() => true),
-    delay(50).then(() => false),
+    delay(500).then(() => false),
   ])
   assert.equal(continuedImmediately, true, 'fresh ACK delayed an existing 0ms backlog continuation')
   await firstDrain
@@ -1952,13 +1959,15 @@ test('persistent outbox health failure uses increasing backoff instead of fixed-
     },
   })
   await app.drainCaptureOutbox()
-  await delay(95)
-  await app.stop()
-  assert.ok(claimTimes.length >= 3)
-  assert.ok(claimTimes.length <= 5, `fixed-rate polling detected: ${claimTimes.length} claims`)
+  await waitFor(() => claimTimes.length >= 5, 1500)
+  assert.equal(claimTimes.length, 5)
   const gaps = claimTimes.slice(1).map((time, index) => time - claimTimes[index])
   assert.ok(gaps[1] >= 15, `second retry did not back off: ${gaps.join(',')}`)
-  assert.ok(gaps[2] == null || gaps[2] >= 30, `third retry did not back off: ${gaps.join(',')}`)
+  assert.ok(gaps[2] >= 30, `third retry did not back off: ${gaps.join(',')}`)
+  assert.ok(gaps[3] >= 60, `fourth retry did not back off: ${gaps.join(',')}`)
+  await delay(45)
+  await app.stop()
+  assert.equal(claimTimes.length, 5, `fixed-rate polling detected: ${claimTimes.length} claims`)
 })
 
 test('successful outbox health read resets only the health retry backoff', async () => {

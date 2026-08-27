@@ -1,0 +1,52 @@
+{
+  "title": "V105主預測V10穩定版50 前台即時路單Lifecycle熱路徑修復發布報告",
+  "releaseVersion": "v105-v10-main.50",
+  "runtimeReleaseVersion": "v105-v10-main.49",
+  "baseCommit": "45ef192378e90162df6be4f71f3c8f782ba6ab0c",
+  "status": "candidate-full-tests-pass-exact-review-pending",
+  "rootCause": "正式Capture維持2.8秒新鮮，但Lifecycle函式每局重掃每桌878至1064筆已abandoned歷史列；pg_stat_statements顯示66524次、平均107.981ms、最差117897.260ms，使Formal Consumer長窗Completion低於Arrival，停機後前台路單與預測落後4369秒。",
+  "reviewHistory": {
+    "firstExactTreeReview": "BLOCKED_3_P1",
+    "blockedTree": "e2a1db24afaa37597b137cf3ac8b4dfb73a508c7",
+    "firstRemediation": "immutable release-test dual mode; concurrent invalid-index self-heal; external Main49 attestation binding",
+    "secondExactTreeReview": "BLOCKED_3_P1_1_P2",
+    "secondBlockedTree": "488d6666f77370ab337b94b1d067eb33654a62b3",
+    "secondRemediation": "executable fail-closed migration runner; strict SSE event gate; fifth-claim backoff gate; complete attestation assertions",
+    "thirdExactTreeReview": "BLOCKED_3_P1",
+    "thirdBlockedTree": "7d2931040f2008d2763b0f4defc6db16c9aeb161",
+    "thirdRemediation": "exact ledger/catalog/function/ACL readback; unique ordered markers; immutable tag/blob/SHA execution; executable deployment order",
+    "fourthExactTreeReview": "BLOCKED_3_P1",
+    "fourthBlockedTree": "104fcc90c4c679d317652f6c38c394fef5807c2c",
+    "fourthRemediation": "exact receipt version; immutable PL/pgSQL prosrc equality; complete thirteen-step deployment-order assertion"
+  },
+  "fix": {
+    "hotIndex": "只索引prediction_issued且非Final的null、pending、expired_no_final列",
+    "nullTransition": "分類一次",
+    "pendingTransition": "只在換鞋或局號越過時更新",
+    "expiredTransition": "只在換鞋時轉abandoned_shoe_change",
+    "abandonedTransition": "終止列不再進入每局掃描",
+    "rollback": "恢復Main49 broad classifier並保留無害Hot Index",
+    "failClosedRunner": "Index autocommit失敗立即停止；valid/ready讀回後才在交易內切函式、ACL及Migration Ledger"
+  },
+  "tests": {
+    "main50Contract": "3/3 PASS",
+    "adjacentLifecycleOutbox": "80/80 PASS",
+    "main49ImmutableBinding": "3/3 PASS",
+    "main49ExternalAttestation": "PASS",
+    "main50MigrationRunner": "10/10 PASS",
+    "testIsolation": "Outbox 57/57 PASS; Immediate SSE 12/12 PASS; race focused 3/3 PASS",
+    "proxyFull": "1106/1106 PASS",
+    "releaseBinding": "4/4 PASS"
+  },
+  "productionGates": {
+    "exactCommitReview": false,
+    "vmImageDigestReadback": false,
+    "migrationApplied": false,
+    "functionIndexAclReadback": false,
+    "queueDrainedNaturally": false,
+    "predictionSettlementAckGrowth": false,
+    "roundReadySse": false,
+    "memberBrowserE2E": false,
+    "twentyMinuteCapacityWindow": false
+  }
+}
