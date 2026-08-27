@@ -69,6 +69,8 @@ export class TableUiHistoryError extends Error {
 }
 
 type Status = { state: 'connecting' | 'connected' | 'error' | 'disconnected'; message: string }
+
+class UnauthorizedStatusError extends Error {}
 type LiveClientOptions = { memberSessionToken?: string; onTables: (tables: LiveTable[]) => void; onStatus: (status: Status) => void; onUnauthorized?: () => void }
 
 type ProxyTable = {
@@ -131,6 +133,7 @@ export class LiveRoadClient {
   private lastTablesAt = 0
   private stopped = true
   private authorizationLost = false
+  private tablesSuppressed = false
   private readonly sourceUpdatedAtByTable = new Map<string, number>()
   private readonly acceptedTableById = new Map<string, LiveTable>()
 
@@ -242,7 +245,7 @@ export class LiveRoadClient {
       const tables = normalizeProxyTables(Array.isArray(payload) ? payload : [])
       this.lastTablesAt = Date.now()
       if (proxyStatus && /stale|過期|建置版本不符/i.test(proxyStatus.message)) {
-        this.options.onTables([])
+        this.suppressAcceptedTables()
         this.options.onStatus(proxyStatus)
         return
       }
@@ -250,11 +253,27 @@ export class LiveRoadClient {
       const fallbackStatus = proxyStatus ?? await readProxyStatus()
       if (this.stopped || generation !== this.connectionGeneration) return
       this.options.onStatus(fallbackStatus)
-    } catch {
+    } catch (error) {
       if (this.stopped || generation !== this.connectionGeneration) return
-      this.options.onTables([])
+      if (error instanceof UnauthorizedStatusError) {
+        this.handleUnauthorized()
+        return
+      }
+      this.suppressAcceptedTables()
       this.options.onStatus({ state: 'error', message: '雲端代理暫時無法讀取資料' })
     }
+  }
+
+  private suppressAcceptedTables() {
+    this.tablesSuppressed = true
+    this.options.onTables([])
+  }
+
+  private clearAcceptedTables() {
+    this.acceptedTableById.clear()
+    this.sourceUpdatedAtByTable.clear()
+    this.tablesSuppressed = false
+    this.options.onTables([])
   }
 
   private publishTables(tables: LiveTable[], liveMessage: string) {
@@ -263,14 +282,12 @@ export class LiveRoadClient {
     for (const [tableId, accepted] of this.acceptedTableById) {
       if (incomingTableIds.has(tableId) || !isLiveTableStale(accepted)) continue
       this.acceptedTableById.delete(tableId)
-      this.sourceUpdatedAtByTable.delete(tableId)
       acceptedAny = true
     }
     const freshTables = tables.filter((table) => !isLiveTableStale(table))
     for (const stale of tables.filter((table) => isLiveTableStale(table))) {
       const tableId = String(stale.table_id ?? stale.id ?? '')
       if (!tableId || !this.acceptedTableById.delete(tableId)) continue
-      this.sourceUpdatedAtByTable.delete(tableId)
       acceptedAny = true
     }
     if (!freshTables.length) {
@@ -296,13 +313,17 @@ export class LiveRoadClient {
       this.acceptedTableById.set(tableId, next)
       acceptedAny = true
     }
-    if (acceptedAny) this.options.onTables([...this.acceptedTableById.values()])
+    if (acceptedAny || this.tablesSuppressed) {
+      const visibleTables = [...this.acceptedTableById.values()]
+      this.options.onTables(visibleTables)
+      if (visibleTables.length) this.tablesSuppressed = false
+    }
     this.options.onStatus({ state: 'connected', message: liveMessage })
     return true
   }
 
   private handleUnauthorized() {
-    this.options.onTables([])
+    this.clearAcceptedTables()
     this.options.onStatus({ state: 'error', message: '會員 Session 已失效，請重新登入' })
     if (this.authorizationLost) return
     this.authorizationLost = true
@@ -321,6 +342,7 @@ async function readProxyStatus(memberSessionToken?: string): Promise<Status> {
   try {
     const headers = memberSessionToken ? { Authorization: `Bearer ${memberSessionToken}` } : undefined
     const response = await fetch(`${proxyApiUrl}/api/status`, { cache: 'no-store', headers })
+    if (response.status === 401 && memberSessionToken) throw new UnauthorizedStatusError()
     if (!response.ok) return { state: 'error', message: `proxy狀態讀取失敗 (${response.status})` }
     const status = await response.json()
     if (String(status.buildVersion ?? '') !== CURRENT_BUILD_VERSION) {
@@ -335,7 +357,8 @@ async function readProxyStatus(memberSessionToken?: string): Promise<Status> {
     if (status.connected && !status.authenticated) return { state: 'connecting', message: 'MT已連線，Token驗證中…' }
     if (status.connected === false) return { state: 'error', message: 'proxy已啟動，MT未連線，請確認 Token 是否過期' }
     return { state: 'connecting', message: 'proxy已啟動，等待 MT 桌況…' }
-  } catch {
+  } catch (error) {
+    if (error instanceof UnauthorizedStatusError) throw error
     return { state: 'error', message: '雲端代理未啟動或無法讀取狀態' }
   }
 }

@@ -296,6 +296,117 @@ describe('live frontend contract', () => {
     expect(received.at(-1)?.[0].prediction?.predictionId).toBe('new-generation-ready')
   })
 
+  it('recovers the same durable snapshot after a transient heartbeat refresh failure clears the screen', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-27T16:00:30.000Z'))
+    let streamController!: ReadableStreamDefaultController<Uint8Array>
+    let tableReads = 0
+    const table = validTable({ sourceUpdatedAt: '2026-08-27T16:00:00.000Z' })
+    const proxyTable = {
+      tableId: table.table_id,
+      tableType: table.table_type,
+      shoe: table.trend.current_shoe,
+      round: table.trend.current_round,
+      beadPlateRaw: table.trend.bead_plate2,
+      bigRoadRaw: table.trend.big2,
+      sourceUpdatedAt: table.sourceUpdatedAt,
+      buildVersion: table.buildVersion,
+      prediction: table.prediction,
+    }
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/tables/stream')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          body: new ReadableStream({ start(controller) {
+            streamController = controller
+            controller.enqueue(new TextEncoder().encode(`event: tables\ndata: ${JSON.stringify({ tables: [proxyTable] })}\n\n`))
+          } }),
+        })
+      }
+      if (url.endsWith('/api/status')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v105' }) })
+      }
+      if (url.endsWith('/api/tables')) {
+        tableReads += 1
+        if (tableReads === 1) return Promise.resolve({ ok: false, status: 503, json: () => Promise.resolve({}) })
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([proxyTable]) })
+      }
+      throw new Error(`unexpected request: ${url}`)
+    }))
+    const received: LiveTable[][] = []
+    const client = new LiveRoadClient({ memberSessionToken: 'opaque-member-token', onTables: (tables) => received.push(tables), onStatus: vi.fn() })
+
+    client.connect()
+    await vi.advanceTimersByTimeAsync(1)
+    streamController.enqueue(new TextEncoder().encode('event: heartbeat\ndata: {}\n\n'))
+    await vi.advanceTimersByTimeAsync(1)
+    expect(received.at(-1)).toEqual([])
+    streamController.enqueue(new TextEncoder().encode('event: heartbeat\ndata: {}\n\n'))
+    await vi.advanceTimersByTimeAsync(1)
+    client.disconnect(false)
+
+    expect(tableReads).toBe(2)
+    expect(received.at(-1)?.[0]?.prediction?.predictionId).toBe(table.prediction?.predictionId)
+  })
+
+  it('keeps the source timestamp high-water mark when recovery returns an older but still fresh snapshot', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-27T16:00:30.000Z'))
+    let streamController!: ReadableStreamDefaultController<Uint8Array>
+    let tableReads = 0
+    const newer = validTable({
+      sourceUpdatedAt: '2026-08-27T16:00:02.000Z',
+      prediction: { ...validTable().prediction!, predictionId: 'newer-durable' },
+    })
+    const older = validTable({
+      sourceUpdatedAt: '2026-08-27T16:00:01.000Z',
+      prediction: { ...validTable().prediction!, predictionId: 'older-replay' },
+    })
+    const toProxy = (table: LiveTable) => ({
+      tableId: table.table_id,
+      tableType: table.table_type,
+      shoe: table.trend.current_shoe,
+      round: table.trend.current_round,
+      beadPlateRaw: table.trend.bead_plate2,
+      bigRoadRaw: table.trend.big2,
+      sourceUpdatedAt: table.sourceUpdatedAt,
+      buildVersion: table.buildVersion,
+      prediction: table.prediction,
+    })
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/tables/stream')) {
+        return Promise.resolve({ ok: true, status: 200, body: new ReadableStream({ start(controller) {
+          streamController = controller
+          controller.enqueue(new TextEncoder().encode(`event: tables\ndata: ${JSON.stringify({ tables: [toProxy(newer)] })}\n\n`))
+        } }) })
+      }
+      if (url.endsWith('/api/status')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v105' }) })
+      }
+      if (url.endsWith('/api/tables')) {
+        tableReads += 1
+        if (tableReads === 1) return Promise.resolve({ ok: false, status: 503, json: () => Promise.resolve({}) })
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([toProxy(older)]) })
+      }
+      throw new Error(`unexpected request: ${url}`)
+    }))
+    const received: LiveTable[][] = []
+    const client = new LiveRoadClient({ memberSessionToken: 'opaque-member-token', onTables: (tables) => received.push(tables), onStatus: vi.fn() })
+
+    client.connect()
+    await vi.advanceTimersByTimeAsync(1)
+    streamController.enqueue(new TextEncoder().encode('event: heartbeat\ndata: {}\n\n'))
+    await vi.advanceTimersByTimeAsync(1)
+    expect(received.at(-1)).toEqual([])
+    streamController.enqueue(new TextEncoder().encode('event: heartbeat\ndata: {}\n\n'))
+    await vi.advanceTimersByTimeAsync(1)
+    client.disconnect(false)
+
+    expect(received.at(-1)?.[0]?.prediction?.predictionId).toBe('newer-durable')
+    expect(received.at(-1)?.[0]?.sourceUpdatedAt).toBe(newer.sourceUpdatedAt)
+  })
+
   it('rejects per-table sourceUpdatedAt rollback from SSE while keeping other tables and allows a newer shoe', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-16T02:00:30.000Z'))
@@ -316,6 +427,40 @@ describe('live frontend contract', () => {
     expect(received[1].map((item) => item.table_id)).toEqual(['BAG01', 'BAG02'])
     expect(received[2].map((item) => item.table_id)).toEqual(['BAG01', 'BAG02'])
     expect(received.at(-1)?.find((item) => item.table_id === 'BAG01')?.trend.current_shoe).toBe('124')
+  })
+
+  it('keeps the timestamp high-water after an all-stale payload and rejects an older fresh replay', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-27T16:00:30.000Z'))
+    const received: LiveTable[][] = []
+    const client = new LiveRoadClient({ onTables: (tables) => received.push(tables), onStatus: vi.fn() })
+    const newest = validTable({
+      sourceUpdatedAt: '2026-08-27T16:00:29.000Z',
+      prediction: { ...validTable().prediction!, predictionId: 'newest-accepted' },
+    })
+    const stale = validTable({
+      sourceUpdatedAt: '2026-08-27T15:55:00.000Z',
+      prediction: { ...validTable().prediction!, predictionId: 'stale-payload' },
+    })
+    const olderFreshReplay = validTable({
+      sourceUpdatedAt: '2026-08-27T16:00:28.000Z',
+      prediction: { ...validTable().prediction!, predictionId: 'older-fresh-replay' },
+    })
+    const advanced = validTable({
+      sourceUpdatedAt: '2026-08-27T16:00:30.000Z',
+      prediction: { ...validTable().prediction!, predictionId: 'advanced-after-stale' },
+    })
+
+    ;(client as any).publishTables([newest], 'newest')
+    ;(client as any).publishTables([stale], 'all stale')
+    ;(client as any).publishTables([olderFreshReplay], 'older replay')
+
+    expect(received).toHaveLength(2)
+    expect(received[0][0].prediction?.predictionId).toBe('newest-accepted')
+    expect(received[1]).toEqual([])
+
+    ;(client as any).publishTables([advanced], 'advanced')
+    expect(received.at(-1)?.[0]?.prediction?.predictionId).toBe('advanced-after-stale')
   })
 
   it('rejects polling rollback but a reconstructed client accepts its own first payload', async () => {
@@ -384,6 +529,50 @@ describe('live frontend contract', () => {
     client.disconnect(false)
 
     expect(fetchMock).toHaveBeenCalled()
+  })
+
+  it('treats an authenticated status 401 as authorization loss even when tables returns 200', async () => {
+    vi.useFakeTimers()
+    const table = validTable({ sourceUpdatedAt: new Date().toISOString() })
+    const proxyTable = {
+      tableId: table.table_id,
+      tableType: table.table_type,
+      shoe: table.trend.current_shoe,
+      round: table.trend.current_round,
+      beadPlateRaw: table.trend.bead_plate2,
+      bigRoadRaw: table.trend.big2,
+      sourceUpdatedAt: table.sourceUpdatedAt,
+      buildVersion: table.buildVersion,
+      prediction: table.prediction,
+    }
+    const sse = `event: tables\ndata: ${JSON.stringify({ tables: [proxyTable] })}\n\nevent: heartbeat\ndata: {}\n\n`
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/tables/stream')) {
+        return Promise.resolve({ ok: true, status: 200, body: new ReadableStream({ start(controller) {
+          controller.enqueue(new TextEncoder().encode(sse))
+          controller.close()
+        } }) })
+      }
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) })
+      if (url.endsWith('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([proxyTable]) })
+      throw new Error(`unexpected request: ${url}`)
+    }))
+    const received: LiveTable[][] = []
+    const unauthorized = vi.fn()
+    const client = new LiveRoadClient({
+      memberSessionToken: 'opaque-member-token',
+      onTables: (tables) => received.push(tables),
+      onStatus: vi.fn(),
+      onUnauthorized: unauthorized,
+    })
+
+    client.connect()
+    await vi.advanceTimersByTimeAsync(1)
+    client.disconnect(false)
+
+    expect(received[0]?.[0]?.prediction?.predictionId).toBe(table.prediction?.predictionId)
+    expect(received.at(-1)).toEqual([])
+    expect(unauthorized).toHaveBeenCalledTimes(1)
   })
 
   it('immediately clears protected data and reports authorization loss on 401', async () => {
