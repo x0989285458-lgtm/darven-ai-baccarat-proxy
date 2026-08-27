@@ -1,0 +1,29 @@
+{
+  "releaseVersion": "v105-v10-main.48",
+  "parentCommit": "5d0bb44da6c5c69e5c84663bf39b08992da9037a",
+  "changedFiles": [
+    ".github/workflows/trusted-release-images-main48.yml",
+    "proxy/src/server.js",
+    "proxy/test/capture-outbox-ack.test.js",
+    "proxy/test/v105-v10-main47-db-batch30-release.test.js",
+    "proxy/test/v105-v10-main48-batch-deadline-release.test.js",
+    "release/v105-v10-main48-batch-deadline-release-manifest.json",
+    "release/v105-v10-main48-batch-deadline-release-report.json"
+  ],
+  "blobSha256": {
+    ".github/workflows/trusted-release-images-main48.yml": "77277ca8ef8ea7ed93b19628e918a2a049c820be93708e6f2d1cbf325d0e1751",
+    "proxy/src/server.js": "d3bf37da887263f2f6a70c0a069adf13afa377c17f94d190616e4ca78fad1861",
+    "proxy/test/capture-outbox-ack.test.js": "05a495c27937e730caa14b317a460fa67f3a33417cccf7f2e75a0000e17b38d6",
+    "proxy/test/v105-v10-main47-db-batch30-release.test.js": "c3f87feb8efa8db39ae38b78219320f8b2a636ac6be7a405f6d6d25571079d32",
+    "proxy/test/v105-v10-main48-batch-deadline-release.test.js": "890f197bc332f337e97bec70a3bc24100419abb8d2f8cf0b2a938d2058901cca",
+    "release/v105-v10-main48-batch-deadline-release-report.json": "045d752d31a24fd0fcc5de450f9b939461287c19a3f3f6294d3958dcdbbf70d1"
+  },
+  "releaseScope": {
+    "proxyDeploymentChanged": false,
+    "formalConsumerDeploymentChanged": true,
+    "cloudflareDeploymentChanged": false,
+    "databaseMigrationChanged": false,
+    "workerProducerChanged": false
+  },
+  "productionStatus": "LIVE_GATE_FAIL"
+}

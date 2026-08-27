@@ -729,8 +729,12 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           const firstSequence = claims[0].sequence
           const lastSequence = claims.at(-1).sequence
           const attempt = Math.max(...claims.map((claim) => claim.attempt))
-          const leaseDeadline = createLeaseDeadline(
+          const leaseWorkDeadlineMs = resolveCaptureOutboxLeaseDeadlineMs(
             resolvedOutboxWorkDeadlineMs,
+            claims.length,
+          )
+          const leaseDeadline = createLeaseDeadline(
+            leaseWorkDeadlineMs,
             `capture outbox work deadline exceeded for ${sessionId}:${firstSequence}-${lastSequence}`,
           )
           const runLeasePhase = async (phase, operation) => {
@@ -2362,6 +2366,13 @@ async function withDeadline(operation, timeoutMs, message) {
   } finally {
     if (timer) clearTimeout(timer)
   }
+}
+
+export function resolveCaptureOutboxLeaseDeadlineMs(baseDeadlineMs, claimCount) {
+  const normalizedBase = Math.max(1, Number(baseDeadlineMs) || 1)
+  const normalizedClaimCount = Math.max(1, Number(claimCount) || 1)
+  const batchUnits = Math.max(1, Math.ceil(normalizedClaimCount / 10))
+  return Math.min(240_000, normalizedBase * batchUnits)
 }
 
 function createLeaseDeadline(timeoutMs, message = 'outbox work deadline exceeded') {

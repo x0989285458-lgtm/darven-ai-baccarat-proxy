@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '../..')
+const candidateCommit = '5d0bb44da6c5c69e5c84663bf39b08992da9037a'
 const parentCommit = 'ca52d05714de9a91b394159994c44710ee74e0aa'
 const workflowPath = '.github/workflows/trusted-release-images-main47.yml'
 const migrationPath = 'supabase/migrations/20260827010000_v105_capture_outbox_batch30_contract.sql'
@@ -24,7 +25,7 @@ const expectedDelta = [
   reportPath,
 ]
 const expectedBindings = expectedDelta.filter((relativePath) => relativePath !== manifestPath)
-const gitBlob = (relativePath) => execFileSync('git', ['show', `:${relativePath}`], { cwd: root, encoding: null, windowsHide: true })
+const gitBlob = (relativePath) => execFileSync('git', ['show', `${candidateCommit}:${relativePath}`], { cwd: root, encoding: null, windowsHide: true })
 const readText = async (relativePath) => gitBlob(relativePath).toString('utf8')
 const sha256 = (value) => createHash('sha256').update(value).digest('hex')
 
@@ -38,8 +39,8 @@ test('Main47 workflow is Formal-only and binds DB-first batch30 artifacts to exa
   assert.match(workflow, /20260827010000_v105_capture_outbox_batch30_contract\.sql/)
   assert.match(workflow, /test-main47-batch30-migration\.mjs/)
   assert.doesNotMatch(workflow, /darven-ai-baccarat-proxy/)
-  const staged = execFileSync('git', ['diff', '--cached', '--name-only'], { cwd: root, encoding: 'utf8', windowsHide: true }).trim().split(/\r?\n/).filter(Boolean).sort()
-  assert.deepEqual(staged, [...expectedDelta].sort())
+  const immutableDelta = execFileSync('git', ['diff-tree', '--no-commit-id', '--name-only', '-r', candidateCommit], { cwd: root, encoding: 'utf8', windowsHide: true }).trim().split('\n').map((item) => item.trim()).filter(Boolean).sort()
+  assert.deepEqual(immutableDelta, [...expectedDelta].sort())
 })
 
 test('Main47 manifest binds eight changed files and all seven non-self Git blobs', async () => {

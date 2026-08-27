@@ -1,0 +1,78 @@
+{
+  "releaseVersion": "v105-v10-main.48",
+  "releasePurpose": "修復Batch 30仍沿用單筆45秒Lease deadline，短暫背壓後整批超時、重試與Dead Letter雪崩；依每10筆有界縮放至30筆135秒，且硬上限240秒低於DB五分鐘stale lease。",
+  "predecessor": {
+    "release": "v105-v10-main.47",
+    "commit": "5d0bb44da6c5c69e5c84663bf39b08992da9037a",
+    "status": "BLOCKED_LONG_WINDOW_BATCH_DEADLINE"
+  },
+  "productionIncident": {
+    "shortWindow": "10.334分鐘曾PASS，但已被後續長窗推翻",
+    "longWindow": {
+      "pending": 4411,
+      "processing": 30,
+      "deadLetter": 840,
+      "arrivalPerMinute": "約25（含heartbeat）",
+      "completedPerMinute": "約8至12（主要為heartbeat）",
+      "oldestPending": "約5小時14分",
+      "formalFinalAge": "約9.6分鐘"
+    },
+    "batchEvidence": {
+      "deadBatchSize": 30,
+      "deadBatchCount": 28,
+      "attemptsPerDeadBatch": 5,
+      "error": "capture outbox work deadline exceeded",
+      "singleWorkDeadlineMs": 45000,
+      "main47BatchLimit": 30
+    },
+    "containment": {
+      "main47ConsumerStopped": true,
+      "port8791Listeners": 0,
+      "queuePreserved": true
+    }
+  },
+  "changes": [
+    "依Exact Claim數每10筆增加一個基礎Lease deadline單位；1至10筆保持既有預算。",
+    "正式預設45秒下，11至20筆為90秒、21至30筆為135秒。",
+    "所有Lease deadline硬上限240秒，保留距DB五分鐘stale recovery至少60秒安全邊界。",
+    "Failure ACK仍使用既有基礎Deadline；Exact Lease、全批原子ACK、同Session順序與底層settle fence不變。"
+  ],
+  "tests": {
+    "red": "30 claims with 65ms Formal under 40ms base deadline: completed 0 expected 30",
+    "focusedGreen": "6/6 PASS",
+    "captureOutbox": "57/57 PASS",
+    "proxySuite": "1086/1086 PASS",
+    "releaseBinding": "6/6 PASS"
+  },
+  "deploymentOrder": [
+    "fresh-exact-tree-review",
+    "trusted-formal-consumer-image",
+    "archive-and-delete-old-noncompleted-outbox",
+    "accumulate-at-least-thirty-fresh-finals",
+    "formal-consumer-takeover",
+    "long-window-capacity-and-parity",
+    "central-live-review-and-browser-e2e"
+  ],
+  "releaseScope": {
+    "proxyDeploymentChanged": false,
+    "formalConsumerDeploymentChanged": true,
+    "cloudflareDeploymentChanged": false,
+    "databaseMigrationChanged": false,
+    "workerProducerChanged": false
+  },
+  "productionStatus": "LIVE_GATE_FAIL",
+  "productionGates": {
+    "codeReview": "PENDING",
+    "trustedImageBuild": "PENDING",
+    "archiveCleanup": "PENDING",
+    "freshThirtyBacklogTakeover": "PENDING",
+    "longCapacityWindow": "PENDING",
+    "centralLiveReview": "PENDING",
+    "browserE2E": "PENDING"
+  },
+  "notes": [
+    "任何Production Gate在本Report均不得為PASS。",
+    "Completed總數包含無Final heartbeat，正式容量驗收必須分開Final-bearing Outbox。",
+    "Main47不可因短窗PASS恢復；Main48必須先證明滿30 Fresh Backlog可完成。"
+  ]
+}

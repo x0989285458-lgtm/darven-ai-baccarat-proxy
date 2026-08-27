@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { createApp } from '../src/server.js'
+import { createApp, resolveCaptureOutboxLeaseDeadlineMs } from '../src/server.js'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -1496,6 +1496,14 @@ test('outbox batch limit rejects invalid or unbounded configuration', async () =
   await app.stop()
 })
 
+test('batch lease deadline scales per ten exact claims and stays below stale-lease recovery', () => {
+  assert.equal(resolveCaptureOutboxLeaseDeadlineMs(45_000, 1), 45_000)
+  assert.equal(resolveCaptureOutboxLeaseDeadlineMs(45_000, 10), 45_000)
+  assert.equal(resolveCaptureOutboxLeaseDeadlineMs(45_000, 11), 90_000)
+  assert.equal(resolveCaptureOutboxLeaseDeadlineMs(45_000, 30), 135_000)
+  assert.equal(resolveCaptureOutboxLeaseDeadlineMs(100_000, 30), 240_000)
+})
+
 test('same-session outbox batch merges ordered envelopes and completes every exact lease atomically', async () => {
   let claimed = false
   const formalInputs = []
@@ -1555,6 +1563,55 @@ test('same-session outbox batch merges ordered envelopes and completes every exa
   assert.equal(completedBatches.length, 1)
   assert.equal(completedBatches[0].length, 30)
   assert.deepEqual(completedBatches[0].map((claim) => claim.sequence), Array.from({ length: 30 }, (_, index) => 21 + index))
+})
+
+test('thirty-row formal batch scales the bounded lease deadline instead of reusing the single-work-item budget', async () => {
+  let claimed = false
+  let completed = 0
+  let failed = 0
+  const rows = Array.from({ length: 30 }, (_, index) => claimedRow(101 + index, {
+    payload: {
+      work: {
+        ...envelope().snapshot,
+        tables: [{ ...envelope().snapshot.tables[0], tableId: 'BAG01', shoe: 88, round: 130 }],
+        rounds: [{ ...envelope().snapshot.rounds[0], tableId: 'BAG01', shoe: 88, round: 101 + index }],
+      },
+    },
+  }))
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxBatchLimit: 30,
+    outboxWorkDeadlineMs: 40,
+    outboxBackoffMs: 1,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return rows
+      },
+      async completeCaptureOutboxBatch({ claims }) { completed = claims.length; return { completed: true, count: claims.length } },
+      async failCaptureOutboxBatch() { failed += 1; return { failed: true, count: rows.length } },
+      async readIssuedPrediction() { return null },
+      async reconcilePredictionLifecycle() {},
+      async issuePrediction(candidate) {
+        return { ...candidate, predictionId: 'pid-scaled-batch-deadline', issuedAt: '2026-08-25T16:00:01.000Z' }
+      },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) {
+        await delay(65)
+        return { tables }
+      },
+    },
+  })
+
+  await app.drainCaptureOutbox()
+  await app.waitForCaptureOutboxIdle()
+
+  assert.equal(completed, 30)
+  assert.equal(failed, 0)
 })
 
 test('same-session outbox batch failure drains merged work then fails every exact lease atomically', async () => {
