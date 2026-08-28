@@ -1514,7 +1514,7 @@ test('outbox batch limit rejects invalid or unbounded configuration', async () =
   })
   await defaultApp.drainCaptureOutbox()
   await defaultApp.waitForCaptureOutboxIdle()
-  assert.equal(defaultLimits[0], 10, 'Main54 must not change the app default without an explicit deployment setting')
+  assert.equal(defaultLimits[0], 30, 'Main60 defaults to the adaptive thirty-row formal batch after the live Batch10 throughput gate failed')
   await defaultApp.stop()
 })
 
