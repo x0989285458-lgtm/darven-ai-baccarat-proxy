@@ -1,0 +1,45 @@
+name: Trusted migration Main58 Node24 Adaptive Batch Gate
+
+on:
+  push:
+    tags:
+      - v105-v10-main.58
+
+permissions:
+  contents: read
+
+jobs:
+  verify-migration:
+    if: github.ref == 'refs/tags/v105-v10-main.58'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact tagged source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: refs/tags/v105-v10-main.58
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Use exact Formal Consumer Node major
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: proxy/package-lock.json
+
+      - name: Verify exact tag and Main58 corrective release contract
+        shell: bash
+        run: |
+          test "${GITHUB_REF}" = "refs/tags/v105-v10-main.58"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          [[ "$(node --version)" == v24.* ]]
+          node --test proxy/test/v105-v10-main58-node24-migration-release.test.js
+
+      - name: Install exact Proxy dependencies
+        run: npm ci --prefix proxy
+
+      - name: Run unchanged Main54 ACK tests under Node24
+        run: node --test proxy/test/capture-outbox-ack.test.js
+
+      - name: Syntax-check rollback-only migration harness
+        run: node --check scripts/test-main56-adaptive-batch-migration.mjs
