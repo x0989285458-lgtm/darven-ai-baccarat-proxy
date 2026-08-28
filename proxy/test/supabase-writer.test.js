@@ -279,6 +279,7 @@ test('formal lifecycle concurrency remains bounded by direct DB standard and pri
     url: 'https://example.supabase.co', serviceKey: 'sb_secret_test_key',
     fetchImpl: async () => { throw new Error('Direct DB test must not use REST') },
     strategyPool, retryAttempts: 1, requireVerifiedStrategy: false, formalLifecycleConcurrency: 4,
+    strategyPriorityConcurrency: 3,
   })
   const tables = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
     .map((tableId, index) => ({ ...table, tableId, shoe: 101, round: index + 1 }))
@@ -294,4 +295,46 @@ test('formal lifecycle concurrency remains bounded by direct DB standard and pri
   await Promise.all(tables.map((currentTable) => client.issuePrediction(candidates.get(currentTable.tableId))))
   assert.ok(issueMaxActive >= 2)
   assert.ok(issueMaxActive <= 3, `Direct DB priority work exceeded reserved priority budget: ${issueMaxActive}`)
+})
+
+test('direct DB priority concurrency accepts an explicit bounded value', async () => {
+  let active = 0
+  let maxActive = 0
+  const candidates = new Map()
+  const strategyPool = {
+    async query(query) {
+      active += 1
+      maxActive = Math.max(maxActive, active)
+      await new Promise((resolve) => setTimeout(resolve, 8))
+      active -= 1
+      const row = query.values[0]
+      const candidate = candidates.get(row.table_id)
+      return { rows: [{ issue_v105_prediction: {
+        prediction_id: `pid-${row.table_id}`,
+        prediction_issued_at: '2026-08-26T17:00:00.000Z',
+        prediction: { ...candidate, predictionId: `pid-${row.table_id}`, issuedAt: '2026-08-26T17:00:00.000Z' },
+      } }] }
+    },
+  }
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'sb_secret_test_key', strategyPool,
+    retryAttempts: 1, requireVerifiedStrategy: false, formalLifecycleConcurrency: 9,
+    strategyPriorityConcurrency: 6,
+  })
+  const predictions = Array.from({ length: 9 }, (_, index) => buildLivePrediction({
+    ...table, tableId: `BAG${index + 1}`, shoe: 101, round: index + 1,
+  }))
+  for (const prediction of predictions) candidates.set(prediction.targetTableId, prediction)
+
+  await Promise.all(predictions.map((prediction) => client.issuePrediction(prediction)))
+  assert.equal(maxActive, 6)
+})
+
+test('direct DB priority concurrency rejects values outside 1 through 8', () => {
+  for (const strategyPriorityConcurrency of [0, 9, 10, 1.5, '6']) {
+    assert.throws(
+      () => createSupabaseIngestionClient({ strategyPriorityConcurrency }),
+      /strategy priority concurrency.*1.*8/i,
+    )
+  }
 })

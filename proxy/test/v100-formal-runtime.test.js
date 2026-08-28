@@ -141,12 +141,40 @@ test('formal rank-ledger work is bounded to three so one capture retains service
     },
     async applyV100RankLedgerEvent() { throw new Error('no rounds expected') },
   }
-  const runtime = createV100FormalRuntime({ enabled: true, writer, source: 'mt-cloud' })
+  const runtime = createV100FormalRuntime({ enabled: true, writer, source: 'mt-cloud', identityConcurrency: 3 })
   await runtime.processSnapshot({
     tables: ['BAG01', 'BAG02', 'BAG03'].map((tableId) => ({ ...table(), tableId })),
     rounds: [],
   })
   assert.equal(maxActive, 3)
+})
+
+test('formal rank-ledger identity concurrency accepts an explicit bounded value', async () => {
+  let active = 0
+  let maxActive = 0
+  const writer = {
+    configured: true,
+    async readV100RankLedger() {
+      active += 1
+      maxActive = Math.max(maxActive, active)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      active -= 1
+      return null
+    },
+    async applyV100RankLedgerEvent() { throw new Error('no rounds expected') },
+  }
+  const runtime = createV100FormalRuntime({ enabled: true, writer, source: 'mt-cloud', identityConcurrency: 6 })
+  await runtime.processSnapshot({
+    tables: Array.from({ length: 9 }, (_, index) => ({ ...table(), tableId: `BAG${index + 1}` })),
+    rounds: [],
+  })
+  assert.equal(maxActive, 6)
+})
+
+test('formal rank-ledger identity concurrency rejects values outside 1 through 9', () => {
+  for (const identityConcurrency of [0, 10, 1.5, '6']) {
+    assert.throws(() => createV100FormalRuntime({ identityConcurrency }), /identity concurrency.*1.*9/i)
+  }
 })
 
 test('cold ten-table capture hydrates exact rank-ledger identities with one bounded batch read', async () => {

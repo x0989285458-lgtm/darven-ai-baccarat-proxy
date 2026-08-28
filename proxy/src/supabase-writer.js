@@ -2064,22 +2064,31 @@ export function createSupabaseIngestionClient({
   strategyPoolFactory = (config) => new pg.Pool(config),
   strategyPoolMax = 10,
   formalLifecycleConcurrency = 4,
+  strategyPriorityConcurrency = Number(process.env.STRATEGY_PRIORITY_CONCURRENCY ?? 8),
 } = {}) {
   if (!Number.isInteger(formalLifecycleConcurrency) || formalLifecycleConcurrency < 1 || formalLifecycleConcurrency > 10) {
     throw new Error('formal lifecycle concurrency must be an integer between 1 and 10')
   }
+  if (!Number.isInteger(strategyPriorityConcurrency) || strategyPriorityConcurrency < 1 || strategyPriorityConcurrency > 8) {
+    throw new Error('strategy priority concurrency must be an integer between 1 and 8')
+  }
   const configured = Boolean(url && serviceKey && fetchImpl)
+  const ownsStrategyPool = !strategyPool && Boolean(dbConnectionString)
   const rawStrategyDb = strategyPool ?? (dbConnectionString ? strategyPoolFactory({
     connectionString: resolveBackendReadConnectionString(dbConnectionString),
     ssl: { rejectUnauthorized: false },
     max: Number.isInteger(strategyPoolMax) && strategyPoolMax >= 1 && strategyPoolMax <= 10
       ? strategyPoolMax
       : 10,
-    connectionTimeoutMillis: 60000,
+    connectionTimeoutMillis: 10000,
+    keepAlive: true,
     query_timeout: 65000,
     statement_timeout: 60000,
     idleTimeoutMillis: 30000,
   }) : null)
+  if (ownsStrategyPool && typeof rawStrategyDb?.on === 'function') {
+    rawStrategyDb.on('error', (_error) => undefined)
+  }
   const completedRoundKeys = new Set()
   const inFlightRoundWrites = new Map()
   const preparedRoundWrites = new Map()
@@ -2105,7 +2114,7 @@ export function createSupabaseIngestionClient({
     ? createStrategyQueryScheduler(rawStrategyDb, {
         maxConcurrent: 9,
         maxStandardConcurrent: 6,
-        maxPriorityConcurrent: 3,
+        maxPriorityConcurrent: strategyPriorityConcurrency,
         queueTimeoutMs: durableWriteTimeoutMs,
       })
     : null

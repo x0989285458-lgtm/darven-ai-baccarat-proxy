@@ -8,7 +8,7 @@ function identityKey(source, tableId, shoe) {
   return JSON.stringify([String(source ?? ''), String(tableId ?? ''), String(shoe ?? '')])
 }
 
-const MAX_FORMAL_IDENTITY_CONCURRENCY = 3
+const MAX_FORMAL_IDENTITY_CONCURRENCY = 9
 const yieldToServiceRequests = () => new Promise((resolve) => setImmediate(resolve))
 
 async function settleWithConcurrency(items, task, concurrency = MAX_FORMAL_IDENTITY_CONCURRENCY) {
@@ -59,12 +59,15 @@ export function resolveV100FormalEnabled(env = process.env) {
   return env?.V100_RELEASE_ENABLED === 'true'
 }
 
-export function createV100FormalRuntime({ enabled = false, writer = null, source = 'ofalive99' } = {}) {
+export function createV100FormalRuntime({ enabled = false, writer = null, source = 'ofalive99', identityConcurrency = MAX_FORMAL_IDENTITY_CONCURRENCY } = {}) {
+  if (!Number.isInteger(identityConcurrency) || identityConcurrency < 1 || identityConcurrency > 9) {
+    throw new Error('formal identity concurrency must be an integer between 1 and 9')
+  }
   const ledgers = new Map()
   const loaded = new Set()
   const latest = new Map()
   const identityTails = new Map()
-  const withIdentityPermit = createConcurrencyPermit(MAX_FORMAL_IDENTITY_CONCURRENCY)
+  const withIdentityPermit = createConcurrencyPermit(identityConcurrency)
   let processTail = Promise.resolve()
 
   function withProcessTail(task) {
@@ -230,7 +233,7 @@ export function createV100FormalRuntime({ enabled = false, writer = null, source
             await applyIdentityRounds(key, work.events)
             return work.tables.map(scoreTable).filter(Boolean)
           }))
-        ))
+        ), identityConcurrency)
         const failure = results.find((result) => result.status === 'rejected')
         if (failure) throw failure.reason
 

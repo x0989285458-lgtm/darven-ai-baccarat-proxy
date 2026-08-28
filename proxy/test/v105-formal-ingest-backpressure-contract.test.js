@@ -77,7 +77,7 @@ test('formal rank ledger preserves per-identity order while parallelizing indepe
   assert.equal(maxActive, 2)
 })
 
-test('formal identity fan-out is bounded to three durable operations', async () => {
+test('formal identity fan-out is bounded to nine durable operations while preserving one pool slot for raw ACK', async () => {
   let active = 0
   let maxActive = 0
   const writer = {
@@ -96,7 +96,7 @@ test('formal identity fan-out is bounded to three durable operations', async () 
 
   await runtime.processSnapshot({ tables: [], rounds })
 
-  assert.equal(maxActive, 3)
+  assert.equal(maxActive, 9)
 })
 
 test('formal settlement preserves per-table order while parallelizing independent tables for throughput', async () => {
@@ -933,7 +933,7 @@ test('formal settlement burst keeps three control slots beside six standard slot
   await Promise.all([...standardCalls, ...formalCalls])
 })
 
-test('sustained priority traffic cannot starve an ACK-required standard durable write', async () => {
+test('sustained priority traffic reserves one scheduler slot for an ACK-required standard durable write', async () => {
   const started = []
   const blocked = []
   let releaseAll = false
@@ -956,16 +956,16 @@ test('sustained priority traffic cannot starve an ACK-required standard durable 
   const priorityRead = (round) => writer.readIssuedPrediction({
     tableId: 'BAG01', shoe: 'S1', round, strategyVersion: 'v105',
   }, { priority: 'settlement' })
-  const calls = [1, 2, 3].map(priorityRead)
-  while (started.length < 3) await new Promise((resolve) => setImmediate(resolve))
+  const calls = Array.from({ length: 9 }, (_, index) => priorityRead(index + 1))
+  while (started.length < 8) await new Promise((resolve) => setImmediate(resolve))
   calls.push(writer.writeCloudTableSnapshot({
     sessionId: 'fairness-worker', tables: [{ tableId: 'BAG01' }], status: { connected: true },
   }))
-  calls.push(...[4, 5, 6, 7].map(priorityRead))
 
   try {
-    while (started.length < 4) await new Promise((resolve) => setImmediate(resolve))
-    assert.equal(started[3], 'standard')
+    for (let index = 0; index < 50 && started.length < 9; index += 1) await delay(1)
+    assert.deepEqual(started.slice(0, 8), Array(8).fill('priority'))
+    assert.equal(started[8], 'standard')
   } finally {
     releaseAll = true
     while (blocked.length > 0) {

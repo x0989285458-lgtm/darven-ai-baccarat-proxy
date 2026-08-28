@@ -25,21 +25,26 @@ const expectedDelta = [
   reportPath,
 ]
 const expectedBindings = expectedDelta.filter((relativePath) => relativePath !== manifestPath)
+const releaseTag = 'v105-v10-main.50'
+let releaseCommit = null
+try {
+  releaseCommit = execFileSync('git', ['rev-parse', `${releaseTag}^{commit}`], { cwd: root, encoding: 'utf8', windowsHide: true }).trim()
+} catch {}
 const headCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', windowsHide: true }).trim()
-const immutableMode = headCommit !== baseCommit
-const candidateRef = immutableMode ? headCommit : ''
+const immutableMode = Boolean(releaseCommit)
+const candidateRef = immutableMode ? releaseCommit : ''
 const gitBlob = (relativePath) => execFileSync('git', ['show', `${candidateRef}:${relativePath}`], { cwd: root, encoding: null, windowsHide: true })
 const readText = (relativePath) => gitBlob(relativePath).toString('utf8')
 const sha256 = (value) => createHash('sha256').update(value).digest('hex')
 
 test('Main50 is an exact eleven-file DB-only runtime delta over immutable Main49', () => {
   const exactDelta = execFileSync('git', immutableMode
-    ? ['diff', '--name-only', baseCommit, headCommit]
+    ? ['diff', '--name-only', baseCommit, releaseCommit]
     : ['diff', '--cached', '--name-only'], { cwd: root, encoding: 'utf8', windowsHide: true })
     .split('\n').map((value) => value.trim()).filter(Boolean).sort()
   assert.deepEqual(exactDelta, [...expectedDelta].sort())
   if (immutableMode) {
-    assert.equal(execFileSync('git', ['rev-parse', `${headCommit}^`], { cwd: root, encoding: 'utf8', windowsHide: true }).trim(), baseCommit)
+    assert.equal(execFileSync('git', ['rev-parse', `${releaseCommit}^`], { cwd: root, encoding: 'utf8', windowsHide: true }).trim(), baseCommit)
   } else {
     assert.equal(headCommit, baseCommit)
   }

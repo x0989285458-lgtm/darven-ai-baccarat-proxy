@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
 import {
   buildCloudCaptureStatusRow,
   buildCloudTableSnapshotRow,
@@ -120,14 +121,27 @@ test('backend formal reads use Supabase transaction pooler without rewriting unr
 
 test('backend transaction pool survives idle periods and remains bounded to ten connections', () => {
   let config = null
+  const pool = new EventEmitter()
+  pool.query = async () => ({ rows: [] })
   createSupabaseIngestionClient({
     dbConnectionString: 'postgresql://user:secret@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres',
-    strategyPoolFactory: (value) => { config = value; return { query: async () => ({ rows: [] }) } },
+    strategyPoolFactory: (value) => { config = value; return pool },
   })
   assert.equal(new URL(config.connectionString).port, '6543')
-  assert.equal(config.connectionTimeoutMillis, 60000)
+  assert.equal(config.connectionTimeoutMillis, 10000)
+  assert.equal(config.keepAlive, true)
   assert.equal(config.idleTimeoutMillis, 30000)
   assert.equal(config.max, 10)
+  assert.equal(pool.listenerCount('error'), 1)
+  assert.doesNotThrow(() => pool.emit('error', new Error('idle read ETIMEDOUT')))
+})
+
+test('backend transaction pool does not swallow active query failures', async () => {
+  const pool = new EventEmitter()
+  pool.query = async () => { throw new Error('active query failed') }
+  const client = createSupabaseIngestionClient({ strategyPool: pool })
+
+  await assert.rejects(client.getV105FormalHistory({ requestTimeoutMs: 30000 }), /active query failed/)
 })
 
 test('builds cloud capture status row without leaking tokenized URL', () => {
