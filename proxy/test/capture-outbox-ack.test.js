@@ -1493,14 +1493,29 @@ test('outbox coalescing rejects invalid or unbounded configuration', async () =>
 })
 
 test('outbox batch limit rejects invalid or unbounded configuration', async () => {
-  for (const value of ['', Number.NaN, 0, 1.5, 31]) {
+  for (const value of ['', Number.NaN, 0, 1.5, 101]) {
     assert.throws(
       () => createApp({ autoConnect: false, captureOutboxBatchLimit: value }),
-      /outbox batch limit.*integer.*1.*30/i,
+      /outbox batch limit.*integer.*1.*100/i,
     )
   }
-  const app = createApp({ autoConnect: false, captureOutboxBatchLimit: 30 })
+  const app = createApp({ autoConnect: false, captureOutboxBatchLimit: 100 })
   await app.stop()
+
+  const defaultLimits = []
+  const defaultApp = createApp({
+    autoConnect: false,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox({ limit }) { defaultLimits.push(limit); return [] },
+      async completeCaptureOutboxBatch() {},
+      async failCaptureOutboxBatch() {},
+    },
+  })
+  await defaultApp.drainCaptureOutbox()
+  await defaultApp.waitForCaptureOutboxIdle()
+  assert.equal(defaultLimits[0], 10, 'Main54 must not change the app default without an explicit deployment setting')
+  await defaultApp.stop()
 })
 
 test('batch lease deadline preserves single-unit work and adds bounded multi-batch jitter budget', () => {
@@ -1508,10 +1523,12 @@ test('batch lease deadline preserves single-unit work and adds bounded multi-bat
   assert.equal(resolveCaptureOutboxLeaseDeadlineMs(45_000, 10), 45_000)
   assert.equal(resolveCaptureOutboxLeaseDeadlineMs(45_000, 11), 135_000)
   assert.equal(resolveCaptureOutboxLeaseDeadlineMs(45_000, 30), 180_000)
+  assert.equal(resolveCaptureOutboxLeaseDeadlineMs(45_000, 100), 240_000)
   assert.equal(resolveCaptureOutboxLeaseDeadlineMs(100_000, 30), 240_000)
+  assert.ok(resolveCaptureOutboxLeaseDeadlineMs(45_000, 100) < 300_000)
 })
 
-test('same-session outbox batch merges ordered envelopes and completes every exact lease atomically', async () => {
+test('same-session 100-row outbox batch preserves per-table round order and completes every exact lease atomically', async () => {
   let claimed = false
   const formalInputs = []
   const completedBatches = []
@@ -1526,17 +1543,18 @@ test('same-session outbox batch merges ordered envelopes and completes every exa
     rounds: [makeFinal(tableId, round)],
   })
   const tableIds = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
-  const rows = Array.from({ length: 30 }, (_, index) => {
+  const rows = Array.from({ length: 100 }, (_, index) => {
     const sequence = 21 + index
-    return claimedRow(sequence, { payload: { work: makeWork(tableIds[index % tableIds.length], sequence) } })
+    const tableRound = 21 + Math.floor(index / tableIds.length)
+    return claimedRow(sequence, { payload: { work: makeWork(tableIds[index % tableIds.length], tableRound) } })
   })
   const app = createApp({
     autoConnect: false,
-    captureOutboxBatchLimit: 30,
+    captureOutboxBatchLimit: 100,
     supabaseClient: {
       configured: true,
       async claimCaptureOutbox({ limit }) {
-        assert.equal(limit, 30)
+        assert.equal(limit, 100)
         if (claimed) return []
         claimed = true
         return rows
@@ -1565,11 +1583,16 @@ test('same-session outbox batch merges ordered envelopes and completes every exa
   await app.waitForCaptureOutboxIdle()
 
   assert.equal(formalInputs.length, 1)
-  assert.equal(formalInputs[0].rounds.length, 30)
-  assert.deepEqual(formalInputs[0].rounds.map((round) => round.round), Array.from({ length: 30 }, (_, index) => 21 + index))
+  assert.equal(formalInputs[0].rounds.length, 100)
+  for (const tableId of tableIds) {
+    assert.deepEqual(
+      formalInputs[0].rounds.filter((round) => round.tableId === tableId).map((round) => round.round),
+      Array.from({ length: 10 }, (_, index) => 21 + index),
+    )
+  }
   assert.equal(completedBatches.length, 1)
-  assert.equal(completedBatches[0].length, 30)
-  assert.deepEqual(completedBatches[0].map((claim) => claim.sequence), Array.from({ length: 30 }, (_, index) => 21 + index))
+  assert.equal(completedBatches[0].length, 100)
+  assert.deepEqual(completedBatches[0].map((claim) => claim.sequence), Array.from({ length: 100 }, (_, index) => 21 + index))
 })
 
 test('thirty-row formal batch scales the bounded lease deadline instead of reusing the single-work-item budget', async () => {

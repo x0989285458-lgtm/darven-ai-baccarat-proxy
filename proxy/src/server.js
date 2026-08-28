@@ -407,8 +407,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   if ((typeof captureOutboxBatchLimit === 'string' && captureOutboxBatchLimit.trim() === '')
     || !Number.isSafeInteger(resolvedCaptureOutboxBatchLimit)
     || resolvedCaptureOutboxBatchLimit < 1
-    || resolvedCaptureOutboxBatchLimit > 30) {
-    throw new Error('outbox batch limit must be an integer from 1 through 30')
+    || resolvedCaptureOutboxBatchLimit > 100) {
+    throw new Error('outbox batch limit must be an integer from 1 through 100')
   }
   const resolvedFatalHandler = fatalHandler ?? (production
     ? ({ exitCode }) => process.exit(exitCode)
