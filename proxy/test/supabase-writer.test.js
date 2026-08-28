@@ -297,6 +297,55 @@ test('formal lifecycle concurrency remains bounded by direct DB standard and pri
   assert.ok(issueMaxActive <= 3, `Direct DB priority work exceeded reserved priority budget: ${issueMaxActive}`)
 })
 
+test('prediction lifecycle reconciliation uses the reserved priority slot when standard traffic is saturated', async () => {
+  let releaseStandard
+  const standardGate = new Promise((resolve) => { releaseStandard = resolve })
+  let standardStarted = 0
+  let resolveStandardSaturated
+  const standardSaturated = new Promise((resolve) => { resolveStandardSaturated = resolve })
+  let reconcileStarted = 0
+  const strategyPool = {
+    async query(query) {
+      if (/persist_latest_cloud_table_snapshot/.test(query.text)) {
+        standardStarted += 1
+        if (standardStarted === 6) resolveStandardSaturated()
+        await standardGate
+        return { rows: [{ persist_latest_cloud_table_snapshot: { persisted: true } }] }
+      }
+      if (/reconcile_v105_prediction_lifecycle/.test(query.text)) {
+        reconcileStarted += 1
+        const [source, tableId, shoe, visibleRound] = query.values
+        return { rows: [{ reconcile_v105_prediction_lifecycle: {
+          source, table_id: tableId, current_shoe: shoe, current_visible_round: visibleRound,
+          pending: 0, expired_no_final: 0, abandoned_shoe_change: 0, updated_total: 0,
+        } }] }
+      }
+      throw new Error(`unexpected query in lifecycle priority test: ${query.text}`)
+    },
+  }
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'sb_secret_test_key', strategyPool,
+    retryAttempts: 1, requireVerifiedStrategy: false, formalLifecycleConcurrency: 9,
+    strategyPriorityConcurrency: 8,
+  })
+  const standardWrites = Array.from({ length: 6 }, (_, index) => client.writeCloudTableSnapshot({
+    sessionId: `standard-pressure-${index}`,
+    tables: [],
+    status: { connected: true, authenticated: true },
+  }))
+
+  await standardSaturated
+  const reconcile = client.reconcilePredictionLifecycle({
+    source: 'ofalive99', tableId: 'BAG01', currentShoe: 102, currentVisibleRound: 9,
+  })
+  await new Promise((resolve) => setImmediate(resolve))
+  const startedWhileStandardSaturated = reconcileStarted
+  releaseStandard()
+  await Promise.all([...standardWrites, reconcile])
+
+  assert.equal(startedWhileStandardSaturated, 1, 'lifecycle reconciliation must use the reserved priority slot')
+})
+
 test('direct DB priority concurrency accepts an explicit bounded value', async () => {
   let active = 0
   let maxActive = 0

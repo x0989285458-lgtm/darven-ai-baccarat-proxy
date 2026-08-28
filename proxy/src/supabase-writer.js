@@ -2658,7 +2658,7 @@ export function createSupabaseIngestionClient({
         p_table_id: String(tableId),
         p_current_shoe: normalizedShoe,
         p_current_visible_round: visibleRound,
-      }, undefined, { requireObject: true }))
+      }, undefined, { requireObject: true, priority: true }))
       const counts = {
         pending: Number(acknowledgement?.pending),
         expiredNoFinal: Number(acknowledgement?.expired_no_final),
