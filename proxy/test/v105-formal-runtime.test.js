@@ -52,6 +52,142 @@ test('v105 runtime uses V10 uncommon-road main while retaining v105 issuance ide
   assert.equal(prediction.predictionFeatures.v105_v10_main_policy.sourceStrategy, 'v105-shadow-v10-big-road-uncommon-structure-rank-synchronized')
 })
 
+test('v105 runtime carries same-shoe issuance streak across skipped physical rounds', async () => {
+  const prior = {
+    prediction_id: 'prior-gap', strategy_version: 'v105', prediction_timing: 'pre_result_context',
+    prediction_issued_at: '2026-08-28T12:00:00.000Z', settlement_final: true,
+    table_id: 'BAG01', shoe_no: '1', round_no: 21, predicted_result: 'banker', actual_result: 'banker',
+    baseline_v104_predicted_result: 'banker', baseline_v104_same_side_streak: 4, same_side_streak: 4,
+  }
+  const runtime = createV105FormalRuntime({
+    writer: { configured: true, async getV105FormalHistory() { return [prior] } },
+  })
+  await runtime.start()
+  const prediction = await runtime.buildPrediction({
+    tableId: 'BAG01', shoe: '1', round: 24,
+    beadPlateRaw: '0201010102010101', bigRoadRaw: '0002,,,,,#0001,0001,0001,,,#0002,,,,,#0001,0001,0001,,,',
+    bankerCount: 18, playerCount: 6, tieCount: 1,
+  })
+  assert.equal(prediction.predictedResult, 'banker')
+  assert.equal(prediction.sameSideStreak, 5)
+  runtime.recordIssuance({ ...prediction, predictionId: 'gap-25', issuedAt: '2026-08-28T12:01:00.000Z' })
+  assert.deepEqual(runtime.snapshot().lastIssuanceByTable.BAG01, {
+    shoe: '1', direction: 'banker', sameSideStreak: 5, round: 25,
+  })
+  assert.throws(() => runtime.recordIssuance({
+    ...prediction, predictionId: 'stale-22', issuedAt: '2026-08-28T12:01:01.000Z', targetRound: 22,
+  }), /cannot move backward/)
+})
+
+test('v105 hydration repairs undercounted same-shoe final issuance streaks', async () => {
+  const rows = [21, 25].map((round, index) => ({
+    prediction_id: `under-${round}`, strategy_version: 'v105', prediction_timing: 'pre_result_context',
+    prediction_issued_at: `2026-08-28T12:0${index}:00.000Z`, settlement_final: true,
+    table_id: 'BAG01', shoe_no: '1', round_no: round,
+    predicted_result: index === 0 ? 'player' : 'banker',
+    final_v105_predicted_result: 'banker', issued_same_side_streak: 1, same_side_streak: 1,
+  }))
+  const runtime = createV105FormalRuntime({
+    writer: { configured: true, async getV105FormalHistory() { return rows } },
+  })
+  await runtime.start()
+  assert.deepEqual(runtime.snapshot().lastIssuanceByTable.BAG01, {
+    shoe: '1', direction: 'banker', sameSideStreak: 2, round: 25,
+  })
+})
+
+test('v105 runtime rejects an older-shoe issuance after a newer shoe is active', async () => {
+  const latest = {
+    prediction_id: 'new-shoe', strategy_version: 'v105', prediction_timing: 'pre_result_context',
+    prediction_issued_at: '2026-08-28T12:00:00.000Z', table_id: 'BAG01', shoe_no: '2', round_no: 10,
+    predicted_result: 'banker', final_v105_predicted_result: 'banker', issued_same_side_streak: 3,
+  }
+  const runtime = createV105FormalRuntime({
+    writer: { configured: true, async getV105FormalHistory() { return [latest] } },
+  })
+  await runtime.start()
+  assert.throws(() => runtime.recordIssuance({
+    predictionId: 'old-shoe-replay', issuedAt: '2026-08-28T12:01:00.000Z',
+    strategyVersion: 'v105', predictionTiming: 'pre_result_context', source: 'ofalive99',
+    targetTableId: 'BAG01', targetShoe: '1', targetRound: 99,
+    predictedResult: 'player', sameSideStreak: 1,
+  }), /older shoe|move backward/)
+})
+
+test('v105 hydration fails closed when issued time order moves back to an older shoe', async () => {
+  const rows = [
+    {
+      prediction_id: 'new-shoe', strategy_version: 'v105', prediction_timing: 'pre_result_context',
+      prediction_issued_at: '2026-08-28T12:00:00.000Z', table_id: 'BAG01', shoe_no: '2', round_no: 10,
+      predicted_result: 'banker', final_v105_predicted_result: 'banker', issued_same_side_streak: 3,
+    },
+    {
+      prediction_id: 'old-shoe-late', strategy_version: 'v105', prediction_timing: 'pre_result_context',
+      prediction_issued_at: '2026-08-28T12:01:00.000Z', table_id: 'BAG01', shoe_no: '1', round_no: 99,
+      predicted_result: 'player', final_v105_predicted_result: 'player', issued_same_side_streak: 1,
+    },
+  ]
+  const runtime = createV105FormalRuntime({
+    writer: { configured: true, async getV105FormalHistory() { return rows } },
+  })
+  await assert.rejects(runtime.start(), /older shoe|move backward/)
+})
+
+test('v105 hydration resets streak on direction or shoe change even when persisted legacy rows overcount', async () => {
+  const rows = [
+    {
+      prediction_id: 'direction-prior', strategy_version: 'v105', prediction_timing: 'pre_result_context',
+      prediction_issued_at: '2026-08-28T12:00:00.000Z', table_id: 'BAG01', shoe_no: '9', round_no: 20,
+      predicted_result: 'banker', final_v105_predicted_result: 'banker', issued_same_side_streak: 4,
+    },
+    {
+      prediction_id: 'shoe-prior', strategy_version: 'v105', prediction_timing: 'pre_result_context',
+      prediction_issued_at: '2026-08-28T12:00:01.000Z', table_id: 'BAG02', shoe_no: '9', round_no: 20,
+      predicted_result: 'player', final_v105_predicted_result: 'player', issued_same_side_streak: 4,
+    },
+    {
+      prediction_id: 'direction-change', strategy_version: 'v105', prediction_timing: 'pre_result_context',
+      prediction_issued_at: '2026-08-28T12:01:00.000Z', table_id: 'BAG01', shoe_no: '9', round_no: 24,
+      predicted_result: 'player', final_v105_predicted_result: 'player', issued_same_side_streak: 7,
+    },
+    {
+      prediction_id: 'shoe-change', strategy_version: 'v105', prediction_timing: 'pre_result_context',
+      prediction_issued_at: '2026-08-28T12:01:01.000Z', table_id: 'BAG02', shoe_no: '10', round_no: 3,
+      predicted_result: 'player', final_v105_predicted_result: 'player', issued_same_side_streak: 8,
+    },
+  ]
+  const runtime = createV105FormalRuntime({
+    writer: { configured: true, async getV105FormalHistory() { return rows } },
+  })
+  await runtime.start()
+  assert.equal(runtime.snapshot().lastIssuanceByTable.BAG01.sameSideStreak, 1)
+  assert.equal(runtime.snapshot().lastIssuanceByTable.BAG02.sameSideStreak, 1)
+})
+
+test('v105 hydration rejects conflicting duplicate issuance identity', async () => {
+  const rows = ['banker', 'player'].map((direction, index) => ({
+    prediction_id: `duplicate-${index}`, strategy_version: 'v105', prediction_timing: 'pre_result_context',
+    prediction_issued_at: '2026-08-28T12:00:00.000Z', table_id: 'BAG01', shoe_no: '9', round_no: 25,
+    predicted_result: direction, final_v105_predicted_result: direction, issued_same_side_streak: 1,
+  }))
+  const runtime = createV105FormalRuntime({
+    writer: { configured: true, async getV105FormalHistory() { return rows } },
+  })
+  await assert.rejects(runtime.start(), /conflicting duplicate|acknowledgement mismatch/)
+})
+
+test('v105 hydration rejects duplicate issuance identity with a different prediction id even when payload semantics match', async () => {
+  const rows = ['duplicate-a', 'duplicate-b'].map((predictionId) => ({
+    prediction_id: predictionId, strategy_version: 'v105', prediction_timing: 'pre_result_context',
+    prediction_issued_at: '2026-08-28T12:00:00.000Z', table_id: 'BAG01', shoe_no: '9', round_no: 25,
+    predicted_result: 'banker', final_v105_predicted_result: 'banker', issued_same_side_streak: 1,
+  }))
+  const runtime = createV105FormalRuntime({
+    writer: { configured: true, async getV105FormalHistory() { return rows } },
+  })
+  await assert.rejects(runtime.start(), /conflicting duplicate issuance identity/)
+})
+
 test('v105 runtime accepts an identical current issuance after restart hydration without advancing its streak twice', async () => {
   const hydrated = {
     prediction_id: 'existing-current', strategy_version: 'v105', prediction_timing: 'pre_result_context',

@@ -270,6 +270,30 @@ function numericShoe(value) {
   return /^\d+$/.test(normalized) ? BigInt(normalized) : null
 }
 
+function isOlderTableScreen(candidate = {}, current = {}) {
+  const candidateShoe = String(candidate?.shoe ?? '')
+  const currentShoe = String(current?.shoe ?? '')
+  const candidateRound = Number(candidate?.round)
+  const currentRound = Number(current?.round)
+  if (!candidateShoe || !currentShoe || !Number.isSafeInteger(candidateRound) || !Number.isSafeInteger(currentRound)) return false
+  if (candidateShoe === currentShoe) return candidateRound < currentRound
+  const candidateNumericShoe = numericShoe(candidateShoe)
+  const currentNumericShoe = numericShoe(currentShoe)
+  return candidateNumericShoe != null && currentNumericShoe != null && candidateNumericShoe < currentNumericShoe
+}
+
+function mergeMonotonicTableScreens(currentTables = [], candidateTables = []) {
+  const candidateByTable = new Map(candidateTables.map((table) => [canonicalProductionTableId(table?.tableId), table]))
+  const merged = currentTables.map((current) => {
+    const tableId = canonicalProductionTableId(current?.tableId)
+    const candidate = candidateByTable.get(tableId)
+    candidateByTable.delete(tableId)
+    if (!candidate || isOlderTableScreen(candidate, current)) return structuredClone(current)
+    return candidate
+  })
+  return [...merged, ...candidateByTable.values()]
+}
+
 function rememberBounded(seen, order, value, limit) {
   if (seen.has(value)) return
   seen.add(value)
@@ -370,6 +394,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const settlingPredictionPromises = new Map()
   const lifecycleGuardsByTable = new Map()
   const latestObservedScreenByTable = new Map()
+  const latestObservedScreenGuardsByTable = new Map()
   const memberSessions = new Map()
   const memberSessionKey = deriveMemberSessionKey(memberSessionSecret)
   const memberSessionValidationCache = new Map()
@@ -449,9 +474,15 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         const observedShoe = table?.shoe == null ? '' : String(table.shoe)
         const observedRound = Number(table?.round)
         if (observedTableId && observedShoe && Number.isSafeInteger(observedRound)) {
-          const previousScreen = latestObservedScreenByTable.get(observedTableId)
-          if (previousScreen?.shoe !== observedShoe || previousScreen?.visibleRound !== observedRound) screenProgressChanged = true
-          latestObservedScreenByTable.set(observedTableId, { shoe: observedShoe, visibleRound: observedRound })
+          const accepted = acceptLifecycleScreenIdentity(latestObservedScreenGuardsByTable, {
+            tableId: observedTableId,
+            shoe: observedShoe,
+            visibleRound: observedRound,
+          })
+          if (accepted) {
+            screenProgressChanged = true
+            latestObservedScreenByTable.set(observedTableId, { shoe: observedShoe, visibleRound: observedRound })
+          }
         }
         if (!resolvedCaptureOutboxConsumerEnabled || tableUpdateWorkContext.getStore()?.suppressPredictionWork) continue
         const tableKey = `table:${String(table?.tableId ?? '')}`
@@ -797,7 +828,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                 publishedTables = Array.isArray(applied?.tables) ? applied.tables : parsed.tables
                 settlementReceipts = Array.isArray(applied?.settlementReceipts) ? applied.settlementReceipts : []
                 state.setStatus(parsed.status)
-                state.setTables(publishedTables)
+                state.setTables(mergeMonotonicTableScreens(state.snapshot().tables, publishedTables))
               })
               const finalizedIdentities = new Set(parsed.rounds.map((round) => JSON.stringify([
                 String(round?.tableId ?? ''),
@@ -851,21 +882,37 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               if (missingSettlementReceipts.length > 0) {
                 throw new Error('durable settlement receipt is required before outbox acknowledgement')
               }
-              const predictionTables = [...currentPublishedTableByTableId.values()].filter((table) => (
-                finalizedIdentities.has(JSON.stringify([
+              const liveTableByTableId = new Map(state.snapshot().tables.map((table) => [
+                String(table?.tableId ?? ''), table,
+              ]))
+              const predictionTables = [...currentPublishedTableByTableId.values()]
+                .filter((table) => finalizedIdentities.has(JSON.stringify([
                   String(table?.tableId ?? ''),
                   String(table?.shoe ?? ''),
-                ]))
-              ))
+                ])))
+                .map((table) => {
+                  const liveTable = liveTableByTableId.get(String(table?.tableId ?? ''))
+                  return liveTable
+                    && String(liveTable?.shoe ?? '') === String(table?.shoe ?? '')
+                    && Number(liveTable?.round) >= Number(table?.round)
+                    ? liveTable
+                    : table
+                })
               const nextPredictions = await runLeasePhase('formal_prediction', async () => {
                 const predictionResults = await Promise.allSettled(predictionTables.map((table) => (
-                  reconcileThenResolveOutboxPrediction(table)
+                  reconcileThenResolveLatestOutboxPrediction(table)
                 )))
                 const failedPrediction = predictionResults.find((result) => result.status === 'rejected')
                 if (failedPrediction) throw failedPrediction.reason
                 return predictionResults.map((result) => result.value)
               })
-              if (nextPredictions.some((prediction) => !prediction)) {
+              const missingLatestPrediction = nextPredictions.some((prediction, index) => {
+                const table = predictionTables[index]
+                const latest = latestObservedScreenByTable.get(canonicalProductionTableId(table?.tableId))
+                const latestStillSameShoe = !latest || latest.shoe === String(table?.shoe ?? '')
+                return latestStillSameShoe && (!prediction || !isLatestObservedPredictionTarget(prediction))
+              })
+              if (missingLatestPrediction) {
                 throw new Error('prediction issuance failed before outbox acknowledgement')
               }
               leaseDeadline.assertActive()
@@ -1602,6 +1649,14 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       && latest.visibleRound === expectedVisibleRound
   }
 
+  function isLatestObservedTableScreen(table) {
+    const tableId = canonicalProductionTableId(table?.tableId)
+    const latest = latestObservedScreenByTable.get(tableId)
+    if (!latest) return true
+    return latest.shoe === String(table?.shoe ?? '')
+      && latest.visibleRound === Number(table?.round)
+  }
+
   async function reconcileLatestObservedPredictionScreen(prediction) {
     const tableId = canonicalProductionTableId(prediction?.targetTableId)
     const latest = latestObservedScreenByTable.get(tableId)
@@ -1668,6 +1723,28 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     const targetRound = currentRound + 1
     const key = predictionTargetKey(table.tableId, table.shoe, targetRound)
     return startIssuedPredictionRead(table, targetRound, key, isDurablePredictionIssuanceRequired())
+  }
+
+  async function reconcileThenResolveLatestOutboxPrediction(table) {
+    const originalShoe = String(table?.shoe ?? '')
+    let candidateTable = table
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const prediction = await reconcileThenResolveOutboxPrediction(candidateTable)
+      if (prediction && isLatestObservedPredictionTarget(prediction)) return prediction
+      const tableId = canonicalProductionTableId(candidateTable?.tableId)
+      const latest = latestObservedScreenByTable.get(tableId)
+      if (!latest || latest.shoe !== originalShoe) return prediction
+      const latestTable = state.snapshot().tables.find((item) => (
+        canonicalProductionTableId(item?.tableId) === tableId
+        && String(item?.shoe ?? '') === latest.shoe
+        && Number(item?.round) === latest.visibleRound
+      ))
+      if (!latestTable) return null
+      if (String(candidateTable?.shoe ?? '') === latest.shoe
+        && Number(candidateTable?.round) === latest.visibleRound) return prediction
+      candidateTable = latestTable
+    }
+    return null
   }
 
   function requestDurablePredictionBroadcast(prediction) {

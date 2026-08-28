@@ -688,6 +688,175 @@ test('external consumer retains the exact outbox lease when next prediction issu
   assert.match(app.state.snapshot().status.persistenceError, /prediction issuance failed before outbox acknowledgement/)
 })
 
+test('external consumer acknowledges durable stale Final work without requiring an obsolete screen prediction', async () => {
+  let claimed = false
+  let completed = 0
+  let failed = 0
+  const issuedTargets = []
+  const staleSnapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: staleSnapshot } })]
+      },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox() { failed += 1 },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async reconcilePredictionLifecycle() {},
+      async readIssuedPrediction() { return null },
+      async issuePrediction(candidate) {
+        issuedTargets.push(candidate.targetRound)
+        if (candidate.targetRound === 26) {
+          return { ...candidate, predictionId: 'pid-current-26', issuedAt: '2026-08-25T16:00:01.000Z' }
+        }
+        return null
+      },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) { return { enabled: true, predictions: [], tables } },
+    },
+  })
+
+  app.state.setTables([{
+    tableId: 'BAG01', shoe: 88, round: 25, sourceUpdatedAt: '2026-08-25T16:00:05.000Z',
+    beadPlateRaw: '0102010201', bigRoadRaw: 'BPBPB',
+  }, {
+    tableId: 'BAG02', shoe: 99, round: 12, sourceUpdatedAt: '2026-08-25T16:00:05.000Z',
+    beadPlateRaw: '02010102', bigRoadRaw: 'PBPB',
+  }])
+  await app.waitForServiceWorkIdle()
+  await app.drainCaptureOutbox()
+  await app.waitForCaptureOutboxIdle()
+
+  assert.equal(completed, 1)
+  assert.equal(failed, 0)
+  assert.deepEqual(issuedTargets.sort((left, right) => left - right), [13, 26], 'only current-screen predictions may be issued')
+  assert.deepEqual(
+    app.state.snapshot().tables.map((table) => [table.tableId, table.round]),
+    [['BAG01', 25], ['BAG02', 12]],
+    'partial stale work must preserve every unrelated live table',
+  )
+})
+
+test('external consumer retains stale Final lease when the newer same-shoe screen prediction is unavailable', async () => {
+  let claimed = false
+  let completed = 0
+  let failed = 0
+  const issuedTargets = []
+  const staleSnapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: staleSnapshot } })]
+      },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox() { failed += 1 },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async reconcilePredictionLifecycle() {},
+      async readIssuedPrediction() { return null },
+      async issuePrediction(candidate) { issuedTargets.push(candidate.targetRound); return null },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) { return { enabled: true, predictions: [], tables } },
+    },
+  })
+
+  app.state.setTables([{
+    tableId: 'BAG01', shoe: 88, round: 25, sourceUpdatedAt: '2026-08-25T16:00:05.000Z',
+    beadPlateRaw: '0102010201', bigRoadRaw: 'BPBPB',
+  }])
+  await app.waitForServiceWorkIdle()
+  await app.drainCaptureOutbox()
+  await app.waitForCaptureOutboxIdle()
+
+  assert.equal(completed, 0)
+  assert.equal(failed, 1)
+  assert.equal(issuedTargets.includes(22), false, 'obsolete round-22 prediction must never be issued')
+  assert.equal(issuedTargets.every((round) => round === 26), true)
+})
+
+test('external consumer retains stale Final lease when the same-shoe screen advances during prediction verification', async () => {
+  let claimed = false
+  let completed = 0
+  let failed = 0
+  let formalStarted = false
+  let advanced = false
+  const candidates = new Map()
+  let app
+  const staleSnapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+  }
+  app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: staleSnapshot } })]
+      },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox() { failed += 1 },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async reconcilePredictionLifecycle() {},
+      async issuePrediction(candidate) { candidates.set(candidate.targetRound, candidate); return null },
+      async readIssuedPrediction({ round }) {
+        if (!formalStarted || round !== 26 || advanced) return null
+        advanced = true
+        app.state.setTables([{
+          tableId: 'BAG01', shoe: 88, round: 26, sourceUpdatedAt: '2026-08-25T16:00:06.000Z',
+          beadPlateRaw: '010201020101', bigRoadRaw: 'BPBPBP',
+        }])
+        return { ...candidates.get(26), predictionId: 'stale-screen-26', issuedAt: '2026-08-25T16:00:05.500Z' }
+      },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) { formalStarted = true; return { enabled: true, predictions: [], tables } },
+    },
+  })
+
+  app.state.setTables([{
+    tableId: 'BAG01', shoe: 88, round: 25, sourceUpdatedAt: '2026-08-25T16:00:05.000Z',
+    beadPlateRaw: '0102010201', bigRoadRaw: 'BPBPB',
+  }])
+  await app.waitForServiceWorkIdle()
+  await app.drainCaptureOutbox()
+  await app.waitForCaptureOutboxIdle()
+  await app.waitForServiceWorkIdle()
+
+  assert.equal(completed, 0)
+  assert.equal(failed, 1)
+  assert.equal(app.state.snapshot().tables[0].round, 26)
+  assert.equal(candidates.has(27), true, 'the latest screen must require target round 27')
+})
+
 test('external consumer retains the exact outbox lease when prediction reconciliation fails', async () => {
   let claimed = false
   let completed = 0
