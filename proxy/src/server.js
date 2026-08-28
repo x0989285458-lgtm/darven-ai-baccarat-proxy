@@ -384,6 +384,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   let outboxHealthRetryCount = 0
   const attemptedFailureAcks = new Set()
   const pendingPredictions = new Map()
+  const durableSupersedingOutboxPredictions = new WeakSet()
   const preparingPredictionPromises = new Map()
   const issuingPredictionPromises = new Map()
   const readingIssuedPredictionPromises = new Map()
@@ -910,7 +911,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                 const table = predictionTables[index]
                 const latest = latestObservedScreenByTable.get(canonicalProductionTableId(table?.tableId))
                 const latestStillSameShoe = !latest || latest.shoe === String(table?.shoe ?? '')
-                return latestStillSameShoe && (!prediction || !isLatestObservedPredictionTarget(prediction))
+                return latestStillSameShoe && (!prediction
+                  || (!durableSupersedingOutboxPredictions.has(prediction)
+                    && !isLatestObservedPredictionTarget(prediction)))
               })
               if (missingLatestPrediction) {
                 throw new Error('prediction issuance failed before outbox acknowledgement')
@@ -1716,6 +1719,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   }
 
   async function reconcileThenResolveOutboxPrediction(table) {
+    const durableCoverage = await readDurableSupersedingOutboxPrediction(table)
+    if (durableCoverage) return durableCoverage
     const prepared = await reconcileThenSavePendingPrediction(table, { failOnReconciliationError: true })
     if (prepared) return prepared
     const currentRound = Number(table?.round)
@@ -1730,6 +1735,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     let candidateTable = table
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const prediction = await reconcileThenResolveOutboxPrediction(candidateTable)
+      if (prediction && durableSupersedingOutboxPredictions.has(prediction)) return prediction
       if (prediction && isLatestObservedPredictionTarget(prediction)) return prediction
       const tableId = canonicalProductionTableId(candidateTable?.tableId)
       const latest = latestObservedScreenByTable.get(tableId)
@@ -1745,6 +1751,45 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       candidateTable = latestTable
     }
     return null
+  }
+
+  async function readDurableSupersedingOutboxPrediction(table) {
+    if (typeof v104Formal?.latestIssuance !== 'function') return null
+    const tableId = canonicalProductionTableId(table?.tableId)
+    const shoe = String(table?.shoe ?? '')
+    const visibleRound = Number(table?.round)
+    if (!tableId || !shoe || !Number.isSafeInteger(visibleRound)) return null
+    const targetRound = visibleRound + 1
+    const latest = v104Formal.latestIssuance(tableId)
+    const latestTableId = canonicalProductionTableId(latest?.targetTableId)
+    const latestShoe = String(latest?.targetShoe ?? '')
+    const latestRound = Number(latest?.targetRound)
+    const latestPredictionId = String(latest?.predictionId ?? '')
+    if (latestTableId !== tableId
+      || latestShoe !== shoe
+      || !Number.isSafeInteger(latestRound)
+      || latestRound <= targetRound
+      || !latestPredictionId
+      || latest?.strategyVersion !== ALL_MT_EQUAL_STRATEGY_VERSION) return null
+    if (typeof supabaseClient?.readIssuedPrediction !== 'function') {
+      throw new Error('exact issuance read capability is unavailable for hydrated outbox coverage')
+    }
+    const issued = await supabaseClient.readIssuedPrediction({
+      tableId,
+      shoe,
+      round: latestRound,
+      strategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION,
+    }, { priority: 'outbox_prediction' })
+    if (!issued
+      || String(issued.predictionId ?? '') !== latestPredictionId
+      || canonicalProductionTableId(issued.targetTableId) !== tableId
+      || String(issued.targetShoe ?? '') !== shoe
+      || Number(issued.targetRound) !== latestRound
+      || issued.strategyVersion !== ALL_MT_EQUAL_STRATEGY_VERSION) {
+      throw new Error('exact hydrated newer issuance is required before outbox acknowledgement')
+    }
+    durableSupersedingOutboxPredictions.add(issued)
+    return issued
   }
 
   function requestDurablePredictionBroadcast(prediction) {

@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { createV105FormalRuntime } from '../src/v105-formal-runtime.js'
 import { createSupabaseIngestionClient } from '../src/supabase-writer.js'
 import { PRODUCTION_TABLE_IDS } from '../src/cloud-capture.js'
@@ -31,6 +32,10 @@ test('v105 runtime hydrates v104 predecessor history, keeps v105 identity, and e
   assert.equal(runtime.snapshot().historySource, 'v104_predecessor_plus_v105_formal_issuance_and_final')
   assert.equal(runtime.snapshot().lastIssuanceByTable.BAG01.round, 8)
   assert.equal(runtime.snapshot().lastIssuanceByTable.BAG01.sameSideStreak, 5)
+  assert.deepEqual(runtime.latestIssuance('BAG01'), {
+    predictionId: 'v104-predecessor', targetTableId: 'BAG01', targetShoe: '1', targetRound: 8,
+    strategyVersion: 'v104', predictionTiming: 'pre_result_context', predictedResult: 'banker', sameSideStreak: 5,
+  })
   assert.equal(prediction.strategyVersion, 'v105')
   assert.equal(prediction.diagnostics.roadCycles.main.direction, 'banker')
 })
@@ -93,6 +98,10 @@ test('v105 hydration repairs undercounted same-shoe final issuance streaks', asy
   await runtime.start()
   assert.deepEqual(runtime.snapshot().lastIssuanceByTable.BAG01, {
     shoe: '1', direction: 'banker', sameSideStreak: 2, round: 25,
+  })
+  assert.deepEqual(runtime.latestIssuance('BAG01'), {
+    predictionId: 'under-25', targetTableId: 'BAG01', targetShoe: '1', targetRound: 25,
+    strategyVersion: 'v105', predictionTiming: 'pre_result_context', predictedResult: 'banker', sameSideStreak: 2,
   })
 })
 
@@ -289,6 +298,16 @@ test('v105 history reader uses one JSON-free settled-history RPC plus one latest
   assert.equal(latest.final_v105_predicted_result, 'banker')
   assert.equal(latest.predicted_result, 'player')
   assert.equal(latest.same_side_streak, 3)
+})
+
+test('Main65 recent-performance RPC excludes invalid replay timing instead of hardcoding every settlement as pre-result', () => {
+  const sql = readFileSync(new URL('../../supabase/migrations/20260828153000_main65_filter_invalid_replay_predictions.sql', import.meta.url), 'utf8')
+  assert.match(sql, /prediction_features->>'prediction_timing'/)
+  assert.match(sql, /issued_prediction_payload->>'predictionTiming'/)
+  assert.match(sql, /= 'pre_result_context'/)
+  assert.doesNotMatch(sql, /'pre_result_context'::text\s+as\s+prediction_timing/i)
+  assert.match(sql, /revoke all on function public\.get_v105_recent_performance_rows\(integer\) from public, anon, authenticated/i)
+  assert.match(sql, /grant execute on function public\.get_v105_recent_performance_rows\(integer\) to service_role/i)
 })
 
 

@@ -6,6 +6,7 @@ const HISTORY_LIMIT = 1000
 export function createV105FormalRuntime({ writer = null, requestTimeoutMs = 60000, allowUnconfigured = false, now = Date.now, retryBackoffMs = 300000 } = {}) {
   const issuanceStreaks = new Map()
   const issuancePredictionIds = new Map()
+  const issuanceStrategyVersions = new Map()
   let historyRows = []
   let hydrationPromise = null
   let status = 'initializing'
@@ -25,6 +26,7 @@ export function createV105FormalRuntime({ writer = null, requestTimeoutMs = 6000
           historyRows = []
           issuanceStreaks.clear()
           issuancePredictionIds.clear()
+          issuanceStrategyVersions.clear()
           status = 'ready'
           error = null
           return
@@ -35,7 +37,7 @@ export function createV105FormalRuntime({ writer = null, requestTimeoutMs = 6000
           'v105 formal history hydration',
         )
         historyRows = Array.isArray(rows) ? structuredClone(rows) : []
-        hydrateIssuanceStreaks(historyRows, issuanceStreaks, issuancePredictionIds)
+        hydrateIssuanceStreaks(historyRows, issuanceStreaks, issuancePredictionIds, issuanceStrategyVersions)
         status = 'ready'
         error = null
       }).catch((cause) => {
@@ -106,6 +108,7 @@ export function createV105FormalRuntime({ writer = null, requestTimeoutMs = 6000
     }
     issuanceStreaks.set(key, { shoe, direction, sameSideStreak, round })
     issuancePredictionIds.set(key, String(issued.predictionId))
+    issuanceStrategyVersions.set(key, V105_FORMAL_STRATEGY_VERSION)
     appendIssuanceHistory(historyRows, issued)
     status = 'ready'
     error = null
@@ -139,6 +142,22 @@ export function createV105FormalRuntime({ writer = null, requestTimeoutMs = 6000
     buildPrediction,
     recordIssuance,
     recordSettlement,
+    latestIssuance(tableId) {
+      const key = tableKey(tableId)
+      const latest = issuanceStreaks.get(key)
+      const predictionId = issuancePredictionIds.get(key)
+      if (!latest || !predictionId) return null
+      return {
+        predictionId,
+        targetTableId: key,
+        targetShoe: latest.shoe,
+        targetRound: latest.round,
+        strategyVersion: issuanceStrategyVersions.get(key),
+        predictionTiming: 'pre_result_context',
+        predictedResult: latest.direction,
+        sameSideStreak: latest.sameSideStreak,
+      }
+    },
     snapshot() {
       return {
         strategyVersion: V105_FORMAL_STRATEGY_VERSION,
@@ -152,7 +171,7 @@ export function createV105FormalRuntime({ writer = null, requestTimeoutMs = 6000
   }
 }
 
-function hydrateIssuanceStreaks(rows, state, predictionIds) {
+function hydrateIssuanceStreaks(rows, state, predictionIds, strategyVersions) {
   const ordered = rows.filter((row) => ['v104', V105_FORMAL_STRATEGY_VERSION].includes(row?.strategy_version ?? row?.strategyVersion)
       && (row?.prediction_timing ?? row?.predictionTiming) === 'pre_result_context'
       && Boolean(row?.prediction_issued_at ?? row?.predictionIssuedAt))
@@ -196,6 +215,7 @@ function hydrateIssuanceStreaks(rows, state, predictionIds) {
       : (sameShoeForward ? Math.max(hasPersistedStreak ? persistedStreak : 1, derivedStreak) : 1)
     state.set(key, { shoe, direction, sameSideStreak, round })
     predictionIds.set(key, predictionId)
+    strategyVersions.set(key, strategyVersion)
   }
 }
 

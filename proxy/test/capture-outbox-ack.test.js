@@ -749,6 +749,130 @@ test('external consumer acknowledges durable stale Final work without requiring 
   )
 })
 
+test('external consumer accepts stale Final work when an exact hydrated same-shoe issuance already covers a newer target', async () => {
+  let claimed = false
+  let completed = 0
+  let failed = 0
+  let issued = 0
+  const exactReads = []
+  const staleSnapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+  }
+  const hydratedIssuance = {
+    predictionId: 'pid-ahead-30',
+    targetTableId: 'BAG01',
+    targetShoe: '88',
+    targetRound: 30,
+    strategyVersion: 'v105',
+    predictionTiming: 'pre_result_context',
+    predictedResult: 'banker',
+    sameSideStreak: 2,
+    issuedAt: '2026-08-25T16:00:20.000Z',
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: staleSnapshot } })]
+      },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox() { failed += 1 },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async reconcilePredictionLifecycle() {},
+      async readIssuedPrediction(identity) {
+        exactReads.push(identity)
+        if (Number(identity.round) === 30) return hydratedIssuance
+        return null
+      },
+      async issuePrediction() { issued += 1; assert.fail('a hydrated newer issuance must not be reissued') },
+    },
+    v104FormalRuntime: {
+      async start() {},
+      snapshot() { return { status: 'ready' } },
+      latestIssuance(tableId) { return tableId === 'BAG01' ? hydratedIssuance : null },
+      async buildPrediction() { assert.fail('a backward candidate must not be built') },
+      recordIssuance() {},
+      recordSettlement() {},
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) { return { enabled: true, predictions: [], tables } },
+    },
+  })
+
+  app.state.setTables([{
+    tableId: 'BAG01', shoe: 88, round: 25, sourceUpdatedAt: '2026-08-25T16:00:05.000Z',
+    beadPlateRaw: '0102010201', bigRoadRaw: 'BPBPB',
+  }])
+  await app.waitForServiceWorkIdle()
+  await app.drainCaptureOutbox()
+  await app.waitForCaptureOutboxIdle()
+
+  assert.equal(completed, 1)
+  assert.equal(failed, 0)
+  assert.equal(issued, 0)
+  assert.ok(exactReads.some((identity) => Number(identity.round) === 30))
+})
+
+test('external consumer rejects hydrated newer issuance coverage when the exact durable id mismatches', async () => {
+  let claimed = false
+  let failed = 0
+  const hydratedIssuance = {
+    predictionId: 'pid-ahead-30', targetTableId: 'BAG01', targetShoe: '88', targetRound: 30,
+    strategyVersion: 'v105', predictionTiming: 'pre_result_context', predictedResult: 'banker', sameSideStreak: 2,
+  }
+  const staleSnapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    now: () => 1_000_000,
+    supabaseClient: {
+      configured: true,
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: staleSnapshot } })]
+      },
+      async completeCaptureOutbox() { assert.fail('mismatched exact coverage must not complete') },
+      async failCaptureOutbox() { failed += 1 },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async readIssuedPrediction(identity) {
+        if (Number(identity.round) === 30) return { ...hydratedIssuance, predictionId: 'pid-wrong-30' }
+        return null
+      },
+    },
+    v104FormalRuntime: {
+      async start() {},
+      snapshot() { return { status: 'ready' } },
+      latestIssuance() { return hydratedIssuance },
+      async buildPrediction() { assert.fail('a backward candidate must not be built') },
+      recordIssuance() {},
+      recordSettlement() {},
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) { return { enabled: true, predictions: [], tables } },
+    },
+  })
+
+  await app.drainCaptureOutbox()
+  await app.waitForCaptureOutboxIdle()
+
+  assert.equal(failed, 1)
+  assert.match(app.state.snapshot().status.persistenceError, /exact hydrated newer issuance/)
+})
+
 test('external consumer retains stale Final lease when the newer same-shoe screen prediction is unavailable', async () => {
   let claimed = false
   let completed = 0
