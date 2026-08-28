@@ -1,0 +1,34 @@
+name: Trusted migration Main56 Adaptive Batch
+
+on:
+  push:
+    tags:
+      - v105-v10-main.56
+
+permissions:
+  contents: read
+
+jobs:
+  verify-migration:
+    if: github.ref == 'refs/tags/v105-v10-main.56'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact tagged source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: refs/tags/v105-v10-main.56
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify exact tag and Main56 release contract
+        shell: bash
+        run: |
+          test "${GITHUB_REF}" = "refs/tags/v105-v10-main.56"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          node --test proxy/test/v105-v10-main56-adaptive-batch-release.test.js
+
+      - name: Run unchanged Main54 ACK tests
+        run: node --test proxy/test/capture-outbox-ack.test.js
+
+      - name: Syntax-check rollback-only migration harness
+        run: node --check scripts/test-main56-adaptive-batch-migration.mjs
