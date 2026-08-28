@@ -21,7 +21,7 @@ try {
   const identity = `main61-three-tier-${Date.now()}`
   async function insertRows(session,count) {
     const values=[]; const params=[]
-    for(let i=1;i<=count;i++) { const b=params.length; params.push(session,i,JSON.stringify({main61:true,sequence:i})); values.push(`($${b+1},$${b+2},'[]'::jsonb,$${b+3}::jsonb,encode(extensions.digest($${b+1}||':'||$${b+2}::text,'sha256'),'hex'),'pending',0,0,now()+($${b+2}::int*interval '1 millisecond'),now())`) }
+    for(let i=1;i<=count;i++) { const b=params.length; params.push(session,i,JSON.stringify({main61:true,sequence:i})); values.push(`($${b+1}::text,$${b+2}::bigint,'[]'::jsonb,$${b+3}::jsonb,encode(extensions.digest($${b+1}::text||':'||$${b+2}::bigint::text,'sha256'),'hex'),'pending',0,0,now()+($${b+2}::bigint*interval '1 millisecond'),now())`) }
     await db.query(`insert into public.v105_capture_settlement_outbox(session_id,sequence,round_keys,payload,payload_hash,status,attempts,lease_generation,created_at,updated_at) values ${values.join(',')}`,params)
   }
   await insertRows(`${identity}-low`,29)
