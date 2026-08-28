@@ -51,8 +51,8 @@ describe('LiveRoadClient status messages', () => {
     }
 
     expect(backendPredictionReasonsFromTable(table as any)).toEqual([
-      { key: 'v8AskRoad', text: 'V8問路訊號支持莊', weight: 0.315 },
-      { key: 'v7RoadCycle', text: 'V7路單週期支持莊', weight: 0.315 },
+      { key: 'v8AskRoad', text: '問路訊號支持莊', weight: 0.315 },
+      { key: 'v7RoadCycle', text: '路單週期支持莊', weight: 0.315 },
       { key: 'uncommonRoadStructure', text: '大路非常見結構支持莊', weight: 0.1 },
     ])
   })
