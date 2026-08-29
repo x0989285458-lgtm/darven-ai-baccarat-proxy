@@ -340,7 +340,7 @@ export function resolveProductionConcurrency(env = process.env) {
   }
 }
 
-export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 45000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), outboxCoalesceMs = process.env.CAPTURE_OUTBOX_COALESCE_MS ?? 1000, captureOutboxBatchLimit = process.env.CAPTURE_OUTBOX_BATCH_LIMIT ?? 30, captureOutboxConsumerEnabled = process.env.CAPTURE_OUTBOX_CONSUMER_ENABLED ?? true, captureOutboxPollMs = process.env.CAPTURE_OUTBOX_POLL_MS ?? 0, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionSecret = process.env.MEMBER_SESSION_SECRET, adminSessionSecret = process.env.ADMIN_SESSION_SECRET || memberSessionSecret, adminSessionTtlMs: requestedAdminSessionTtlMs = Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionValidationTtlMs = Number(process.env.MEMBER_SESSION_VALIDATION_TTL_MS ?? 0), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), streamHeartbeatMs = Number(process.env.STREAM_HEARTBEAT_MS ?? 3000), serviceShutdownDeadlineMs = 5000, fatalHandler = null, fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v104FormalRuntime = null, dailyMemoryRollover = null, requireFencedIngest = process.env.REQUIRE_FENCED_INGEST === 'true', sourceFenceStore = null } = {}) {
+export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 45000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), outboxCoalesceMs = process.env.CAPTURE_OUTBOX_COALESCE_MS ?? 1000, captureOutboxBatchLimit = process.env.CAPTURE_OUTBOX_BATCH_LIMIT ?? 30, captureOutboxConsumerEnabled = process.env.CAPTURE_OUTBOX_CONSUMER_ENABLED ?? true, captureOutboxPollMs = process.env.CAPTURE_OUTBOX_POLL_MS ?? 0, latestPredictionRefreshMs = process.env.LATEST_PREDICTION_REFRESH_MS ?? 1000, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionSecret = process.env.MEMBER_SESSION_SECRET, adminSessionSecret = process.env.ADMIN_SESSION_SECRET || memberSessionSecret, adminSessionTtlMs: requestedAdminSessionTtlMs = Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionValidationTtlMs = Number(process.env.MEMBER_SESSION_VALIDATION_TTL_MS ?? 0), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), streamHeartbeatMs = Number(process.env.STREAM_HEARTBEAT_MS ?? 3000), serviceShutdownDeadlineMs = 5000, fatalHandler = null, fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v104FormalRuntime = null, dailyMemoryRollover = null, requireFencedIngest = process.env.REQUIRE_FENCED_INGEST === 'true', sourceFenceStore = null } = {}) {
   const ingestSourceFence = sourceFenceStore ?? createInMemoryIngestSourceFence()
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
@@ -366,12 +366,24 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     || resolvedCaptureOutboxPollMs > 60_000) {
     throw new Error('capture outbox poll interval must be zero or a safe integer from 10 through 60000 milliseconds')
   }
+  const latestPredictionRefreshText = typeof latestPredictionRefreshMs === 'string' ? latestPredictionRefreshMs.trim() : null
+  const resolvedLatestPredictionRefreshMs = Number(latestPredictionRefreshMs)
+  if (latestPredictionRefreshText === ''
+    || !Number.isSafeInteger(resolvedLatestPredictionRefreshMs)
+    || resolvedLatestPredictionRefreshMs < 10
+    || resolvedLatestPredictionRefreshMs > 60_000) {
+    throw new Error('latest prediction refresh interval must be a safe integer from 10 through 60000 milliseconds')
+  }
   const strictRealCardRounds = process.env.REQUIRE_REAL_CARD_ROUNDS !== 'false'
   const adminSessions = new Map()
   const adminSessionKey = deriveAdminSessionKey(adminSessionSecret)
   const legacyIngestSequences = new Map()
   const ingestSessionLocks = new Map()
   let outboxDrainPromise = null
+  let latestPredictionRefreshPromise = null
+  let latestPredictionRefreshTimer = null
+  let latestPredictionRefreshStopping = false
+  let lastSuccessfulLatestPredictionSignature = null
   let outboxWakeTimer = null
   let outboxWakeAtMs = null
   let outboxWakePromise = null
@@ -738,6 +750,96 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
   }
 
+  function refreshLatestDurablePredictions({ beforeClaim = false } = {}) {
+    if (latestPredictionRefreshStopping || outboxStopping) return Promise.resolve({ refreshed: false, stopped: true })
+    if (latestPredictionRefreshPromise) return latestPredictionRefreshPromise
+    latestPredictionRefreshPromise = (async () => {
+      if (supabaseClient?.configured !== true || typeof supabaseClient.getLatestCloudTableSnapshot !== 'function') {
+        if (production) throw new Error('fresh cloud snapshot reader is required before latest prediction refresh')
+        return { refreshed: false, configured: false }
+      }
+      if (beforeClaim) setCaptureOutboxPhase('fresh_screen')
+      const freshSnapshot = await readLatestCloudSnapshot({ requireFresh: true })
+      const freshTables = Array.isArray(freshSnapshot?.tables) ? freshSnapshot.tables : []
+      const freshTableIds = new Set(freshTables.map((table) => canonicalProductionTableId(table?.tableId)))
+      const freshSnapshotTimestamp = freshSnapshot?.snapshot_at ?? freshSnapshot?.created_at ?? freshSnapshot?.updated_at
+      const hasFreshSnapshotTimestamp = isFreshCloudTimestamp(freshSnapshotTimestamp, 120000)
+      const hasCompleteProductionTables = hasFreshSnapshotTimestamp
+        && freshTables.length === PRODUCTION_TABLE_IDS.length
+        && freshTableIds.size === PRODUCTION_TABLE_IDS.length
+        && PRODUCTION_TABLE_IDS.every((tableId) => freshTableIds.has(tableId))
+      if (production && !hasCompleteProductionTables) {
+        throw new Error('fresh complete cloud snapshot is required before latest prediction refresh')
+      }
+      if (freshTables.length === 0) return { refreshed: false, empty: true }
+      const previousTableById = new Map(state.snapshot().tables.map((table) => [
+        canonicalProductionTableId(table?.tableId), table,
+      ]))
+      const normalizedFreshRounds = new Map()
+      for (const table of freshTables) {
+        const tableId = canonicalProductionTableId(table?.tableId)
+        const roundText = table?.round == null ? '' : String(table.round).trim()
+        if (!/^\d+$/.test(roundText)) {
+          throw new Error('fresh cloud table round must be a non-negative integer')
+        }
+        const round = Number(roundText)
+        if (!Number.isSafeInteger(round)) {
+          throw new Error('fresh cloud table round must be a non-negative integer')
+        }
+        const previous = previousTableById.get(tableId)
+        const previousShoeText = previous?.shoe == null ? '' : String(previous.shoe).trim()
+        const freshShoeText = table?.shoe == null ? '' : String(table.shoe).trim()
+        const previousNumericShoe = numericShoe(previousShoeText)
+        const freshNumericShoe = numericShoe(freshShoeText)
+        if (previousNumericShoe != null && freshNumericShoe != null && freshNumericShoe < previousNumericShoe) {
+          throw new Error('fresh cloud table shoe regression is not refreshable')
+        }
+        if (previous && previousShoeText === freshShoeText
+          && Number.isSafeInteger(Number(previous?.round)) && round < Number(previous.round)) {
+          throw new Error('fresh cloud table round regression is not claimable')
+        }
+        normalizedFreshRounds.set(tableId, round)
+      }
+      await tableUpdateWorkContext.run({ suppressPredictionWork: true }, async () => {
+        state.setTables(mergeMonotonicTableScreens(state.snapshot().tables, freshTables))
+      })
+      const latestPredictionSignature = JSON.stringify(freshTables.map((table) => [
+        canonicalProductionTableId(table?.tableId),
+        String(table?.shoe ?? ''),
+        normalizedFreshRounds.get(canonicalProductionTableId(table?.tableId)),
+      ]).sort((left, right) => left[0].localeCompare(right[0])))
+      if (!(production && isDurablePredictionIssuanceRequired())) {
+        lastSuccessfulLatestPredictionSignature = latestPredictionSignature
+        return { refreshed: true, durableRequired: false }
+      }
+      if (latestPredictionSignature === lastSuccessfulLatestPredictionSignature) {
+        return { refreshed: false, unchanged: true }
+      }
+      if (beforeClaim) setCaptureOutboxPhase('fresh_prediction')
+      const actionableFreshTables = freshTables.filter((table) => (
+        Number(normalizedFreshRounds.get(canonicalProductionTableId(table?.tableId))) > 0
+      ))
+      const freshPredictionResults = await Promise.allSettled(actionableFreshTables.map((table) => (
+        reconcileThenResolveLatestOutboxPrediction(table)
+      )))
+      const failedFreshPrediction = freshPredictionResults.find((result) => result.status === 'rejected')
+      if (failedFreshPrediction) throw failedFreshPrediction.reason
+      if (freshPredictionResults.some((result) => (
+        result.status !== 'fulfilled'
+        || !result.value
+        || result.value.strategyVersion !== ALL_MT_EQUAL_STRATEGY_VERSION
+        || !isLatestObservedPredictionTarget(result.value)
+      ))) {
+        throw new Error('latest actionable cloud tables require durable v105 predictions before latest prediction refresh')
+      }
+      lastSuccessfulLatestPredictionSignature = latestPredictionSignature
+      return { refreshed: true, predictions: freshPredictionResults.length }
+    })().finally(() => {
+      latestPredictionRefreshPromise = null
+    })
+    return latestPredictionRefreshPromise
+  }
+
   function drainCaptureOutbox() {
     if (!resolvedCaptureOutboxConsumerEnabled) return Promise.resolve()
     if (outboxDrainPromise) return outboxDrainPromise
@@ -756,68 +858,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       let shouldContinue = false
       let nextWakeDelayMs = null
       try {
-        if (supabaseClient?.configured === true && typeof supabaseClient.getLatestCloudTableSnapshot === 'function') {
-          setCaptureOutboxPhase('fresh_screen')
-          const freshSnapshot = await readLatestCloudSnapshot({ requireFresh: true })
-          const freshTables = Array.isArray(freshSnapshot?.tables) ? freshSnapshot.tables : []
-          const freshTableIds = new Set(freshTables.map((table) => canonicalProductionTableId(table?.tableId)))
-          const freshSnapshotTimestamp = freshSnapshot?.snapshot_at ?? freshSnapshot?.created_at ?? freshSnapshot?.updated_at
-          const hasFreshSnapshotTimestamp = isFreshCloudTimestamp(freshSnapshotTimestamp, 120000)
-          const hasCompleteProductionTables = hasFreshSnapshotTimestamp
-            && freshTables.length === PRODUCTION_TABLE_IDS.length
-            && freshTableIds.size === PRODUCTION_TABLE_IDS.length
-            && PRODUCTION_TABLE_IDS.every((tableId) => freshTableIds.has(tableId))
-          if (production && !hasCompleteProductionTables) {
-            throw new Error('fresh complete cloud snapshot is required before capture outbox claim')
-          }
-          if (freshTables.length > 0) {
-            const previousTableById = new Map(state.snapshot().tables.map((table) => [
-              canonicalProductionTableId(table?.tableId), table,
-            ]))
-            const normalizedFreshRounds = new Map()
-            for (const table of freshTables) {
-              const tableId = canonicalProductionTableId(table?.tableId)
-              const roundText = table?.round == null ? '' : String(table.round).trim()
-              if (!/^\d+$/.test(roundText)) {
-                throw new Error('fresh cloud table round must be a non-negative integer')
-              }
-              const round = Number(roundText)
-              if (!Number.isSafeInteger(round)) {
-                throw new Error('fresh cloud table round must be a non-negative integer')
-              }
-              const previous = previousTableById.get(tableId)
-              if (previous && String(previous?.shoe ?? '') === String(table?.shoe ?? '')
-                && Number.isSafeInteger(Number(previous?.round)) && round < Number(previous.round)) {
-                throw new Error('fresh cloud table round regression is not claimable')
-              }
-              normalizedFreshRounds.set(tableId, round)
-            }
-            await tableUpdateWorkContext.run({ suppressPredictionWork: true }, async () => {
-              state.setTables(mergeMonotonicTableScreens(state.snapshot().tables, freshTables))
-            })
-            if (production && isDurablePredictionIssuanceRequired()) {
-              setCaptureOutboxPhase('fresh_prediction')
-              const actionableFreshTables = freshTables.filter((table) => (
-                Number(normalizedFreshRounds.get(canonicalProductionTableId(table?.tableId))) > 0
-              ))
-              const freshPredictionResults = await Promise.allSettled(actionableFreshTables.map((table) => (
-                reconcileThenResolveLatestOutboxPrediction(table)
-              )))
-              const failedFreshPrediction = freshPredictionResults.find((result) => result.status === 'rejected')
-              if (failedFreshPrediction) throw failedFreshPrediction.reason
-              if (freshPredictionResults.some((result) => (
-                result.status !== 'fulfilled'
-                || !result.value
-                || result.value.strategyVersion !== ALL_MT_EQUAL_STRATEGY_VERSION
-                || !isLatestObservedPredictionTarget(result.value)
-              ))) {
-                throw new Error('latest actionable cloud tables require durable v105 predictions before capture outbox claim')
-              }
-            }
-          }
-        } else if (production) {
-          throw new Error('fresh cloud snapshot reader is required before capture outbox claim')
-        }
+        await refreshLatestDurablePredictions({ beforeClaim: true })
         setCaptureOutboxPhase('claim')
         const batchEnabled = typeof supabaseClient?.completeCaptureOutboxBatch === 'function'
           && typeof supabaseClient?.failCaptureOutboxBatch === 'function'
@@ -2343,6 +2384,16 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     requestTablesBroadcast(true)
     res.on('close', () => { streamClients.delete(client); stopStreamTimerIfIdle() })
   }
+  function ensureLatestPredictionRefreshTimer() {
+    if (latestPredictionRefreshTimer || latestPredictionRefreshStopping || !resolvedCaptureOutboxConsumerEnabled) return
+    latestPredictionRefreshTimer = setInterval(() => {
+      void refreshLatestDurablePredictions().catch((error) => {
+        state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+      })
+    }, resolvedLatestPredictionRefreshMs)
+    latestPredictionRefreshTimer.unref?.()
+  }
+
   const listenHost = host ?? (deployConfig.deployMode === 'cloud' ? '0.0.0.0' : '127.0.0.1')
 
   return {
@@ -2350,6 +2401,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     server,
     async start() {
       tablesBroadcastStopping = false
+      latestPredictionRefreshStopping = false
       const listeningServer = await new Promise((resolve) => server.listen(port, listenHost, () => resolve(server)))
       if (requireVerifiedStrategy && supabaseClient?.configured === true) {
         try {
@@ -2377,6 +2429,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         else mtClient.connect()
       }
       if (resolvedCaptureOutboxConsumerEnabled) {
+        ensureLatestPredictionRefreshTimer()
         void drainCaptureOutbox().catch((error) => {
           state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
         })
@@ -2385,6 +2438,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     },
     async stop() {
       tablesBroadcastStopping = true
+      latestPredictionRefreshStopping = true
+      if (latestPredictionRefreshTimer) {
+        clearInterval(latestPredictionRefreshTimer)
+        latestPredictionRefreshTimer = null
+      }
       tablesBroadcastPending = false
       tablesBroadcastForcePending = false
       if (streamTimer) {
@@ -2417,7 +2475,10 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       } catch {}
       try {
         await withDeadline(
-          outboxDrainPromise?.catch(() => {}) ?? Promise.resolve(),
+          Promise.all([
+            outboxDrainPromise?.catch(() => {}) ?? Promise.resolve(),
+            latestPredictionRefreshPromise?.catch(() => {}) ?? Promise.resolve(),
+          ]),
           resolvedServiceShutdownDeadlineMs,
           'capture outbox shutdown deadline exceeded',
         )
@@ -2430,6 +2491,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       return handle(method, url, body, headers)
     },
     drainCaptureOutbox,
+    refreshLatestDurablePredictions,
     waitForCaptureOutboxIdle,
     waitForServiceWorkIdle: async () => {
       await serviceWorkScheduler.waitForIdle()

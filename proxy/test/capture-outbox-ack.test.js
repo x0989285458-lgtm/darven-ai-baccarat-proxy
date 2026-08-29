@@ -1033,6 +1033,100 @@ test('production consumer restores all latest ten-table predictions before claim
   await app.stop()
 })
 
+test('latest prediction refresh advances while a claimed backlog batch is still completing', async () => {
+  let currentRound = 7
+  let claimed = false
+  let completeStarted
+  let completeFailed
+  let releaseComplete
+  const completeStartedGate = new Promise((resolve, reject) => { completeStarted = resolve; completeFailed = reject })
+  const completeGate = new Promise((resolve) => { releaseComplete = resolve })
+  const issuedTargets = []
+  const snapshotAt = () => new Date(Date.now() - 500).toISOString()
+  const currentTables = () => PRODUCTION_TABLE_IDS.map((tableId) => ({
+    tableId, shoe: 94, round: currentRound, sourceUpdatedAt: snapshotAt(),
+    beadPlateRaw: '01020102010102', bigRoadRaw: 'BPBPBPB',
+  }))
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: true,
+    memberAuthRequired: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    latestPredictionRefreshMs: 10,
+    port: 0,
+    supabaseClient: {
+      configured: true,
+      getRuntimeStatus() { return { ready: true, degraded: false } },
+      async getLatestCloudTableSnapshot() {
+        return { session_id: 'cloud-live-refresh', snapshot_at: snapshotAt(), capture_source: 'cloud_browser', tables: currentTables() }
+      },
+      async reconcilePredictionLifecycle() {},
+      async readIssuedPrediction() { return null },
+      async issuePrediction(candidate) {
+        issuedTargets.push(`${candidate.targetTableId}:${candidate.targetRound}`)
+        return { ...candidate, predictionId: `pid-${candidate.targetTableId}-${candidate.targetRound}`, issuedAt: snapshotAt() }
+      },
+      async claimCaptureOutbox({ limit }) {
+        assert.equal(limit, 30)
+        if (claimed) return []
+        claimed = true
+        return Array.from({ length: 30 }, (_, index) => {
+          const tableId = PRODUCTION_TABLE_IDS[index % PRODUCTION_TABLE_IDS.length]
+          const finalRound = 5 + Math.floor(index / PRODUCTION_TABLE_IDS.length)
+          return claimedRow(68 + index, {
+            payload: {
+              work: {
+                ...envelope().snapshot,
+                tables: [{ ...currentTables().find((table) => table.tableId === tableId), round: finalRound }],
+                rounds: [{ ...envelope().snapshot.rounds[0], tableId, shoe: 94, round: finalRound }],
+              },
+            },
+          })
+        })
+      },
+      async completeCaptureOutboxBatch({ claims }) {
+        assert.equal(claims.length, 30)
+        completeStarted()
+        await completeGate
+        return { completed: true, count: claims.length }
+      },
+      async failCaptureOutboxBatch({ error }) { completeFailed(new Error(String(error))); return { failed: true, count: 30 } },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 30, error: 0, dead_letter: 0, next_wakeup_at: null } },
+    },
+    v104FormalRuntime: {
+      async start() {},
+      snapshot() { return { status: 'ready' } },
+      latestIssuance() { return null },
+      async buildPrediction(table) {
+        return {
+          targetTableId: table.tableId, targetShoe: String(table.shoe), targetRound: Number(table.round) + 1,
+          strategyVersion: 'v105', predictionTiming: 'pre_result_context', predictedResult: 'banker', sameSideStreak: 2,
+          sidePredictions: { tie: 10, superSix: 10, bankerPair: 10, playerPair: 10, bankerDragon: 10, playerDragon: 10 },
+          sideActions: { tie: false, superSix: false, bankerPair: false, playerPair: false, bankerDragon: false, playerDragon: false },
+        }
+      },
+      recordIssuance() {},
+      recordSettlement() {},
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot({ tables }) { return { tables } } },
+  })
+
+  await app.start()
+  try {
+    await completeStartedGate
+    currentRound = 8
+    await waitFor(() => issuedTargets.includes('BAG01:9'), 2_000)
+    await delay(50)
+    assert.equal(issuedTargets.filter((identity) => identity === 'BAG01:9').length, 1)
+  } finally {
+    releaseComplete()
+    await app.waitForCaptureOutboxIdle()
+    await app.stop()
+  }
+})
+
 test('production consumer does not block backlog claim for zero-history new-shoe tables', async () => {
   let claims = 0
   let issues = 0
@@ -1070,12 +1164,14 @@ for (const invalidCase of [
   { name: 'null round', round: null, primeRound: null },
   { name: 'negative round', round: -1, primeRound: null },
   { name: 'same-shoe round regression', round: 0, primeRound: 7 },
+  { name: 'cross-shoe regression', shoe: 91, round: 8, primeShoe: 92, primeRound: 7 },
+  { name: 'large cross-shoe regression', shoe: '9007199254740993', round: 8, primeShoe: '9007199254740994', primeRound: 7 },
 ]) {
   test(`production consumer rejects ${invalidCase.name} before backlog claim`, async () => {
     let claims = 0
     const snapshotAt = new Date(Date.now() - 1_000).toISOString()
     const tables = PRODUCTION_TABLE_IDS.map((tableId) => ({
-      tableId, shoe: 92, round: tableId === 'BAG10' ? invalidCase.round : 7, sourceUpdatedAt: snapshotAt,
+      tableId, shoe: invalidCase.shoe ?? 92, round: tableId === 'BAG10' ? invalidCase.round : 7, sourceUpdatedAt: snapshotAt,
     }))
     const app = createApp({
       autoConnect: false,
@@ -1096,12 +1192,12 @@ for (const invalidCase of [
     })
     if (invalidCase.primeRound != null) {
       app.state.setTables(PRODUCTION_TABLE_IDS.map((tableId) => ({
-        tableId, shoe: 92, round: invalidCase.primeRound, sourceUpdatedAt: snapshotAt,
+        tableId, shoe: invalidCase.primeShoe ?? 92, round: invalidCase.primeRound, sourceUpdatedAt: snapshotAt,
       })))
       await app.waitForServiceWorkIdle()
     }
 
-    await assert.rejects(app.drainCaptureOutbox(), /round must be a non-negative integer|round regression is not claimable/)
+    await assert.rejects(app.drainCaptureOutbox(), /round must be a non-negative integer|round regression is not claimable|shoe regression is not refreshable/)
     assert.equal(claims, 0)
     await app.stop()
   })
@@ -2835,7 +2931,7 @@ test('formal deadline waits for the underlying work to settle before failure ACK
   let failureAckWhileFormalActive = false
   const completed = []
   const app = createApp({
-    autoConnect: false, outboxWorkDeadlineMs: 50, outboxBackoffMs: 1,
+    autoConnect: false, outboxWorkDeadlineMs: 1000, outboxBackoffMs: 1,
     supabaseClient: {
       configured: true,
       async claimCaptureOutbox() {
@@ -2865,7 +2961,7 @@ test('formal deadline waits for the underlying work to settle before failure ACK
         const call = formalCalls
         activeFormal += 1
         maxActiveFormal = Math.max(maxActiveFormal, activeFormal)
-        if (call === 1) await delay(150)
+        if (call === 1) await delay(3000)
         activeFormal -= 1
         return { tables }
       },
