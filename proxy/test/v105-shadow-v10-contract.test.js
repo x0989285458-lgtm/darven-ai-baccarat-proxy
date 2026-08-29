@@ -132,6 +132,42 @@ test('V10 persists exact synchronized rank-ledger evidence for independent DB ve
   })
 })
 
+test('V10 history identity projection does not deep-clone every durable history row', async () => {
+  const { buildV105ShadowV10Prediction } = await import('../src/v105-shadow-v10-contract.js')
+  const historyRows = Array.from({ length: 100 }, (_, index) => ({
+    main70LargeHistoryMarker: true,
+    table_id: 'BAG01',
+    shoe_no: '105',
+    round_no: index + 1,
+    strategy_version: 'v105',
+    strategyVersion: 'v105',
+    prediction_timing: 'pre_result_context',
+    predicted_result: index % 2 === 0 ? 'banker' : 'player',
+    actual_result: index % 2 === 0 ? 'banker' : 'player',
+    prediction_payload: {
+      strategyVersion: 'v105',
+      releaseCandidate: 'v105',
+      nestedEvidence: { values: Array.from({ length: 64 }, (__, valueIndex) => `${index}:${valueIndex}`) },
+    },
+  }))
+  const before = structuredClone(historyRows)
+  const nativeStructuredClone = globalThis.structuredClone
+  let fullHistoryRowCloneCalls = 0
+  globalThis.structuredClone = (value, options) => {
+    if (value?.main70LargeHistoryMarker === true) fullHistoryRowCloneCalls += 1
+    return nativeStructuredClone(value, options)
+  }
+  try {
+    const prediction = buildV105ShadowV10Prediction(baseTable, historyRows)
+    assert.equal(prediction.strategyVersion, VERSION)
+  } finally {
+    globalThis.structuredClone = nativeStructuredClone
+  }
+
+  assert.equal(fullHistoryRowCloneCalls, 0)
+  assert.deepEqual(historyRows, before)
+})
+
 test('V10 settlement accepts verified Final only for the V10 identity', async () => {
   const { buildV105ShadowV10Prediction, buildV105ShadowV10Settlement } = await import('../src/v105-shadow-v10-contract.js')
   const prediction = buildV105ShadowV10Prediction(baseTable)

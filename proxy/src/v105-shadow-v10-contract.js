@@ -121,11 +121,11 @@ function directionScore(direction) {
 
 function mapHistory(rows) {
   return (Array.isArray(rows) ? rows : []).map((row) => ({
-    ...structuredClone(row),
+    ...row,
     strategy_version: V105_SHADOW_V9_VERSION,
     strategyVersion: V105_SHADOW_V9_VERSION,
     prediction_payload: row?.prediction_payload ? {
-      ...structuredClone(row.prediction_payload),
+      ...row.prediction_payload,
       strategyVersion: V105_SHADOW_V9_VERSION,
       releaseCandidate: V105_SHADOW_V9_VERSION,
     } : row?.prediction_payload,

@@ -340,7 +340,7 @@ export function resolveProductionConcurrency(env = process.env) {
   }
 }
 
-export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 45000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), outboxCoalesceMs = process.env.CAPTURE_OUTBOX_COALESCE_MS ?? 1000, captureOutboxBatchLimit = process.env.CAPTURE_OUTBOX_BATCH_LIMIT ?? 30, captureOutboxConsumerEnabled = process.env.CAPTURE_OUTBOX_CONSUMER_ENABLED ?? true, captureOutboxPollMs = process.env.CAPTURE_OUTBOX_POLL_MS ?? 0, latestPredictionRefreshMs = process.env.LATEST_PREDICTION_REFRESH_MS ?? 1000, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionSecret = process.env.MEMBER_SESSION_SECRET, adminSessionSecret = process.env.ADMIN_SESSION_SECRET || memberSessionSecret, adminSessionTtlMs: requestedAdminSessionTtlMs = Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionValidationTtlMs = Number(process.env.MEMBER_SESSION_VALIDATION_TTL_MS ?? 0), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), streamHeartbeatMs = Number(process.env.STREAM_HEARTBEAT_MS ?? 3000), serviceShutdownDeadlineMs = 5000, fatalHandler = null, fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v104FormalRuntime = null, dailyMemoryRollover = null, requireFencedIngest = process.env.REQUIRE_FENCED_INGEST === 'true', sourceFenceStore = null } = {}) {
+export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 45000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), outboxCoalesceMs = process.env.CAPTURE_OUTBOX_COALESCE_MS ?? 1000, captureOutboxBatchLimit = process.env.CAPTURE_OUTBOX_BATCH_LIMIT ?? 30, captureOutboxConsumerEnabled = process.env.CAPTURE_OUTBOX_CONSUMER_ENABLED ?? true, captureOutboxPollMs = process.env.CAPTURE_OUTBOX_POLL_MS ?? 0, latestPredictionRefreshMs = process.env.LATEST_PREDICTION_REFRESH_MS ?? 1000, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionSecret = process.env.MEMBER_SESSION_SECRET, adminSessionSecret = process.env.ADMIN_SESSION_SECRET || memberSessionSecret, adminSessionTtlMs: requestedAdminSessionTtlMs = Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionValidationTtlMs = Number(process.env.MEMBER_SESSION_VALIDATION_TTL_MS ?? 0), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), streamHeartbeatMs = Number(process.env.STREAM_HEARTBEAT_MS ?? 3000), livePredictionReadWaitMs = process.env.LIVE_PREDICTION_READ_WAIT_MS ?? 1000, serviceShutdownDeadlineMs = 5000, fatalHandler = null, fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v104FormalRuntime = null, pendingPredictionStore = null, dailyMemoryRollover = null, requireFencedIngest = process.env.REQUIRE_FENCED_INGEST === 'true', sourceFenceStore = null } = {}) {
   const ingestSourceFence = sourceFenceStore ?? createInMemoryIngestSourceFence()
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
@@ -374,6 +374,14 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     || resolvedLatestPredictionRefreshMs > 60_000) {
     throw new Error('latest prediction refresh interval must be a safe integer from 10 through 60000 milliseconds')
   }
+  const livePredictionReadWaitText = typeof livePredictionReadWaitMs === 'string' ? livePredictionReadWaitMs.trim() : null
+  const resolvedLivePredictionReadWaitMs = Number(livePredictionReadWaitMs)
+  if (livePredictionReadWaitText === ''
+    || !Number.isSafeInteger(resolvedLivePredictionReadWaitMs)
+    || resolvedLivePredictionReadWaitMs < 25
+    || resolvedLivePredictionReadWaitMs > 5000) {
+    throw new Error('live prediction read wait must be a safe integer from 25 through 5000 milliseconds')
+  }
   const strictRealCardRounds = process.env.REQUIRE_REAL_CARD_ROUNDS !== 'false'
   const adminSessions = new Map()
   const adminSessionKey = deriveAdminSessionKey(adminSessionSecret)
@@ -395,11 +403,12 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   let outboxRetryCount = 0
   let outboxHealthRetryCount = 0
   const attemptedFailureAcks = new Set()
-  const pendingPredictions = new Map()
+  const pendingPredictions = pendingPredictionStore instanceof Map ? pendingPredictionStore : new Map()
 
   const preparingPredictionPromises = new Map()
   const issuingPredictionPromises = new Map()
   const readingIssuedPredictionPromises = new Map()
+  const liveIssuedPredictionReadPromises = new Map()
   const issuedPredictionReadRetryAt = new Map()
   const issuanceRetryAt = new Map()
   const expiredPredictionKeys = new Set()
@@ -1685,20 +1694,32 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     return isFreshCloudTimestamp(snapshot?.snapshot_at ?? snapshot?.created_at ?? snapshot?.updated_at)
   }
 
+  let latestCloudSnapshotReadPromise = null
   async function readLatestCloudSnapshot({ requireFresh = false } = {}) {
     if (!supabaseClient?.configured || typeof supabaseClient.getLatestCloudTableSnapshot !== 'function') return null
+    if (!latestCloudSnapshotReadPromise) {
+      const read = Promise.resolve()
+        .then(() => supabaseClient.getLatestCloudTableSnapshot())
+        .catch((error) => {
+          state.setStatus({ cloudReadStatus: 'error', cloudReadError: error?.message ?? String(error) })
+          return null
+        })
+        .finally(() => {
+          if (latestCloudSnapshotReadPromise === read) latestCloudSnapshotReadPromise = null
+        })
+      latestCloudSnapshotReadPromise = read
+    }
     try {
-      const snapshot = await supabaseClient.getLatestCloudTableSnapshot()
+      const snapshot = await latestCloudSnapshotReadPromise
       if (!snapshot || !Array.isArray(snapshot.tables)) return null
       if (!isLiveCloudSnapshotUsable(snapshot, requireFresh)) return null
       return snapshot
-    } catch (error) {
-      state.setStatus({ cloudReadStatus: 'error', cloudReadError: error?.message ?? String(error) })
+    } catch {
       return null
     }
   }
 
-  async function readBestTables({ includePrediction = true } = {}) {
+  async function readBestTables({ includePrediction = true, predictionWillBeBroadcast = false } = {}) {
     const localSnapshot = state.snapshot()
     const localTables = localSnapshot.tables
     const localTablesAreFresh = localTables.length > 0
@@ -1706,7 +1727,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       && now() - tablesReceivedAtMs <= CLOUD_SNAPSHOT_MAX_AGE_MS
     if (localTablesAreFresh) {
       const actionable = now() - tablesReceivedAtMs <= actionablePredictionTtlMs
-      return includePrediction ? Promise.all(localTables.map((table) => withLivePrediction(table, actionable))) : localTables
+      return includePrediction
+        ? Promise.all(localTables.map((table) => withLivePrediction(table, actionable, predictionWillBeBroadcast)))
+        : localTables
     }
     const cloudSnapshot = await readLatestCloudSnapshot({ requireFresh: true })
     if (localTables.length === 0 && tablesReceivedAtMs > 0) {
@@ -1726,7 +1749,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         if (!Number.isFinite(durableSnapshotAtMs) || durableSnapshotAtMs <= localSourceAtMs) return []
       }
     }
-    return includePrediction ? Promise.all((cloudSnapshot?.tables ?? []).map((table) => withLivePrediction(table))) : (cloudSnapshot?.tables ?? [])
+    return includePrediction
+      ? Promise.all((cloudSnapshot?.tables ?? []).map((table) => withLivePrediction(table, true, predictionWillBeBroadcast)))
+      : (cloudSnapshot?.tables ?? [])
   }
 
   async function ensureRecentPerformanceReady() {
@@ -1971,10 +1996,13 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
   }
 
-  function startIssuedPredictionRead(table, targetRound, key, durableIssuanceRequired) {
+  function startIssuedPredictionRead(table, targetRound, key, durableIssuanceRequired, {
+    bypassBackoff = false,
+    deferMissingBackoff = false,
+  } = {}) {
     if (readingIssuedPredictionPromises.has(key)) return readingIssuedPredictionPromises.get(key)
     const retryAt = Number(issuedPredictionReadRetryAt.get(key) ?? 0)
-    if (retryAt > now()) return Promise.resolve(null)
+    if (!bypassBackoff && retryAt > now()) return Promise.resolve(null)
     issuedPredictionReadRetryAt.delete(key)
     if (typeof supabaseClient?.readIssuedPrediction !== 'function') return Promise.resolve(null)
     let readOperation
@@ -1990,6 +2018,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     }
     const read = readOperation
       .then((candidate) => {
+        if (readingIssuedPredictionPromises.get(key) !== read) return null
+        if (candidate === null) {
+          if (!deferMissingBackoff) rememberIssuedPredictionReadBackoff(key)
+          return null
+        }
         if (!isExactScreenPrediction(candidate, table, targetRound, durableIssuanceRequired)) {
           rememberIssuedPredictionReadBackoff(key)
           return null
@@ -1999,20 +2032,84 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           ...candidate,
           createdAtMs: Number(candidate.createdAtMs ?? Date.parse(candidate.issuedAt)) || now(),
         }))
+        const current = pendingPredictions.get(key)
+        if (current) {
+          return isExactScreenPrediction(current, table, targetRound, durableIssuanceRequired)
+            && !isPendingPredictionExpired(current)
+            ? current
+            : null
+        }
         pendingPredictions.set(key, exact)
         return exact
       })
       .catch((error) => {
+        if (readingIssuedPredictionPromises.get(key) !== read) return null
         rememberIssuedPredictionReadBackoff(key)
         state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
         return null
       })
-      .finally(() => readingIssuedPredictionPromises.delete(key))
+      .finally(() => {
+        if (readingIssuedPredictionPromises.get(key) === read) {
+          readingIssuedPredictionPromises.delete(key)
+        }
+      })
     readingIssuedPredictionPromises.set(key, read)
     return read
   }
 
-  async function withLivePrediction(table, actionable = true) {
+  function waitForPredictionReadUntil(readPromise, deadlineAt) {
+    const remainingMs = Math.max(0, deadlineAt - Date.now())
+    if (remainingMs === 0) return Promise.resolve(null)
+    return new Promise((resolve) => {
+      let settled = false
+      const timer = setTimeout(() => {
+        settled = true
+        resolve(null)
+      }, remainingMs)
+      void readPromise.then((value) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolve(value)
+      })
+    })
+  }
+
+  function readLiveIssuedPredictionWithinWait(table, targetRound, key, durableIssuanceRequired) {
+    if (liveIssuedPredictionReadPromises.has(key)) return liveIssuedPredictionReadPromises.get(key)
+    const retryAt = Number(issuedPredictionReadRetryAt.get(key) ?? 0)
+    if (retryAt > now()) return Promise.resolve(null)
+    issuedPredictionReadRetryAt.delete(key)
+    const deadlineAt = Date.now() + resolvedLivePredictionReadWaitMs
+    const poll = (async () => {
+      let readAttempt = 0
+      while (true) {
+        if (Date.now() >= deadlineAt) {
+          rememberIssuedPredictionReadBackoff(key)
+          return null
+        }
+        readAttempt += 1
+        const issuedPredictionRead = startIssuedPredictionRead(table, targetRound, key, durableIssuanceRequired, {
+          bypassBackoff: true,
+          deferMissingBackoff: true,
+        })
+        const exact = await waitForPredictionReadUntil(issuedPredictionRead, deadlineAt)
+        if (exact) return exact
+        if (Number(issuedPredictionReadRetryAt.get(key) ?? 0) > now()) return null
+        const remainingMs = deadlineAt - Date.now()
+        if (remainingMs <= 0) {
+          rememberIssuedPredictionReadBackoff(key)
+          return null
+        }
+        const retryDelayMs = Math.min(50 * (2 ** Math.min(readAttempt - 1, 4)), remainingMs)
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
+      }
+    })().finally(() => liveIssuedPredictionReadPromises.delete(key))
+    liveIssuedPredictionReadPromises.set(key, poll)
+    return poll
+  }
+
+  async function withLivePrediction(table, actionable = true, predictionWillBeBroadcast = false) {
     if (!actionable || table?.tableId == null || table?.shoe == null || table?.round == null) {
       return { ...table, buildVersion: BUILD_VERSION, prediction: null }
     }
@@ -2033,14 +2130,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       exact = null
     }
     if (!exact && durableIssuanceRequired) {
-      const issuedPredictionRead = startIssuedPredictionRead(table, targetRound, key, durableIssuanceRequired)
-      exact = await Promise.race([
-        issuedPredictionRead,
-        new Promise((resolve) => setTimeout(() => resolve(null), 50)),
-      ])
-      if (!exact) {
-        void issuedPredictionRead.then((readBack) => requestDurablePredictionBroadcast(readBack))
-      }
+      exact = await readLiveIssuedPredictionWithinWait(table, targetRound, key, durableIssuanceRequired)
+      // Suppress only when this exact read is part of the full payload currently
+      // being built. Another request must still enqueue a force broadcast even if
+      // an unrelated tables broadcast happens to be in flight.
+      if (exact && !predictionWillBeBroadcast) requestDurablePredictionBroadcast(exact)
     }
     if (!exact && !durableIssuanceRequired && !expiredPredictionKeys.has(key) && isPredictionRuntimeReady() && recentPerformanceReady) {
       const tablePerformance = recentTablePerformance.summary(table.tableId)
@@ -2297,7 +2391,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       const authorizedClients = await authorizedStreamClients()
       if (!authorizedClients.length) return
       const versionAtStart = streamTablesVersion
-      const tables = await readBestTables()
+      const tables = await readBestTables({ predictionWillBeBroadcast: true })
       const signature = JSON.stringify(tables)
       const payload = { tables, updatedAt: new Date().toISOString(), tableCount: tables.length }
       streamLastTableCount = tables.length

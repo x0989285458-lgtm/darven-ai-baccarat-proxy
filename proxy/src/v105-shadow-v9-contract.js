@@ -94,11 +94,11 @@ function directionScore(direction) {
 
 function mapHistory(rows, strategyVersion) {
   return rows.map((row) => ({
-    ...structuredClone(row),
+    ...row,
     strategy_version: strategyVersion,
     strategyVersion,
     prediction_payload: row?.prediction_payload ? {
-      ...structuredClone(row.prediction_payload), strategyVersion, releaseCandidate: strategyVersion,
+      ...row.prediction_payload, strategyVersion, releaseCandidate: strategyVersion,
     } : row?.prediction_payload,
   }))
 }

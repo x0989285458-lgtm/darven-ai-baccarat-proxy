@@ -283,7 +283,7 @@ test('fast durable prediction read-back stays inside the current full broadcast'
   }
 })
 
-test('slow durable prediction read-back triggers an immediate full tables broadcast', async () => {
+test('bounded durable prediction read-back stays inside the initial full tables broadcast', async () => {
   const issuedAt = new Date().toISOString()
   const exact = {
     ...buildLivePrediction({ ...table, round: 19 }),
@@ -309,9 +309,9 @@ test('slow durable prediction read-back triggers an immediate full tables broadc
   try {
     const initial = await readSseEvent(reader)
     assert.equal(initial.event, 'tables')
-    assert.equal(initial.data.tables[0].prediction, null)
-    const ready = await readSseEventUntil(reader, (event) => event.event === 'tables' && event.data?.tables?.[0]?.prediction?.predictionId === 'slow-read-back-20')
-    assert.equal(ready.data.tables[0].prediction.predictionId, 'slow-read-back-20')
+    assert.equal(initial.data.tables[0].prediction.predictionId, 'slow-read-back-20')
+    const next = await readSseEvent(reader, 500)
+    assert.equal(next.event, 'heartbeat')
   } finally {
     controller.abort()
     await app.stop()
