@@ -53,6 +53,45 @@ function issued(candidate) {
   }
 }
 
+test('late external durable issuance is pushed by bounded SSE refresh without frontend polling', async () => {
+  const exact = issued(buildLivePrediction({ ...table, round: 19 }))
+  let durable = false
+  let reads = 0
+  const supabaseClient = {
+    configured: true,
+    readIssuedPrediction: async () => {
+      reads += 1
+      return durable ? exact : null
+    },
+    issuePrediction: async () => { assert.fail('consumer-disabled proxy must stay read-only') },
+  }
+  const app = createApp({
+    autoConnect: false,
+    port: 0,
+    captureOutboxConsumerEnabled: false,
+    livePredictionReadWaitMs: 50,
+    streamHeartbeatMs: 5000,
+    supabaseClient,
+  })
+  app.state.setTables([table])
+  await app.start()
+  const controller = new AbortController()
+  const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal })).body.getReader()
+
+  try {
+    const initial = await readSseEvent(reader)
+    assert.equal(initial.event, 'tables')
+    assert.equal(initial.data.tables[0].prediction, null)
+    durable = true
+    const refreshed = await readSseEventUntil(reader, (event) => event.event === 'tables' && event.data.tables[0].prediction?.predictionId === exact.predictionId, 3500)
+    assert.equal(refreshed.data.tables[0].prediction.targetRound, table.round)
+    assert.ok(reads >= 2)
+  } finally {
+    controller.abort()
+    await app.stop()
+  }
+})
+
 test('prediction readiness does not broadcast before durable issuance completes', async () => {
   let releaseRound22
   let round22Candidate
