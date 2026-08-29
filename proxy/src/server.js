@@ -384,7 +384,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   let outboxHealthRetryCount = 0
   const attemptedFailureAcks = new Set()
   const pendingPredictions = new Map()
-  const durableSupersedingOutboxPredictions = new WeakSet()
+
   const preparingPredictionPromises = new Map()
   const issuingPredictionPromises = new Map()
   const readingIssuedPredictionPromises = new Map()
@@ -756,6 +756,28 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       let shouldContinue = false
       let nextWakeDelayMs = null
       try {
+        if (supabaseClient?.configured === true && typeof supabaseClient.getLatestCloudTableSnapshot === 'function') {
+          setCaptureOutboxPhase('fresh_screen')
+          const freshSnapshot = await readLatestCloudSnapshot({ requireFresh: true })
+          const freshTables = Array.isArray(freshSnapshot?.tables) ? freshSnapshot.tables : []
+          const freshTableIds = new Set(freshTables.map((table) => canonicalProductionTableId(table?.tableId)))
+          const freshSnapshotTimestamp = freshSnapshot?.snapshot_at ?? freshSnapshot?.created_at ?? freshSnapshot?.updated_at
+          const hasFreshSnapshotTimestamp = isFreshCloudTimestamp(freshSnapshotTimestamp, 120000)
+          const hasCompleteProductionTables = hasFreshSnapshotTimestamp
+            && freshTables.length === PRODUCTION_TABLE_IDS.length
+            && freshTableIds.size === PRODUCTION_TABLE_IDS.length
+            && PRODUCTION_TABLE_IDS.every((tableId) => freshTableIds.has(tableId))
+          if (production && !hasCompleteProductionTables) {
+            throw new Error('fresh complete cloud snapshot is required before capture outbox claim')
+          }
+          if (freshTables.length > 0) {
+            await tableUpdateWorkContext.run({ suppressPredictionWork: true }, async () => {
+              state.setTables(mergeMonotonicTableScreens(state.snapshot().tables, freshTables))
+            })
+          }
+        } else if (production) {
+          throw new Error('fresh cloud snapshot reader is required before capture outbox claim')
+        }
         setCaptureOutboxPhase('claim')
         const batchEnabled = typeof supabaseClient?.completeCaptureOutboxBatch === 'function'
           && typeof supabaseClient?.failCaptureOutboxBatch === 'function'
@@ -907,14 +929,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                 if (failedPrediction) throw failedPrediction.reason
                 return predictionResults.map((result) => result.value)
               })
-              const missingLatestPrediction = nextPredictions.some((prediction, index) => {
-                const table = predictionTables[index]
-                const latest = latestObservedScreenByTable.get(canonicalProductionTableId(table?.tableId))
-                const latestStillSameShoe = !latest || latest.shoe === String(table?.shoe ?? '')
-                return latestStillSameShoe && (!prediction
-                  || (!durableSupersedingOutboxPredictions.has(prediction)
-                    && !isLatestObservedPredictionTarget(prediction)))
-              })
+              const missingLatestPrediction = nextPredictions.some((prediction) => (
+                !prediction || !isLatestObservedPredictionTarget(prediction)
+              ))
               if (missingLatestPrediction) {
                 throw new Error('prediction issuance failed before outbox acknowledgement')
               }
@@ -1560,7 +1577,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   function isFreshCloudTimestamp(value, maxAgeMs = CLOUD_SNAPSHOT_MAX_AGE_MS) {
     const timestamp = Date.parse(value ?? '')
     if (!Number.isFinite(timestamp)) return false
-    return Date.now() - timestamp <= Math.max(1000, Number(maxAgeMs) || 120000)
+    const ageMs = Date.now() - timestamp
+    return ageMs >= -30000 && ageMs <= Math.max(1000, Number(maxAgeMs) || 120000)
   }
 
   function isLiveCloudSnapshotUsable(snapshot, requireFresh = false) {
@@ -1719,8 +1737,6 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   }
 
   async function reconcileThenResolveOutboxPrediction(table) {
-    const durableCoverage = await readDurableSupersedingOutboxPrediction(table)
-    if (durableCoverage) return durableCoverage
     const prepared = await reconcileThenSavePendingPrediction(table, { failOnReconciliationError: true })
     if (prepared) return prepared
     const currentRound = Number(table?.round)
@@ -1731,15 +1747,25 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   }
 
   async function reconcileThenResolveLatestOutboxPrediction(table) {
-    const originalShoe = String(table?.shoe ?? '')
     let candidateTable = table
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const prediction = await reconcileThenResolveOutboxPrediction(candidateTable)
-      if (prediction && durableSupersedingOutboxPredictions.has(prediction)) return prediction
-      if (prediction && isLatestObservedPredictionTarget(prediction)) return prediction
       const tableId = canonicalProductionTableId(candidateTable?.tableId)
+      const latestBefore = latestObservedScreenByTable.get(tableId)
+      if (latestBefore
+        && (latestBefore.shoe !== String(candidateTable?.shoe ?? '')
+          || latestBefore.visibleRound !== Number(candidateTable?.round))) {
+        const latestTable = state.snapshot().tables.find((item) => (
+          canonicalProductionTableId(item?.tableId) === tableId
+          && String(item?.shoe ?? '') === latestBefore.shoe
+          && Number(item?.round) === latestBefore.visibleRound
+        ))
+        if (!latestTable) return null
+        candidateTable = latestTable
+      }
+      const prediction = await reconcileThenResolveOutboxPrediction(candidateTable)
+      if (prediction && isLatestObservedPredictionTarget(prediction)) return prediction
       const latest = latestObservedScreenByTable.get(tableId)
-      if (!latest || latest.shoe !== originalShoe) return prediction
+      if (!latest) return prediction
       const latestTable = state.snapshot().tables.find((item) => (
         canonicalProductionTableId(item?.tableId) === tableId
         && String(item?.shoe ?? '') === latest.shoe
@@ -1753,44 +1779,6 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     return null
   }
 
-  async function readDurableSupersedingOutboxPrediction(table) {
-    if (typeof v104Formal?.latestIssuance !== 'function') return null
-    const tableId = canonicalProductionTableId(table?.tableId)
-    const shoe = String(table?.shoe ?? '')
-    const visibleRound = Number(table?.round)
-    if (!tableId || !shoe || !Number.isSafeInteger(visibleRound)) return null
-    const targetRound = visibleRound + 1
-    const latest = v104Formal.latestIssuance(tableId)
-    const latestTableId = canonicalProductionTableId(latest?.targetTableId)
-    const latestShoe = String(latest?.targetShoe ?? '')
-    const latestRound = Number(latest?.targetRound)
-    const latestPredictionId = String(latest?.predictionId ?? '')
-    if (latestTableId !== tableId
-      || latestShoe !== shoe
-      || !Number.isSafeInteger(latestRound)
-      || latestRound <= targetRound
-      || !latestPredictionId
-      || latest?.strategyVersion !== ALL_MT_EQUAL_STRATEGY_VERSION) return null
-    if (typeof supabaseClient?.readIssuedPrediction !== 'function') {
-      throw new Error('exact issuance read capability is unavailable for hydrated outbox coverage')
-    }
-    const issued = await supabaseClient.readIssuedPrediction({
-      tableId,
-      shoe,
-      round: latestRound,
-      strategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION,
-    }, { priority: 'outbox_prediction' })
-    if (!issued
-      || String(issued.predictionId ?? '') !== latestPredictionId
-      || canonicalProductionTableId(issued.targetTableId) !== tableId
-      || String(issued.targetShoe ?? '') !== shoe
-      || Number(issued.targetRound) !== latestRound
-      || issued.strategyVersion !== ALL_MT_EQUAL_STRATEGY_VERSION) {
-      throw new Error('exact hydrated newer issuance is required before outbox acknowledgement')
-    }
-    durableSupersedingOutboxPredictions.add(issued)
-    return issued
-  }
 
   function requestDurablePredictionBroadcast(prediction) {
     const predictionId = String(prediction?.predictionId ?? '')

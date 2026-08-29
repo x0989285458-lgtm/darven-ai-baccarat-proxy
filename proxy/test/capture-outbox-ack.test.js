@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createApp, resolveCaptureOutboxLeaseDeadlineMs } from '../src/server.js'
 
+const PRODUCTION_TABLE_IDS = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
+
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const waitFor = async (predicate, timeoutMs = 1000) => {
   const deadline = Date.now() + timeoutMs
@@ -749,7 +751,231 @@ test('external consumer acknowledges durable stale Final work without requiring 
   )
 })
 
-test('external consumer accepts stale Final work when an exact hydrated same-shoe issuance already covers a newer target', async () => {
+test('external consumer refreshes the fresh durable screen before stale cross-shoe backlog and only issues the current target', async () => {
+  let claimed = false
+  let completed = 0
+  let failed = 0
+  const issuedTargets = []
+  const nowMs = Date.now()
+  const currentSnapshotAt = new Date(nowMs - 1_000).toISOString()
+  const staleSnapshot = {
+    ...envelope().snapshot,
+    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+  }
+  const currentTable = {
+    tableId: 'BAG01', shoe: 89, round: 3, sourceUpdatedAt: currentSnapshotAt,
+    beadPlateRaw: '010201', bigRoadRaw: 'BPB',
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    now: () => nowMs,
+    supabaseClient: {
+      configured: true,
+      async getLatestCloudTableSnapshot() {
+        return {
+          session_id: 'worker-current',
+          snapshot_at: currentSnapshotAt,
+          capture_source: 'cloud_browser',
+          tables: [currentTable],
+        }
+      },
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(8, { payload: { work: staleSnapshot } })]
+      },
+      async completeCaptureOutbox() { completed += 1 },
+      async failCaptureOutbox() { failed += 1 },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async reconcilePredictionLifecycle() {},
+      async readIssuedPrediction() { return null },
+      async issuePrediction(candidate) {
+        issuedTargets.push([String(candidate.targetShoe), Number(candidate.targetRound)])
+        if (String(candidate.targetShoe) === '89' && Number(candidate.targetRound) === 4) {
+          return { ...candidate, predictionId: 'pid-current-89-4', issuedAt: '2026-08-25T16:00:09.500Z' }
+        }
+        return null
+      },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot({ tables }) { return { enabled: true, predictions: [], tables } },
+    },
+  })
+
+  await app.drainCaptureOutbox()
+  await app.waitForCaptureOutboxIdle()
+
+  assert.equal(completed, 1)
+  assert.equal(failed, 0)
+  assert.deepEqual(issuedTargets, [['89', 4]])
+  assert.deepEqual(app.state.snapshot().tables.map((table) => [String(table.shoe), Number(table.round)]), [['89', 3]])
+})
+
+test('production consumer refuses to claim backlog without a fresh complete ten-table snapshot', async () => {
+  let claims = 0
+  const snapshotAt = new Date(Date.now() - 1_000).toISOString()
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    supabaseClient: {
+      configured: true,
+      async getLatestCloudTableSnapshot() {
+        return {
+          session_id: 'worker-incomplete',
+          snapshot_at: snapshotAt,
+          capture_source: 'cloud_browser',
+          tables: [{ tableId: 'BAG01', shoe: 89, round: 3, sourceUpdatedAt: snapshotAt }],
+        }
+      },
+      async claimCaptureOutbox() { claims += 1; return [] },
+      async getCaptureOutboxHealth() { return { pending: 1, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot({ tables }) { return { tables } } },
+  })
+
+  await assert.rejects(app.drainCaptureOutbox(), /fresh complete cloud snapshot/)
+  assert.equal(claims, 0)
+  await app.stop()
+})
+
+test('production consumer rejects a ten-row snapshot that duplicates one table identity', async () => {
+  let claims = 0
+  const snapshotAt = new Date(Date.now() - 1_000).toISOString()
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    supabaseClient: {
+      configured: true,
+      async getLatestCloudTableSnapshot() {
+        return {
+          session_id: 'worker-duplicate',
+          snapshot_at: snapshotAt,
+          capture_source: 'cloud_browser',
+          tables: Array.from({ length: 10 }, (_, index) => ({
+            tableId: 'BAG01', shoe: 89, round: 3 + index, sourceUpdatedAt: snapshotAt,
+          })),
+        }
+      },
+      async claimCaptureOutbox() { claims += 1; return [] },
+      async getCaptureOutboxHealth() { return { pending: 1, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot({ tables }) { return { tables } } },
+  })
+
+  await assert.rejects(app.drainCaptureOutbox(), /fresh complete cloud snapshot/)
+  assert.equal(claims, 0)
+  await app.stop()
+})
+
+test('production consumer rejects an expired local fallback snapshot before claiming backlog', async () => {
+  let claims = 0
+  const previousMaxAge = process.env.CLOUD_SNAPSHOT_MAX_AGE_MS
+  process.env.CLOUD_SNAPSHOT_MAX_AGE_MS = '600000'
+  const expiredAt = new Date(Date.now() - 5 * 60_000).toISOString()
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    supabaseClient: {
+      configured: true,
+      async getLatestCloudTableSnapshot() {
+        return {
+          session_id: 'local-expired',
+          snapshot_at: expiredAt,
+          capture_source: 'local_chrome',
+          tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: 89, round: 3, sourceUpdatedAt: expiredAt })),
+        }
+      },
+      async claimCaptureOutbox() { claims += 1; return [] },
+      async getCaptureOutboxHealth() { return { pending: 1, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot({ tables }) { return { tables } } },
+  })
+  if (previousMaxAge == null) delete process.env.CLOUD_SNAPSHOT_MAX_AGE_MS
+  else process.env.CLOUD_SNAPSHOT_MAX_AGE_MS = previousMaxAge
+
+  await assert.rejects(app.drainCaptureOutbox(), /fresh complete cloud snapshot/)
+  assert.equal(claims, 0)
+  await app.stop()
+})
+
+test('production consumer rejects a far-future snapshot before claiming backlog', async () => {
+  let claims = 0
+  const futureAt = new Date(Date.now() + 10 * 60_000).toISOString()
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    supabaseClient: {
+      configured: true,
+      async getLatestCloudTableSnapshot() {
+        return {
+          session_id: 'cloud-future',
+          snapshot_at: futureAt,
+          capture_source: 'cloud_browser',
+          tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: 89, round: 3, sourceUpdatedAt: futureAt })),
+        }
+      },
+      async claimCaptureOutbox() { claims += 1; return [] },
+      async getCaptureOutboxHealth() { return { pending: 1, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot({ tables }) { return { tables } } },
+  })
+
+  await assert.rejects(app.drainCaptureOutbox(), /fresh complete cloud snapshot/)
+  assert.equal(claims, 0)
+  await app.stop()
+})
+
+test('production consumer claims only after a fresh exact ten-table snapshot', async () => {
+  let claims = 0
+  const snapshotAt = new Date(Date.now() - 1_000).toISOString()
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    supabaseClient: {
+      configured: true,
+      async getLatestCloudTableSnapshot() {
+        return {
+          session_id: 'cloud-current',
+          snapshot_at: snapshotAt,
+          capture_source: 'cloud_browser',
+          tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: 89, round: 3, sourceUpdatedAt: snapshotAt })),
+        }
+      },
+      async claimCaptureOutbox() { claims += 1; return [] },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot({ tables }) { return { tables } } },
+  })
+
+  await app.drainCaptureOutbox()
+  assert.equal(claims, 1)
+  await app.stop()
+})
+
+test('external consumer rejects a hydrated later-round issuance that is not the current screen target', async () => {
   let claimed = false
   let completed = 0
   let failed = 0
@@ -815,13 +1041,14 @@ test('external consumer accepts stale Final work when an exact hydrated same-sho
   await app.drainCaptureOutbox()
   await app.waitForCaptureOutboxIdle()
 
-  assert.equal(completed, 1)
-  assert.equal(failed, 0)
+  assert.equal(completed, 0)
+  assert.equal(failed, 1)
   assert.equal(issued, 0)
-  assert.ok(exactReads.some((identity) => Number(identity.round) === 30))
+  assert.equal(exactReads.some((identity) => Number(identity.round) === 30), false)
+  assert.match(app.state.snapshot().status.persistenceError, /backward candidate must not be built|prediction issuance failed before outbox acknowledgement/)
 })
 
-test('external consumer rejects hydrated newer issuance coverage when the exact durable id mismatches', async () => {
+test('external consumer rejects a non-current hydrated issuance before inspecting its durable id', async () => {
   let claimed = false
   let failed = 0
   const hydratedIssuance = {
@@ -870,7 +1097,7 @@ test('external consumer rejects hydrated newer issuance coverage when the exact 
   await app.waitForCaptureOutboxIdle()
 
   assert.equal(failed, 1)
-  assert.match(app.state.snapshot().status.persistenceError, /exact hydrated newer issuance/)
+  assert.match(app.state.snapshot().status.persistenceError, /backward candidate must not be built/)
 })
 
 test('external consumer retains stale Final lease when the newer same-shoe screen prediction is unavailable', async () => {
