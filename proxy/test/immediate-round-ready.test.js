@@ -92,6 +92,51 @@ test('late external durable issuance is pushed by bounded SSE refresh without fr
   }
 })
 
+test('ten missing identities share one bounded refresh broadcast per retry window', async () => {
+  let reads = 0
+  const tableIds = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
+  const tables = tableIds.map((tableId) => ({ ...table, tableId }))
+  const supabaseClient = {
+    configured: true,
+    readIssuedPrediction: async () => {
+      reads += 1
+      return null
+    },
+    issuePrediction: async () => { assert.fail('consumer-disabled proxy must stay read-only') },
+  }
+  const app = createApp({
+    autoConnect: false,
+    port: 0,
+    captureOutboxConsumerEnabled: false,
+    livePredictionReadWaitMs: 50,
+    streamHeartbeatMs: 5000,
+    supabaseClient,
+  })
+  app.state.setTables(tables)
+  await app.start()
+  const controller = new AbortController()
+  const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal })).body.getReader()
+
+  try {
+    let tablesEvents = 0
+    const deadline = Date.now() + 6500
+    while (Date.now() < deadline) {
+      try {
+        const event = await readSseEvent(reader, Math.max(1, deadline - Date.now()))
+        if (event.event === 'tables') tablesEvents += 1
+      } catch {
+        break
+      }
+    }
+    assert.ok(tablesEvents >= 2, `expected at least one refresh event, received ${tablesEvents}; reads=${reads}`)
+    assert.ok(tablesEvents <= 4, `expected at most one full tables event per retry window, received ${tablesEvents}`)
+    assert.ok(reads <= 60, `expected bounded coalesced exact reads, received ${reads}`)
+  } finally {
+    controller.abort()
+    await app.stop()
+  }
+})
+
 test('prediction readiness does not broadcast before durable issuance completes', async () => {
   let releaseRound22
   let round22Candidate

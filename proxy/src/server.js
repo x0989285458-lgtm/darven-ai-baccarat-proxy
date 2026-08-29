@@ -410,6 +410,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const readingIssuedPredictionPromises = new Map()
   const liveIssuedPredictionReadPromises = new Map()
   const missingPredictionRefreshes = new Map()
+  let missingPredictionRefreshTimer = null
+  let missingPredictionRefreshPromise = null
   const issuedPredictionReadRetryAt = new Map()
   const issuanceRetryAt = new Map()
   const expiredPredictionKeys = new Set()
@@ -1911,39 +1913,72 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   }
 
   function clearMissingPredictionRefresh(key) {
-    const refresh = missingPredictionRefreshes.get(key)
-    if (refresh?.timer) clearTimeout(refresh.timer)
     missingPredictionRefreshes.delete(key)
+  }
+
+  function ensureMissingPredictionRefreshTimer() {
+    if (missingPredictionRefreshTimer || missingPredictionRefreshPromise || tablesBroadcastStopping || !streamClients.size) return
+    const nextAt = Math.min(...[...missingPredictionRefreshes.values()]
+      .map((refresh) => Number(refresh.nextAt))
+      .filter(Number.isFinite))
+    if (!Number.isFinite(nextAt)) return
+    missingPredictionRefreshTimer = setTimeout(() => {
+      missingPredictionRefreshTimer = null
+      const dueAt = now()
+      const snapshotTables = state.snapshot().tables
+      const due = []
+      for (const [key, refresh] of missingPredictionRefreshes) {
+        if (!Number.isFinite(refresh.nextAt) || refresh.nextAt > dueAt + 5) continue
+        const stillCurrent = snapshotTables.some((candidate) => (
+          predictionTargetKey(candidate?.tableId, candidate?.shoe, candidate?.round) === key
+          && Number(candidate?.round) === Number(refresh.targetRound)
+        ))
+        if (!stillCurrent || dueAt >= refresh.expiresAt || refresh.attempt >= 4) {
+          clearMissingPredictionRefresh(key)
+          continue
+        }
+        refresh.nextAt = Number.POSITIVE_INFINITY
+        refresh.attempt += 1
+        due.push({ key, refresh })
+      }
+      if (!due.length || tablesBroadcastStopping || !streamClients.size) {
+        ensureMissingPredictionRefreshTimer()
+        return
+      }
+      missingPredictionRefreshPromise = Promise.all(due.map(({ key, refresh }) => (
+        startIssuedPredictionRead(refresh.table, refresh.targetRound, key, true, { bypassBackoff: true })
+      )))
+        .then(() => requestTablesBroadcast(true))
+        .finally(() => {
+          missingPredictionRefreshPromise = null
+          ensureMissingPredictionRefreshTimer()
+        })
+    }, Math.max(0, nextAt - now()))
+    missingPredictionRefreshTimer.unref?.()
   }
 
   function scheduleMissingPredictionRefresh(table, targetRound, key) {
     if (!streamClients.size || tablesBroadcastStopping) return
     let refresh = missingPredictionRefreshes.get(key)
     if (!refresh) {
-      refresh = { attempt: 0, expiresAt: Date.now() + 15000, timer: null }
+      refresh = {
+        attempt: 0,
+        expiresAt: now() + 15000,
+        nextAt: Number.POSITIVE_INFINITY,
+        table: { tableId: table.tableId, shoe: table.shoe, round: table.round },
+        targetRound,
+      }
       missingPredictionRefreshes.set(key, refresh)
     }
-    if (refresh.timer || refresh.attempt >= 4 || Date.now() >= refresh.expiresAt) {
-      if (!refresh.timer && (refresh.attempt >= 4 || Date.now() >= refresh.expiresAt)) clearMissingPredictionRefresh(key)
+    if (Number.isFinite(refresh.nextAt)) return
+    if (refresh.attempt >= 4 || now() >= refresh.expiresAt) {
+      clearMissingPredictionRefresh(key)
       return
     }
     const exponentialDelayMs = Math.max(250, resolvedLivePredictionReadWaitMs) * (2 ** refresh.attempt)
     const retryBackoffMs = Math.max(0, Number(issuedPredictionReadRetryAt.get(key) ?? 0) - now())
-    const delayMs = Math.min(4000, Math.max(exponentialDelayMs, retryBackoffMs + 10))
-    refresh.attempt += 1
-    refresh.timer = setTimeout(() => {
-      refresh.timer = null
-      const stillCurrent = state.snapshot().tables.some((candidate) => (
-        predictionTargetKey(candidate?.tableId, candidate?.shoe, candidate?.round) === key
-        && Number(candidate?.round) === Number(targetRound)
-      ))
-      if (!stillCurrent || tablesBroadcastStopping || !streamClients.size) {
-        clearMissingPredictionRefresh(key)
-        return
-      }
-      requestTablesBroadcast(true)
-    }, delayMs)
-    refresh.timer.unref?.()
+    refresh.nextAt = now() + Math.min(4000, Math.max(exponentialDelayMs, retryBackoffMs + 10))
+    ensureMissingPredictionRefreshTimer()
   }
 
   function savePendingPrediction(table) {
@@ -2596,7 +2631,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         clearInterval(streamTimer)
         streamTimer = null
       }
-      for (const key of [...missingPredictionRefreshes.keys()]) clearMissingPredictionRefresh(key)
+      if (missingPredictionRefreshTimer) {
+        clearTimeout(missingPredictionRefreshTimer)
+        missingPredictionRefreshTimer = null
+      }
+      missingPredictionRefreshes.clear()
       outboxStopping = true
       if (outboxWakeTimer) {
         clearTimeout(outboxWakeTimer)
@@ -2616,6 +2655,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           Promise.all([
             tablesBroadcastPromise?.catch(() => {}) ?? Promise.resolve(),
             streamHeartbeatPromise?.catch(() => {}) ?? Promise.resolve(),
+            missingPredictionRefreshPromise?.catch(() => {}) ?? Promise.resolve(),
           ]),
           resolvedServiceShutdownDeadlineMs,
           'tables broadcast shutdown deadline exceeded',
