@@ -383,7 +383,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   let latestPredictionRefreshPromise = null
   let latestPredictionRefreshTimer = null
   let latestPredictionRefreshStopping = false
-  let lastSuccessfulLatestPredictionSignature = null
+  const lastSuccessfulLatestPredictionSignatureByTable = new Map()
   let outboxWakeTimer = null
   let outboxWakeAtMs = null
   let outboxWakePromise = null
@@ -803,36 +803,49 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       await tableUpdateWorkContext.run({ suppressPredictionWork: true }, async () => {
         state.setTables(mergeMonotonicTableScreens(state.snapshot().tables, freshTables))
       })
-      const latestPredictionSignature = JSON.stringify(freshTables.map((table) => [
-        canonicalProductionTableId(table?.tableId),
-        String(table?.shoe ?? ''),
-        normalizedFreshRounds.get(canonicalProductionTableId(table?.tableId)),
-      ]).sort((left, right) => left[0].localeCompare(right[0])))
+      const freshPredictionSignaturesByTable = new Map(freshTables.map((table) => {
+        const tableId = canonicalProductionTableId(table?.tableId)
+        return [tableId, JSON.stringify([
+          tableId,
+          String(table?.shoe ?? ''),
+          normalizedFreshRounds.get(tableId),
+        ])]
+      }))
       if (!(production && isDurablePredictionIssuanceRequired())) {
-        lastSuccessfulLatestPredictionSignature = latestPredictionSignature
+        for (const [tableId, signature] of freshPredictionSignaturesByTable) {
+          lastSuccessfulLatestPredictionSignatureByTable.set(tableId, signature)
+        }
         return { refreshed: true, durableRequired: false }
       }
-      if (latestPredictionSignature === lastSuccessfulLatestPredictionSignature) {
+      const actionableFreshTables = freshTables.filter((table) => {
+        const tableId = canonicalProductionTableId(table?.tableId)
+        return Number(normalizedFreshRounds.get(tableId)) > 0
+          && lastSuccessfulLatestPredictionSignatureByTable.get(tableId) !== freshPredictionSignaturesByTable.get(tableId)
+      })
+      if (actionableFreshTables.length === 0) {
         return { refreshed: false, unchanged: true }
       }
       if (beforeClaim) setCaptureOutboxPhase('fresh_prediction')
-      const actionableFreshTables = freshTables.filter((table) => (
-        Number(normalizedFreshRounds.get(canonicalProductionTableId(table?.tableId))) > 0
-      ))
       const freshPredictionResults = await Promise.allSettled(actionableFreshTables.map((table) => (
         reconcileThenResolveLatestOutboxPrediction(table)
       )))
-      const failedFreshPrediction = freshPredictionResults.find((result) => result.status === 'rejected')
-      if (failedFreshPrediction) throw failedFreshPrediction.reason
-      if (freshPredictionResults.some((result) => (
-        result.status !== 'fulfilled'
-        || !result.value
-        || result.value.strategyVersion !== ALL_MT_EQUAL_STRATEGY_VERSION
-        || !isLatestObservedPredictionTarget(result.value)
-      ))) {
-        throw new Error('latest actionable cloud tables require durable v105 predictions before latest prediction refresh')
+      let failedFreshPrediction = null
+      for (let index = 0; index < freshPredictionResults.length; index += 1) {
+        const result = freshPredictionResults[index]
+        const tableId = canonicalProductionTableId(actionableFreshTables[index]?.tableId)
+        const valid = result.status === 'fulfilled'
+          && result.value
+          && result.value.strategyVersion === ALL_MT_EQUAL_STRATEGY_VERSION
+          && isLatestObservedPredictionTarget(result.value)
+        if (valid) {
+          lastSuccessfulLatestPredictionSignatureByTable.set(tableId, freshPredictionSignaturesByTable.get(tableId))
+          continue
+        }
+        failedFreshPrediction ??= result.status === 'rejected'
+          ? result.reason
+          : new Error('latest actionable cloud tables require durable v105 predictions before latest prediction refresh')
       }
-      lastSuccessfulLatestPredictionSignature = latestPredictionSignature
+      if (failedFreshPrediction) throw failedFreshPrediction
       return { refreshed: true, predictions: freshPredictionResults.length }
     })().finally(() => {
       latestPredictionRefreshPromise = null

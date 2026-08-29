@@ -1127,6 +1127,79 @@ test('latest prediction refresh advances while a claimed backlog batch is still 
   }
 })
 
+test('latest prediction refresh persists success per changed table and retries only the failed table', async () => {
+  const rounds = new Map(PRODUCTION_TABLE_IDS.map((tableId) => [tableId, 7]))
+  const issuedTargets = []
+  let clockMs = Date.now()
+  let failBag01Target9 = false
+  const snapshotAt = () => new Date(Date.now() - 500).toISOString()
+  const currentTables = () => PRODUCTION_TABLE_IDS.map((tableId) => ({
+    tableId, shoe: 95, round: rounds.get(tableId), sourceUpdatedAt: snapshotAt(),
+    beadPlateRaw: '01020102010102', bigRoadRaw: 'BPBPBPB',
+  }))
+  const app = createApp({
+    autoConnect: false,
+    now: () => clockMs,
+    production: true,
+    requireVerifiedStrategy: true,
+    memberAuthRequired: false,
+    captureOutboxConsumerEnabled: true,
+    supabaseClient: {
+      configured: true,
+      getRuntimeStatus() { return { ready: true, degraded: false } },
+      async getLatestCloudTableSnapshot() {
+        return { session_id: 'cloud-per-table-refresh', snapshot_at: snapshotAt(), capture_source: 'cloud_browser', tables: currentTables() }
+      },
+      async reconcilePredictionLifecycle() {},
+      async readIssuedPrediction() { return null },
+      async issuePrediction(candidate) {
+        if (failBag01Target9 && candidate.targetTableId === 'BAG01' && candidate.targetRound === 9) {
+          failBag01Target9 = false
+          throw new Error('BAG01 transient issuance failure')
+        }
+        issuedTargets.push(`${candidate.targetTableId}:${candidate.targetRound}`)
+        return { ...candidate, predictionId: `pid-${candidate.targetTableId}-${candidate.targetRound}`, issuedAt: snapshotAt() }
+      },
+    },
+    v104FormalRuntime: {
+      async start() {},
+      snapshot() { return { status: 'ready' } },
+      latestIssuance() { return null },
+      async buildPrediction(table) {
+        return {
+          targetTableId: table.tableId, targetShoe: String(table.shoe), targetRound: Number(table.round) + 1,
+          strategyVersion: 'v105', predictionTiming: 'pre_result_context', predictedResult: 'banker', sameSideStreak: 2,
+          sidePredictions: { tie: 10, superSix: 10, bankerPair: 10, playerPair: 10, bankerDragon: 10, playerDragon: 10 },
+          sideActions: { tie: false, superSix: false, bankerPair: false, playerPair: false, bankerDragon: false, playerDragon: false },
+        }
+      },
+      recordIssuance() {},
+      recordSettlement() {},
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot({ tables }) { return { tables } } },
+  })
+
+  try {
+    await app.refreshLatestDurablePredictions()
+    assert.equal(issuedTargets.filter((identity) => identity.endsWith(':8')).length, 10)
+
+    rounds.set('BAG01', 8)
+    rounds.set('BAG02', 8)
+    failBag01Target9 = true
+    await assert.rejects(app.refreshLatestDurablePredictions(), /latest actionable|BAG01 transient issuance failure/)
+    assert.equal(issuedTargets.filter((identity) => identity === 'BAG02:9').length, 1)
+    assert.equal(issuedTargets.filter((identity) => identity === 'BAG01:9').length, 0)
+
+    clockMs += 10_001
+    await app.refreshLatestDurablePredictions()
+    assert.equal(issuedTargets.filter((identity) => identity === 'BAG01:9').length, 1)
+    assert.equal(issuedTargets.filter((identity) => identity === 'BAG02:9').length, 1)
+    assert.equal(issuedTargets.filter((identity) => identity.endsWith(':8')).length, 10)
+  } finally {
+    await app.stop()
+  }
+})
+
 test('production consumer does not block backlog claim for zero-history new-shoe tables', async () => {
   let claims = 0
   let issues = 0
