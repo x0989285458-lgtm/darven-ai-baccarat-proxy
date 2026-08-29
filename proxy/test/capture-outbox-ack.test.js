@@ -975,6 +975,189 @@ test('production consumer claims only after a fresh exact ten-table snapshot', a
   await app.stop()
 })
 
+test('production consumer restores all latest ten-table predictions before claiming historical backlog', async () => {
+  let claims = 0
+  const issuedTables = new Set()
+  const snapshotAt = new Date(Date.now() - 1_000).toISOString()
+  const tables = PRODUCTION_TABLE_IDS.map((tableId) => ({
+    tableId, shoe: 90, round: 7, sourceUpdatedAt: snapshotAt,
+    beadPlateRaw: '01020102010102', bigRoadRaw: 'BPBPBPB',
+  }))
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: true,
+    memberAuthRequired: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    supabaseClient: {
+      configured: true,
+      getRuntimeStatus() { return { ready: true, degraded: false } },
+      async getLatestCloudTableSnapshot() {
+        return { session_id: 'cloud-current', snapshot_at: snapshotAt, capture_source: 'cloud_browser', tables }
+      },
+      async reconcilePredictionLifecycle() {},
+      async issuePrediction(candidate) {
+        issuedTables.add(candidate.targetTableId)
+        return { ...candidate, predictionId: `pid-${candidate.targetTableId}`, issuedAt: snapshotAt }
+      },
+      async claimCaptureOutbox() {
+        claims += 1
+        assert.deepEqual([...issuedTables].sort(), [...PRODUCTION_TABLE_IDS].sort())
+        return []
+      },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+    },
+    v104FormalRuntime: {
+      async start() {},
+      snapshot() { return { status: 'ready' } },
+      latestIssuance() { return null },
+      async buildPrediction(table) {
+        return {
+          targetTableId: table.tableId, targetShoe: String(table.shoe), targetRound: Number(table.round) + 1,
+          strategyVersion: 'v105', predictionTiming: 'pre_result_context', predictedResult: 'banker', sameSideStreak: 2,
+          sidePredictions: { tie: 10, superSix: 10, bankerPair: 10, playerPair: 10, bankerDragon: 10, playerDragon: 10 },
+          sideActions: { tie: false, superSix: false, bankerPair: false, playerPair: false, bankerDragon: false, playerDragon: false },
+        }
+      },
+      recordIssuance() {},
+      recordSettlement() {},
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot({ tables: current }) { return { tables: current } } },
+  })
+
+  await app.waitForServiceWorkIdle()
+  await app.drainCaptureOutbox()
+  assert.equal(claims, 1)
+  assert.equal(issuedTables.size, 10)
+  await app.stop()
+})
+
+test('production consumer does not block backlog claim for zero-history new-shoe tables', async () => {
+  let claims = 0
+  let issues = 0
+  const snapshotAt = new Date(Date.now() - 1_000).toISOString()
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: true,
+    memberAuthRequired: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    supabaseClient: {
+      configured: true,
+      getRuntimeStatus() { return { ready: true, degraded: false } },
+      async getLatestCloudTableSnapshot() {
+        return {
+          session_id: 'cloud-new-shoes', snapshot_at: snapshotAt, capture_source: 'cloud_browser',
+          tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: 91, round: 0, sourceUpdatedAt: snapshotAt })),
+        }
+      },
+      async issuePrediction() { issues += 1; return null },
+      async claimCaptureOutbox() { claims += 1; return [] },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot({ tables }) { return { tables } } },
+  })
+
+  await app.drainCaptureOutbox()
+  assert.equal(claims, 1)
+  assert.equal(issues, 0)
+  await app.stop()
+})
+
+for (const invalidCase of [
+  { name: 'null round', round: null, primeRound: null },
+  { name: 'negative round', round: -1, primeRound: null },
+  { name: 'same-shoe round regression', round: 0, primeRound: 7 },
+]) {
+  test(`production consumer rejects ${invalidCase.name} before backlog claim`, async () => {
+    let claims = 0
+    const snapshotAt = new Date(Date.now() - 1_000).toISOString()
+    const tables = PRODUCTION_TABLE_IDS.map((tableId) => ({
+      tableId, shoe: 92, round: tableId === 'BAG10' ? invalidCase.round : 7, sourceUpdatedAt: snapshotAt,
+    }))
+    const app = createApp({
+      autoConnect: false,
+      production: true,
+      requireVerifiedStrategy: false,
+      memberAuthRequired: false,
+      captureOutboxConsumerEnabled: true,
+      outboxCoalesceMs: 0,
+      supabaseClient: {
+        configured: true,
+        async getLatestCloudTableSnapshot() {
+          return { session_id: `invalid-${invalidCase.name}`, snapshot_at: snapshotAt, capture_source: 'cloud_browser', tables }
+        },
+        async claimCaptureOutbox() { claims += 1; return [] },
+        async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      },
+      v100FormalRuntime: { enabled: true, async processSnapshot({ tables: current }) { return { tables: current } } },
+    })
+    if (invalidCase.primeRound != null) {
+      app.state.setTables(PRODUCTION_TABLE_IDS.map((tableId) => ({
+        tableId, shoe: 92, round: invalidCase.primeRound, sourceUpdatedAt: snapshotAt,
+      })))
+      await app.waitForServiceWorkIdle()
+    }
+
+    await assert.rejects(app.drainCaptureOutbox(), /round must be a non-negative integer|round regression is not claimable/)
+    assert.equal(claims, 0)
+    await app.stop()
+  })
+}
+
+test('production consumer rejects durable non-v105 latest predictions before backlog claim', async () => {
+  let claims = 0
+  const snapshotAt = new Date(Date.now() - 1_000).toISOString()
+  const tables = PRODUCTION_TABLE_IDS.map((tableId) => ({
+    tableId, shoe: 93, round: 7, sourceUpdatedAt: snapshotAt,
+    beadPlateRaw: '01020102010102', bigRoadRaw: 'BPBPBPB',
+  }))
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: true,
+    memberAuthRequired: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    supabaseClient: {
+      configured: true,
+      getRuntimeStatus() { return { ready: true, degraded: false } },
+      async getLatestCloudTableSnapshot() {
+        return { session_id: 'wrong-strategy', snapshot_at: snapshotAt, capture_source: 'cloud_browser', tables }
+      },
+      async reconcilePredictionLifecycle() {},
+      async issuePrediction(candidate) {
+        return { ...candidate, predictionId: `pid-${candidate.targetTableId}`, issuedAt: snapshotAt }
+      },
+      async claimCaptureOutbox() { claims += 1; return [] },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+    },
+    v104FormalRuntime: {
+      async start() {},
+      snapshot() { return { status: 'ready' } },
+      latestIssuance() { return null },
+      async buildPrediction(table) {
+        return {
+          targetTableId: table.tableId, targetShoe: String(table.shoe), targetRound: Number(table.round) + 1,
+          strategyVersion: 'v104', predictionTiming: 'pre_result_context', predictedResult: 'banker', sameSideStreak: 2,
+          sidePredictions: { tie: 10, superSix: 10, bankerPair: 10, playerPair: 10, bankerDragon: 10, playerDragon: 10 },
+          sideActions: { tie: false, superSix: false, bankerPair: false, playerPair: false, bankerDragon: false, playerDragon: false },
+        }
+      },
+      recordIssuance() {},
+      recordSettlement() {},
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot({ tables: current }) { return { tables: current } } },
+  })
+
+  await app.waitForServiceWorkIdle()
+  await assert.rejects(app.drainCaptureOutbox(), /durable v105 predictions/)
+  assert.equal(claims, 0)
+  await app.stop()
+})
+
 test('external consumer rejects a hydrated later-round issuance that is not the current screen target', async () => {
   let claimed = false
   let completed = 0

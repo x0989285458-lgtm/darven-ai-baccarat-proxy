@@ -771,9 +771,49 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             throw new Error('fresh complete cloud snapshot is required before capture outbox claim')
           }
           if (freshTables.length > 0) {
+            const previousTableById = new Map(state.snapshot().tables.map((table) => [
+              canonicalProductionTableId(table?.tableId), table,
+            ]))
+            const normalizedFreshRounds = new Map()
+            for (const table of freshTables) {
+              const tableId = canonicalProductionTableId(table?.tableId)
+              const roundText = table?.round == null ? '' : String(table.round).trim()
+              if (!/^\d+$/.test(roundText)) {
+                throw new Error('fresh cloud table round must be a non-negative integer')
+              }
+              const round = Number(roundText)
+              if (!Number.isSafeInteger(round)) {
+                throw new Error('fresh cloud table round must be a non-negative integer')
+              }
+              const previous = previousTableById.get(tableId)
+              if (previous && String(previous?.shoe ?? '') === String(table?.shoe ?? '')
+                && Number.isSafeInteger(Number(previous?.round)) && round < Number(previous.round)) {
+                throw new Error('fresh cloud table round regression is not claimable')
+              }
+              normalizedFreshRounds.set(tableId, round)
+            }
             await tableUpdateWorkContext.run({ suppressPredictionWork: true }, async () => {
               state.setTables(mergeMonotonicTableScreens(state.snapshot().tables, freshTables))
             })
+            if (production && isDurablePredictionIssuanceRequired()) {
+              setCaptureOutboxPhase('fresh_prediction')
+              const actionableFreshTables = freshTables.filter((table) => (
+                Number(normalizedFreshRounds.get(canonicalProductionTableId(table?.tableId))) > 0
+              ))
+              const freshPredictionResults = await Promise.allSettled(actionableFreshTables.map((table) => (
+                reconcileThenResolveLatestOutboxPrediction(table)
+              )))
+              const failedFreshPrediction = freshPredictionResults.find((result) => result.status === 'rejected')
+              if (failedFreshPrediction) throw failedFreshPrediction.reason
+              if (freshPredictionResults.some((result) => (
+                result.status !== 'fulfilled'
+                || !result.value
+                || result.value.strategyVersion !== ALL_MT_EQUAL_STRATEGY_VERSION
+                || !isLatestObservedPredictionTarget(result.value)
+              ))) {
+                throw new Error('latest actionable cloud tables require durable v105 predictions before capture outbox claim')
+              }
+            }
           }
         } else if (production) {
           throw new Error('fresh cloud snapshot reader is required before capture outbox claim')
