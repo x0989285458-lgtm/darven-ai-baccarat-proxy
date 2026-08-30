@@ -314,12 +314,11 @@ export class LiveRoadClient {
           continue
         }
         const exactDurableEnrichment = accepted
-          && !accepted.prediction
-          && Boolean(incoming.prediction)
+          && getBackendPredictionIssue(accepted) !== null
           && isSameTableIdentity(accepted, incoming)
           && getBackendPredictionIssue(incoming) === null
         if (!exactDurableEnrichment) continue
-        const enriched = { ...accepted, prediction: incoming.prediction }
+        const enriched = { ...accepted, buildVersion: incoming.buildVersion, prediction: incoming.prediction }
         if (JSON.stringify(accepted) !== JSON.stringify(enriched)) {
           this.acceptedTableById.set(tableId, enriched)
           acceptedAny = true
@@ -328,8 +327,11 @@ export class LiveRoadClient {
       }
       let next = incoming
       if (accepted && previousTimestamp === timestamp && !hasAdvancedTableIdentity(accepted, incoming)) {
-        next = !accepted.prediction && incoming.prediction
-          ? { ...accepted, prediction: incoming.prediction }
+        const exactDurableEnrichment = getBackendPredictionIssue(accepted) !== null
+          && isSameTableIdentity(accepted, incoming)
+          && getBackendPredictionIssue(incoming) === null
+        next = exactDurableEnrichment
+          ? { ...accepted, buildVersion: incoming.buildVersion, prediction: incoming.prediction }
           : accepted
       }
       if (accepted && JSON.stringify(accepted) === JSON.stringify(next)) continue

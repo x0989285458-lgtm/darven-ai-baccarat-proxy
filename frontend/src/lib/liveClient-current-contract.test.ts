@@ -150,6 +150,27 @@ describe('live frontend contract', () => {
     expect(received[0]?.[0].prediction?.targetRound).toBe(18)
   })
 
+  it('atomically enriches exact prediction and table build version for the same visible screen', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-30T10:40:30.000Z'))
+    const received: LiveTable[][] = []
+    const client = new LiveRoadClient({ onTables: (tables) => received.push(tables), onStatus: vi.fn() })
+    const screenOnly = validTable({
+      sourceUpdatedAt: '2026-08-30T10:40:29.000Z',
+      buildVersion: null,
+      prediction: undefined,
+    })
+    const exact = validTable({ sourceUpdatedAt: screenOnly.sourceUpdatedAt })
+
+    ;(client as any).publishTables([screenOnly], 'screen')
+    ;(client as any).publishTables([exact], 'exact')
+
+    const accepted = received.at(-1)?.[0]
+    expect(accepted?.buildVersion).toBe('v105')
+    expect(accepted?.prediction?.predictionId).toBe(exact.prediction?.predictionId)
+    expect(getBackendPredictionIssue(accepted)).toBeNull()
+  })
+
   it('self-heals a missing current-round prediction from public tables without waiting for an SSE heartbeat', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-30T10:40:30.000Z'))
