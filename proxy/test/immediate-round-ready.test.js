@@ -53,6 +53,83 @@ function issued(candidate) {
   }
 }
 
+test('consumer-disabled public proxy pushes screen progress without waiting for heartbeat fallback', async () => {
+  const supabaseClient = {
+    configured: true,
+    readIssuedPrediction: async ({ round }) => issued(buildLivePrediction({ ...table, round: Number(round) - 1 })),
+    issuePrediction: async () => { assert.fail('consumer-disabled proxy must stay read-only') },
+  }
+  const app = createApp({
+    autoConnect: false,
+    port: 0,
+    captureOutboxConsumerEnabled: false,
+    streamHeartbeatMs: 5000,
+    supabaseClient,
+  })
+  app.state.setTables([table])
+  await app.start()
+  const controller = new AbortController()
+  const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal })).body.getReader()
+
+  try {
+    await readSseEvent(reader)
+    const startedAt = Date.now()
+    app.state.setTables([{ ...table, round: table.round + 1, sourceUpdatedAt: new Date(Date.now() + 1).toISOString() }])
+    const next = await readSseEventUntil(reader, (event) => event.event === 'tables' && event.data.tables[0].round === table.round + 1, 750)
+    assert.equal(next.data.tables[0].prediction.targetRound, table.round + 1)
+    assert.ok(Date.now() - startedAt < 750)
+  } finally {
+    controller.abort()
+    await app.stop()
+  }
+})
+
+test('stale screen prefetch never broadcasts a newer screen before its exact prediction is durable', async () => {
+  let releaseRound21
+  const round21Read = new Promise((resolve) => { releaseRound21 = resolve })
+  const supabaseClient = {
+    configured: true,
+    readIssuedPrediction: async ({ round }) => {
+      const targetRound = Number(round)
+      if (targetRound === 21) return round21Read
+      if (targetRound === 22) return null
+      return issued(buildLivePrediction({ ...table, round: targetRound - 1 }))
+    },
+    issuePrediction: async () => { assert.fail('consumer-disabled proxy must stay read-only') },
+  }
+  const app = createApp({
+    autoConnect: false,
+    port: 0,
+    captureOutboxConsumerEnabled: false,
+    livePredictionReadWaitMs: 250,
+    streamHeartbeatMs: 5000,
+    supabaseClient,
+  })
+  app.state.setTables([table])
+  await app.start()
+  const controller = new AbortController()
+  const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal })).body.getReader()
+
+  try {
+    await readSseEvent(reader)
+    app.state.setTables([{ ...table, round: 21, sourceUpdatedAt: new Date(Date.now() + 1).toISOString() }])
+    await new Promise((resolve) => setTimeout(resolve, 25))
+    app.state.setTables([{ ...table, round: 22, sourceUpdatedAt: new Date(Date.now() + 2).toISOString() }])
+    releaseRound21(issued(buildLivePrediction({ ...table, round: 20 })))
+    let event = null
+    try {
+      event = await readSseEvent(reader, 2800)
+    } catch (error) {
+      assert.match(error?.message ?? '', /timed out waiting for SSE event/)
+    }
+    assert.equal(event, null, 'no SSE event may publish the newer screen before its exact durable prediction')
+  } finally {
+    releaseRound21(null)
+    controller.abort()
+    await app.stop()
+  }
+})
+
 test('late external durable issuance is pushed by bounded SSE refresh without frontend polling', async () => {
   const exact = issued(buildLivePrediction({ ...table, round: 19 }))
   let durable = false
@@ -92,7 +169,7 @@ test('late external durable issuance is pushed by bounded SSE refresh without fr
   }
 })
 
-test('ten missing identities share one bounded refresh broadcast per retry window', async () => {
+test('ten missing identities retry within bounds without broadcasting a null refresh', async () => {
   let reads = 0
   const tableIds = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
   const tables = tableIds.map((tableId) => ({ ...table, tableId }))
@@ -128,8 +205,7 @@ test('ten missing identities share one bounded refresh broadcast per retry windo
         break
       }
     }
-    assert.ok(tablesEvents >= 2, `expected at least one refresh event, received ${tablesEvents}; reads=${reads}`)
-    assert.ok(tablesEvents <= 4, `expected at most one full tables event per retry window, received ${tablesEvents}`)
+    assert.equal(tablesEvents, 1, `expected only the initial tables event while all predictions remain missing; reads=${reads}`)
     assert.ok(reads <= 60, `expected bounded coalesced exact reads, received ${reads}`)
   } finally {
     controller.abort()
@@ -155,6 +231,7 @@ test('prediction readiness does not broadcast before durable issuance completes'
   const app = createApp({ autoConnect: false, port: 0, requireVerifiedStrategy: true, supabaseClient })
   app.state.setTables([table])
   await app.start()
+  await app.waitForServiceWorkIdle()
   const controller = new AbortController()
   const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal })).body.getReader()
 
@@ -180,6 +257,7 @@ test('prediction readiness does not broadcast before durable issuance completes'
     assert.equal(advanced.data.tables[0].round, 21)
     assert.equal(advanced.data.tables[0].prediction.targetRound, 21)
   } finally {
+    if (round22Candidate) releaseRound22(issued(round22Candidate))
     controller.abort()
     await app.stop()
   }

@@ -493,12 +493,17 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         .filter((screen) => screen.tableId && screen.shoe && Number.isSafeInteger(screen.round))
         .sort((left, right) => left.tableId.localeCompare(right.tableId)))
       let screenProgressChanged = streamScreenSignature !== latestStreamScreenSignature
+      const changedScreenTables = []
       latestStreamScreenSignature = streamScreenSignature
       for (const table of tables) {
         const observedTableId = canonicalProductionTableId(table?.tableId)
         const observedShoe = table?.shoe == null ? '' : String(table.shoe)
         const observedRound = Number(table?.round)
         if (observedTableId && observedShoe && Number.isSafeInteger(observedRound)) {
+          const previousScreen = latestObservedScreenByTable.get(observedTableId)
+          if (!previousScreen || previousScreen.shoe !== observedShoe || previousScreen.visibleRound !== observedRound) {
+            changedScreenTables.push(table)
+          }
           const accepted = acceptLifecycleScreenIdentity(latestObservedScreenGuardsByTable, {
             tableId: observedTableId,
             shoe: observedShoe,
@@ -517,7 +522,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
         })
       }
-      if (screenProgressChanged) requestTablesRefresh()
+      if (screenProgressChanged) requestTablesRefresh(changedScreenTables)
     },
     onRoundEvent: async (round, table) => {
       if (!resolvedCaptureOutboxConsumerEnabled) return
@@ -1948,7 +1953,20 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       missingPredictionRefreshPromise = Promise.all(due.map(({ key, refresh }) => (
         startIssuedPredictionRead(refresh.table, refresh.targetRound, key, true, { bypassBackoff: true })
       )))
-        .then(() => requestTablesBroadcast(true))
+        .then((predictions) => {
+          let anyExact = false
+          predictions.forEach((prediction, index) => {
+            const { key, refresh } = due[index]
+            if (isExactScreenPrediction(prediction, refresh.table, refresh.targetRound, true)) {
+              anyExact = true
+              clearMissingPredictionRefresh(key)
+              return
+            }
+            refresh.nextAt = Number.POSITIVE_INFINITY
+            scheduleMissingPredictionRefresh(refresh.table, refresh.targetRound, key)
+          })
+          if (anyExact) requestTablesBroadcast(true)
+        })
         .finally(() => {
           missingPredictionRefreshPromise = null
           ensureMissingPredictionRefreshTimer()
@@ -2508,8 +2526,40 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   let tablesBroadcastPending = false
   let tablesBroadcastForcePending = false
   let tablesBroadcastStopping = false
-  requestTablesRefresh = () => {
+  const screenProgressRefreshTables = new Map()
+  let screenProgressRefreshPromise = null
+  requestTablesRefresh = (changedTables = []) => {
     streamTablesVersion += 1
+    if (!streamClients.size || tablesBroadcastStopping) return
+    // The writer/consumer process already force-broadcasts completed durable
+    // issuance from its readiness callback. This prefetch lane is only needed
+    // by the read-only public proxy, where that in-process callback cannot run.
+    if (resolvedCaptureOutboxConsumerEnabled) return
+    for (const table of changedTables) {
+      const tableId = canonicalProductionTableId(table?.tableId)
+      if (tableId) screenProgressRefreshTables.set(tableId, table)
+    }
+    if (!screenProgressRefreshTables.size || screenProgressRefreshPromise) return
+    screenProgressRefreshPromise = (async () => {
+      while (screenProgressRefreshTables.size && !tablesBroadcastStopping) {
+        const batch = [...screenProgressRefreshTables.values()]
+        screenProgressRefreshTables.clear()
+        const prepared = await Promise.all(batch.map((table) => withLivePrediction(table, true, true)))
+        const batchStillCurrent = batch.every((table) => {
+          const tableId = canonicalProductionTableId(table?.tableId)
+          const latest = tableId ? latestObservedScreenByTable.get(tableId) : null
+          return latest?.shoe === String(table?.shoe ?? '') && latest.visibleRound === Number(table?.round)
+        })
+        if (batchStillCurrent && prepared.length && prepared.every((table) => table?.prediction || !isDurablePredictionIssuanceRequired())) {
+          requestTablesBroadcast(false)
+        }
+      }
+    })().catch((error) => {
+      state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+    }).finally(() => {
+      screenProgressRefreshPromise = null
+      if (screenProgressRefreshTables.size && !tablesBroadcastStopping) requestTablesRefresh([])
+    })
   }
   requestTablesBroadcast = (force = false) => {
     if (tablesBroadcastStopping) return
@@ -2636,6 +2686,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         missingPredictionRefreshTimer = null
       }
       missingPredictionRefreshes.clear()
+      screenProgressRefreshTables.clear()
       outboxStopping = true
       if (outboxWakeTimer) {
         clearTimeout(outboxWakeTimer)
@@ -2656,6 +2707,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             tablesBroadcastPromise?.catch(() => {}) ?? Promise.resolve(),
             streamHeartbeatPromise?.catch(() => {}) ?? Promise.resolve(),
             missingPredictionRefreshPromise?.catch(() => {}) ?? Promise.resolve(),
+            screenProgressRefreshPromise?.catch(() => {}) ?? Promise.resolve(),
           ]),
           resolvedServiceShutdownDeadlineMs,
           'tables broadcast shutdown deadline exceeded',
