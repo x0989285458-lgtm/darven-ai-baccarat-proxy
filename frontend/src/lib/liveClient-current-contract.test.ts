@@ -350,6 +350,44 @@ describe('live frontend contract', () => {
     expect(received.at(-1)?.[0]?.prediction?.predictionId).toBe(table.prediction?.predictionId)
   })
 
+  it('accepts exact durable prediction enrichment from an older same-screen snapshot without rolling back screen time', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-30T09:40:30.000Z'))
+    const screenOnly = validTable({ sourceUpdatedAt: '2026-08-30T09:40:02.000Z', prediction: undefined })
+    const durableLate = validTable({
+      sourceUpdatedAt: '2026-08-30T09:40:01.000Z',
+      prediction: { ...validTable().prediction!, predictionId: 'durable-late-same-screen' },
+    })
+    const toProxy = (table: LiveTable) => ({
+      tableId: table.table_id,
+      tableType: table.table_type,
+      shoe: table.trend.current_shoe,
+      round: table.trend.current_round,
+      beadPlateRaw: table.trend.bead_plate2,
+      bigRoadRaw: table.trend.big2,
+      sourceUpdatedAt: table.sourceUpdatedAt,
+      buildVersion: table.buildVersion,
+      prediction: table.prediction,
+    })
+    const events = [screenOnly, durableLate]
+      .map((table) => `event: tables\ndata: ${JSON.stringify({ tables: [toProxy(table)] })}\n\n`)
+      .join('')
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
+      ok: true,
+      status: 200,
+      body: new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(events)); controller.close() } }),
+    })))
+    const received: LiveTable[][] = []
+    const client = new LiveRoadClient({ onTables: (tables) => received.push(tables), onStatus: vi.fn() })
+
+    client.connect()
+    await vi.advanceTimersByTimeAsync(1)
+    client.disconnect(false)
+
+    expect(received.at(-1)?.[0]?.prediction?.predictionId).toBe('durable-late-same-screen')
+    expect(received.at(-1)?.[0]?.sourceUpdatedAt).toBe(screenOnly.sourceUpdatedAt)
+  })
+
   it('keeps the source timestamp high-water mark when recovery returns an older but still fresh snapshot', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-27T16:00:30.000Z'))

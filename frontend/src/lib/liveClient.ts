@@ -301,7 +301,20 @@ export class LiveRoadClient {
       const timestamp = Date.parse(String(incoming.sourceUpdatedAt ?? ''))
       const previousTimestamp = this.sourceUpdatedAtByTable.get(tableId)
       const accepted = this.acceptedTableById.get(tableId)
-      if (previousTimestamp != null && timestamp < previousTimestamp) continue
+      if (previousTimestamp != null && timestamp < previousTimestamp) {
+        const exactDurableEnrichment = accepted
+          && !accepted.prediction
+          && Boolean(incoming.prediction)
+          && isSameTableIdentity(accepted, incoming)
+          && getBackendPredictionIssue(incoming) === null
+        if (!exactDurableEnrichment) continue
+        const enriched = { ...accepted, prediction: incoming.prediction }
+        if (JSON.stringify(accepted) !== JSON.stringify(enriched)) {
+          this.acceptedTableById.set(tableId, enriched)
+          acceptedAny = true
+        }
+        continue
+      }
       let next = incoming
       if (accepted && previousTimestamp === timestamp && !hasAdvancedTableIdentity(accepted, incoming)) {
         next = !accepted.prediction && incoming.prediction
@@ -329,6 +342,12 @@ export class LiveRoadClient {
     this.authorizationLost = true
     this.options.onUnauthorized?.()
   }
+}
+
+function isSameTableIdentity(previous: LiveTable, incoming: LiveTable) {
+  return String(incoming.table_id ?? incoming.id ?? '') === String(previous.table_id ?? previous.id ?? '')
+    && String(incoming.trend.current_shoe ?? '') === String(previous.trend.current_shoe ?? '')
+    && Number(incoming.trend.current_round) === Number(previous.trend.current_round)
 }
 
 function hasAdvancedTableIdentity(previous: LiveTable, incoming: LiveTable) {
