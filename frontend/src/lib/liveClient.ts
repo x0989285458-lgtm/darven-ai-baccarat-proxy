@@ -105,6 +105,8 @@ const proxyApiUrl = dravenApiBaseUrl
 const pollIntervalMs = Number(import.meta.env.VITE_DRAVEN_PROXY_POLL_MS ?? 5000)
 const streamStaleMs = Number(import.meta.env.VITE_DRAVEN_STREAM_STALE_MS ?? 15000)
 const liveTableMaxAgeMs = Number(import.meta.env.VITE_DRAVEN_TABLE_MAX_AGE_MS ?? 120000)
+const missingPredictionRefreshMs = 750
+const missingPredictionRefreshLimit = 20
 const CURRENT_STRATEGY_VERSION = frontendBuildMetadata.strategyVersion
 const CURRENT_BUILD_VERSION = frontendBuildMetadata.buildVersion
 const sidePredictionKeys: SidePredictionKey[] = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
@@ -136,6 +138,7 @@ export class LiveRoadClient {
   private tablesSuppressed = false
   private readonly sourceUpdatedAtByTable = new Map<string, number>()
   private readonly acceptedTableById = new Map<string, LiveTable>()
+  private readonly missingPredictionRefreshAttempts = new Map<string, number>()
 
   constructor(private readonly options: LiveClientOptions) {}
 
@@ -156,7 +159,7 @@ export class LiveRoadClient {
     this.stopped = true
     this.connectionGeneration += 1
     this.pollPromise = undefined
-    if (this.timer) window.clearInterval(this.timer)
+    if (this.timer) window.clearTimeout(this.timer)
     if (this.streamWatchdog) window.clearInterval(this.streamWatchdog)
     if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer)
     this.streamAbort?.abort()
@@ -165,6 +168,7 @@ export class LiveRoadClient {
     this.reconnectTimer = undefined
     this.streamAbort = undefined
     this.lastTablesAt = 0
+    this.missingPredictionRefreshAttempts.clear()
     if (notify) this.options.onStatus({ state: 'disconnected', message: '已停止讀取雲端資料' })
   }
 
@@ -338,8 +342,37 @@ export class LiveRoadClient {
       this.options.onTables(visibleTables)
       if (visibleTables.length) this.tablesSuppressed = false
     }
+    this.scheduleMissingPredictionRefresh()
     this.options.onStatus({ state: 'connected', message: liveMessage })
     return true
+  }
+
+  private scheduleMissingPredictionRefresh() {
+    const missing = [...this.acceptedTableById.values()].filter((table) => (
+      Number(table.trend.current_round) > 1 && getBackendPredictionIssue(table) !== null
+    ))
+    const missingKeys = new Set(missing.map(predictionRefreshIdentity))
+    for (const key of this.missingPredictionRefreshAttempts.keys()) {
+      if (!missingKeys.has(key)) this.missingPredictionRefreshAttempts.delete(key)
+    }
+    if (!missing.length) {
+      if (this.timer) window.clearTimeout(this.timer)
+      this.timer = undefined
+      return
+    }
+    if (this.stopped || this.timer) return
+    const retryable = missing.filter((table) => (
+      (this.missingPredictionRefreshAttempts.get(predictionRefreshIdentity(table)) ?? 0) < missingPredictionRefreshLimit
+    ))
+    if (!retryable.length) return
+    this.timer = window.setTimeout(() => {
+      this.timer = undefined
+      for (const table of retryable) {
+        const key = predictionRefreshIdentity(table)
+        this.missingPredictionRefreshAttempts.set(key, (this.missingPredictionRefreshAttempts.get(key) ?? 0) + 1)
+      }
+      void this.poll()
+    }, missingPredictionRefreshMs)
   }
 
   private handleUnauthorized() {
@@ -349,6 +382,10 @@ export class LiveRoadClient {
     this.authorizationLost = true
     this.options.onUnauthorized?.()
   }
+}
+
+function predictionRefreshIdentity(table: LiveTable) {
+  return `${String(table.table_id ?? table.id ?? '')}:${String(table.trend.current_shoe ?? '')}:${Number(table.trend.current_round)}`
 }
 
 function hasMonotonicAdvancedTableIdentity(previous: LiveTable, incoming: LiveTable) {
@@ -449,7 +486,8 @@ export function getBackendPredictionIssue(table?: LiveTable | null, now = Date.n
   const prediction = table?.prediction
   if (!prediction || prediction.source !== 'backend') return '後端預測暫不可用'
   if (prediction.strategyVersion !== CURRENT_STRATEGY_VERSION) return '策略版本不符'
-  if (String(table?.buildVersion ?? prediction.buildVersion ?? '') !== CURRENT_BUILD_VERSION) return '建置版本不符'
+  if (String(table?.buildVersion ?? '') !== CURRENT_BUILD_VERSION
+    || String(prediction.buildVersion ?? '') !== CURRENT_BUILD_VERSION) return '建置版本不符'
   if (isLiveTableStale(table ?? {}, now)) return '資料過期'
   if (String(prediction.targetTableId ?? '') !== String(table?.table_id ?? table?.id ?? '')
     || String(prediction.targetShoe ?? '') !== String(table?.trend.current_shoe ?? '')
@@ -526,7 +564,7 @@ function normalizeProxyTables(tables: ProxyTable[]): LiveTable[] {
       state: table.state ?? null,
       orderState: table.orderState ?? null,
       sourceUpdatedAt: table.sourceUpdatedAt ?? null,
-      buildVersion: table.buildVersion ?? table.prediction?.buildVersion ?? null,
+      buildVersion: table.buildVersion ?? null,
       prediction: table.prediction,
     }
   })

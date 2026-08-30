@@ -46,6 +46,9 @@ describe('live frontend contract', () => {
   it('accepts only a complete current backend snapshot matching table, shoe, round and build', () => {
     expect(getBackendPredictionIssue(validTable())).toBeNull()
     expect(getBackendPredictionIssue(validTable({ buildVersion: '097' }))).toMatch(/版本/)
+    expect(getBackendPredictionIssue(validTable({ buildVersion: undefined }))).toMatch(/版本/)
+    expect(getBackendPredictionIssue(validTable({ prediction: { ...validTable().prediction!, buildVersion: 'v104' } }))).toMatch(/版本/)
+    expect(getBackendPredictionIssue(validTable({ prediction: { ...validTable().prediction!, buildVersion: undefined } }))).toMatch(/版本/)
     expect(getBackendPredictionIssue(validTable({ sourceUpdatedAt: null }))).toMatch(/過期/)
     expect(getBackendPredictionIssue(validTable({ prediction: { ...validTable().prediction!, strategyVersion: 'v096' } }))).toMatch(/策略/)
     expect(getBackendPredictionIssue(validTable({ prediction: { ...validTable().prediction!, targetRound: 19 } }))).toMatch(/目標/)
@@ -145,6 +148,88 @@ describe('live frontend contract', () => {
     expect(eventSource).not.toHaveBeenCalled()
     expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(received[0]?.[0].prediction?.targetRound).toBe(18)
+  })
+
+  it('self-heals a missing current-round prediction from public tables without waiting for an SSE heartbeat', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-30T10:40:30.000Z'))
+    const initial = validTable({ sourceUpdatedAt: '2026-08-30T10:40:29.000Z', prediction: undefined })
+    const exact = validTable({
+      sourceUpdatedAt: '2026-08-30T10:40:29.000Z',
+      prediction: { ...validTable().prediction!, predictionId: 'bounded-self-heal' },
+    })
+    const toProxy = (item: LiveTable) => ({
+      tableId: item.table_id,
+      tableType: item.table_type,
+      shoe: item.trend.current_shoe,
+      round: item.trend.current_round,
+      beadPlateRaw: item.trend.bead_plate2,
+      bigRoadRaw: item.trend.big2,
+      sourceUpdatedAt: item.sourceUpdatedAt,
+      buildVersion: item.buildVersion,
+      prediction: item.prediction,
+    })
+    let tableReads = 0
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/tables/stream')) {
+        const sse = `event: tables\ndata: ${JSON.stringify({ tables: [toProxy(initial)] })}\n\n`
+        return Promise.resolve({ ok: true, status: 200, body: new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(sse)) } }) })
+      }
+      if (url.endsWith('/api/status')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 1, buildVersion: 'v105' }) })
+      }
+      if (url.endsWith('/api/tables')) {
+        tableReads += 1
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([toProxy(exact)]) })
+      }
+      throw new Error(`unexpected request: ${url}`)
+    }))
+    const received: LiveTable[][] = []
+    const client = new LiveRoadClient({ memberSessionToken: 'opaque-member-token', onTables: (tables) => received.push(tables), onStatus: vi.fn() })
+
+    client.connect()
+    await vi.advanceTimersByTimeAsync(749)
+    expect(tableReads).toBe(0)
+    await vi.advanceTimersByTimeAsync(2)
+    client.disconnect(false)
+
+    expect(tableReads).toBe(1)
+    expect(received.at(-1)?.[0]?.prediction?.predictionId).toBe('bounded-self-heal')
+  })
+
+  it('cancels a queued self-heal poll when exact prediction arrives before the timer', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-30T10:40:30.000Z'))
+    const client = new LiveRoadClient({ onTables: vi.fn(), onStatus: vi.fn() })
+    const initial = validTable({ sourceUpdatedAt: '2026-08-30T10:40:29.000Z', prediction: undefined })
+    const exact = validTable({ sourceUpdatedAt: initial.sourceUpdatedAt })
+    ;(client as any).stopped = false
+    const poll = vi.spyOn(client as any, 'poll').mockResolvedValue(undefined)
+
+    ;(client as any).publishTables([initial], 'missing')
+    ;(client as any).publishTables([exact], 'exact')
+    await vi.advanceTimersByTimeAsync(751)
+    client.disconnect(false)
+
+    expect(poll).not.toHaveBeenCalled()
+  })
+
+  it('caps missing-prediction self-heal attempts per table, shoe and round', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-30T10:40:30.000Z'))
+    const client = new LiveRoadClient({ onTables: vi.fn(), onStatus: vi.fn() })
+    const table = validTable({ sourceUpdatedAt: '2026-08-30T10:40:29.000Z', prediction: undefined })
+    ;(client as any).stopped = false
+    ;(client as any).acceptedTableById.set('BAG01', table)
+    const poll = vi.spyOn(client as any, 'poll').mockResolvedValue(undefined)
+
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      ;(client as any).scheduleMissingPredictionRefresh()
+      await vi.advanceTimersByTimeAsync(751)
+    }
+    client.disconnect(false)
+
+    expect(poll).toHaveBeenCalledTimes(20)
   })
 
   it('refreshes durable public tables on heartbeat so a cross-process DB update is not delayed until stream timeout', async () => {
