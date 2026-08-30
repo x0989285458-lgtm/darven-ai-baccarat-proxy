@@ -350,6 +350,37 @@ describe('live frontend contract', () => {
     expect(received.at(-1)?.[0]?.prediction?.predictionId).toBe(table.prediction?.predictionId)
   })
 
+  it('accepts a numerically newer shoe and round with exact prediction while preserving the source timestamp high-water mark', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-30T09:40:30.000Z'))
+    const received: LiveTable[][] = []
+    const client = new LiveRoadClient({ onTables: (tables) => received.push(tables), onStatus: vi.fn() })
+    const oldShoe = validTable({
+      sourceUpdatedAt: '2026-08-30T09:40:02.000Z',
+      trend: { ...validTable().trend, current_shoe: '123', current_round: 60 },
+      prediction: undefined,
+    })
+    const newShoe = validTable({
+      sourceUpdatedAt: '2026-08-30T09:40:01.000Z',
+      trend: { ...validTable().trend, current_shoe: '124', current_round: 2 },
+      prediction: {
+        ...validTable().prediction!,
+        targetShoe: '124',
+        targetRound: 2,
+        predictionId: 'new-shoe-durable-ready',
+      },
+    })
+
+    ;(client as any).publishTables([oldShoe], 'old shoe')
+    ;(client as any).publishTables([newShoe], 'new shoe')
+
+    const accepted = received.at(-1)?.[0]
+    expect(accepted?.trend.current_shoe).toBe('124')
+    expect(accepted?.trend.current_round).toBe(2)
+    expect(accepted?.prediction?.predictionId).toBe('new-shoe-durable-ready')
+    expect(accepted?.sourceUpdatedAt).toBe(oldShoe.sourceUpdatedAt)
+  })
+
   it('accepts exact durable prediction enrichment from an older same-screen snapshot without rolling back screen time', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-30T09:40:30.000Z'))

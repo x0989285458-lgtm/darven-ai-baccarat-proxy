@@ -302,6 +302,13 @@ export class LiveRoadClient {
       const previousTimestamp = this.sourceUpdatedAtByTable.get(tableId)
       const accepted = this.acceptedTableById.get(tableId)
       if (previousTimestamp != null && timestamp < previousTimestamp) {
+        const monotonicScreenAdvance = accepted && hasMonotonicAdvancedTableIdentity(accepted, incoming)
+        if (monotonicScreenAdvance) {
+          const advanced = { ...incoming, sourceUpdatedAt: accepted.sourceUpdatedAt }
+          this.acceptedTableById.set(tableId, advanced)
+          acceptedAny = true
+          continue
+        }
         const exactDurableEnrichment = accepted
           && !accepted.prediction
           && Boolean(incoming.prediction)
@@ -342,6 +349,19 @@ export class LiveRoadClient {
     this.authorizationLost = true
     this.options.onUnauthorized?.()
   }
+}
+
+function hasMonotonicAdvancedTableIdentity(previous: LiveTable, incoming: LiveTable) {
+  const previousShoeText = String(previous.trend.current_shoe ?? '')
+  const incomingShoeText = String(incoming.trend.current_shoe ?? '')
+  if (incomingShoeText === previousShoeText) {
+    return Number(incoming.trend.current_round) > Number(previous.trend.current_round)
+  }
+  const previousShoe = Number(previousShoeText)
+  const incomingShoe = Number(incomingShoeText)
+  return Number.isSafeInteger(previousShoe)
+    && Number.isSafeInteger(incomingShoe)
+    && incomingShoe > previousShoe
 }
 
 function isSameTableIdentity(previous: LiveTable, incoming: LiveTable) {
