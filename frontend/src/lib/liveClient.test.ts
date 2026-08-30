@@ -238,10 +238,11 @@ describe('LiveRoadClient status messages', () => {
     expect(statuses.at(-1)?.message).toMatch(/stale|過期/i)
   })
 
-  it('uses each SSE heartbeat as a cross-process durable table refresh signal', async () => {
+  it('uses each SSE heartbeat as an independent status refresh signal', async () => {
     vi.useFakeTimers()
     let streamController: ReadableStreamDefaultController<Uint8Array>
     const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith('/api/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 10, buildVersion: 'v105' }) })
       if (!url.endsWith('/api/tables/stream')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) })
       return Promise.resolve({
         ok: true,
@@ -259,15 +260,18 @@ describe('LiveRoadClient status messages', () => {
     const client = new LiveRoadClient({ onTables: vi.fn(), onStatus: vi.fn() })
     client.connect()
     await vi.advanceTimersByTimeAsync(11000)
+    const statusesBeforeSecondHeartbeat = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/status')).length
     streamController!.enqueue(new TextEncoder().encode('event: heartbeat\ndata: {}\n\n'))
-    await vi.advanceTimersByTimeAsync(3000)
+    await vi.advanceTimersByTimeAsync(1)
+    const statusesAfterSecondHeartbeat = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/status')).length
+    await vi.advanceTimersByTimeAsync(2999)
     client.disconnect(false)
     streamController!.close()
 
-    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/tables'))).toHaveLength(2)
+    expect(statusesAfterSecondHeartbeat).toBe(statusesBeforeSecondHeartbeat + 1)
   })
 
-  it('keeps refreshing durable tables while heartbeats continue without a tables event', async () => {
+  it('keeps refreshing status while heartbeats continue without a tables event', async () => {
     vi.useFakeTimers()
     let streamController!: ReadableStreamDefaultController<Uint8Array>
     const fetchMock = vi.fn((url: string) => {
@@ -283,14 +287,19 @@ describe('LiveRoadClient status messages', () => {
 
     const client = new LiveRoadClient({ memberSessionToken: 'member-session-1', onTables: vi.fn(), onStatus: vi.fn() })
     client.connect()
+    let heartbeatStatusRefreshes = 0
     for (let elapsed = 0; elapsed < 16000; elapsed += 3000) {
+      const before = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/status')).length
       streamController.enqueue(new TextEncoder().encode('event: heartbeat\ndata: {}\n\n'))
-      await vi.advanceTimersByTimeAsync(3000)
+      await vi.advanceTimersByTimeAsync(1)
+      const after = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/status')).length
+      if (after > before) heartbeatStatusRefreshes += 1
+      await vi.advanceTimersByTimeAsync(2999)
     }
     client.disconnect(false)
     streamController.close()
 
-    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/tables'))).toHaveLength(6)
+    expect(heartbeatStatusRefreshes).toBe(6)
   })
 
   it('retains the first durable prediction when equal-time same-id content conflicts', async () => {

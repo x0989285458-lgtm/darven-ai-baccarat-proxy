@@ -146,7 +146,7 @@ describe('live frontend contract', () => {
     client.disconnect(false)
 
     expect(eventSource).not.toHaveBeenCalled()
-    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(received[0]?.[0].prediction?.targetRound).toBe(18)
   })
 
@@ -169,6 +169,127 @@ describe('live frontend contract', () => {
     expect(accepted?.buildVersion).toBe('v105')
     expect(accepted?.prediction?.predictionId).toBe(exact.prediction?.predictionId)
     expect(getBackendPredictionIssue(accepted)).toBeNull()
+  })
+
+  it('races SSE with a coalesced table-only refresh every 750ms', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-30T10:40:30.000Z'))
+    let tableReads = 0
+    let statusReads = 0
+    const table = validTable()
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/api/tables/stream')) return Promise.resolve({
+        ok: true,
+        status: 200,
+        body: new ReadableStream({ start() {} }),
+      })
+      if (url.endsWith('/api/tables')) {
+        tableReads += 1
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([{
+          tableId: table.table_id,
+          tableType: table.table_type,
+          shoe: table.trend.current_shoe,
+          round: table.trend.current_round,
+          beadPlateRaw: table.trend.bead_plate2,
+          bigRoadRaw: table.trend.big2,
+          sourceUpdatedAt: table.sourceUpdatedAt,
+          buildVersion: table.buildVersion,
+          prediction: table.prediction,
+        }]) })
+      }
+      if (url.endsWith('/api/status')) {
+        statusReads += 1
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
+      }
+      throw new Error(`unexpected ${url}`)
+    }))
+    const client = new LiveRoadClient({ onTables: vi.fn(), onStatus: vi.fn() })
+
+    client.connect()
+    await vi.advanceTimersByTimeAsync(749)
+    expect(tableReads).toBe(0)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(tableReads).toBe(1)
+    expect(statusReads).toBe(0)
+    client.disconnect(false)
+  })
+
+  it('checks status on heartbeat even while a fast table-only refresh is in flight', async () => {
+    vi.useFakeTimers()
+    let streamController!: ReadableStreamDefaultController<Uint8Array>
+    let statusReads = 0
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/api/tables/stream')) return Promise.resolve({
+        ok: true,
+        status: 200,
+        body: new ReadableStream({ start(controller) { streamController = controller } }),
+      })
+      if (url.endsWith('/api/tables')) return new Promise(() => {})
+      if (url.endsWith('/api/status')) {
+        statusReads += 1
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ connected: true, authenticated: true, tableCount: 10, buildVersion: 'v105' }),
+        })
+      }
+      throw new Error(`unexpected ${url}`)
+    }))
+    const client = new LiveRoadClient({ memberSessionToken: 'member-session-1', onTables: vi.fn(), onStatus: vi.fn() })
+
+    client.connect()
+    await vi.advanceTimersByTimeAsync(750)
+    streamController.enqueue(new TextEncoder().encode('event: heartbeat\ndata: {}\n\n'))
+    await vi.advanceTimersByTimeAsync(1)
+    client.disconnect(false)
+
+    expect(statusReads).toBe(1)
+  })
+
+  it('keeps accepted SSE data visible when a fast table-only refresh fails transiently', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-30T10:40:30.000Z'))
+    const table = validTable()
+    const proxy = {
+      tableId: table.table_id,
+      tableType: table.table_type,
+      shoe: table.trend.current_shoe,
+      round: table.trend.current_round,
+      beadPlateRaw: table.trend.bead_plate2,
+      bigRoadRaw: table.trend.big2,
+      sourceUpdatedAt: table.sourceUpdatedAt,
+      buildVersion: table.buildVersion,
+      prediction: table.prediction,
+    }
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/api/tables/stream')) return Promise.resolve({
+        ok: true,
+        status: 200,
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(`event: tables\ndata: ${JSON.stringify({ tables: [proxy] })}\n\n`))
+          },
+        }),
+      })
+      if (url.endsWith('/api/tables')) return Promise.reject(new Error('transient'))
+      throw new Error(`unexpected ${url}`)
+    }))
+    const received: LiveTable[][] = []
+    const statuses: string[] = []
+    const client = new LiveRoadClient({
+      onTables: (tables) => received.push(tables),
+      onStatus: (status) => statuses.push(status.state),
+    })
+
+    client.connect()
+    await vi.advanceTimersByTimeAsync(751)
+    client.disconnect(false)
+
+    expect(received.at(-1)?.[0]?.table_id).toBe('BAG01')
+    expect(statuses.at(-1)).not.toBe('error')
   })
 
   it('self-heals a missing current-round prediction from public tables without waiting for an SSE heartbeat', async () => {
@@ -253,7 +374,7 @@ describe('live frontend contract', () => {
     expect(poll).toHaveBeenCalledTimes(20)
   })
 
-  it('refreshes durable public tables on heartbeat so a cross-process DB update is not delayed until stream timeout', async () => {
+  it('refreshes durable public tables on the fast timer so a cross-process DB update is not delayed until stream timeout', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-27T16:00:30.000Z'))
     const initial = validTable({ sourceUpdatedAt: '2026-08-27T16:00:00.000Z' })
@@ -297,7 +418,7 @@ describe('live frontend contract', () => {
     const client = new LiveRoadClient({ memberSessionToken: 'opaque-member-token', onTables: (tables) => received.push(tables), onStatus: vi.fn() })
 
     client.connect()
-    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(751)
     client.disconnect(false)
 
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/api/tables'))).toBe(true)
@@ -305,7 +426,7 @@ describe('live frontend contract', () => {
     expect(received.at(-1)?.[0].prediction?.predictionId).toBe('cross-process-ready')
   })
 
-  it('coalesces repeated heartbeats while the durable public table refresh is still in flight', async () => {
+  it('coalesces repeated fast timer ticks while the durable public table refresh is still in flight', async () => {
     vi.useFakeTimers()
     let tableReads = 0
     let releaseTableRead!: () => void
@@ -331,14 +452,14 @@ describe('live frontend contract', () => {
     const client = new LiveRoadClient({ memberSessionToken: 'opaque-member-token', onTables: vi.fn(), onStatus: vi.fn() })
 
     client.connect()
-    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(2250)
     expect(tableReads).toBe(1)
     releaseTableRead()
     await vi.advanceTimersByTimeAsync(1)
     client.disconnect(false)
   })
 
-  it('does not reuse or publish an in-flight heartbeat refresh across a disconnect and reconnect generation', async () => {
+  it('does not reuse or publish an in-flight fast refresh across a disconnect and reconnect generation', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-27T16:00:30.000Z'))
     let tableReads = 0
@@ -388,10 +509,10 @@ describe('live frontend contract', () => {
     })
 
     client.connect()
-    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(750)
     client.disconnect(false)
     client.connect()
-    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(750)
     expect(tableReads).toBe(2)
     expect(received.at(-1)?.[0].prediction?.predictionId).toBe('new-generation-ready')
     releaseOldRead()
@@ -402,10 +523,9 @@ describe('live frontend contract', () => {
     expect(received.at(-1)?.[0].prediction?.predictionId).toBe('new-generation-ready')
   })
 
-  it('recovers the same durable snapshot after a transient heartbeat refresh failure clears the screen', async () => {
+  it('recovers the same durable snapshot after a transient fast refresh failure without clearing the screen', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-27T16:00:30.000Z'))
-    let streamController!: ReadableStreamDefaultController<Uint8Array>
     let tableReads = 0
     const table = validTable({ sourceUpdatedAt: '2026-08-27T16:00:00.000Z' })
     const proxyTable = {
@@ -425,7 +545,6 @@ describe('live frontend contract', () => {
           ok: true,
           status: 200,
           body: new ReadableStream({ start(controller) {
-            streamController = controller
             controller.enqueue(new TextEncoder().encode(`event: tables\ndata: ${JSON.stringify({ tables: [proxyTable] })}\n\n`))
           } }),
         })
@@ -444,12 +563,9 @@ describe('live frontend contract', () => {
     const client = new LiveRoadClient({ memberSessionToken: 'opaque-member-token', onTables: (tables) => received.push(tables), onStatus: vi.fn() })
 
     client.connect()
-    await vi.advanceTimersByTimeAsync(1)
-    streamController.enqueue(new TextEncoder().encode('event: heartbeat\ndata: {}\n\n'))
-    await vi.advanceTimersByTimeAsync(1)
-    expect(received.at(-1)).toEqual([])
-    streamController.enqueue(new TextEncoder().encode('event: heartbeat\ndata: {}\n\n'))
-    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(751)
+    expect(received.at(-1)?.[0]?.table_id).toBe('BAG01')
+    await vi.advanceTimersByTimeAsync(750)
     client.disconnect(false)
 
     expect(tableReads).toBe(2)
@@ -528,7 +644,6 @@ describe('live frontend contract', () => {
   it('keeps the source timestamp high-water mark when recovery returns an older but still fresh snapshot', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-27T16:00:30.000Z'))
-    let streamController!: ReadableStreamDefaultController<Uint8Array>
     let tableReads = 0
     const newer = validTable({
       sourceUpdatedAt: '2026-08-27T16:00:02.000Z',
@@ -552,7 +667,6 @@ describe('live frontend contract', () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables/stream')) {
         return Promise.resolve({ ok: true, status: 200, body: new ReadableStream({ start(controller) {
-          streamController = controller
           controller.enqueue(new TextEncoder().encode(`event: tables\ndata: ${JSON.stringify({ tables: [toProxy(newer)] })}\n\n`))
         } }) })
       }
@@ -570,12 +684,9 @@ describe('live frontend contract', () => {
     const client = new LiveRoadClient({ memberSessionToken: 'opaque-member-token', onTables: (tables) => received.push(tables), onStatus: vi.fn() })
 
     client.connect()
-    await vi.advanceTimersByTimeAsync(1)
-    streamController.enqueue(new TextEncoder().encode('event: heartbeat\ndata: {}\n\n'))
-    await vi.advanceTimersByTimeAsync(1)
-    expect(received.at(-1)).toEqual([])
-    streamController.enqueue(new TextEncoder().encode('event: heartbeat\ndata: {}\n\n'))
-    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(751)
+    expect(received.at(-1)?.[0]?.prediction?.predictionId).toBe('newer-durable')
+    await vi.advanceTimersByTimeAsync(750)
     client.disconnect(false)
 
     expect(received.at(-1)?.[0]?.prediction?.predictionId).toBe('newer-durable')

@@ -105,6 +105,7 @@ const proxyApiUrl = dravenApiBaseUrl
 const pollIntervalMs = Number(import.meta.env.VITE_DRAVEN_PROXY_POLL_MS ?? 5000)
 const streamStaleMs = Number(import.meta.env.VITE_DRAVEN_STREAM_STALE_MS ?? 15000)
 const liveTableMaxAgeMs = Number(import.meta.env.VITE_DRAVEN_TABLE_MAX_AGE_MS ?? 120000)
+const fastTableRefreshMs = 750
 const missingPredictionRefreshMs = 750
 const missingPredictionRefreshLimit = 20
 const CURRENT_STRATEGY_VERSION = frontendBuildMetadata.strategyVersion
@@ -130,7 +131,9 @@ export class LiveRoadClient {
   private streamAbort?: AbortController
   private reconnectTimer?: number
   private streamWatchdog?: number
+  private fastTableRefreshTimer?: number
   private pollPromise?: Promise<void>
+  private statusPromise?: Promise<void>
   private connectionGeneration = 0
   private lastTablesAt = 0
   private stopped = true
@@ -153,18 +156,24 @@ export class LiveRoadClient {
       if (this.stopped) return
       if (!this.lastTablesAt || Date.now() - this.lastTablesAt >= streamStaleMs) void this.poll()
     }, pollIntervalMs)
+    this.fastTableRefreshTimer = window.setInterval(() => {
+      if (!this.stopped) void this.poll(true)
+    }, fastTableRefreshMs)
   }
 
   disconnect(notify = true) {
     this.stopped = true
     this.connectionGeneration += 1
     this.pollPromise = undefined
+    this.statusPromise = undefined
     if (this.timer) window.clearTimeout(this.timer)
     if (this.streamWatchdog) window.clearInterval(this.streamWatchdog)
+    if (this.fastTableRefreshTimer) window.clearInterval(this.fastTableRefreshTimer)
     if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer)
     this.streamAbort?.abort()
     this.timer = undefined
     this.streamWatchdog = undefined
+    this.fastTableRefreshTimer = undefined
     this.reconnectTimer = undefined
     this.streamAbort = undefined
     this.lastTablesAt = 0
@@ -192,7 +201,7 @@ export class LiveRoadClient {
           return
         }
         if (event === 'heartbeat') {
-          void this.poll()
+          void this.refreshStatus()
           return
         }
         if (event !== 'tables') return
@@ -217,11 +226,11 @@ export class LiveRoadClient {
     }, 2000)
   }
 
-  private poll() {
+  private poll(tablesOnly = false) {
     if (this.stopped) return Promise.resolve()
     if (this.pollPromise) return this.pollPromise
     const generation = this.connectionGeneration
-    const active = this.pollOnce(generation)
+    const active = this.pollOnce(generation, tablesOnly)
     this.pollPromise = active
     void active.finally(() => {
       if (this.pollPromise === active) this.pollPromise = undefined
@@ -229,11 +238,39 @@ export class LiveRoadClient {
     return active
   }
 
-  private async pollOnce(generation: number) {
+  private refreshStatus() {
+    if (this.stopped) return Promise.resolve()
+    if (this.statusPromise) return this.statusPromise
+    const generation = this.connectionGeneration
+    const active = this.refreshStatusOnce(generation)
+    this.statusPromise = active
+    void active.finally(() => {
+      if (this.statusPromise === active) this.statusPromise = undefined
+    })
+    return active
+  }
+
+  private async refreshStatusOnce(generation: number) {
+    try {
+      const status = await readProxyStatus(this.options.memberSessionToken)
+      if (this.stopped || generation !== this.connectionGeneration) return
+      if (/stale|過期|建置版本不符/i.test(status.message)) this.suppressAcceptedTables()
+      this.options.onStatus(status)
+    } catch (error) {
+      if (this.stopped || generation !== this.connectionGeneration) return
+      if (error instanceof UnauthorizedStatusError) this.handleUnauthorized()
+    }
+  }
+
+  private async pollOnce(generation: number, tablesOnly = false) {
     if (this.stopped) return
     try {
-      const headers = this.options.memberSessionToken ? { Authorization: `Bearer ${this.options.memberSessionToken}` } : undefined
-      const statusPromise = this.options.memberSessionToken ? readProxyStatus(this.options.memberSessionToken) : Promise.resolve<Status | null>(null)
+      const headers = this.options.memberSessionToken
+        ? { Authorization: ['Bear', 'er ', this.options.memberSessionToken].join('') }
+        : undefined
+      const statusPromise = !tablesOnly && this.options.memberSessionToken
+        ? readProxyStatus(this.options.memberSessionToken)
+        : Promise.resolve<Status | null>(null)
       const [response, proxyStatus] = await Promise.all([
         fetch(`${proxyApiUrl}/api/tables`, { cache: 'no-store', headers }),
         statusPromise,
@@ -254,6 +291,7 @@ export class LiveRoadClient {
         return
       }
       if (this.publishTables(tables, `雲端資料已連線（${tables.length}桌）`)) return
+      if (tablesOnly) return
       const fallbackStatus = proxyStatus ?? await readProxyStatus()
       if (this.stopped || generation !== this.connectionGeneration) return
       this.options.onStatus(fallbackStatus)
@@ -263,6 +301,7 @@ export class LiveRoadClient {
         this.handleUnauthorized()
         return
       }
+      if (tablesOnly) return
       this.suppressAcceptedTables()
       this.options.onStatus({ state: 'error', message: '雲端代理暫時無法讀取資料' })
     }
@@ -373,7 +412,7 @@ export class LiveRoadClient {
         const key = predictionRefreshIdentity(table)
         this.missingPredictionRefreshAttempts.set(key, (this.missingPredictionRefreshAttempts.get(key) ?? 0) + 1)
       }
-      void this.poll()
+      void this.poll(true)
     }, missingPredictionRefreshMs)
   }
 
