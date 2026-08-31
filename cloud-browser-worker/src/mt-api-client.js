@@ -521,7 +521,8 @@ function isStrictlyNewerScreen(previous, candidate) {
   const candidateShoe = Number(candidate?.shoe)
   const previousRound = Number(previous?.round)
   const candidateRound = Number(candidate?.round)
-  if (![previousShoe, candidateShoe, previousRound, candidateRound].every(Number.isSafeInteger)) return false
+  if (![candidateShoe, candidateRound].every(Number.isSafeInteger)) return false
+  if (![previousShoe, previousRound].every(Number.isSafeInteger)) return true
   return candidateShoe > previousShoe || (candidateShoe === previousShoe && candidateRound > previousRound)
 }
 
