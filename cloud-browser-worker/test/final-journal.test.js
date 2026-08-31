@@ -27,6 +27,29 @@ test('append-only journal recovers Final, durable ACK, and per-table cursor acro
   assert.deepEqual(records.map((record) => record.type), ['final', 'ack'])
 })
 
+test('batch ACK validates every Final before one durable append and restores all acknowledgements', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-final-batch-ack-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const journalPath = path.join(dir, 'finals.jsonl')
+  const journal = await createFinalJournal({ journalPath, assertSource: () => true })
+  const appended = []
+  for (const round of [1, 2, 3]) appended.push(await journal.append(finalEvent({ round, sequence: round })))
+
+  await assert.rejects(journal.ackMany([
+    { identity: appended[0].identity, hash: appended[0].hash },
+    { identity: appended[1].identity, hash: 'wrong-hash' },
+  ]), /final_ack_mismatch/)
+  assert.equal(journal.pending().length, 3, 'validation failure must append no partial ACK')
+
+  const result = await journal.ackMany(appended.map(({ identity, hash }) => ({ identity, hash })))
+  assert.equal(result.acknowledged, 3)
+  assert.equal(journal.pending().length, 0)
+  const restored = await createFinalJournal({ journalPath, assertSource: () => true })
+  assert.equal(restored.pending().length, 0)
+  const records = (await readFile(journalPath, 'utf8')).trim().split('\n').map(JSON.parse)
+  assert.deepEqual(records.map((record) => record.type), ['final', 'final', 'final', 'ack', 'ack', 'ack'])
+})
+
 test('same identity with a different payload or hash fails closed', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-final-conflict-'))
   t.after(() => rm(dir, { recursive: true, force: true }))

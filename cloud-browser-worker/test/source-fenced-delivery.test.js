@@ -62,10 +62,11 @@ test('epoch2 restart atomically rebinds every persisted queue round before any d
 
   const reboundRound = { ...baseRound, capturedSource: captured, source: { ...epoch2, sequence: 101 } }
   let delivered = null
+  const currentTables = [{ tableId: 'BAG01', shoe: 100, round: 5 }]
   const second = createSnapshotPusher({
     targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
     now: () => 20_000, isRoundDeliverable: () => true,
-    getSnapshot: async () => ({ sessionId: 'worker-api-primary-2', buildVersion: '105', source: epoch2, tables: [], rounds: [reboundRound] }),
+    getSnapshot: async () => ({ sessionId: 'worker-api-primary-2', buildVersion: '105', source: epoch2, connected: true, authenticated: true, tables: currentTables, rounds: [reboundRound] }),
     onRebindQueue: async ({ roundKeys }) => {
       assert.deepEqual(roundKeys, ['BAG01:100:4'])
       return [reboundRound]
@@ -89,6 +90,9 @@ test('epoch2 restart atomically rebinds every persisted queue round before any d
   assert.notEqual(delivered.sequence, 10_000)
   assert.deepEqual(delivered.snapshot.rounds[0].capturedSource, captured)
   assert.deepEqual(delivered.snapshot.rounds[0].source, { ...epoch2, sequence: 101 })
+  assert.deepEqual(delivered.snapshot.tables, currentTables, 'rebound backlog must carry the fresh current table snapshot')
+  assert.equal(delivered.snapshot.connected, true)
+  assert.equal(delivered.snapshot.authenticated, true)
   assert.equal(delivered.snapshot.rounds[0].winner, baseRound.winner)
   assert.deepEqual(delivered.snapshot.rounds[0].rawResult, baseRound.rawResult)
 })

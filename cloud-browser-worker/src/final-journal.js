@@ -50,6 +50,34 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
     })
   }
 
+  async function ackMany(claims = []) {
+    return serialize(async () => {
+      if (!Array.isArray(claims)) throw new Error('final_ack_batch_invalid')
+      const unique = new Map()
+      for (const claim of claims) {
+        const identity = String(claim?.identity ?? '')
+        const hash = String(claim?.hash ?? '')
+        const prior = unique.get(identity)
+        if (prior && prior !== hash) throw new Error('final_ack_conflict')
+        unique.set(identity, hash)
+      }
+      const pending = []
+      let duplicates = 0
+      for (const [identity, hash] of unique) {
+        const current = finals.get(identity)
+        if (!current || current.hash !== hash) throw new Error('final_ack_mismatch')
+        const acknowledgedHash = acknowledgements.get(identity)
+        if (acknowledgedHash) {
+          if (acknowledgedHash !== current.hash) throw new Error('final_ack_conflict')
+          duplicates += 1
+        } else pending.push({ identity, hash: current.hash })
+      }
+      await appendRecords(pending.map(({ identity, hash }) => ({ version: 1, type: 'ack', identity, hash })))
+      for (const { identity, hash } of pending) applyAck(identity, hash)
+      return { acknowledged: pending.length, duplicates }
+    })
+  }
+
   async function closeShoe({ tableId: tableIdValue, shoe: shoeValue, finalRound: finalRoundValue } = {}) {
     return serialize(async () => {
       const tableId = canonicalProductionTableId(tableIdValue)
@@ -225,10 +253,15 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
   }
 
   async function appendRecord(record) {
+    await appendRecords([record])
+  }
+
+  async function appendRecords(records) {
+    if (!Array.isArray(records) || records.length === 0) return
     await mkdir(path.dirname(target), { recursive: true })
     const handle = await open(target, 'a', 0o600)
     try {
-      await handle.writeFile(`${JSON.stringify(record)}\n`, 'utf8')
+      await handle.writeFile(records.map((record) => JSON.stringify(record)).join('\n') + '\n', 'utf8')
       await handle.sync()
     } finally {
       await handle.close()
@@ -241,7 +274,7 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
     return current
   }
 
-  return { append, ack, closeShoe, rebindPending, writeHeader, bootstrapFromSnapshotPusherCursor, pending, cursor, status, header: () => journalHeader && structuredClone(journalHeader) }
+  return { append, ack, ackMany, closeShoe, rebindPending, writeHeader, bootstrapFromSnapshotPusherCursor, pending, cursor, status, header: () => journalHeader && structuredClone(journalHeader) }
 }
 
 export function finalIdentity(event = {}) {

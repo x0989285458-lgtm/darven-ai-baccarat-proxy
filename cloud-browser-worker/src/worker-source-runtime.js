@@ -260,12 +260,13 @@ export function createWorkerSourceRuntime({
 
   async function acknowledge(receipt = {}) {
     const accepted = new Set((receipt.acceptedRoundKeys ?? []).map(String))
-    for (const entry of journal.pending()) {
-      if (accepted.has(entry.identity)) {
-        await journal.ack(entry.identity, entry.hash)
-        freshBaselineTables.delete(canonicalProductionTableId(entry.event?.tableId))
-      }
+    const matched = journal.pending().filter((entry) => accepted.has(entry.identity))
+    if (typeof journal.ackMany === 'function') {
+      await journal.ackMany(matched.map((entry) => ({ identity: entry.identity, hash: entry.hash })))
+    } else {
+      for (const entry of matched) await journal.ack(entry.identity, entry.hash)
     }
+    for (const entry of matched) freshBaselineTables.delete(canonicalProductionTableId(entry.event?.tableId))
     updateGaps()
   }
 

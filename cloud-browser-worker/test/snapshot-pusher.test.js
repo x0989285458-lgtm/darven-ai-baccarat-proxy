@@ -4,6 +4,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { gunzipSync } from 'node:zlib'
 import { createSnapshotPusher } from '../src/snapshot-pusher.js'
 
 test('formal backlog delivery preserves the stable five-second cadence with bounded payload and request limits', async () => {
@@ -13,6 +14,130 @@ test('formal backlog delivery preserves the stable five-second cadence with boun
   assert.match(server, /PUSH_MAX_ROUNDS_PER_DELIVERY\s*\?\?\s*5/)
   assert.match(server, /PUSH_MAX_DRAIN_PER_TICK\s*\?\?\s*5/)
   assert.match(server, /signalFinalReady:\s*\(\)\s*=>\s*snapshotPusher\.trigger\(\)/)
+  assert.match(server, /onArchived:\s*archiveOwnedSnapshot/)
+  assert.match(server, /PUSH_HISTORICAL_COMPACT_THRESHOLD_ENTRIES\s*\?\?\s*200/)
+})
+
+test('an oversized backlog archives confirmed past-shoe Finals before delivering the current shoe', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-current-shoe-queue-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  const archivePath = path.join(dir, 'historical.jsonl')
+  const source = { mode: 'api', ownerId: 'api-primary', epoch: 9, fence: 'fence-9' }
+  const oldFinal = {
+    tableId: 'BAG01', shoe: 100, round: 70, winner: 'banker', sourceAction: 'summary', final: true,
+    rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], source: { ...source, sequence: 70 },
+  }
+  const currentFinal = {
+    ...oldFinal, shoe: 101, round: 2, winner: 'player', source: { ...source, sequence: 72 },
+  }
+  const futureFinal = {
+    ...oldFinal, shoe: 102, round: 1, winner: 'banker', source: { ...source, sequence: 73 },
+  }
+  const snapshot = {
+    sessionId: 'worker-api-primary-9', buildVersion: '105', source,
+    connected: true, authenticated: true,
+    tables: [{ tableId: 'BAG01', shoe: 101, round: 3 }],
+    rounds: [oldFinal, currentFinal, futureFinal],
+  }
+  const delivered = []
+  const archived = []
+  let attempts = 0
+  let clock = 10_000
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://proxy.example/api/cloud-ingest/snapshot', key: 'worker-key',
+    queuePath, historicalArchivePath: archivePath, historicalCompactThresholdEntries: 1,
+    maxRoundsPerEnvelope: 1, maxDrainPerTick: 1, now: () => clock,
+    isRoundDeliverable: () => true, getSnapshot: async () => snapshot,
+    onArchived: async (receipt) => archived.push(receipt),
+    fetchImpl: async (_url, options) => {
+      attempts += 1
+      const envelope = JSON.parse(options.body)
+      if (attempts === 1) throw new Error('downstream paused')
+      delivered.push(envelope)
+      return {
+        status: 200,
+        json: async () => ({
+          ok: true, accepted: true, duplicate: false,
+          sessionId: envelope.sessionId, sequence: envelope.sequence,
+          acceptedRoundKeys: envelope.roundKeys, source: envelope.source,
+        }),
+      }
+    },
+  })
+
+  assert.equal(await pusher.tick(), false)
+  assert.equal(pusher.snapshot().queueEntryCount, 3)
+  clock = 100_000
+  assert.equal(await pusher.tick(), true)
+  assert.deepEqual(delivered[0].roundKeys, ['BAG01:101:2'])
+  assert.equal(delivered[0].snapshot.tables[0].shoe, 101)
+  const completedArchive = (await readdir(dir)).find((name) => name.startsWith('historical.jsonl.completed-') && name.endsWith('.jsonl.gz'))
+  assert.ok(completedArchive, 'a completed historical batch must be compressed outside the active receipt log')
+  const archive = gunzipSync(await readFile(path.join(dir, completedArchive))).toString('utf8').trim().split(/\r?\n/).map(JSON.parse)
+  await assert.rejects(readFile(archivePath), { code: 'ENOENT' })
+  assert.equal(archive.length, 1)
+  assert.equal(archive[0].roundKey, 'BAG01:100:70')
+  assert.equal(archive[0].reason, 'historical_shoe_backlog')
+  assert.deepEqual(archived.map((receipt) => receipt.roundKeys), [['BAG01:100:70']])
+  assert.equal(pusher.snapshot().archivedRoundKeyCount, 1)
+})
+
+test('startup replays durable historical archive receipts before continuing delivery', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-archive-receipt-replay-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  const archivePath = path.join(dir, 'historical.jsonl')
+  await writeFile(archivePath, `${JSON.stringify({
+    version: 1, archiveId: 'vm:100:BAG01:90:8', archivedAt: 10_000,
+    reason: 'historical_shoe_backlog', roundKey: 'BAG01:90:8', currentShoe: '91',
+    sessionId: 'vm', sequence: 100,
+  })}\n`)
+  const receipts = []
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://proxy.example/api/cloud-ingest/snapshot', key: 'worker-key',
+    queuePath, historicalArchivePath: archivePath, now: () => 20_000,
+    getSnapshot: async () => ({ sessionId: 'vm', buildVersion: '105', tables: [], rounds: [] }),
+    onArchived: async (receipt) => receipts.push(receipt),
+    fetchImpl: async (_url, options) => acceptedResponse(options),
+  })
+
+  assert.equal(await pusher.tick(), true)
+  assert.deepEqual(receipts.map((receipt) => receipt.roundKeys), [['BAG01:90:8']])
+})
+
+test('startup never replays an archive receipt while the same Final remains in the active queue', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-archive-active-guard-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  const archivePath = path.join(dir, 'historical.jsonl')
+  const round = {
+    tableId: 'BAG01', shoe: 90, round: 8, winner: 'banker', sourceAction: 'summary', final: true,
+    rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6],
+  }
+  await writeFile(queuePath, JSON.stringify({ version: 3, entries: [{
+    protocolVersion: 'v105', sessionId: 'vm', timestamp: 10_000, captureTimestamp: 10_000,
+    sequence: 10_000, roundKeys: ['BAG01:90:8'],
+    snapshot: { sessionId: 'vm', buildVersion: '105', tables: [], rounds: [round] },
+  }] }))
+  await writeFile(archivePath, `${JSON.stringify({
+    version: 1, archiveId: 'vm:10000:BAG01:90:8', archivedAt: 10_000,
+    reason: 'historical_shoe_backlog', roundKey: 'BAG01:90:8', currentShoe: '91',
+    sessionId: 'vm', sequence: 10_000, round,
+  })}\n`)
+  const receipts = []
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://proxy.example/api/cloud-ingest/snapshot', key: 'worker-key',
+    queuePath, historicalArchivePath: archivePath, now: () => 20_000,
+    isRoundDeliverable: () => true,
+    getSnapshot: async () => ({ sessionId: 'vm', buildVersion: '105', tables: [], rounds: [round] }),
+    onArchived: async (receipt) => receipts.push(receipt),
+    fetchImpl: async () => { throw new Error('downstream paused') },
+  })
+
+  assert.equal(await pusher.tick(), false)
+  assert.deepEqual(receipts, [])
+  assert.equal(pusher.snapshot().queueEntryCount, 1)
 })
 
 test('an explicit Final trigger durably queues and delivers without waiting for the interval timer', async (t) => {

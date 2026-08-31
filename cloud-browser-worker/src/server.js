@@ -93,8 +93,11 @@ const snapshotPusher = createSnapshotPusher({
   maxDrainPerTick: Number(process.env.PUSH_MAX_DRAIN_PER_TICK ?? 5),
   queuePath: PUSH_QUEUE_PATH,
   cursorPath: PUSH_CURSOR_PATH,
+  historicalArchivePath: process.env.PUSH_HISTORICAL_ARCHIVE_PATH ?? `${PUSH_QUEUE_PATH}.historical.jsonl`,
+  historicalCompactThresholdEntries: Number(process.env.PUSH_HISTORICAL_COMPACT_THRESHOLD_ENTRIES ?? 200),
   isRoundDeliverable: isFinalRealCardRound,
   onAcknowledged: acknowledgeOwnedSnapshot,
+  onArchived: archiveOwnedSnapshot,
   onRebindQueue: rebindOwnedQueue,
 })
 
@@ -229,6 +232,13 @@ async function acknowledgeOwnedSnapshot(receipt) {
   if (MT_SOURCE_MODE !== 'api') return
   const runtime = await ensureSourceRuntime()
   await runtime.acknowledge(receipt)
+}
+
+async function archiveOwnedSnapshot(receipt) {
+  if (MT_CAPTURE_ROLE !== 'canonical') return
+  if (MT_SOURCE_MODE !== 'api') return
+  const runtime = await ensureSourceRuntime()
+  await runtime.acknowledge({ acceptedRoundKeys: receipt?.roundKeys ?? [] })
 }
 
 async function rebindOwnedQueue({ roundKeys, snapshot }) {

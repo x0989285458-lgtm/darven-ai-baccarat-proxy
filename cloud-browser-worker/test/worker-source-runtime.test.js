@@ -58,7 +58,14 @@ test('runtime blocks Live ACK on a gap, replays exact missing Finals first, then
   const replaySnapshot = await fixture.runtime.getDeliverySnapshot()
   assert.deepEqual(replayed[0].rounds, [8, 9, 10])
   assert.deepEqual(replaySnapshot.rounds.map((round) => round.round), [8, 9, 10])
+  const batchCalls = []
+  const originalAckMany = fixture.journal.ackMany
+  fixture.journal.ackMany = async (claims) => {
+    batchCalls.push(claims.map((claim) => claim.identity))
+    return originalAckMany(claims)
+  }
   await fixture.runtime.acknowledge({ acceptedRoundKeys: ['BAG01:91:8', 'BAG01:91:9', 'BAG01:91:10'] })
+  assert.deepEqual(batchCalls, [['BAG01:91:8', 'BAG01:91:9', 'BAG01:91:10']])
 
   const liveSnapshot = await fixture.runtime.getDeliverySnapshot()
   assert.deepEqual(liveSnapshot.rounds.map((round) => round.round), [11])

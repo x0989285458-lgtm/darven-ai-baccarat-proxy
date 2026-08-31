@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import path from 'node:path'
 import { mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
@@ -14,6 +15,10 @@ export function createSnapshotPusher({
   getSnapshot,
   fetchImpl = globalThis.fetch,
   queuePath = './data/latest-snapshot.json',
+  historicalArchivePath = `${queuePath}.historical.jsonl`,
+  historicalCompactThresholdEntries = 200,
+  historicalShoeConfirmations = 2,
+  historicalAheadShoeConfirmations = 6,
   cursorPath = `${queuePath}.cursor.json`,
   maxCursorEntries = 10000,
   maxDrainPerTick = 1,
@@ -27,6 +32,7 @@ export function createSnapshotPusher({
   queueJournalThresholdEntries = 100,
   isRoundDeliverable = () => true,
   onAcknowledged = async () => {},
+  onArchived = async () => {},
   onRebindQueue = null,
   faultInjector = async () => {},
   now = Date.now,
@@ -59,6 +65,10 @@ export function createSnapshotPusher({
   let currentController = null
   let triggerRequested = false
   let triggerLoopPromise = null
+  const shoeObservations = new Map()
+  let archivedRoundKeyCount = 0
+  let lastCompactionAtMs = null
+  let lastCompactionArchivedCount = 0
 
   function tick() {
     if (stopped || !targetUrl || !key || typeof getSnapshot !== 'function' || active || stateInvalid) return Promise.resolve(false)
@@ -175,6 +185,7 @@ export function createSnapshotPusher({
 
   async function collectSnapshot(timestamp) {
     const snapshot = sanitizeProductionSnapshot(await getSnapshot())
+    await compactHistoricalBacklog(snapshot, timestamp)
     await rebindQueuedTransport(snapshot, timestamp)
     const rounds = Array.isArray(snapshot?.rounds) ? snapshot.rounds : []
     const candidates = uniqueRoundCandidates(rounds
@@ -252,6 +263,140 @@ export function createSnapshotPusher({
     lastAcknowledgedSequence = receipt.sequence
   }
 
+  async function compactHistoricalBacklog(snapshot, timestamp) {
+    const confirmedShoes = observeConfirmedShoes(snapshot)
+    const threshold = Math.max(1, Number(historicalCompactThresholdEntries) || 200)
+    if (queue.length <= threshold || confirmedShoes.size === 0) return
+
+    const archiveRecords = []
+    const retainedQueue = []
+    for (const entry of queue) {
+      if (entry.deliveryState === 'remote_ack_pending') {
+        retainedQueue.push(entry)
+        continue
+      }
+      const rounds = Array.isArray(entry.snapshot?.rounds) ? entry.snapshot.rounds : []
+      if (rounds.length === 0) {
+        retainedQueue.push(entry)
+        continue
+      }
+      const retainedRounds = []
+      const retainedKeys = []
+      for (const round of rounds) {
+        const keyValue = roundKey(round)
+        const currentObservation = confirmedShoes.get(String(round?.tableId ?? ''))
+        const currentShoe = currentObservation?.shoe ?? null
+        const roundShoe = normalizeShoeIdentity(round?.shoe)
+        if (!isClearlyHistoricalShoe(roundShoe, currentObservation)) {
+          retainedRounds.push(round)
+          retainedKeys.push(keyValue)
+          continue
+        }
+        archiveRecords.push({
+          version: 1,
+          archiveId: `${String(entry.sessionId ?? '')}:${Number(entry.sequence)}:${keyValue}`,
+          archivedAt: Number(timestamp),
+          reason: 'historical_shoe_backlog',
+          roundKey: keyValue,
+          currentShoe,
+          sessionId: String(entry.sessionId ?? ''),
+          sequence: Number(entry.sequence),
+          source: entry.source ?? null,
+          round,
+        })
+      }
+      if (retainedRounds.length > 0) {
+        retainedQueue.push({
+          ...entry,
+          roundKeys: retainedKeys,
+          snapshot: { ...entry.snapshot, rounds: retainedRounds },
+        })
+      }
+    }
+    if (archiveRecords.length === 0) return
+    await appendHistoricalArchive(archiveRecords)
+    queue = retainedQueue
+    archivedRoundKeyCount += archiveRecords.length
+    lastCompactionAtMs = Number(timestamp)
+    lastCompactionArchivedCount = archiveRecords.length
+    await saveQueue()
+    await onArchived({
+      roundKeys: archiveRecords.map((record) => record.roundKey),
+      records: structuredClone(archiveRecords),
+    })
+    await completeHistoricalArchive(archiveRecords, timestamp)
+  }
+
+  function observeConfirmedShoes(snapshot) {
+    const seenTables = new Set()
+    const required = Math.max(1, Number(historicalShoeConfirmations) || 2)
+    const confirmed = new Map()
+    for (const table of Array.isArray(snapshot?.tables) ? snapshot.tables : []) {
+      const tableId = String(table?.tableId ?? '')
+      const shoe = normalizeShoeIdentity(table?.shoe)
+      if (!tableId || shoe == null) continue
+      seenTables.add(tableId)
+      const previous = shoeObservations.get(tableId)
+      const count = previous?.shoe === shoe ? previous.count + 1 : 1
+      shoeObservations.set(tableId, { shoe, count })
+      if (count >= required) confirmed.set(tableId, { shoe, count })
+    }
+    for (const tableId of shoeObservations.keys()) {
+      if (!seenTables.has(tableId)) shoeObservations.delete(tableId)
+    }
+    return confirmed
+  }
+
+  function isClearlyHistoricalShoe(roundShoe, currentObservation) {
+    const currentShoe = currentObservation?.shoe ?? null
+    if (currentShoe == null || roundShoe == null || roundShoe === currentShoe) return false
+    const roundNumber = Number(roundShoe)
+    const currentNumber = Number(currentShoe)
+    if (Number.isFinite(roundNumber) && Number.isFinite(currentNumber) && roundNumber < currentNumber) return true
+    const aheadRequired = Math.max(
+      Math.max(1, Number(historicalShoeConfirmations) || 2),
+      Math.max(1, Number(historicalAheadShoeConfirmations) || 6),
+    )
+    return Number(currentObservation?.count ?? 0) >= aheadRequired
+  }
+
+  function normalizeShoeIdentity(value) {
+    if (value == null || value === '') return null
+    const numeric = Number(value)
+    return Number.isFinite(numeric) ? String(numeric) : String(value)
+  }
+
+  async function appendHistoricalArchive(records) {
+    await mkdir(path.dirname(historicalArchivePath), { recursive: true })
+    const handle = await open(historicalArchivePath, 'a', 0o600)
+    try {
+      await handle.writeFile(records.map((record) => JSON.stringify(record)).join('\n') + '\n')
+      await handle.sync()
+    } finally {
+      await handle.close()
+    }
+  }
+
+  async function completeHistoricalArchive(records, timestamp) {
+    if (!Array.isArray(records) || records.length === 0) return
+    const completedIds = new Set(records.map(archiveRecordIdentity))
+    const activeRecords = await readHistoricalArchiveRecords()
+    const completed = activeRecords.filter((record) => completedIds.has(archiveRecordIdentity(record)))
+    if (completed.length === 0) return
+    const serialized = completed.map((record) => JSON.stringify(record)).join('\n') + '\n'
+    const digest = crypto.createHash('sha256').update(serialized).digest('hex').slice(0, 16)
+    const completedPath = `${historicalArchivePath}.completed-${Number(timestamp)}-${digest}.jsonl.gz`
+    await saveBytes(completedPath, await gzipAsync(Buffer.from(serialized), { level: 1 }))
+    const remaining = activeRecords.filter((record) => !completedIds.has(archiveRecordIdentity(record)))
+    if (remaining.length > 0) {
+      await saveBytes(historicalArchivePath, remaining.map((record) => JSON.stringify(record)).join('\n') + '\n')
+    } else await rm(historicalArchivePath, { force: true })
+  }
+
+  function archiveRecordIdentity(record) {
+    return String(record?.archiveId ?? `${String(record?.sessionId ?? '')}:${Number(record?.sequence)}:${String(record?.roundKey ?? '')}`)
+  }
+
   async function rebindQueuedTransport(snapshot, timestamp) {
     const targetSource = normalizeSource(snapshot?.source)
     const targetSessionId = String(snapshot?.sessionId ?? '')
@@ -297,7 +442,13 @@ export function createSnapshotPusher({
         source: structuredClone(targetSource),
         sessionId: targetSessionId,
         sequence: nextSequence,
-        snapshot: { ...entry.snapshot, sessionId: targetSessionId, source: structuredClone(targetSource), rounds },
+        snapshot: {
+          ...entry.snapshot,
+          ...snapshot,
+          sessionId: targetSessionId,
+          source: structuredClone(targetSource),
+          rounds,
+        },
       }
     })
     queue = reboundQueue
@@ -413,6 +564,22 @@ export function createSnapshotPusher({
           await quarantineState(cursorPath, 'cursor', error)
         }
       }
+      const archivedRecords = await readHistoricalArchiveRecords()
+      if (archivedRecords.length > 0) {
+        const activeRoundKeys = new Set(queue.flatMap((entry) => entry.roundKeys ?? []).map(String))
+        const uniqueByRoundKey = new Map()
+        for (const record of archivedRecords) {
+          const keyValue = String(record.roundKey)
+          if (!activeRoundKeys.has(keyValue)) uniqueByRoundKey.set(keyValue, record)
+        }
+        const records = [...uniqueByRoundKey.values()]
+        archivedRoundKeyCount = new Set(archivedRecords.map((record) => String(record.roundKey))).size
+        lastCompactionAtMs = Math.max(...archivedRecords.map((record) => Number(record.archivedAt) || 0)) || null
+        if (records.length > 0) {
+          await onArchived({ roundKeys: [...uniqueByRoundKey.keys()], records: structuredClone(records) })
+          await completeHistoricalArchive(records, lastCompactionAtMs ?? Number(now()))
+        }
+      }
       if (migratingLegacyCursor) {
         for (const entry of queue) {
           for (const roundKeyValue of entry.roundKeys ?? []) observedRoundKeys.add(String(roundKeyValue))
@@ -455,6 +622,27 @@ export function createSnapshotPusher({
       return value
     } catch (error) {
       await quarantineState(filePath, label, error)
+    }
+  }
+
+  async function readHistoricalArchiveRecords() {
+    let text
+    try {
+      text = await readFile(historicalArchivePath, 'utf8')
+    } catch (error) {
+      if (error?.code === 'ENOENT') return []
+      throw error
+    }
+    try {
+      return text.split(/\r?\n/).filter(Boolean).map((line) => {
+        const record = JSON.parse(line)
+        if (!record || typeof record !== 'object' || !String(record.roundKey ?? '')) throw new Error('invalid historical archive receipt')
+        return record
+      })
+    } catch (error) {
+      const quarantinePath = `${historicalArchivePath}.corrupt-${Number(now())}`
+      await rename(historicalArchivePath, quarantinePath)
+      throw new Error(`corrupt historical archive quarantined at ${quarantinePath}`, { cause: error })
     }
   }
 
@@ -659,6 +847,9 @@ export function createSnapshotPusher({
       lastError,
       lastAcknowledgedSessionId,
       lastAcknowledgedSequence,
+      archivedRoundKeyCount,
+      lastCompactionAtMs,
+      lastCompactionArchivedCount,
     }
   }
 
