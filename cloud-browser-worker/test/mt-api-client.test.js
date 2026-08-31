@@ -155,6 +155,28 @@ test('first summary initializes shoe and round when the initial ten-table list o
   client.stop()
 })
 
+test('table refresh without screen identity preserves the latest Final shoe and round', async () => {
+  const delivered = []
+  const harness = createHarness({ onTables: async (tables) => delivered.push(tables) })
+  const client = createMtApiClient(harness.options)
+  const initialTables = PRODUCTION_TABLE_IDS.map((table_id) => ({ table_id, trend: [] }))
+  await client.start()
+  harness.openAll()
+  harness.authenticateAll()
+  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: initialTables } })
+  harness.acknowledgeJoins()
+  await harness.flush(2)
+  harness.receive('game', summaryPacket(9))
+  await harness.flush(4)
+
+  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: initialTables } })
+  await harness.flush(2)
+  const current = delivered.at(-1).find((table) => table.table_id === 'BAG01')
+  assert.equal(current.shoe, 88)
+  assert.equal(current.round, 9)
+  client.stop()
+})
+
 test('summary advances the live table snapshot and refreshes provider tables without allowing stale regression', async () => {
   const delivered = []
   const harness = createHarness({ onTables: async (tables) => delivered.push(tables) })

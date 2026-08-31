@@ -492,13 +492,21 @@ function mergeExactTablesMonotonic(previousTables, incomingTables, finalScreens 
     const incomingShoe = Number(incoming?.shoe)
     const previousRound = Number(previous?.round)
     const incomingRound = Number(incoming?.round)
-    const staleNumericShoe = previous && Number.isSafeInteger(previousShoe) && Number.isSafeInteger(incomingShoe) && incomingShoe < previousShoe
-    const staleSameShoeRound = previous && String(incoming?.shoe) === String(previous?.shoe)
-      && Number.isSafeInteger(previousRound) && Number.isSafeInteger(incomingRound) && incomingRound < previousRound
-    if (staleNumericShoe || staleSameShoeRound) selected = previous
+    const previousHasScreen = previous?.shoe != null && previous?.shoe !== '' && previous?.round != null && previous?.round !== ''
+      && Number.isSafeInteger(previousShoe) && Number.isSafeInteger(previousRound)
+    const incomingHasScreen = incoming?.shoe != null && incoming?.shoe !== '' && incoming?.round != null && incoming?.round !== ''
+      && Number.isSafeInteger(incomingShoe) && Number.isSafeInteger(incomingRound)
+    const missingIncomingScreen = previousHasScreen && !incomingHasScreen
+    const staleNumericShoe = previousHasScreen && incomingHasScreen && incomingShoe < previousShoe
+    const staleSameShoeRound = previousHasScreen && incomingHasScreen && incomingShoe === previousShoe && incomingRound < previousRound
+    if (missingIncomingScreen || staleNumericShoe || staleSameShoeRound) selected = previous
     const finalScreen = finalScreens.get(tableId)
-    if (finalScreen && (Number(selected?.shoe) < Number(finalScreen.shoe)
-      || (String(selected?.shoe) === String(finalScreen.shoe) && Number(selected?.round) < Number(finalScreen.round)))) {
+    const selectedShoe = Number(selected?.shoe)
+    const selectedRound = Number(selected?.round)
+    const selectedHasScreen = selected?.shoe != null && selected?.shoe !== '' && selected?.round != null && selected?.round !== ''
+      && Number.isSafeInteger(selectedShoe) && Number.isSafeInteger(selectedRound)
+    if (finalScreen && (!selectedHasScreen || selectedShoe < Number(finalScreen.shoe)
+      || (selectedShoe === Number(finalScreen.shoe) && selectedRound < Number(finalScreen.round)))) {
       selected = { ...structuredClone(selected), shoe: finalScreen.shoe, round: finalScreen.round }
     }
     return structuredClone(selected)
