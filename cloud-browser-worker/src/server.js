@@ -314,12 +314,11 @@ async function ensureSourceRuntime() {
       allowGapDelivery: process.env.MT_ALLOW_GAP_DELIVERY === 'true',
       freshBaselineWarmupMs: Number(process.env.MT_FRESH_BASELINE_WARMUP_MS ?? 15_000),
       signalFinalReady: () => snapshotPusher.trigger(),
-      createApiClient: ({ onFinal, onTables }) => createMtApiClient({
+      createApiClient: (options) => createMtApiClient({
+        ...options,
         sourceOwner: owner,
         sessionManager,
-        createSocket: (url, options) => new WebSocket(url, { headers: options?.headers }),
-        onFinal,
-        onTables,
+        createSocket: (url, socketOptions) => new WebSocket(url, { headers: socketOptions?.headers }),
         onError: (message) => { lastError = redactUrlSecrets(message) },
       }),
     })

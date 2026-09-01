@@ -188,9 +188,22 @@ export async function refreshMtSession({
     const prepared = await prepareContext(context)
     const portalPage = await context.newPage()
     await login(portalPage, credentials, { portalUrl: PORTAL_URL, timeoutMs })
-    const candidatePage = await openMt({ context, portalPage, timeoutMs })
+    let candidatePage = null
+    const popupDeadline = now() + timeoutMs
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      candidatePage = await openMt({ context, portalPage, timeoutMs })
+      const remainingMs = Math.max(1, popupDeadline - now())
+      const navigationBudgetMs = attempt === 0 ? Math.max(1, Math.ceil(remainingMs / 2)) : remainingMs
+      try {
+        await waitForHttpsCandidateUrl(candidatePage, { timeoutMs: navigationBudgetMs, now, sleep })
+        break
+      } catch (error) {
+        if (attempt > 0 || error?.message !== 'Candidate MT URL did not become HTTPS before timeout') throw error
+        await candidatePage.close?.().catch(() => {})
+      }
+    }
     assertAllowedMtUrl(
-      await waitForHttpsCandidateUrl(candidatePage, { timeoutMs, now, sleep }),
+      candidatePage.url(),
       configuredMtUrl,
       allowedHosts,
     )

@@ -474,6 +474,49 @@ test('candidate session polls a bounded URL fallback after popup waitForURL is a
   assert.equal(JSON.parse(await readFile(sessionPath, 'utf8')).url, 'https://mt.example/game')
 })
 
+test('candidate session retries one permanently blank MT popup without repeating portal login', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-candidate-blank-popup-retry-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const sessionPath = path.join(dir, 'mt-session.json')
+  const events = []
+  let now = 0
+  const blank = fakePage('about:blank')
+  blank.waitForURL = async () => {
+    const error = new Error('page.waitForURL: net::ERR_ABORTED')
+    error.code = 'ERR_ABORTED'
+    throw error
+  }
+  blank.url = () => 'about:blank'
+  blank.close = async () => { events.push('close-blank') }
+  const healthyPage = fakePage('https://mt.example/game')
+  healthyPage.waitForURL = async (predicate) => {
+    assert.equal(predicate(new URL('https://mt.example/game')), true)
+    events.push('wait-healthy')
+  }
+  const context = {
+    newPage: async () => fakePage('https://ag001.3a1788.bet/'),
+    storageState: async () => ({ cookies: [{ name: 'sid', value: 'candidate' }], origins: [] }),
+    close: async () => { throw new Error('successful retry context must remain open') },
+  }
+  let opens = 0
+  await refreshMtSession({
+    browser: { newContext: async () => context },
+    credentials: { username: 'u', password: 'p' },
+    configuredMtUrl: 'https://mt.example/login',
+    sessionPath,
+    timeoutMs: 100,
+    now: () => now,
+    sleep: async (ms) => { now += ms; events.push('poll') },
+    login: async () => { events.push('login') },
+    openMt: async () => (++opens === 1 ? blank : healthyPage),
+    validate: async () => { events.push('validate'); return healthy },
+    activate: async () => { events.push('activate') },
+  })
+  assert.equal(opens, 2)
+  assert.deepEqual(events, ['login', 'poll', 'close-blank', 'wait-healthy', 'validate', 'activate'])
+  assert.equal(JSON.parse(await readFile(sessionPath, 'utf8')).url, 'https://mt.example/game')
+})
+
 test('aborted popup URL fallback remains bounded and fail-closed before validation', async () => {
   let now = 0
   let closed = 0

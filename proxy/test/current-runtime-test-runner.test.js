@@ -26,7 +26,7 @@ test('canonical current-runtime discovery includes every present proxy test and 
   const exactReleaseIdentityTests = currentRuntime.filter((relativePath) => (
     /^test\/v105-v10-main(?:\d+)?(?:-.+)?-release\.test\.js$/.test(relativePath)
   ))
-  assert.deepEqual(exactReleaseIdentityTests, ['test/v105-v10-main92-current-runtime-isolation-release.test.js'])
+  assert.deepEqual(exactReleaseIdentityTests, ['test/v105-v10-main93-current-runtime-isolation-release.test.js'])
 })
 
 test('runner places caller filters before discovered files and narrows explicit test paths', () => {

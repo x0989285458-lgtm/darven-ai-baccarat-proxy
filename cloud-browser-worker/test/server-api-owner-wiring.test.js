@@ -14,6 +14,8 @@ test('server defaults to API owner and wires journal ACK through the existing sn
   assert.match(source, /bootstrapFromSnapshotPusherCursor/)
   const canonicalRuntime = source.slice(source.indexOf('async function ensureSourceRuntime'), source.indexOf('async function readOptionalJson'))
   assert.ok(canonicalRuntime.indexOf('bootstrapFromSnapshotPusherCursor') < canonicalRuntime.indexOf('await runtime.start()'), 'exact-ACK cursor bootstrap must finish before the API socket runtime starts')
+  assert.match(canonicalRuntime, /createApiClient:\s*\(options\)\s*=>\s*createMtApiClient\(\{[\s\S]*\.\.\.options,[\s\S]*createSocket:/, 'production server must forward initial lifecycle and durable transition callback options')
+  assert.doesNotMatch(canonicalRuntime, /createApiClient:\s*\(\{\s*onFinal,\s*onTables\s*\}\)/, 'production wiring must not drop lifecycle options')
   assert.match(source, /createBackupJournalReplayProvider/)
   assert.match(source, /MT_BACKUP_FINAL_JOURNAL_PATH/)
   assert.match(source, /MT_BACKUP_SESSION_TOKEN_FILE/)

@@ -1,9 +1,9 @@
-name: Trusted Main92 Current Runtime Isolation
+name: Trusted Main93 Current Runtime Isolation
 
 on:
   push:
     tags:
-      - v105-v10-main.92
+      - v105-v10-main.93
 
 permissions:
   contents: read
@@ -13,26 +13,26 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  RELEASE_TAG: v105-v10-main.92
-  BASE_COMMIT: a88bcf9d371841d9b9f16f57495cff7218ebcb86
+  RELEASE_TAG: v105-v10-main.93
+  BASE_COMMIT: 796bd573fa39b71ba2d0061e555de92ad45276fd
 
 jobs:
   verify-regression:
-    if: github.ref == 'refs/tags/v105-v10-main.92'
+    if: github.ref == 'refs/tags/v105-v10-main.93'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout exact annotated tag source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: refs/tags/v105-v10-main.92
+          ref: refs/tags/v105-v10-main.93
           fetch-depth: 2
           persist-credentials: false
 
-      - name: Verify exact single-parent Main92 identity
+      - name: Verify exact single-parent Main93 identity
         shell: bash
         run: |
           set -euo pipefail
-          test "${GITHUB_REF}" = "refs/tags/v105-v10-main.92"
+          test "${GITHUB_REF}" = "refs/tags/v105-v10-main.93"
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
           test "$(git cat-file -t "${GITHUB_REF}")" = "tag"
           test "$(git rev-parse "${GITHUB_REF}^{}")" = "${GITHUB_SHA}"
@@ -51,23 +51,17 @@ jobs:
       - run: npm ci --prefix cloud-browser-worker
       - name: Verify full worker regression suite
         run: npm test --prefix cloud-browser-worker
-      - name: Verify canonical current Proxy runtime suite and Main92 binding
+      - name: Verify canonical current Proxy runtime suite and Main93 binding
         run: npm test --prefix proxy
 
   build-and-attest:
     needs: verify-regression
-    if: github.ref == 'refs/tags/v105-v10-main.92'
+    if: github.ref == 'refs/tags/v105-v10-main.93'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: true
       matrix:
         include:
-          - role: proxy
-            image: darven-ai-baccarat-proxy
-            dockerfile: proxy/Dockerfile.evidence
-          - role: formal-consumer
-            image: darven-ai-baccarat-formal-consumer
-            dockerfile: proxy/Dockerfile.formal-consumer
           - role: worker
             image: darven-ai-baccarat-worker
             dockerfile: cloud-browser-worker/Dockerfile
@@ -75,11 +69,11 @@ jobs:
       - name: Checkout exact annotated tag source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: refs/tags/v105-v10-main.92
+          ref: refs/tags/v105-v10-main.93
           fetch-depth: 2
           persist-credentials: false
 
-      - name: Verify exact single-parent Main92 identity
+      - name: Verify exact single-parent Main93 identity
         shell: bash
         run: |
           set -euo pipefail
@@ -108,7 +102,7 @@ jobs:
           tags: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ github.sha }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=v105-v10-main.92
+            org.opencontainers.image.version=v105-v10-main.93
 
       - name: Attest and verify exact digest provenance
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a
@@ -127,7 +121,7 @@ jobs:
           [[ "${IMAGE_DIGEST}" =~ ^sha256:[a-f0-9]{64}$ ]]
           gh attestation verify "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/${{ matrix.image }}@${IMAGE_DIGEST}" \
             --repo "${GITHUB_REPOSITORY}" \
-            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/trusted-release-images-main92.yml" \
+            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/trusted-release-images-main93.yml" \
             --source-digest "${GITHUB_SHA}" \
             --source-ref "${GITHUB_REF}" \
             --deny-self-hosted-runners
@@ -138,30 +132,23 @@ jobs:
       - name: Upload verified digest receipt
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: main92-${{ matrix.role }}-digest
+          name: main93-${{ matrix.role }}-digest
           path: receipt
           if-no-files-found: error
           retention-days: 1
 
   verify-coherent-release:
     needs: build-and-attest
-    if: github.ref == 'refs/tags/v105-v10-main.92'
+    if: github.ref == 'refs/tags/v105-v10-main.93'
     runs-on: ubuntu-latest
+    env:
+      INHERITED_PROXY_DIGEST: sha256:79210ce38ee0c42d6c2eebee2f48297ffbadb785aef4726424ba78af803464b5
+      INHERITED_FORMAL_DIGEST: sha256:c1591ed1ea387751dcd5f11847a478cd75270eb2750586e077c24650e0432afc
     steps:
-      - name: Download proxy digest
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: main92-proxy-digest
-          path: receipts/proxy
-      - name: Download formal consumer digest
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: main92-formal-consumer-digest
-          path: receipts/formal-consumer
       - name: Download worker digest
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: main92-worker-digest
+          name: main93-worker-digest
           path: receipts/worker
 
       - name: Verify three immutable images and create one coherent receipt
@@ -170,18 +157,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          test "$(cat receipts/proxy/image)" = "darven-ai-baccarat-proxy"
-          test "$(cat receipts/formal-consumer/image)" = "darven-ai-baccarat-formal-consumer"
           test "$(cat receipts/worker/image)" = "darven-ai-baccarat-worker"
-          PROXY_DIGEST="$(cat receipts/proxy/digest)"
-          FORMAL_DIGEST="$(cat receipts/formal-consumer/digest)"
+          PROXY_DIGEST="${INHERITED_PROXY_DIGEST}"
+          FORMAL_DIGEST="${INHERITED_FORMAL_DIGEST}"
           WORKER_DIGEST="$(cat receipts/worker/digest)"
           for DIGEST in "${PROXY_DIGEST}" "${FORMAL_DIGEST}" "${WORKER_DIGEST}"; do
             [[ "${DIGEST}" =~ ^sha256:[a-f0-9]{64}$ ]]
           done
-          gh attestation verify "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/darven-ai-baccarat-proxy@${PROXY_DIGEST}" --repo "${GITHUB_REPOSITORY}" --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/trusted-release-images-main92.yml" --source-digest "${GITHUB_SHA}" --source-ref "${GITHUB_REF}" --deny-self-hosted-runners
-          gh attestation verify "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/darven-ai-baccarat-formal-consumer@${FORMAL_DIGEST}" --repo "${GITHUB_REPOSITORY}" --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/trusted-release-images-main92.yml" --source-digest "${GITHUB_SHA}" --source-ref "${GITHUB_REF}" --deny-self-hosted-runners
-          gh attestation verify "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/darven-ai-baccarat-worker@${WORKER_DIGEST}" --repo "${GITHUB_REPOSITORY}" --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/trusted-release-images-main92.yml" --source-digest "${GITHUB_SHA}" --source-ref "${GITHUB_REF}" --deny-self-hosted-runners
+          gh attestation verify "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/darven-ai-baccarat-proxy@${PROXY_DIGEST}" --repo "${GITHUB_REPOSITORY}" --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/trusted-release-images-main92.yml" --source-digest "796bd573fa39b71ba2d0061e555de92ad45276fd" --source-ref "refs/tags/v105-v10-main.92" --deny-self-hosted-runners
+          gh attestation verify "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/darven-ai-baccarat-formal-consumer@${FORMAL_DIGEST}" --repo "${GITHUB_REPOSITORY}" --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/trusted-release-images-main92.yml" --source-digest "796bd573fa39b71ba2d0061e555de92ad45276fd" --source-ref "refs/tags/v105-v10-main.92" --deny-self-hosted-runners
+          gh attestation verify "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/darven-ai-baccarat-worker@${WORKER_DIGEST}" --repo "${GITHUB_REPOSITORY}" --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/trusted-release-images-main93.yml" --source-digest "${GITHUB_SHA}" --source-ref "${GITHUB_REF}" --deny-self-hosted-runners
           mkdir -p coherent-release
           jq -n \
             --arg release_tag "${RELEASE_TAG}" \
@@ -197,7 +182,7 @@ jobs:
       - name: Upload atomic coherent release receipt
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: main92-coherent-release-receipt
+          name: main93-coherent-release-receipt
           path: coherent-release
           if-no-files-found: error
           retention-days: 90

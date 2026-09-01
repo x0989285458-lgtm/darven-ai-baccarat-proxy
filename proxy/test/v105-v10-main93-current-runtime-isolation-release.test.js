@@ -7,9 +7,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const baseCommit = 'a88bcf9d371841d9b9f16f57495cff7218ebcb86'
-const releaseTag = 'v105-v10-main.92'
-const manifestPath = 'release/v105-v10-main92-current-runtime-isolation-release-manifest.json'
+const baseCommit = '796bd573fa39b71ba2d0061e555de92ad45276fd'
+const releaseTag = 'v105-v10-main.93'
+const manifestPath = 'release/v105-v10-main93-current-runtime-isolation-release-manifest.json'
 const migrationPath = 'supabase/migrations/20260901010000_v105_lost_ack_fence_reconciliation.sql'
 const obsoleteHistoricalRunnerPath = 'proxy/scripts/run-historical-release-tests.mjs'
 const manifest = JSON.parse(readFileSync(path.join(root, manifestPath), 'utf8'))
@@ -34,7 +34,7 @@ const implementationDigest = (paths) => createHash('sha256')
   .update(paths.map((relativePath) => `${relativePath}\0${candidateBlobOid(relativePath)}\n`).join(''))
   .digest('hex')
 
-test('Main92 is the exact bounded candidate over immutable Main91', () => {
+test('Main93 is the exact bounded candidate over immutable Main92', () => {
   const actual = immutableMode
     ? git(['diff', '--no-renames', '--name-only', baseCommit, releaseCommit]).split(/\r?\n/)
     : [
@@ -53,7 +53,7 @@ test('Main92 is the exact bounded candidate over immutable Main91', () => {
   }
 })
 
-test('Main92 binds every present candidate path to immutable Git blob identity', () => {
+test('Main93 binds every present candidate path to immutable Git blob identity', () => {
   const bindablePaths = manifest.changedPaths
     .filter((relativePath) => relativePath !== manifestPath && !deletedPaths.includes(relativePath))
     .sort()
@@ -74,24 +74,24 @@ test('Main92 binds every present candidate path to immutable Git blob identity',
   assert.equal(manifest.implementationTree.sha256, implementationDigest(implementationPaths))
 })
 
-test('Main92 preserves inherited DB provenance and approves only the changed Worker for deployment', () => {
+test('Main93 preserves inherited DB provenance and approves only the changed Worker for deployment', () => {
   assert.deepEqual(manifest.deploymentTargets, ['worker'])
   assert.deepEqual(manifest.unchangedRuntimeRoles, ['proxy', 'formal-consumer'])
   assert.deepEqual(manifest.deploymentOrder.slice(0, 3), [
     'database-existing-lost-ack-reconciliation-readback',
     'producer-and-consumer-quiesce',
-    'proxy-formal-main91-live-digest-readback',
+    'proxy-formal-main92-live-digest-readback',
   ])
-  const workerIndex = manifest.deploymentOrder.indexOf('worker-v1.0.67-cutover')
+  const workerIndex = manifest.deploymentOrder.indexOf('worker-v1.0.68-cutover')
   assert.ok(workerIndex > 2)
   assert.equal(manifest.releaseBinding.database.path, migrationPath)
   assert.equal(manifest.releaseBinding.database.gitBlobOid, candidateBlobOid(migrationPath))
   assert.deepEqual(manifest.rollback.worker, {
-    releaseVersion: 'v105-v10-main.91',
+    releaseVersion: 'v105-v10-main.92',
     commit: baseCommit,
-    image: 'ghcr.io/x0989285458-lgtm/darven-ai-baccarat-worker@sha256:a190ed62514ebb3892f7f5e9424918d06841f9c87d9aade422e137e6b027fd50',
-    digest: 'sha256:a190ed62514ebb3892f7f5e9424918d06841f9c87d9aade422e137e6b027fd50',
-    receiptSha256: 'a7d13968f496483ab3e91411fdf3831051f72339067b191fc5a2eeb585057036',
+    image: 'ghcr.io/x0989285458-lgtm/darven-ai-baccarat-worker@sha256:cebe686a6d862d98cb0406e292965420812b7119e039948a21df9a6290c2fae4',
+    digest: 'sha256:cebe686a6d862d98cb0406e292965420812b7119e039948a21df9a6290c2fae4',
+    receiptSha256: 'f58c957057d984c3041d8d5b66f5caefb0c4b43c551f07507a3e4e04107c85f7',
   })
   const sql = readFileSync(path.join(root, migrationPath), 'utf8')
   assert.match(sql, /create or replace function public\.reconcile_v105_capture_envelope\(p_capture jsonb\)/i)
@@ -101,23 +101,19 @@ test('Main92 preserves inherited DB provenance and approves only the changed Wor
   assert.doesNotMatch(sql, /\b(?:drop|truncate|delete)\b/i)
 })
 
-test('Main92 current identities and canonical test gates replace obsolete release truth', () => {
+test('Main93 current identities and canonical test gates replace obsolete release truth', () => {
   assert.equal(manifest.releaseVersion, releaseTag)
-  assert.deepEqual(manifest.componentVersions, { proxy: '1.0.72', worker: '1.0.67' })
+  assert.deepEqual(manifest.componentVersions, { proxy: '1.0.72', worker: '1.0.68' })
   const proxyPackage = JSON.parse(readFileSync(path.join(root, 'proxy/package.json'), 'utf8'))
   assert.equal(proxyPackage.version, '1.0.72')
   assert.equal(proxyPackage.scripts['test:historical-releases'], undefined)
   assert.equal(manifest.testDiscovery.historicalCommand, undefined)
-  assert.equal(JSON.parse(readFileSync(path.join(root, 'cloud-browser-worker/package.json'), 'utf8')).version, '1.0.67')
+  assert.equal(JSON.parse(readFileSync(path.join(root, 'cloud-browser-worker/package.json'), 'utf8')).version, '1.0.68')
   for (const relativePath of [
-    'cloud-browser-worker/src/final-journal.js',
-    'cloud-browser-worker/src/mt-api-client.js',
-    'cloud-browser-worker/src/snapshot-pusher.js',
-    'cloud-browser-worker/src/worker-source-runtime.js',
-    'cloud-browser-worker/test/final-journal.test.js',
-    'cloud-browser-worker/test/mt-api-client.test.js',
-    'cloud-browser-worker/test/snapshot-pusher.test.js',
-    'cloud-browser-worker/test/worker-source-runtime.test.js',
+    'cloud-browser-worker/src/portal-session.js',
+    'cloud-browser-worker/src/server.js',
+    'cloud-browser-worker/test/portal-session.test.js',
+    'cloud-browser-worker/test/server-api-owner-wiring.test.js',
   ]) assert.ok(manifest.changedPaths.includes(relativePath), relativePath)
   assert.ok(manifest.changedPaths.includes('cloud-browser-worker/package.json'))
   assert.ok(!manifest.changedPaths.includes(obsoleteHistoricalRunnerPath))
@@ -129,16 +125,17 @@ test('Main92 current identities and canonical test gates replace obsolete releas
     || /^release\/v105-v10-main\d+-current-runtime-isolation-release-manifest\.json$/.test(relativePath)
   )))
 
-  const workflow = readFileSync(path.join(root, '.github/workflows/trusted-release-images-main92.yml'), 'utf8')
+  const workflow = readFileSync(path.join(root, '.github/workflows/trusted-release-images-main93.yml'), 'utf8')
+  assert.match(workflow, /refs\/tags\/v105-v10-main\.93/)
   assert.match(workflow, /refs\/tags\/v105-v10-main\.92/)
   assert.match(workflow, /npm test --prefix cloud-browser-worker/)
   assert.match(workflow, /npm test --prefix proxy/)
-  assert.match(workflow, /proxy\/Dockerfile\.evidence/)
-  assert.match(workflow, /proxy\/Dockerfile\.formal-consumer/)
-  assert.match(workflow, /cloud-browser-worker\/Dockerfile/)
-  assert.match(workflow, /darven-ai-baccarat-proxy/)
-  assert.match(workflow, /darven-ai-baccarat-formal-consumer/)
+  assert.doesNotMatch(workflow, /dockerfile: proxy\/Dockerfile\.evidence/)
+  assert.doesNotMatch(workflow, /dockerfile: proxy\/Dockerfile\.formal-consumer/)
+  assert.match(workflow, /dockerfile: cloud-browser-worker\/Dockerfile/)
+  assert.match(workflow, /INHERITED_PROXY_DIGEST/)
+  assert.match(workflow, /INHERITED_FORMAL_DIGEST/)
   assert.match(workflow, /darven-ai-baccarat-worker/)
-  assert.match(workflow, /main92-coherent-release-receipt/)
+  assert.match(workflow, /main93-coherent-release-receipt/)
   assert.doesNotMatch(workflow, /test:historical-releases/)
 })

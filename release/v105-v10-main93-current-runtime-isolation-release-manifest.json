@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "releaseVersion": "v105-v10-main.92",
-  "gitTag": "v105-v10-main.92",
-  "baseCommit": "a88bcf9d371841d9b9f16f57495cff7218ebcb86",
+  "releaseVersion": "v105-v10-main.93",
+  "gitTag": "v105-v10-main.93",
+  "baseCommit": "796bd573fa39b71ba2d0061e555de92ad45276fd",
   "componentVersions": {
     "proxy": "1.0.72",
-    "worker": "1.0.67"
+    "worker": "1.0.68"
   },
-  "scope": "worker-durable-provider-authorized-shoe-lifecycle-and-journal-confirmed-screen-publication",
+  "scope": "worker-production-lifecycle-wiring-and-bounded-blank-popup-session-refresh",
   "deploymentTargets": [
     "worker"
   ],
@@ -16,65 +16,58 @@
     "formal-consumer"
   ],
   "changedPaths": [
-    ".github/workflows/trusted-release-images-main91.yml",
     ".github/workflows/trusted-release-images-main92.yml",
+    ".github/workflows/trusted-release-images-main93.yml",
     "cloud-browser-worker/package-lock.json",
     "cloud-browser-worker/package.json",
-    "cloud-browser-worker/src/final-journal.js",
-    "cloud-browser-worker/src/mt-api-client.js",
-    "cloud-browser-worker/src/snapshot-pusher.js",
-    "cloud-browser-worker/src/worker-source-runtime.js",
-    "cloud-browser-worker/test/final-journal.test.js",
-    "cloud-browser-worker/test/mt-api-client.test.js",
-    "cloud-browser-worker/test/snapshot-pusher.test.js",
-    "cloud-browser-worker/test/worker-source-runtime.test.js",
-    "proxy/test/capture-outbox-ack.test.js",
+    "cloud-browser-worker/src/portal-session.js",
+    "cloud-browser-worker/src/server.js",
+    "cloud-browser-worker/test/portal-session.test.js",
+    "cloud-browser-worker/test/server-api-owner-wiring.test.js",
     "proxy/test/current-runtime-test-runner.test.js",
-    "proxy/test/prediction-safety.test.js",
-    "proxy/test/v104-iteration-shadow-release.test.js",
     "proxy/test/v105-mt-session-auto-refresh-release.test.js",
     "proxy/test/v105-service-work-scheduler-release.test.js",
-    "proxy/test/v105-v10-main91-current-runtime-isolation-release.test.js",
     "proxy/test/v105-v10-main92-current-runtime-isolation-release.test.js",
-    "release/v105-v10-main91-current-runtime-isolation-release-manifest.json",
-    "release/v105-v10-main92-current-runtime-isolation-release-manifest.json"
+    "proxy/test/v105-v10-main93-current-runtime-isolation-release.test.js",
+    "release/v105-v10-main92-current-runtime-isolation-release-manifest.json",
+    "release/v105-v10-main93-current-runtime-isolation-release-manifest.json"
   ],
   "releaseBinding": {
     "changedFileGitBlobOids": {
-      ".github/workflows/trusted-release-images-main92.yml": "17d16743980775dd846588fcffa516071194b260",
-      "cloud-browser-worker/package-lock.json": "7d1e84a3aa5b5fc3b07f9b4957a5fecb353a1daa",
-      "cloud-browser-worker/package.json": "f57ae99e85eb3ab4efe894c67a1a072ef8ba175b",
-      "cloud-browser-worker/src/final-journal.js": "1bed977f5364d0ca275d8f37cb7b7547bf5a1e8f",
-      "cloud-browser-worker/src/mt-api-client.js": "7704b5e77835b2aa19420857ddbf4fe58cf53152",
-      "cloud-browser-worker/src/snapshot-pusher.js": "5ab8dbc94e266b1794fb66d3cac567fbb135f28c",
-      "cloud-browser-worker/src/worker-source-runtime.js": "b5e966fd1fd8239af826b499032a60ffb738ab4a",
-      "cloud-browser-worker/test/final-journal.test.js": "0d95918821c87bed590d470015afe0f8be1d0a2c",
-      "cloud-browser-worker/test/mt-api-client.test.js": "76bb002f5a4f58af579e29b197e3f7a8cb43a683",
-      "cloud-browser-worker/test/snapshot-pusher.test.js": "c991e0b78b165b7f767f72affef0e0ea5225039e",
-      "cloud-browser-worker/test/worker-source-runtime.test.js": "ef2ab4201630b15d28d309427fca703ba2dcf62b",
-      "proxy/test/capture-outbox-ack.test.js": "b3ff3abba8b7ae6d7a792e22dc0fce8bcddbc8e9",
-      "proxy/test/current-runtime-test-runner.test.js": "c0abb4ada9ad33e9f095784049e021e3697b2c49",
-      "proxy/test/prediction-safety.test.js": "0c5a59df4284abab115fc4370ced14d4973c997b",
-      "proxy/test/v104-iteration-shadow-release.test.js": "c6572e35dfea6eb9b959e66b50e233245578d6ac",
-      "proxy/test/v105-mt-session-auto-refresh-release.test.js": "e93091004b0f1924fd7fbce961e220d741e2cbff",
-      "proxy/test/v105-service-work-scheduler-release.test.js": "5a3408b7374b92289391dd4fa8a186ad0d272968",
-      "proxy/test/v105-v10-main92-current-runtime-isolation-release.test.js": "9a56c044e330c580b64f444231825cb564cecefa"
+      ".github/workflows/trusted-release-images-main93.yml": "e09e7cb352f44119abc717c13496c2044d7a7abf",
+      "cloud-browser-worker/package-lock.json": "8ed416437111e7078cc5004b8a07e055cc84c65d",
+      "cloud-browser-worker/package.json": "b5630c681e4f05e90ce6823656f34ec64dc50ae6",
+      "cloud-browser-worker/src/portal-session.js": "5bb07a1e27337f1c8912a5f524b61e2ceaf9899b",
+      "cloud-browser-worker/src/server.js": "cc940cbaec477ca8e3d8c1fe972b4d3d98daa80c",
+      "cloud-browser-worker/test/portal-session.test.js": "b8520ef9b2dc9c5c362b4df63123f34b2b7767f2",
+      "cloud-browser-worker/test/server-api-owner-wiring.test.js": "720c8ea8b1915b158af8892b1929c894b393af36",
+      "proxy/test/current-runtime-test-runner.test.js": "9c61677534d849613b08666ed7467caf6d19fc10",
+      "proxy/test/v105-mt-session-auto-refresh-release.test.js": "01bd155d0da00ac86ca9b186880089588e590908",
+      "proxy/test/v105-service-work-scheduler-release.test.js": "2a2fe55eed98ca009b1f7db8f62e504c6daef2c5",
+      "proxy/test/v105-v10-main93-current-runtime-isolation-release.test.js": "e92cb09a4461d50ffaaf1ba0cd9bcdfccc964708"
     },
     "deletedFileBaseGitBlobOids": {
-      ".github/workflows/trusted-release-images-main91.yml": "5a97c24e90c117d58d5c93c84bef0fc1f6cfeb30",
-      "proxy/test/v105-v10-main91-current-runtime-isolation-release.test.js": "2f301599d73a137ad8612745b4765008e2d29681",
-      "release/v105-v10-main91-current-runtime-isolation-release-manifest.json": "b47e9a61aae5d5e31e560e16c491b5dc0aa161e9"
+      ".github/workflows/trusted-release-images-main92.yml": "17d16743980775dd846588fcffa516071194b260",
+      "proxy/test/v105-v10-main92-current-runtime-isolation-release.test.js": "9a56c044e330c580b64f444231825cb564cecefa",
+      "release/v105-v10-main92-current-runtime-isolation-release-manifest.json": "aa148ba85dee80077fb04ef55e10a30ce00ea1e8"
     },
     "database": {
       "path": "supabase/migrations/20260901010000_v105_lost_ack_fence_reconciliation.sql",
       "gitBlobOid": "59a1e9a0b4bea83d42fbbe7b7fab2150863acd97",
       "changed": false
+    },
+    "inheritedRuntimeImages": {
+      "proxy": "ghcr.io/x0989285458-lgtm/darven-ai-baccarat-proxy@sha256:79210ce38ee0c42d6c2eebee2f48297ffbadb785aef4726424ba78af803464b5",
+      "formalConsumer": "ghcr.io/x0989285458-lgtm/darven-ai-baccarat-formal-consumer@sha256:c1591ed1ea387751dcd5f11847a478cd75270eb2750586e077c24650e0432afc",
+      "sourceCommit": "796bd573fa39b71ba2d0061e555de92ad45276fd",
+      "sourceRef": "refs/tags/v105-v10-main.92",
+      "receiptSha256": "f58c957057d984c3041d8d5b66f5caefb0c4b43c551f07507a3e4e04107c85f7"
     }
   },
   "implementationTree": {
     "algorithm": "sha256(path-NUL-git-blob-oid-LF)",
     "paths": [
-      ".github/workflows/trusted-release-images-main92.yml",
+      ".github/workflows/trusted-release-images-main93.yml",
       "cloud-browser-worker/Dockerfile",
       "cloud-browser-worker/package-lock.json",
       "cloud-browser-worker/package.json",
@@ -99,10 +92,8 @@
       "cloud-browser-worker/src/worker-shutdown.js",
       "cloud-browser-worker/src/worker-source-owner.js",
       "cloud-browser-worker/src/worker-source-runtime.js",
-      "cloud-browser-worker/test/final-journal.test.js",
-      "cloud-browser-worker/test/mt-api-client.test.js",
-      "cloud-browser-worker/test/snapshot-pusher.test.js",
-      "cloud-browser-worker/test/worker-source-runtime.test.js",
+      "cloud-browser-worker/test/portal-session.test.js",
+      "cloud-browser-worker/test/server-api-owner-wiring.test.js",
       "proxy/Dockerfile.evidence",
       "proxy/Dockerfile.formal-consumer",
       "proxy/package-lock.json",
@@ -168,46 +159,44 @@
       "proxy/test/capture-outbox-ack.test.js",
       "proxy/test/current-runtime-test-runner.test.js",
       "proxy/test/deploy-package.test.js",
-      "proxy/test/prediction-safety.test.js",
-      "proxy/test/v104-iteration-shadow-release.test.js",
       "proxy/test/v105-formal-runtime.test.js",
       "proxy/test/v105-mt-session-auto-refresh-release.test.js",
       "proxy/test/v105-service-work-scheduler-release.test.js",
-      "proxy/test/v105-v10-main92-current-runtime-isolation-release.test.js",
+      "proxy/test/v105-v10-main93-current-runtime-isolation-release.test.js",
       "shared/real-card-validator.js",
       "supabase/migrations/20260901010000_v105_lost_ack_fence_reconciliation.sql"
     ],
-    "sha256": "8aeb4af90f940431f8a7f6bf2fa3dc5550e7be0841a3446857f4c1e644c45490"
+    "sha256": "bd95bdcceec006783b04b83cb64536cba78ec0a6b231f45511f66646b9c4ecac"
   },
   "testDiscovery": {
     "canonicalCommand": "npm test --prefix proxy && npm test --prefix cloud-browser-worker",
     "historicalExactReleaseIdentityCount": 0,
     "obsoleteDeletedTests": [
-      "proxy/test/v105-v10-main91-current-runtime-isolation-release.test.js"
+      "proxy/test/v105-v10-main92-current-runtime-isolation-release.test.js"
     ]
   },
   "deploymentOrder": [
     "database-existing-lost-ack-reconciliation-readback",
     "producer-and-consumer-quiesce",
-    "proxy-formal-main91-live-digest-readback",
-    "worker-v1.0.67-cutover",
+    "proxy-formal-main92-live-digest-readback",
+    "worker-v1.0.68-cutover",
     "worker-admission-preflight",
-    "formal-consumer-main91-resume",
+    "formal-consumer-main92-resume",
     "outbox-drain-and-queue-low-water",
     "ten-table-final-next-prediction-e2e",
     "public-edge-and-authenticated-browser-e2e"
   ],
   "rollback": {
     "database": "unchanged-preserve-existing-additive-migration",
-    "application": "rollback-worker-only-to-exact-main91-immutable-image-with-producer-stopped",
+    "application": "rollback-worker-only-to-exact-main92-immutable-image-with-producer-stopped",
     "worker": {
-      "releaseVersion": "v105-v10-main.91",
-      "commit": "a88bcf9d371841d9b9f16f57495cff7218ebcb86",
-      "image": "ghcr.io/x0989285458-lgtm/darven-ai-baccarat-worker@sha256:a190ed62514ebb3892f7f5e9424918d06841f9c87d9aade422e137e6b027fd50",
-      "digest": "sha256:a190ed62514ebb3892f7f5e9424918d06841f9c87d9aade422e137e6b027fd50",
-      "receiptSha256": "a7d13968f496483ab3e91411fdf3831051f72339067b191fc5a2eeb585057036"
+      "releaseVersion": "v105-v10-main.92",
+      "commit": "796bd573fa39b71ba2d0061e555de92ad45276fd",
+      "image": "ghcr.io/x0989285458-lgtm/darven-ai-baccarat-worker@sha256:cebe686a6d862d98cb0406e292965420812b7119e039948a21df9a6290c2fae4",
+      "digest": "sha256:cebe686a6d862d98cb0406e292965420812b7119e039948a21df9a6290c2fae4",
+      "receiptSha256": "f58c957057d984c3041d8d5b66f5caefb0c4b43c551f07507a3e4e04107c85f7"
     },
-    "unchangedRoles": "preserve-main91-proxy-and-formal-consumer",
+    "unchangedRoles": "preserve-main92-proxy-and-formal-consumer",
     "historicalEvidence": "preserve-all-prior-tags-and-artifacts"
   }
 }
