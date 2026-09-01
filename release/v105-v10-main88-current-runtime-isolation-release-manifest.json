@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "releaseVersion": "v105-v10-main.88",
+  "gitTag": "v105-v10-main.88",
+  "baseCommit": "b1e25adad4e85f4c2a29bd5e50e28dbeca2c7f62",
+  "componentVersions": {
+    "proxy": "1.0.69",
+    "worker": "1.0.66"
+  },
+  "scope": "current-runtime-shallow-clone-and-deterministic-concurrency-gates",
+  "changedPaths": [
+    ".github/workflows/trusted-release-images-main88.yml",
+    "proxy/package-lock.json",
+    "proxy/package.json",
+    "proxy/src/shadow-process-work.js",
+    "proxy/test/current-runtime-test-runner.test.js",
+    "proxy/test/deploy-package.test.js",
+    "proxy/test/shadow-process-work.test.js",
+    "proxy/test/v104-iteration-shadow-release.test.js",
+    "proxy/test/v105-mt-api-release-binding.test.js",
+    "proxy/test/v105-mt-session-auto-refresh-release.test.js",
+    "proxy/test/v105-service-work-scheduler-release.test.js",
+    "proxy/test/v105-v10-main87-current-runtime-isolation-release.test.js",
+    "proxy/test/v105-v10-main88-current-runtime-isolation-release.test.js",
+    "release/v105-v10-main88-current-runtime-isolation-release-manifest.json"
+  ],
+  "releaseBinding": {
+    "changedFileGitBlobOids": {
+      ".github/workflows/trusted-release-images-main88.yml": "8cc74fad278d04cb16ef73fef859c77ef46b1e3e",
+      "proxy/package-lock.json": "68c813c38c4c4d3ac125d071528378189f613d2b",
+      "proxy/package.json": "243dbd75722ec2b3401556cf1ddb7a6c74c1122b",
+      "proxy/src/shadow-process-work.js": "da2bb3c5e52e7e96516b5039e8a3d96d3c22ec27",
+      "proxy/test/current-runtime-test-runner.test.js": "4823961af8612895344f54d3525c7ed5e1138011",
+      "proxy/test/deploy-package.test.js": "90b0c614ebf6d78091b0de2f1b22239c17d89452",
+      "proxy/test/shadow-process-work.test.js": "e3930c9dd3c6fc6532390640cc6665446e0d8c67",
+      "proxy/test/v104-iteration-shadow-release.test.js": "863858bc546bba947f7b3d3152c354c656518973",
+      "proxy/test/v105-mt-api-release-binding.test.js": "ec47b67cdfaaf3b6cce04a236beed18e2c4aa5df",
+      "proxy/test/v105-mt-session-auto-refresh-release.test.js": "5ae66e7b8b03e536b93a14c2dc76d6b386ea73af",
+      "proxy/test/v105-service-work-scheduler-release.test.js": "3288a43ade039c4d121663150ec96dd09a27da6c",
+      "proxy/test/v105-v10-main88-current-runtime-isolation-release.test.js": "620360c4ee7bc611c1f95e56e98716c9cfdde4aa"
+    },
+    "deletedFileBaseGitBlobOids": {
+      "proxy/test/v105-v10-main87-current-runtime-isolation-release.test.js": "c846a1f826be906d5beac4f9451a695eb6a42432"
+    },
+    "database": {
+      "path": "supabase/migrations/20260901010000_v105_lost_ack_fence_reconciliation.sql",
+      "gitBlobOid": "59a1e9a0b4bea83d42fbbe7b7fab2150863acd97"
+    }
+  },
+  "implementationTree": {
+    "algorithm": "sha256(path-NUL-git-blob-oid-LF)",
+    "paths": [
+      ".github/workflows/trusted-release-images-main88.yml",
+      "proxy/package-lock.json",
+      "proxy/package.json",
+      "proxy/src/shadow-process-work.js",
+      "proxy/test/current-runtime-test-runner.test.js",
+      "proxy/test/deploy-package.test.js",
+      "proxy/test/shadow-process-work.test.js",
+      "proxy/test/v104-iteration-shadow-release.test.js",
+      "proxy/test/v105-mt-api-release-binding.test.js",
+      "proxy/test/v105-mt-session-auto-refresh-release.test.js",
+      "proxy/test/v105-service-work-scheduler-release.test.js",
+      "proxy/test/v105-v10-main88-current-runtime-isolation-release.test.js"
+    ],
+    "sha256": "1f0a2a1a5c36fd0ae2a9abd5491cb75f38c3c7f9c6be21d5939a339e9d4da506"
+  },
+  "testDiscovery": {
+    "canonicalCommand": "npm test --prefix proxy",
+    "historicalExactReleaseIdentityCount": 0,
+    "obsoleteDeletedTests": [
+      "proxy/test/v105-v10-main87-current-runtime-isolation-release.test.js"
+    ]
+  },
+  "deploymentOrder": [
+    "database-additive-lost-ack-reconciliation",
+    "database-catalog-acl-and-function-readback",
+    "database-reconciliation-negative-and-duplicate-probes",
+    "proxy-v1.0.69-cutover",
+    "worker-v1.0.66-cutover",
+    "canonical-current-runtime-regression",
+    "current-table-current-round-priority-e2e",
+    "exact-lost-ack-reconciliation-e2e"
+  ],
+  "rollback": {
+    "database": "preserve-applied-additive-migration-and-function",
+    "application": "rollback-proxy-and-worker-only-after-current-round-and-lost-ack-drain-check",
+    "historicalEvidence": "preserve-all-prior-tags-and-artifacts"
+  }
+}

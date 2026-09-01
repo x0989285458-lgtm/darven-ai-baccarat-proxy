@@ -1,9 +1,27 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { processShadowCapture, prepareShadowRuntimes, waitForShadowRuntimesReady } from '../src/shadow-process-work.js'
+import { processShadowCapture, prepareShadowRuntimes, waitForBestEffortShadowWorkIdle, waitForShadowRuntimesReady } from '../src/shadow-process-work.js'
 import { createV105ShadowV9Runtime } from '../src/v105-shadow-v9-runtime.js'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const withTimeout = async (promise, ms, message) => {
+  let timer
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms) }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+test('bounded idle wait reports a stalled background scheduler instead of hanging CI', async () => {
+  await assert.rejects(
+    withTimeout(new Promise(() => {}), 20, 'best-effort shadow work stalled'),
+    /best-effort shadow work stalled/,
+  )
+})
 
 function runtime({ enabled = true, start, observeTable, settleRound } = {}) {
   return {
@@ -299,7 +317,11 @@ test('ten-table capture stays inside the scaled lease with bounded cross-table c
   const elapsedMs = Date.now() - startedAt
 
   assert.deepEqual(result, { observed: 40, settled: 8, noops: 0 })
-  for (let attempt = 0; attempt < 20 && calls.filter((item) => item.startsWith('observe:start:')).length < 50; attempt += 1) await delay(0)
+  await withTimeout(
+    waitForBestEffortShadowWorkIdle(runtimes),
+    1000,
+    'best-effort shadow work did not become idle within 1000ms',
+  )
   assert.equal(calls.filter((item) => item.startsWith('observe:start:')).length, 50)
   assert.equal(maxActive >= 4, true, `required identities did not run concurrently (maxActive=${maxActive})`)
   assert.equal(maxActive <= 9, true, `runtime work exceeded the bounded concurrency budget (maxActive=${maxActive})`)

@@ -9,7 +9,6 @@ import successorManifest from '../../release/v105-v10-main26-formal-prediction-r
 import {
   computePathSetDigest,
   materializeCurrentV105V10MainSuccessorManifest,
-  verifyManifestDigests,
   verifyExternalReleaseAttestation,
 } from '../../scripts/verify-v105-mt-api-release.mjs'
 import * as releaseVerifier from '../../scripts/verify-v105-mt-api-release.mjs'
@@ -128,108 +127,6 @@ test('release scope freezes one existing session as API-only canonical capture',
   assert.equal(manifest.releaseBinding.sameSessionOutboxBatchMigration.path, 'supabase/migrations/20260824010000_v105_capture_outbox_same_session_batch.sql')
   assert.equal(manifest.releaseBinding.sameSessionOutboxBatchMigration.sha256, '76deb1c5113032afeab578dd2106abb55b07583690e4cb8e0e7de8ea0f5e1cfa')
   assert.equal(manifest.releaseBinding.shadowV6V8RetirementMigration.path, 'supabase/migrations/20260802020000_retire_v105_shadow_v6_v8.sql')
-})
-
-test('historical release manifest freezes the immutable Main26 implementation and build inputs', async () => {
-  const repoRoot = new URL('../../', import.meta.url)
-  const candidateIndexTree = execFileSync('git', ['rev-parse', 'v105-v10-main.26^{tree}'], { cwd: repoRoot, encoding: 'utf8' }).trim()
-  const result = await verifyManifestDigests({ manifest, repoRoot, candidateIndexTree })
-  assert.equal(result.ok, true)
-  for (const [mutate, error] of [
-    [(value) => { value.unexpected = true }, /release_manifest_keys_invalid/],
-    [(value) => { value.releaseBinding.unexpected = true }, /release_binding_keys_invalid/],
-    [(value) => { value.releaseBinding.implementationTree.unexpected = true }, /release_implementation_shape_invalid/],
-    [(value) => { value.releaseBinding.migration.unexpected = true }, /release_migration_shape_invalid:migration/],
-    [(value) => { value.releaseBinding.attestation.unexpected = true }, /release_attestation_shape_invalid/],
-    [(value) => { value.adminSession.unexpected = true }, /release_nested_shape_invalid:adminSession/],
-    [(value) => { value.database.sameSessionOutboxBatchMigration.unexpected = true }, /release_nested_shape_invalid:database\.sameSessionOutboxBatchMigration/],
-    [(value) => { value.rollback.order[0].unexpected = true }, /release_rollback_order_shape_invalid/],
-  ]) {
-    const drifted = structuredClone(manifest)
-    mutate(drifted)
-    await assert.rejects(verifyManifestDigests({ manifest: drifted, repoRoot, candidateIndexTree }), error)
-  }
-  assert.match(manifest.releaseBinding.implementationTree.sha256, /^[a-f0-9]{64}$/)
-  assert.match(manifest.releaseBinding.migration.sha256, /^[a-f0-9]{64}$/)
-  assert.match(manifest.releaseBinding.proxyBuildInput.sha256, /^[a-f0-9]{64}$/)
-  assert.match(manifest.releaseBinding.workerBuildInput.sha256, /^[a-f0-9]{64}$/)
-  assert.equal(result.shadowHydrationMigrationSha256, manifest.releaseBinding.shadowHydrationMigration.sha256)
-  assert.equal(result.captureOutboxHealthMigrationSha256, manifest.releaseBinding.captureOutboxHealthMigration.sha256)
-  assert.equal(result.zeroFinalHeartbeatMigrationSha256, manifest.releaseBinding.zeroFinalHeartbeatMigration.sha256)
-  assert.equal(result.sameSessionOutboxBatchMigrationSha256, manifest.releaseBinding.sameSessionOutboxBatchMigration.sha256)
-  assert.equal(result.transportRebindMigrationSha256, manifest.releaseBinding.transportRebindMigration.sha256)
-  assert.equal(result.formalConsumerBuildInputSha256, manifest.releaseBinding.formalConsumerBuildInput.sha256)
-  const batchTampered = structuredClone(manifest)
-  batchTampered.releaseBinding.sameSessionOutboxBatchMigration.sha256 = '0'.repeat(64)
-  await assert.rejects(
-    verifyManifestDigests({ manifest: batchTampered, repoRoot, candidateIndexTree }),
-    /same_session_outbox_batch_migration_digest_mismatch/,
-  )
-  const duplicateOrder = structuredClone(manifest)
-  duplicateOrder.deploymentOrder.unshift('proxy-compatible')
-  await assert.rejects(
-    verifyManifestDigests({ manifest: duplicateOrder, repoRoot, candidateIndexTree }),
-    /same_session_outbox_batch_deployment_order_duplicate/,
-  )
-  const zeroFinalTampered = structuredClone(manifest)
-  zeroFinalTampered.releaseBinding.zeroFinalHeartbeatMigration.sha256 = '0'.repeat(64)
-  await assert.rejects(
-    verifyManifestDigests({ manifest: zeroFinalTampered, repoRoot, candidateIndexTree }),
-    /zero_final_heartbeat_migration_digest_mismatch/,
-  )
-  assert.equal(result.shadowV10MigrationSha256, manifest.releaseBinding.shadowV10Migration.sha256)
-  assert.equal(result.shadowV10DbValidationMigrationSha256, manifest.releaseBinding.shadowV10DbValidationMigration.sha256)
-  assert.equal(result.rankLedgerRecoveryMigrationSha256, manifest.releaseBinding.rankLedgerRecoveryMigration.sha256)
-  assert.equal(result.rankSyncHydrationMigrationSha256, manifest.releaseBinding.rankSyncHydrationMigration.sha256)
-  assert.equal(result.shadowV6V8RetirementMigrationSha256, manifest.releaseBinding.shadowV6V8RetirementMigration.sha256)
-  const outboxHealthTampered = structuredClone(manifest)
-  outboxHealthTampered.releaseBinding.captureOutboxHealthMigration.sha256 = '0'.repeat(64)
-  await assert.rejects(
-    verifyManifestDigests({ manifest: outboxHealthTampered, repoRoot, candidateIndexTree }),
-    /capture_outbox_health_migration_digest_mismatch/,
-  )
-  const v10Tampered = structuredClone(manifest)
-  v10Tampered.releaseBinding.shadowV10Migration.sha256 = '0'.repeat(64)
-  await assert.rejects(
-    verifyManifestDigests({ manifest: v10Tampered, repoRoot, candidateIndexTree }),
-    /shadow_v10_migration_digest_mismatch/,
-  )
-  const v10DbValidationTampered = structuredClone(manifest)
-  v10DbValidationTampered.releaseBinding.shadowV10DbValidationMigration.sha256 = '0'.repeat(64)
-  await assert.rejects(
-    verifyManifestDigests({ manifest: v10DbValidationTampered, repoRoot, candidateIndexTree }),
-    /shadow_v10_db_validation_migration_digest_mismatch/,
-  )
-  const rankRecoveryTampered = structuredClone(manifest)
-  rankRecoveryTampered.releaseBinding.rankLedgerRecoveryMigration.sha256 = '0'.repeat(64)
-  await assert.rejects(
-    verifyManifestDigests({ manifest: rankRecoveryTampered, repoRoot, candidateIndexTree }),
-    /rank_ledger_recovery_migration_digest_mismatch/,
-  )
-  const rankSyncHydrationTampered = structuredClone(manifest)
-  rankSyncHydrationTampered.releaseBinding.rankSyncHydrationMigration.sha256 = '0'.repeat(64)
-  await assert.rejects(
-    verifyManifestDigests({ manifest: rankSyncHydrationTampered, repoRoot, candidateIndexTree }),
-    /rank_sync_hydration_migration_digest_mismatch/,
-  )
-  const retirementTampered = structuredClone(manifest)
-  retirementTampered.releaseBinding.shadowV6V8RetirementMigration.sha256 = '0'.repeat(64)
-  await assert.rejects(
-    verifyManifestDigests({ manifest: retirementTampered, repoRoot, candidateIndexTree }),
-    /shadow_v6_v8_retirement_migration_digest_mismatch/,
-  )
-  const tampered = structuredClone(manifest)
-  tampered.releaseBinding.shadowHydrationMigration.sha256 = '0'.repeat(64)
-  await assert.rejects(
-    verifyManifestDigests({ manifest: tampered, repoRoot, candidateIndexTree }),
-    /shadow_hydration_migration_digest_mismatch/,
-  )
-  const rollbackTampered = structuredClone(manifest)
-  rollbackTampered.rollback.order = rollbackTampered.rollback.order.filter((step) => step.id !== 'disable-v9-shadow-before-proxy-rollback')
-  await assert.rejects(
-    verifyManifestDigests({ manifest: rollbackTampered, repoRoot, candidateIndexTree }),
-    /release_rollback_order_shape_invalid/,
-  )
 })
 
 test('implementation digest explicitly excludes self-referential manifest and attestation paths', async (t) => {

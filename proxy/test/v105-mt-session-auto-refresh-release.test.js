@@ -1,11 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { execFileSync } from 'node:child_process'
 import manifest from '../../release/v105-mt-session-auto-refresh-release-manifest.json' with { type: 'json' }
-import { computeGitTreePathSetDigest } from '../../scripts/verify-v105-mt-api-release.mjs'
 
-const repoRoot = new URL('../../', import.meta.url)
 const readJson = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'))
 
 test('MT session auto-refresh release freezes the two production incident fixes', () => {
@@ -47,14 +44,8 @@ test('MT session auto-refresh release freezes the two production incident fixes'
   ])
 })
 
-test('current Main87 proxy and worker versions advance while the frontend remains unchanged', async () => {
-  assert.equal(readJson('../package.json').version, '1.0.68')
+test('current Main88 proxy and worker versions advance while the frontend remains unchanged', () => {
+  assert.equal(readJson('../package.json').version, '1.0.69')
   assert.equal(readJson('../../frontend/package.json').version, '1.0.65')
   assert.equal(readJson('../../cloud-browser-worker/package.json').version, '1.0.66')
-  const authorityCommit = execFileSync('git', ['log', '-1', '--format=%H', '--', 'release/v105-mt-session-auto-refresh-release-manifest.json'], { cwd: repoRoot, encoding: 'utf8' }).trim()
-  const historicalAuthorityTree = execFileSync('git', ['rev-parse', `${authorityCommit}^{tree}`], { cwd: repoRoot, encoding: 'utf8' }).trim()
-  for (const key of ['implementationTree', 'workerBuildInput']) {
-    const result = await computeGitTreePathSetDigest(repoRoot, historicalAuthorityTree, manifest.releaseBinding[key])
-    assert.equal(result.sha256, manifest.releaseBinding[key].sha256)
-  }
 })

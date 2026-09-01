@@ -111,10 +111,16 @@ async function enqueueBestEffortCapture(runtimes, entries, tables, rounds) {
   return { coalesced: 0, rejected: 0 }
 }
 
+export function waitForBestEffortShadowWorkIdle(runtimes) {
+  const scheduler = bestEffortScheduler(runtimes)
+  if (!scheduler.active && scheduler.queue.length === 0) return Promise.resolve()
+  return new Promise((resolve) => scheduler.idleWaiters.add(resolve))
+}
+
 function bestEffortScheduler(runtimes) {
   let scheduler = bestEffortSchedulers.get(runtimes)
   if (!scheduler) {
-    scheduler = { queue: [], active: null }
+    scheduler = { queue: [], active: null, idleWaiters: new Set() }
     bestEffortSchedulers.set(runtimes, scheduler)
   }
   return scheduler
@@ -127,6 +133,10 @@ function pumpBestEffortScheduler(scheduler) {
   void runBestEffortWithRetry(job).finally(() => {
     if (scheduler.active === job) scheduler.active = null
     pumpBestEffortScheduler(scheduler)
+    if (!scheduler.active && scheduler.queue.length === 0) {
+      for (const resolve of scheduler.idleWaiters) resolve()
+      scheduler.idleWaiters.clear()
+    }
   })
 }
 
