@@ -28,6 +28,22 @@ test('strict real-card mode does not emit inferred no-card rounds from table del
   assert.equal(emitted.length, 1)
 })
 
+test('same-shoe newer explicit Final replaces the preserved lastRound context', () => {
+  const state = createProxyState({ inferSnapshotRounds: false })
+  state.setTables([{
+    tableId: 'BAG07', shoe: 20729, round: 10,
+    lastRound: { tableId: 'BAG07', shoe: 20729, round: 10, winner: 'banker' },
+  }])
+  state.setTables([{
+    tableId: 'BAG07', shoe: 20729, round: 11,
+    lastRound: { tableId: 'BAG07', shoe: 20729, round: 11, winner: 'player' },
+  }])
+
+  assert.deepEqual(state.snapshot().tables[0].lastRound, {
+    tableId: 'BAG07', shoe: 20729, round: 11, winner: 'player',
+  })
+})
+
 test('state store records errors without exposing token secrets', () => {
   const state = createProxyState()
   state.recordError('connect failed token=abc123 secret=hidden')

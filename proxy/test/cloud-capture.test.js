@@ -128,6 +128,181 @@ test('cloud capture tick fetches worker, updates state, and writes Supabase clou
   assert.equal(writes[2][1].round.winner, 'player')
 })
 
+test('round-only Final materializes its exact shoe screen before formal settlement', async () => {
+  const settlementTables = []
+  const result = await applyCloudCapturePayload({
+    parsed: {
+      sessionId: 'round-only-new-shoe',
+      status: { connected: true, authenticated: true },
+      tables: [],
+      rounds: [{
+        tableId: 'BAG07', shoe: 20729, round: 11, winner: 'player',
+        playerPoint: 6, bankerPoint: 0,
+        rawResult: [51, 26, 40, 11, 18, 49, -1, -1, 6, 0],
+        receivedAt: '2026-09-01T03:09:04.659Z',
+      }],
+    },
+    publishSnapshot: false,
+    persistAncillary: false,
+    writer: { configured: true },
+    state: {
+      async settleRoundEvent(_round, table) {
+        settlementTables.push(table)
+        return { ok: true, receipt: { durable: true, disposition: 'no_issuance' } }
+      },
+    },
+    v100Formal: {
+      enabled: true,
+      async processSnapshot({ tables }) { return { tables } },
+    },
+  })
+
+  assert.deepEqual(result.tables.map(({ tableId, shoe, round }) => ({ tableId, shoe, round })), [
+    { tableId: 'BAG07', shoe: 20729, round: 11 },
+  ])
+  assert.deepEqual(settlementTables.map(({ tableId, shoe, round }) => ({ tableId, shoe, round })), [
+    { tableId: 'BAG07', shoe: 20729, round: 11 },
+  ])
+})
+
+test('mixed stale table and round-only Final materializes the missing current shoe identity', async () => {
+  const settlementTables = []
+  const result = await applyCloudCapturePayload({
+    parsed: {
+      sessionId: 'mixed-stale-screen-new-final',
+      status: {},
+      tables: [{ tableId: 'BAG07', shoe: 20728, round: 59, sourceUpdatedAt: '2026-09-01T03:08:00.000Z' }],
+      rounds: [{
+        tableId: 'BAG07', shoe: 20729, round: 1, receivedAt: '2026-09-01T03:09:00.000Z',
+        raw_event: { source: { mode: 'api', ownerId: 'worker', epoch: 436, sequence: 161 } },
+      }],
+    },
+    publishSnapshot: false,
+    persistAncillary: false,
+    writer: { configured: false },
+    state: { async settleRoundEvent(_round, table) { settlementTables.push(table); return { ok: true } } },
+  })
+
+  assert.deepEqual(result.tables.map(({ tableId, shoe, round }) => ({ tableId, shoe, round })), [
+    { tableId: 'BAG07', shoe: 20729, round: 1 },
+  ])
+  assert.deepEqual(settlementTables.map(({ tableId, shoe, round }) => ({ tableId, shoe, round })), [
+    { tableId: 'BAG07', shoe: 20729, round: 1 },
+  ])
+})
+
+test('snapshot poll time cannot make a stale shoe outrank a newer round-only Final', async () => {
+  const parsed = parseCloudCapturePayload({
+    buildVersion: '105',
+    tables: [{ tableId: 'BAG07', shoe: 20728, round: 59 }],
+    rounds: [{ tableId: 'BAG07', shoe: 20729, round: 1, receivedAt: '2026-09-01T03:09:00.000Z' }],
+  }, '2026-09-01T03:09:01.000Z')
+  const result = await applyCloudCapturePayload({
+    parsed,
+    publishSnapshot: false,
+    persistAncillary: false,
+    writer: { configured: false },
+    state: { async settleRoundEvent() { return { ok: true } } },
+  })
+  assert.deepEqual(result.tables.map(({ tableId, shoe, round }) => ({ tableId, shoe, round })), [
+    { tableId: 'BAG07', shoe: 20729, round: 1 },
+  ])
+})
+
+test('round materialization preserves an unrelated table waiting for its shoe', async () => {
+  const result = await applyCloudCapturePayload({
+    parsed: {
+      status: {},
+      tables: [{ tableId: 'BAG01', shoe: null, round: null }, { tableId: 'BAG02', shoe: 3, round: 2 }],
+      rounds: [{ tableId: 'BAG02', shoe: 3, round: 2 }],
+    },
+    publishSnapshot: false,
+    persistAncillary: false,
+    writer: { configured: false },
+    state: { async settleRoundEvent() { return { ok: true } } },
+  })
+  assert.deepEqual(result.tables.map(({ tableId, shoe }) => ({ tableId, shoe })), [
+    { tableId: 'BAG01', shoe: null },
+    { tableId: 'BAG02', shoe: 3 },
+  ])
+})
+
+test('same-table unkeyed waiting screen remains live while a historical Final settles by exact shoe', async () => {
+  const settled = []
+  const result = await applyCloudCapturePayload({
+    parsed: {
+      status: {},
+      tables: [{ tableId: 'BAG07', shoe: null, round: null, state: 'waiting' }],
+      rounds: [{ tableId: 'BAG07', shoe: 20728, round: 59, receivedAt: '2026-09-01T03:08:00.000Z' }],
+    },
+    publishSnapshot: false,
+    persistAncillary: false,
+    writer: { configured: false },
+    state: { async settleRoundEvent(_round, table) { settled.push(table); return { ok: true } } },
+  })
+  assert.deepEqual(result.tables.map(({ tableId, shoe, state }) => ({ tableId, shoe, state })), [
+    { tableId: 'BAG07', shoe: null, state: 'waiting' },
+  ])
+  assert.deepEqual(settled.map(({ tableId, shoe, round }) => ({ tableId, shoe, round })), [
+    { tableId: 'BAG07', shoe: 20728, round: 59 },
+  ])
+})
+
+test('same-shoe multi-Final batch preserves an exact settlement snapshot per round', async () => {
+  const seen = []
+  await applyCloudCapturePayload({
+    parsed: {
+      status: {}, tables: [],
+      rounds: [
+        { tableId: 'BAG07', shoe: 20729, round: 10 },
+        { tableId: 'BAG07', shoe: 20729, round: 11 },
+      ],
+    },
+    publishSnapshot: false,
+    persistAncillary: false,
+    writer: { configured: false },
+    state: {
+      async settleRoundEvent(round, table) {
+        seen.push([round.round, table.round, table.lastRound?.round])
+        return { ok: true }
+      },
+    },
+  })
+  assert.deepEqual(seen, [[10, 10, 10], [11, 11, 11]])
+})
+
+test('round-only multi-shoe batch publishes one current screen and keeps exact settlement snapshots', async () => {
+  const persistedRoundTables = []
+  const result = await applyCloudCapturePayload({
+    parsed: {
+      sessionId: 'current-before-history',
+      status: {},
+      tables: [],
+      rounds: [
+        { tableId: 'BAG07', shoe: 20729, round: 11, raw_event: { source: { mode: 'api', ownerId: 'worker', epoch: 436, sequence: 160 } } },
+        { tableId: 'BAG07', shoe: 20728, round: 59, raw_event: { source: { mode: 'api', ownerId: 'worker', epoch: 436, sequence: 150 } } },
+      ],
+    },
+    publishSnapshot: false,
+    writer: {
+      configured: true,
+      async writeCloudCaptureStatus() {},
+      async writeCloudTableSnapshot() {},
+      async writeCloudRoundEvents(payloads) { persistedRoundTables.push(...payloads.map(({ table }) => table)) },
+    },
+    state: { async settleRoundEvent() { return { ok: true } } },
+    v100Formal: { enabled: true, async processSnapshot({ tables }) { return { tables } } },
+  })
+
+  assert.deepEqual(result.tables.map(({ tableId, shoe, round }) => ({ tableId, shoe, round })), [
+    { tableId: 'BAG07', shoe: 20729, round: 11 },
+  ])
+  assert.deepEqual(persistedRoundTables.map(({ tableId, shoe, round }) => ({ tableId, shoe, round })), [
+    { tableId: 'BAG07', shoe: 20729, round: 11 },
+    { tableId: 'BAG07', shoe: 20728, round: 59 },
+  ])
+})
+
 test('formal settlement runs different tables concurrently while preserving each table order', async () => {
   let active = 0
   let maxActive = 0

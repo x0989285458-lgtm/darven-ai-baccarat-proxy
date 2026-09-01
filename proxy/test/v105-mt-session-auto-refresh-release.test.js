@@ -45,7 +45,7 @@ test('MT session auto-refresh release freezes the two production incident fixes'
 })
 
 test('current Main88 proxy and worker versions advance while the frontend remains unchanged', () => {
-  assert.equal(readJson('../package.json').version, '1.0.69')
+  assert.equal(readJson('../package.json').version, '1.0.70')
   assert.equal(readJson('../../frontend/package.json').version, '1.0.65')
   assert.equal(readJson('../../cloud-browser-worker/package.json').version, '1.0.66')
 })

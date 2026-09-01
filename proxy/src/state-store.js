@@ -412,12 +412,19 @@ function mergeExistingRoundData(nextTables, currentTables) {
     const nextShoe = table.shoe ?? existing.lastRound?.shoe ?? null
     const sameShoe = String(nextShoe ?? '') === String(existing.shoe ?? '')
     if (!sameShoe || !existing.lastRound) return { ...table, shoe: nextShoe }
+    const candidateLastRound = table.lastRound
+    const candidateLastRoundIsCurrent = candidateLastRound
+      && String(candidateLastRound.shoe ?? nextShoe ?? '') === String(nextShoe ?? '')
+      && Number.isSafeInteger(Number(candidateLastRound.round))
+      && Number(candidateLastRound.round) >= Number(existing.lastRound.round)
     return {
       ...table,
       shoe: nextShoe,
       round: table.round ?? existing.lastRound.round ?? null,
-      lastRound: existing.lastRound,
-      ...(existing.v102RankLedger ? { v102RankLedger: existing.v102RankLedger } : {}),
+      lastRound: candidateLastRoundIsCurrent ? candidateLastRound : existing.lastRound,
+      ...(candidateLastRoundIsCurrent && table.v102RankLedger
+        ? { v102RankLedger: table.v102RankLedger }
+        : existing.v102RankLedger ? { v102RankLedger: existing.v102RankLedger } : {}),
     }
   })
 }

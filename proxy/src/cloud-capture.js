@@ -149,6 +149,99 @@ async function runDurableStage(stage, operation) {
   }
 }
 
+function materializeRoundOnlyTables(tables = [], rounds = []) {
+  if (rounds.length === 0) return { publishedTables: tables, settlementTables: tables }
+  const tableOrder = []
+  const recordsByTable = new Map()
+  const unkeyedTables = new Map()
+  const settlementTables = []
+  const recordsFor = (tableId) => {
+    if (!recordsByTable.has(tableId)) {
+      recordsByTable.set(tableId, new Map())
+      tableOrder.push(tableId)
+    }
+    return recordsByTable.get(tableId)
+  }
+  for (const table of tables) {
+    const tableId = canonicalProductionTableId(table?.tableId)
+    const shoe = table?.shoe
+    if (!tableId) continue
+    const byIdentity = recordsFor(tableId)
+    if (shoe == null || String(shoe).trim() === '') {
+      unkeyedTables.set(tableId, { ...structuredClone(table), tableId })
+      continue
+    }
+    byIdentity.set(String(shoe), {
+      round: {
+        source: table?.source,
+        receivedAt: table?.sourceUpdatedAt ?? table?.updatedAt ?? table?.updated_at ?? null,
+      },
+      table: { ...structuredClone(table), tableId },
+    })
+  }
+  for (const round of rounds) {
+    const tableId = canonicalProductionTableId(round?.tableId)
+    const shoe = round?.shoe
+    const roundNo = Number(round?.round)
+    if (!tableId || shoe == null || !Number.isSafeInteger(roundNo)) continue
+    const byIdentity = recordsFor(tableId)
+    const identity = String(shoe)
+    const current = byIdentity.get(identity)
+    const exactTable = current && Number(current.table.round) === roundNo
+      ? { ...structuredClone(current.table), lastRound: structuredClone(round) }
+      : {
+          tableId,
+          displayName: round?.tableName ?? `MT百家樂${tableId}`,
+          tableType: 'BAC',
+          shoe,
+          round: roundNo,
+          sourceUpdatedAt: round?.receivedAt ?? round?.received_at ?? null,
+          lastRound: structuredClone(round),
+        }
+    settlementTables.push(exactTable)
+    if (current && Number(current.table.round) >= roundNo) continue
+    byIdentity.set(identity, { round, table: exactTable })
+  }
+  const compareChronology = (left, right) => {
+    const leftSource = left.round?.source ?? left.round?.rawEvent?.source ?? left.round?.raw_event?.source
+    const rightSource = right.round?.source ?? right.round?.rawEvent?.source ?? right.round?.raw_event?.source
+    const sameOwner = leftSource
+      && rightSource
+      && String(leftSource.mode ?? '') === String(rightSource.mode ?? '')
+      && String(leftSource.ownerId ?? '') === String(rightSource.ownerId ?? '')
+    if (sameOwner) {
+      const epochDelta = Number(leftSource.epoch) - Number(rightSource.epoch)
+      if (Number.isSafeInteger(epochDelta) && epochDelta !== 0) return epochDelta
+      const sequenceDelta = Number(leftSource.sequence) - Number(rightSource.sequence)
+      if (Number.isSafeInteger(sequenceDelta) && sequenceDelta !== 0) return sequenceDelta
+    }
+    const leftShoe = Number(left.table?.shoe)
+    const rightShoe = Number(right.table?.shoe)
+    if (Number.isSafeInteger(leftShoe) && Number.isSafeInteger(rightShoe) && leftShoe !== rightShoe) {
+      if (leftShoe >= 1 && leftShoe <= 999 && rightShoe >= 1 && rightShoe <= 999 && Math.abs(leftShoe - rightShoe) > 500) {
+        return leftShoe < rightShoe ? 1 : -1
+      }
+      return leftShoe - rightShoe
+    }
+    const receivedDelta = Date.parse(left.round?.receivedAt ?? left.round?.received_at ?? '')
+      - Date.parse(right.round?.receivedAt ?? right.round?.received_at ?? '')
+    if (Number.isFinite(receivedDelta) && receivedDelta !== 0) return receivedDelta
+    return 0
+  }
+  const groups = tableOrder.map((tableId) => ({
+    tableId,
+    records: [...recordsByTable.get(tableId).values()].sort(compareChronology),
+  }))
+  return {
+    publishedTables: groups.flatMap(({ tableId, records }) => (
+      unkeyedTables.has(tableId)
+        ? [unkeyedTables.get(tableId)]
+        : (records.length > 0 ? [records.at(-1).table] : [])
+    )),
+    settlementTables,
+  }
+}
+
 export async function applyCloudCapturePayload({ parsed, state, writer, v100Formal = null, persistAncillary = true, publishSnapshot = true, onDurablePhase = null }) {
   const reportDurablePhase = (phase, diagnostic = {}) => {
     try {
@@ -156,7 +249,17 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
       if (reported && typeof reported.then === 'function') void Promise.resolve(reported).catch(() => {})
     } catch {}
   }
-  parsed = canonicalizeFormalRoundSources(parsed)
+  const materialized = materializeRoundOnlyTables(parsed.tables, parsed.rounds)
+  parsed = canonicalizeFormalRoundSources({ ...parsed, tables: materialized.publishedTables })
+  const canonicalRoundByIdentity = new Map(parsed.rounds.map((round) => [JSON.stringify([
+    String(round?.tableId ?? ''), String(round?.shoe ?? ''), Number(round?.round),
+  ]), round]))
+  const settlementInputTables = materialized.settlementTables.map((table) => {
+    const lastRound = canonicalRoundByIdentity.get(JSON.stringify([
+      String(table?.tableId ?? ''), String(table?.shoe ?? ''), Number(table?.round),
+    ]))
+    return lastRound ? { ...table, lastRound: structuredClone(lastRound) } : table
+  })
   const durableTimings = {}
   let v100Result = null
   if (v100Formal?.enabled === true) {
@@ -165,8 +268,8 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
       String(round?.shoe ?? ''),
     ])))
     const rankTables = parsed.rounds.length === 0
-      ? parsed.tables
-      : parsed.tables.filter((table) => finalIdentityKeys.has(JSON.stringify([
+      ? settlementInputTables
+      : settlementInputTables.filter((table) => finalIdentityKeys.has(JSON.stringify([
           String(table?.tableId ?? ''),
           String(table?.shoe ?? ''),
         ])))
@@ -182,14 +285,30 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
     }
   }
   const rankedTables = Array.isArray(v100Result?.tables) ? v100Result.tables : []
-  const rankedByIdentity = new Map(rankedTables.map((table) => [
-    JSON.stringify([String(table?.tableId ?? ''), String(table?.shoe ?? '')]),
+  const rankedByRoundIdentity = new Map(rankedTables.map((table) => [
+    JSON.stringify([String(table?.tableId ?? ''), String(table?.shoe ?? ''), Number(table?.round)]),
     table,
   ]))
-  const formalTables = parsed.tables.map((table) => structuredClone(rankedByIdentity.get(JSON.stringify([
-    String(table?.tableId ?? ''),
-    String(table?.shoe ?? ''),
-  ])) ?? table))
+  const latestFinalRoundByIdentity = new Map()
+  for (const round of parsed.rounds) {
+    const identity = JSON.stringify([String(round?.tableId ?? ''), String(round?.shoe ?? '')])
+    latestFinalRoundByIdentity.set(identity, Math.max(
+      Number(latestFinalRoundByIdentity.get(identity) ?? Number.NEGATIVE_INFINITY),
+      Number(round?.round),
+    ))
+  }
+  const materializeRankedTables = (tables) => tables.map((table) => {
+    const ranked = structuredClone(rankedByRoundIdentity.get(JSON.stringify([
+      String(table?.tableId ?? ''), String(table?.shoe ?? ''), Number(table?.round),
+    ])) ?? table)
+    const latestRound = latestFinalRoundByIdentity.get(JSON.stringify([
+      String(table?.tableId ?? ''), String(table?.shoe ?? ''),
+    ]))
+    if (Number.isFinite(latestRound) && Number(table?.round) < latestRound) delete ranked.v102RankLedger
+    return ranked
+  })
+  const formalTables = materializeRankedTables(parsed.tables)
+  const formalSettlementTables = materializeRankedTables(settlementInputTables)
   if (publishSnapshot) {
     state?.setStatus?.(parsed.status)
     state?.setTables?.(formalTables)
@@ -215,9 +334,10 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
         return shoeDelta || Number(left?.round) - Number(right?.round)
       })
       for (const round of tableRounds) {
-        const settlementTable = formalTables.find((table) => (
+        const settlementTable = formalSettlementTables.find((table) => (
           String(table?.tableId ?? '') === String(round?.tableId ?? '')
           && String(table?.shoe ?? '') === String(round?.shoe ?? '')
+          && Number(table?.round) === Number(round?.round)
         )) ?? formalTables.find((table) => String(table?.tableId ?? '') === String(round?.tableId ?? ''))
         const settleRound = publishSnapshot
           ? state?.upsertRoundEvent
@@ -256,7 +376,11 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
     const payloads = batch.map((round) => ({
       sessionId,
       round,
-      table: formalTables.find((item) => String(item.tableId) === String(round.tableId)) ?? { tableId: round.tableId },
+      table: formalSettlementTables.find((item) => (
+        String(item.tableId) === String(round.tableId)
+        && String(item.shoe ?? '') === String(round.shoe ?? '')
+        && Number(item.round) === Number(round.round)
+      )) ?? formalTables.find((item) => String(item.tableId) === String(round.tableId)) ?? { tableId: round.tableId },
     }))
     await runDurableStage('durable_round_events', () => writer.writeCloudRoundEvents
       ? writer.writeCloudRoundEvents(payloads)

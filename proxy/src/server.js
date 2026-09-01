@@ -992,7 +992,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                 }
                 if (publishedTableByIdentity.has(identity)) continue
                 const advancedTable = currentPublishedTableByTableId.get(tableId)
-                const advancedShoeNumber = parsePositiveIntegerShoe(advancedTable?.shoe)
+                const advancedShoeText = String(advancedTable?.shoe ?? '').trim()
+                if (advancedTable && !advancedShoeText) continue
+                const advancedShoeNumber = parsePositiveIntegerShoe(advancedShoeText)
                 if (advancedShoeNumber == null || advancedShoeNumber <= finalizedShoeNumber) {
                   missingFinalizedIdentities.push(identity)
                 }

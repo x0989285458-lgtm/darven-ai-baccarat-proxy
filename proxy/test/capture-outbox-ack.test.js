@@ -1663,14 +1663,14 @@ test('external consumer settles every cross-table prediction sibling before fail
   assert.equal(siblingFinished, true)
 })
 
-test('external consumer acknowledges a durable old-shoe final without issuing from a newer published shoe', async () => {
+test('external consumer acknowledges a historical Final without issuing from a same-table unkeyed waiting screen', async () => {
   let claimed = false
   let completed = 0
   let failed = 0
   let issued = 0
   const snapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: 89, round: 1, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '01', bigRoadRaw: 'B' }],
+    tables: [{ tableId: 'BAG01', shoe: null, round: null, state: 'waiting', sourceUpdatedAt: '2026-08-25T16:00:00.000Z' }],
   }
   const app = createApp({
     autoConnect: false,
@@ -1693,12 +1693,8 @@ test('external consumer acknowledges a durable old-shoe final without issuing fr
     },
     v100FormalRuntime: {
       enabled: true,
-      async processSnapshot() {
-        return {
-          enabled: true,
-          predictions: [],
-          tables: [{ tableId: 'BAG01', shoe: 89, round: 1, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '01', bigRoadRaw: 'B' }],
-        }
+      async processSnapshot({ tables }) {
+        return { enabled: true, predictions: [], tables }
       },
     },
   })
@@ -1997,7 +1993,7 @@ test('external consumer reconciles and predicts only the newest shoe when one ba
   assert.deepEqual(issuedShoes, ['89'])
 })
 
-test('external consumer retains the lease when the finalized table is absent from published tables', async () => {
+test('external consumer materializes a finalized table missing beside unrelated published tables', async () => {
   let claimed = false
   let completed = 0
   let failed = 0
@@ -2023,7 +2019,10 @@ test('external consumer retains the lease when the finalized table is absent fro
       async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
       async readIssuedPrediction() { return null },
       async reconcilePredictionLifecycle() {},
-      async issuePrediction() { issued += 1; return null },
+      async issuePrediction(candidate) {
+        issued += 1
+        return { ...candidate, predictionId: 'pid-BAG01-88-22', issuedAt: '2026-08-25T16:00:01.000Z' }
+      },
     },
     v100FormalRuntime: {
       enabled: true,
@@ -2040,10 +2039,10 @@ test('external consumer retains the lease when the finalized table is absent fro
   await app.drainCaptureOutbox()
   await app.waitForServiceWorkIdle()
 
-  assert.equal(issued, 0)
-  assert.equal(completed, 0)
-  assert.equal(failed, 1)
-  assert.match(app.state.snapshot().status.persistenceError, /finalized identity missing from published tables/)
+  assert.equal(issued, 1)
+  assert.equal(completed, 1)
+  assert.equal(failed, 0)
+  assert.equal(app.state.snapshot().status.persistenceError, null)
 })
 
 test('external consumer polls for durable work that arrives without an in-process ACK wake', async () => {
