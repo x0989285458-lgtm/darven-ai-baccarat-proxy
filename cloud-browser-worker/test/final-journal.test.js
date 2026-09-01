@@ -75,11 +75,137 @@ test('late ACK from an older shoe never regresses the last durable cursor', asyn
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-final-cursor-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const journal = await createFinalJournal({ journalPath: path.join(dir, 'finals.jsonl'), assertSource: () => true })
+  const older = await journal.append({ ...finalEvent({ round: 70, sequence: 19 }), shoe: 91 })
   const newer = await journal.append({ ...finalEvent({ round: 1, sequence: 20 }), shoe: 92 })
   await journal.ack(newer.identity, newer.hash)
-  const older = await journal.append({ ...finalEvent({ round: 70, sequence: 21 }), shoe: 91 })
   await journal.ack(older.identity, older.hash)
   assert.deepEqual(journal.cursor('BAG01'), { shoe: 92, round: 1, identity: 'BAG01:92:1', hash: newer.hash })
+})
+
+test('late ACK with an incomparable prior owner cannot regress append chronology', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-final-owner-order-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const journal = await createFinalJournal({ journalPath: path.join(dir, 'finals.jsonl'), assertSource: () => true })
+  const older = await journal.append({
+    ...finalEvent({ round: 70, sequence: 19 }), shoe: 91,
+    source: { mode: 'api', ownerId: 'old-owner', epoch: 1, fence: 'old-fence', sequence: 19 },
+  })
+  const newer = await journal.append({
+    ...finalEvent({ round: 1, sequence: 1 }), shoe: 92,
+    source: { mode: 'api', ownerId: 'new-owner', epoch: 2, fence: 'new-fence', sequence: 1 },
+  })
+
+  await journal.ack(newer.identity, newer.hash)
+  await journal.ack(older.identity, older.hash)
+
+  assert.deepEqual(journal.cursor('BAG01'), { shoe: 92, round: 1, identity: 'BAG01:92:1', hash: newer.hash })
+})
+
+test('a historical Final appended after a newer Final cannot regress the cursor', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-final-late-append-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const journal = await createFinalJournal({ journalPath: path.join(dir, 'finals.jsonl'), assertSource: () => true })
+  const newer = await journal.append({ ...finalEvent({ round: 1, sequence: 20 }), shoe: 92 })
+  await journal.ack(newer.identity, newer.hash)
+  const historical = await journal.append({ ...finalEvent({ round: 70, sequence: 19 }), shoe: 91 })
+  await journal.ack(historical.identity, historical.hash)
+  assert.deepEqual(journal.cursor('BAG01'), { shoe: 92, round: 1, identity: 'BAG01:92:1', hash: newer.hash })
+})
+
+test('a retired shoe cannot return through a delayed higher-sequence Final', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-final-retired-shoe-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const journal = await createFinalJournal({ journalPath: path.join(dir, 'finals.jsonl'), assertSource: () => true })
+  const older = await journal.append({ ...finalEvent({ round: 70, sequence: 19 }), shoe: 91 })
+  await journal.ack(older.identity, older.hash)
+  const newer = await journal.append({ ...finalEvent({ round: 1, sequence: 20 }), shoe: 92 })
+  await journal.ack(newer.identity, newer.hash)
+  const delayed = await journal.append({ ...finalEvent({ round: 71, sequence: 21 }), shoe: 91 })
+  await journal.ack(delayed.identity, delayed.hash)
+  assert.deepEqual(journal.cursor('BAG01'), { shoe: 92, round: 1, identity: 'BAG01:92:1', hash: newer.hash })
+})
+
+test('durable Final chronology advances cursor across numeric shoe wrap and survives restart', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-final-wrap-cursor-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const journalPath = path.join(dir, 'finals.jsonl')
+  const journal = await createFinalJournal({ journalPath, assertSource: () => true })
+  const beforeWrap = await journal.append({ ...finalEvent({ round: 70, sequence: 20 }), tableId: 'BAG09', shoe: 997 })
+  const afterWrap = await journal.append({ ...finalEvent({ round: 1, sequence: 21 }), tableId: 'BAG09', shoe: 1 })
+  await journal.ackMany([
+    { identity: beforeWrap.identity, hash: beforeWrap.hash },
+    { identity: afterWrap.identity, hash: afterWrap.hash },
+  ])
+  assert.deepEqual(journal.cursor('BAG09'), { shoe: 1, round: 1, identity: 'BAG09:1:1', hash: afterWrap.hash })
+
+  const restored = await createFinalJournal({ journalPath, assertSource: () => true })
+  assert.deepEqual(restored.cursor('BAG09'), journal.cursor('BAG09'))
+})
+
+test('pending rebind preserves Final chronology so a newer wrapped shoe advances the cursor', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-final-rebind-order-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const journal = await createFinalJournal({ journalPath: path.join(dir, 'finals.jsonl'), assertSource: () => true })
+  const beforeWrap = await journal.append({ ...finalEvent({ round: 70, sequence: 20 }), tableId: 'BAG09', shoe: 997 })
+  await journal.ack(beforeWrap.identity, beforeWrap.hash)
+  const afterWrap = await journal.append({ ...finalEvent({ round: 1, sequence: 21 }), tableId: 'BAG09', shoe: 1 })
+  const target = { mode: 'api', ownerId: 'api-primary', epoch: 3, fence: 'new-fence' }
+  await journal.rebindPending(async () => ({ ...target, sequence: 1 }), target)
+
+  await journal.ack(afterWrap.identity, afterWrap.hash)
+  assert.deepEqual(journal.cursor('BAG09'), {
+    shoe: 1, round: 1, identity: 'BAG09:1:1', hash: afterWrap.hash,
+  })
+})
+
+test('snapshot ACK cursor bootstrap follows acknowledged chronology instead of numeric shoe max', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-bootstrap-wrap-cursor-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const journal = await createFinalJournal({ journalPath: path.join(dir, 'finals.jsonl'), assertSource: () => true })
+  await journal.bootstrapFromSnapshotPusherCursor({
+    version: 3, initialized: true, lastSequence: 22,
+    observedRoundKeys: ['BAG09:997:70', 'BAG09:1:1'],
+    acknowledgedRoundKeys: ['BAG09:997:70', 'BAG09:1:1'],
+  })
+  assert.deepEqual(journal.cursor('BAG09'), {
+    shoe: 1, round: 1, identity: 'BAG09:1:1', origin: 'snapshot-pusher-exact-ack-cursor',
+  })
+})
+
+test('snapshot ACK cursor bootstrap cannot be replaced by a delayed unknown-shoe acknowledgement', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-bootstrap-delayed-old-shoe-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const journal = await createFinalJournal({ journalPath: path.join(dir, 'finals.jsonl'), assertSource: () => true })
+  await journal.bootstrapFromSnapshotPusherCursor({
+    version: 3, initialized: true, lastSequence: 22,
+    observedRoundKeys: ['BAG01:92:1'],
+    acknowledgedRoundKeys: ['BAG01:92:1'],
+  })
+  const delayed = await journal.append({ ...finalEvent({ round: 70, sequence: 20 }), tableId: 'BAG01', shoe: 91 })
+
+  await journal.ack(delayed.identity, delayed.hash)
+
+  assert.deepEqual(journal.cursor('BAG01'), {
+    shoe: 92, round: 1, identity: 'BAG01:92:1', origin: 'snapshot-pusher-exact-ack-cursor',
+  })
+})
+
+test('snapshot ACK cursor bootstrap advances to a newly acknowledged round-one shoe', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-bootstrap-next-shoe-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const journal = await createFinalJournal({ journalPath: path.join(dir, 'finals.jsonl'), assertSource: () => true })
+  await journal.bootstrapFromSnapshotPusherCursor({
+    version: 3, initialized: true, lastSequence: 22,
+    observedRoundKeys: ['BAG01:92:70'],
+    acknowledgedRoundKeys: ['BAG01:92:70'],
+  })
+  const nextShoe = await journal.append({ ...finalEvent({ round: 1, sequence: 23 }), tableId: 'BAG01', shoe: 93 })
+
+  await journal.ack(nextShoe.identity, nextShoe.hash)
+
+  assert.deepEqual(journal.cursor('BAG01'), {
+    shoe: 93, round: 1, identity: 'BAG01:93:1', hash: nextShoe.hash,
+  })
 })
 
 test('append-only rebind survives restart without changing Final identity or payload hash', async (t) => {

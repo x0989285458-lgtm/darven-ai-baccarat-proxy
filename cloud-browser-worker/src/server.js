@@ -94,7 +94,6 @@ const snapshotPusher = createSnapshotPusher({
   queuePath: PUSH_QUEUE_PATH,
   cursorPath: PUSH_CURSOR_PATH,
   historicalArchivePath: process.env.PUSH_HISTORICAL_ARCHIVE_PATH ?? `${PUSH_QUEUE_PATH}.historical.jsonl`,
-  historicalCompactThresholdEntries: Number(process.env.PUSH_HISTORICAL_COMPACT_THRESHOLD_ENTRIES ?? 200),
   isRoundDeliverable: isFinalRealCardRound,
   onAcknowledged: acknowledgeOwnedSnapshot,
   onArchived: archiveOwnedSnapshot,

@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "releaseVersion": "v105-v10-main.86",
+  "gitTag": "v105-v10-main.86",
+  "baseCommit": "479417542cb23d17224e400b169843a0e6a9ec62",
+  "componentVersions": {
+    "proxy": "1.0.67",
+    "worker": "1.0.66"
+  },
+  "scope": "current-table-current-round-priority-and-exact-lost-ack-reconciliation",
+  "changedPaths": [
+    ".github/workflows/trusted-release-images-main86.yml",
+    "cloud-browser-worker/package-lock.json",
+    "cloud-browser-worker/package.json",
+    "cloud-browser-worker/src/final-journal.js",
+    "cloud-browser-worker/src/mt-api-client.js",
+    "cloud-browser-worker/src/server.js",
+    "cloud-browser-worker/src/snapshot-pusher.js",
+    "cloud-browser-worker/src/worker-source-runtime.js",
+    "cloud-browser-worker/test/final-journal.test.js",
+    "cloud-browser-worker/test/incremental-delivery.test.js",
+    "cloud-browser-worker/test/mt-api-client.test.js",
+    "cloud-browser-worker/test/snapshot-pusher.test.js",
+    "cloud-browser-worker/test/source-fenced-delivery.test.js",
+    "cloud-browser-worker/test/worker-source-runtime.test.js",
+    "proxy/package-lock.json",
+    "proxy/package.json",
+    "proxy/scripts/run-tests.mjs",
+    "proxy/scripts/test-classifier.mjs",
+    "proxy/src/server.js",
+    "proxy/src/supabase-writer.js",
+    "proxy/test/backend-prediction-source.test.js",
+    "proxy/test/current-runtime-test-runner.test.js",
+    "proxy/test/deploy-package.test.js",
+    "proxy/test/v102-release-integrity.test.js",
+    "proxy/test/v104-iteration-shadow-release.test.js",
+    "proxy/test/v105-durable-source-fence.test.js",
+    "proxy/test/v105-mt-session-auto-refresh-release.test.js",
+    "proxy/test/v105-service-work-scheduler-release.test.js",
+    "proxy/test/v105-v10-main86-current-round-priority-release.test.js",
+    "release/v105-v10-main86-current-round-priority-release-manifest.json",
+    "supabase/migrations/20260901010000_v105_lost_ack_fence_reconciliation.sql"
+  ],
+  "releaseBinding": {
+    "changedFileGitBlobOids": {
+      ".github/workflows/trusted-release-images-main86.yml": "d25c2ef58ddf6c58c24b5c67c8e7890f5302c4f9",
+      "cloud-browser-worker/package-lock.json": "b5bc01e238299c82825c8124ccfebb652763ac24",
+      "cloud-browser-worker/package.json": "770e560d1ba477210243a71f057c28be007307a4",
+      "cloud-browser-worker/src/final-journal.js": "2d19e420515494351b5817417146854e8a151383",
+      "cloud-browser-worker/src/mt-api-client.js": "638d1c4970b9bfb31c0d00cd47bc373a66a0ea0d",
+      "cloud-browser-worker/src/server.js": "d70a1760835e8da7277fcee23497485c9aef4a17",
+      "cloud-browser-worker/src/snapshot-pusher.js": "ac33fe6e3032f07cef334b20f29e59f031099802",
+      "cloud-browser-worker/src/worker-source-runtime.js": "1b10ee4ce817e3aa84434d870a36397befdfa24a",
+      "cloud-browser-worker/test/final-journal.test.js": "bb692189d5bcb6eb000bc40f55e026efea4c7d90",
+      "cloud-browser-worker/test/incremental-delivery.test.js": "2702c2d209653462fbe327d98e2b1b6104b25b66",
+      "cloud-browser-worker/test/mt-api-client.test.js": "a8bc11904f3a229556f1360ace71cb7c38c89ec3",
+      "cloud-browser-worker/test/snapshot-pusher.test.js": "cee36185be69c4ca8ecd79f2f5fcf6c9b0924591",
+      "cloud-browser-worker/test/source-fenced-delivery.test.js": "d681aa2df8107b817bf80759bb2edf55b2d2d0eb",
+      "cloud-browser-worker/test/worker-source-runtime.test.js": "127b24cc419c2d247302324bc39db4c4a3f70bad",
+      "proxy/package-lock.json": "86e53df4d5d773ad11c1276e57438134216beec7",
+      "proxy/package.json": "c7e49e14196840c1222091728539286015283f74",
+      "proxy/scripts/run-tests.mjs": "3bc1f15748be5b6b1fedb98233462e252d18e284",
+      "proxy/scripts/test-classifier.mjs": "6ba7d42a3b9d330996a65d5713f5fc432fb15a3f",
+      "proxy/src/server.js": "13be5bb5eb33152240b9fb514f5f27f61b285545",
+      "proxy/src/supabase-writer.js": "d130f9a0b8a4102556a5740b7a86677eb4e244b4",
+      "proxy/test/backend-prediction-source.test.js": "b2010b3bd14f5c2dd479cbb161ba718d2d2fda85",
+      "proxy/test/current-runtime-test-runner.test.js": "29938466006cf1dc70aacf09f6a58761a515aa5e",
+      "proxy/test/deploy-package.test.js": "2cb464c141016e756d6fa35264de38311ddbec25",
+      "proxy/test/v104-iteration-shadow-release.test.js": "343d134086d5381d07735f845a4f74b001c844ef",
+      "proxy/test/v105-durable-source-fence.test.js": "3b2432992def629e9ddb0de42e1a5ac7642abfbc",
+      "proxy/test/v105-mt-session-auto-refresh-release.test.js": "622eebaeedcbad6f8e1a45026dd391193245cb16",
+      "proxy/test/v105-service-work-scheduler-release.test.js": "4fc7e299db03a83cbcbf559c10174e32da918dd0",
+      "proxy/test/v105-v10-main86-current-round-priority-release.test.js": "13177f6956456a45bd68b8fd1754573069c0583a",
+      "supabase/migrations/20260901010000_v105_lost_ack_fence_reconciliation.sql": "59a1e9a0b4bea83d42fbbe7b7fab2150863acd97"
+    },
+    "deletedFileBaseGitBlobOids": {
+      "proxy/test/v102-release-integrity.test.js": "e395afa235a76c4d5d8f41eae6249308569d3c12"
+    },
+    "database": {
+      "path": "supabase/migrations/20260901010000_v105_lost_ack_fence_reconciliation.sql",
+      "gitBlobOid": "59a1e9a0b4bea83d42fbbe7b7fab2150863acd97"
+    }
+  },
+  "implementationTree": {
+    "algorithm": "sha256(path-NUL-git-blob-oid-LF)",
+    "paths": [
+      ".github/workflows/trusted-release-images-main86.yml",
+      "cloud-browser-worker/package-lock.json",
+      "cloud-browser-worker/package.json",
+      "cloud-browser-worker/src/final-journal.js",
+      "cloud-browser-worker/src/mt-api-client.js",
+      "cloud-browser-worker/src/server.js",
+      "cloud-browser-worker/src/snapshot-pusher.js",
+      "cloud-browser-worker/src/worker-source-runtime.js",
+      "cloud-browser-worker/test/final-journal.test.js",
+      "cloud-browser-worker/test/incremental-delivery.test.js",
+      "cloud-browser-worker/test/mt-api-client.test.js",
+      "cloud-browser-worker/test/snapshot-pusher.test.js",
+      "cloud-browser-worker/test/source-fenced-delivery.test.js",
+      "cloud-browser-worker/test/worker-source-runtime.test.js",
+      "proxy/package-lock.json",
+      "proxy/package.json",
+      "proxy/scripts/run-tests.mjs",
+      "proxy/scripts/test-classifier.mjs",
+      "proxy/src/server.js",
+      "proxy/src/supabase-writer.js",
+      "proxy/test/backend-prediction-source.test.js",
+      "proxy/test/current-runtime-test-runner.test.js",
+      "proxy/test/deploy-package.test.js",
+      "proxy/test/v104-iteration-shadow-release.test.js",
+      "proxy/test/v105-durable-source-fence.test.js",
+      "proxy/test/v105-mt-session-auto-refresh-release.test.js",
+      "proxy/test/v105-service-work-scheduler-release.test.js",
+      "proxy/test/v105-v10-main86-current-round-priority-release.test.js",
+      "supabase/migrations/20260901010000_v105_lost_ack_fence_reconciliation.sql"
+    ],
+    "sha256": "bb2b6e25122d0aaf7c1362fdd4de06cc676ef009c63eb526970cecfacef46f42"
+  },
+  "testDiscovery": {
+    "canonicalCommand": "npm test --prefix proxy",
+    "historicalExactReleaseIdentityCount": 10,
+    "obsoleteDeletedTests": [
+      "proxy/test/v102-release-integrity.test.js"
+    ]
+  },
+  "deploymentOrder": [
+    "database-additive-lost-ack-reconciliation",
+    "database-catalog-acl-and-function-readback",
+    "database-reconciliation-negative-and-duplicate-probes",
+    "proxy-v1.0.67-cutover",
+    "worker-v1.0.66-cutover",
+    "canonical-current-runtime-regression",
+    "current-table-current-round-priority-e2e",
+    "exact-lost-ack-reconciliation-e2e"
+  ],
+  "rollback": {
+    "database": "preserve-applied-additive-migration-and-function",
+    "application": "rollback-proxy-and-worker-only-after-current-round-and-lost-ack-drain-check",
+    "historicalEvidence": "preserve-all-prior-manifests-workflows-tags-and-artifacts"
+  }
+}

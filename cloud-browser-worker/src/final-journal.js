@@ -10,7 +10,10 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
   const finals = new Map()
   const acknowledgements = new Map()
   const cursors = new Map()
+  const cursorOrders = new Map()
+  const retiredCursorShoes = new Map()
   const closedShoes = new Map()
+  let nextFinalOrder = 0
   let journalHeader = null
   let tail = Promise.resolve()
 
@@ -29,7 +32,7 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
       }
       const record = { version: 1, type: 'final', identity, hash, event: normalized }
       await appendRecord(record)
-      finals.set(identity, { hash, event: normalized })
+      finals.set(identity, { hash, event: normalized, order: ++nextFinalOrder })
       return { status: 'appended', identity, hash, event: structuredClone(normalized) }
     })
   }
@@ -111,7 +114,7 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
         const event = normalizeFinal({ ...current.event, capturedSource, source })
         if (finalHash(event) !== current.hash) throw new Error('final_rebind_payload_changed')
         await appendRecord({ version: 1, type: 'rebind', identity, hash: current.hash, capturedSource, source })
-        finals.set(identity, { hash: current.hash, event })
+        finals.set(identity, { hash: current.hash, event, order: current.order })
         rebound.push({ identity, hash: current.hash, event: structuredClone(event) })
       }
       return rebound
@@ -191,7 +194,7 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
         if (record.identity !== identity || record.hash !== hash) throw new Error('final_journal_corrupt')
         const current = finals.get(identity)
         if (current && current.hash !== hash) throw new Error('final_identity_payload_conflict')
-        finals.set(identity, { hash, event })
+        finals.set(identity, { hash, event, order: current?.order ?? ++nextFinalOrder })
       } else if (record?.type === 'ack') {
         const current = finals.get(String(record.identity ?? ''))
         if (!current || current.hash !== record.hash) throw new Error('final_ack_mismatch')
@@ -216,7 +219,7 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
         const source = normalizeTransportSource(record.source)
         const event = normalizeFinal({ ...current.event, capturedSource, source })
         if (finalIdentity(event) !== identity || finalHash(event) !== current.hash) throw new Error('final_rebind_mismatch')
-        finals.set(identity, { hash: current.hash, event })
+        finals.set(identity, { hash: current.hash, event, order: current.order })
       } else if (record?.type === 'cursor_bootstrap') {
         try { applyCursorBootstrap(record) } catch (error) { throw new Error('final_journal_corrupt', { cause: error }) }
       } else {
@@ -227,11 +230,51 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
 
   function applyAck(identity, hash) {
     acknowledgements.set(identity, hash)
-    const event = finals.get(identity).event
+    const final = finals.get(identity)
+    const event = final.event
     const tableId = canonicalProductionTableId(event.tableId)
     const current = cursors.get(tableId)
     const candidate = { shoe: event.shoe, round: event.round, identity, hash }
-    if (!current || identity === current.identity || Number(candidate.shoe) > Number(current.shoe) || sameShoeLater(current, candidate)) cursors.set(tableId, candidate)
+    const candidateOrder = Number(final.order)
+    if (!current || identity === current.identity) {
+      cursors.set(tableId, candidate)
+      cursorOrders.set(tableId, candidateOrder)
+      return
+    }
+    if (Number(event.shoe) === Number(current.shoe)) {
+      if (Number(event.round) > Number(current.round)) {
+        cursors.set(tableId, candidate)
+        cursorOrders.set(tableId, candidateOrder)
+      }
+      return
+    }
+    const currentOrder = Number(cursorOrders.get(tableId))
+    if (Number.isSafeInteger(currentOrder) && Number.isSafeInteger(candidateOrder) && candidateOrder < currentOrder) return
+    if (current.origin === 'snapshot-pusher-exact-ack-cursor' && Number(event.round) !== 1) return
+    const retired = retiredCursorShoes.get(tableId) ?? []
+    if (retired.includes(Number(event.shoe))) return
+    const currentFinal = finals.get(current.identity)
+    const sourceOrder = compareFinalSourceChronology(event, currentFinal?.event)
+    if (sourceOrder != null && sourceOrder < 0) return
+    retired.push(Number(current.shoe))
+    if (retired.length > 64) retired.splice(0, retired.length - 64)
+    retiredCursorShoes.set(tableId, retired)
+    cursors.set(tableId, candidate)
+    cursorOrders.set(tableId, candidateOrder)
+  }
+
+  function compareFinalSourceChronology(candidateEvent, currentEvent) {
+    const candidate = candidateEvent?.capturedSource ?? candidateEvent?.source
+    const current = currentEvent?.capturedSource ?? currentEvent?.source
+    if (!candidate || !current || candidate.mode !== current.mode || candidate.ownerId !== current.ownerId) return null
+    const candidateEpoch = Number(candidate.epoch)
+    const currentEpoch = Number(current.epoch)
+    const candidateSequence = Number(candidate.sequence)
+    const currentSequence = Number(current.sequence)
+    if (![candidateEpoch, currentEpoch, candidateSequence, currentSequence].every(Number.isSafeInteger)) return null
+    if (candidateEpoch !== currentEpoch) return candidateEpoch < currentEpoch ? -1 : 1
+    if (candidateSequence === currentSequence) return 0
+    return candidateSequence < currentSequence ? -1 : 1
   }
 
   function applyCursorBootstrap(record) {
@@ -249,6 +292,7 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
         identity: cursor.identity,
         origin: record.origin,
       })
+      cursorOrders.set(cursor.tableId, 0)
     }
   }
 
@@ -346,10 +390,6 @@ function normalizeJournalHeader(value = {}) {
   return { sessionFingerprint, ownerId }
 }
 
-function sameShoeLater(current, candidate) {
-  return current.shoe === candidate.shoe && Number(candidate.round) > Number(current.round)
-}
-
 function normalizeSnapshotPusherAckCursors(value = {}) {
   if (Number(value.version) !== 3 || typeof value.initialized !== 'boolean'
     || !Array.isArray(value.observedRoundKeys) || !Array.isArray(value.acknowledgedRoundKeys)) {
@@ -363,10 +403,7 @@ function normalizeSnapshotPusherAckCursors(value = {}) {
   const highest = new Map()
   for (const identityValue of value.acknowledgedRoundKeys) {
     const cursor = normalizeBootstrapCursor({ identity: identityValue })
-    const current = highest.get(cursor.tableId)
-    if (!current || cursor.shoe > current.shoe || (cursor.shoe === current.shoe && cursor.round > current.round)) {
-      highest.set(cursor.tableId, cursor)
-    }
+    highest.set(cursor.tableId, cursor)
   }
   return [...highest.values()].sort((left, right) => left.tableId.localeCompare(right.tableId))
 }

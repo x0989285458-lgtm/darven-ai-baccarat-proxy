@@ -2253,6 +2253,10 @@ export function createSupabaseIngestionClient({
           text: 'select public.persist_v105_fenced_capture_envelope($1::jsonb) as persist_v105_fenced_capture_envelope',
           values: [body?.p_capture],
         },
+        'rpc/reconcile_v105_capture_envelope': {
+          text: 'select public.reconcile_v105_capture_envelope($1::jsonb) as reconcile_v105_capture_envelope',
+          values: [body?.p_capture],
+        },
         'rpc/complete_v105_capture_settlement_outbox': {
           text: 'select public.complete_v105_capture_settlement_outbox($1::text, $2::bigint, $3::uuid, $4::integer) as complete_v105_capture_settlement_outbox',
           values: [body?.p_session_id, body?.p_sequence, body?.p_claim_token, body?.p_attempt],
@@ -2273,6 +2277,7 @@ export function createSupabaseIngestionClient({
       if (directRpc) {
         const rawCapturePath = path === 'rpc/persist_v105_capture_envelope'
           || path === 'rpc/persist_v105_fenced_capture_envelope'
+          || path === 'rpc/reconcile_v105_capture_envelope'
         const directDb = rawCapturePath
           ? rawStrategyDb
           : options.priority === true ? priorityStrategyDb : strategyDb
@@ -2446,6 +2451,69 @@ export function createSupabaseIngestionClient({
     }, requestTimeoutMs)
     if (!response.ok) throw new Error(`Supabase ${path} read failed: ${response.status} ${await response.text()}`)
     return response.json()
+  }
+
+  async function sendCaptureEnvelope({
+    sessionId, sequence, roundKeys = [], status = {}, tables = [], rounds = [], capturedAt = null, source = null,
+  } = {}, { reconcile = false } = {}) {
+    const normalizedSessionId = String(sessionId ?? '')
+    const normalizedSequence = Number(sequence)
+    if (!normalizedSessionId || !Number.isSafeInteger(normalizedSequence) || normalizedSequence < 1) {
+      throw new Error('capture envelope identity is required')
+    }
+    const acceptedRoundKeys = Array.isArray(roundKeys) ? roundKeys.map(String) : []
+    const captureTime = capturedAt ?? status.lastMessageAt ?? new Date(normalizedSequence).toISOString()
+    const statusRow = buildCloudCaptureStatusRow({
+      sessionId: normalizedSessionId, captureSource: 'cloud_browser', status,
+      metadata: { sequence: normalizedSequence },
+    })
+    const snapshotRow = {
+      ...buildCloudTableSnapshotRow({
+        sessionId: normalizedSessionId, tables, status,
+        metadata: { sequence: normalizedSequence },
+      }),
+      snapshot_at: captureTime,
+    }
+    const roundRows = (Array.isArray(rounds) ? rounds : []).map((round) => ({
+      ...buildCloudRoundEventRow({
+        sessionId: normalizedSessionId,
+        round: { ...round, receivedAt: round?.receivedAt ?? captureTime },
+        table: (Array.isArray(tables) ? tables : []).find((table) => String(table?.tableId) === String(round?.tableId)) ?? { tableId: round?.tableId },
+        metadata: { sequence: normalizedSequence },
+      }),
+      received_at: round?.receivedAt ?? captureTime,
+    }))
+    statusRow.last_message_at = captureTime
+    statusRow.last_round_at = roundRows.length > 0
+      ? roundRows.map((row) => row.received_at).sort().at(-1)
+      : null
+    const rpcPath = reconcile
+      ? 'rpc/reconcile_v105_capture_envelope'
+      : source == null ? 'rpc/persist_v105_capture_envelope' : 'rpc/persist_v105_fenced_capture_envelope'
+    const acknowledgement = await postDurableRest(rpcPath, {
+      p_capture: {
+        session_id: normalizedSessionId,
+        sequence: normalizedSequence,
+        round_keys: acceptedRoundKeys,
+        status: statusRow,
+        snapshot: snapshotRow,
+        rounds: roundRows,
+        work: { sessionId: normalizedSessionId, status, tables, rounds },
+        ...(source == null ? {} : { source: structuredClone(source) }),
+      },
+    }, undefined, { requireObject: true, priority: true })
+    const acknowledgedKeys = Array.isArray(acknowledgement?.accepted_round_keys)
+      ? acknowledgement.accepted_round_keys.map(String)
+      : []
+    if (acknowledgement?.persisted !== true
+        || (reconcile && acknowledgement?.duplicate !== true)
+        || acknowledgedKeys.length !== acceptedRoundKeys.length
+        || acceptedRoundKeys.some((key, index) => acknowledgedKeys[index] !== key)) {
+      throw new Error(reconcile
+        ? 'capture reconciliation acknowledgement failed'
+        : 'durable capture outbox acknowledgement failed')
+    }
+    return { ...acknowledgement, acceptedRoundKeys: acknowledgedKeys }
   }
 
   return {
@@ -3507,62 +3575,11 @@ export function createSupabaseIngestionClient({
       inFlightRoundWrites.set(roundKey, writePromise)
       return writePromise
     },
-    async persistCaptureEnvelope({ sessionId, sequence, roundKeys = [], status = {}, tables = [], rounds = [], capturedAt = null, source = null } = {}) {
-      const normalizedSessionId = String(sessionId ?? '')
-      const normalizedSequence = Number(sequence)
-      if (!normalizedSessionId || !Number.isSafeInteger(normalizedSequence) || normalizedSequence < 1) {
-        throw new Error('capture envelope identity is required')
-      }
-      const acceptedRoundKeys = Array.isArray(roundKeys) ? roundKeys.map(String) : []
-      const captureTime = capturedAt ?? status.lastMessageAt ?? new Date(normalizedSequence).toISOString()
-      const statusRow = buildCloudCaptureStatusRow({
-        sessionId: normalizedSessionId, captureSource: 'cloud_browser', status,
-        metadata: { sequence: normalizedSequence },
-      })
-      const snapshotRow = {
-        ...buildCloudTableSnapshotRow({
-          sessionId: normalizedSessionId, tables, status,
-          metadata: { sequence: normalizedSequence },
-        }),
-        snapshot_at: captureTime,
-      }
-      const roundRows = (Array.isArray(rounds) ? rounds : []).map((round) => ({
-        ...buildCloudRoundEventRow({
-          sessionId: normalizedSessionId,
-          round: { ...round, receivedAt: round?.receivedAt ?? captureTime },
-          table: (Array.isArray(tables) ? tables : []).find((table) => String(table?.tableId) === String(round?.tableId)) ?? { tableId: round?.tableId },
-          metadata: { sequence: normalizedSequence },
-        }),
-        received_at: round?.receivedAt ?? captureTime,
-      }))
-      statusRow.last_message_at = captureTime
-      statusRow.last_round_at = roundRows.length > 0
-        ? roundRows.map((row) => row.received_at).sort().at(-1)
-        : null
-      const rpcPath = source == null
-        ? 'rpc/persist_v105_capture_envelope'
-        : 'rpc/persist_v105_fenced_capture_envelope'
-      const acknowledgement = await postDurableRest(rpcPath, {
-        p_capture: {
-          session_id: normalizedSessionId,
-          sequence: normalizedSequence,
-          round_keys: acceptedRoundKeys,
-          status: statusRow,
-          snapshot: snapshotRow,
-          rounds: roundRows,
-          work: { sessionId: normalizedSessionId, status, tables, rounds },
-          ...(source == null ? {} : { source: structuredClone(source) }),
-        },
-      }, undefined, { requireObject: true, priority: true })
-      const acknowledgedKeys = Array.isArray(acknowledgement?.accepted_round_keys)
-        ? acknowledgement.accepted_round_keys.map(String)
-        : []
-      if (acknowledgement?.persisted !== true
-          || acknowledgedKeys.length !== acceptedRoundKeys.length
-          || acceptedRoundKeys.some((key, index) => acknowledgedKeys[index] !== key)) {
-        throw new Error('durable capture outbox acknowledgement failed')
-      }
-      return { ...acknowledgement, acceptedRoundKeys: acknowledgedKeys }
+    async persistCaptureEnvelope(capture = {}) {
+      return sendCaptureEnvelope(capture)
+    },
+    async reconcileCaptureEnvelope(capture = {}) {
+      return sendCaptureEnvelope(capture, { reconcile: true })
     },
     async claimCaptureOutbox({ limit = 10 } = {}) {
       const normalizedLimit = Math.max(1, Math.min(100, Number(limit) || 10))

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { createSnapshotPusher } from '../src/snapshot-pusher.js'
+import { PRODUCTION_TABLE_IDS } from '../src/table-policy.js'
 
 test('formal backlog delivery preserves the stable five-second cadence with bounded payload and request limits', async () => {
   const server = await readFile(new URL('../src/server.js', import.meta.url), 'utf8')
@@ -15,30 +16,34 @@ test('formal backlog delivery preserves the stable five-second cadence with boun
   assert.match(server, /PUSH_MAX_DRAIN_PER_TICK\s*\?\?\s*5/)
   assert.match(server, /signalFinalReady:\s*\(\)\s*=>\s*snapshotPusher\.trigger\(\)/)
   assert.match(server, /onArchived:\s*archiveOwnedSnapshot/)
-  assert.match(server, /PUSH_HISTORICAL_COMPACT_THRESHOLD_ENTRIES\s*\?\?\s*200/)
+  assert.doesNotMatch(server, /PUSH_HISTORICAL_COMPACT_THRESHOLD_ENTRIES/)
 })
 
-test('an oversized backlog archives confirmed past-shoe Finals before delivering the current shoe', async (t) => {
+test('latest durable Final chronology selects the current shoe across wrap without table screen metadata', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-current-shoe-queue-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
   const archivePath = path.join(dir, 'historical.jsonl')
   const source = { mode: 'api', ownerId: 'api-primary', epoch: 9, fence: 'fence-9' }
-  const oldFinal = {
-    tableId: 'BAG01', shoe: 100, round: 70, winner: 'banker', sourceAction: 'summary', final: true,
-    rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], source: { ...source, sequence: 70 },
+  const bag09Backlog = []
+  let sourceSequence = 0
+  for (const shoe of [...Array.from({ length: 9 }, (_, index) => 989 + index), 1, 2]) {
+    for (let round = 1; round <= 51; round += 1) bag09Backlog.push(finalRound('BAG09', shoe, round, source, ++sourceSequence))
   }
-  const currentFinal = {
-    ...oldFinal, shoe: 101, round: 2, winner: 'player', source: { ...source, sequence: 72 },
-  }
-  const futureFinal = {
-    ...oldFinal, shoe: 102, round: 1, winner: 'banker', source: { ...source, sequence: 73 },
-  }
+  for (let round = 1; round <= 50; round += 1) bag09Backlog.push(finalRound('BAG09', 3, round, source, ++sourceSequence))
+  assert.equal(bag09Backlog.length, 611)
+  const currentFinal = bag09Backlog.at(-1)
+  const delayedOldWrapFinal = finalRound('BAG09', 999, 70, {
+    ...source, ownerId: 'handoff-owner', epoch: 99, fence: 'handoff-fence',
+  }, 100)
+  const otherCurrentFinals = PRODUCTION_TABLE_IDS
+    .filter((tableId) => tableId !== 'BAG09')
+    .map((tableId, index) => finalRound(tableId, 200 + index, index + 1, source, ++sourceSequence))
   const snapshot = {
     sessionId: 'worker-api-primary-9', buildVersion: '105', source,
     connected: true, authenticated: true,
-    tables: [{ tableId: 'BAG01', shoe: 101, round: 3 }],
-    rounds: [oldFinal, currentFinal, futureFinal],
+    tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, name: tableId })),
+    rounds: [delayedOldWrapFinal, ...otherCurrentFinals, ...bag09Backlog],
   }
   const delivered = []
   const archived = []
@@ -46,7 +51,7 @@ test('an oversized backlog archives confirmed past-shoe Finals before delivering
   let clock = 10_000
   const pusher = createSnapshotPusher({
     targetUrl: 'https://proxy.example/api/cloud-ingest/snapshot', key: 'worker-key',
-    queuePath, historicalArchivePath: archivePath, historicalCompactThresholdEntries: 1,
+    queuePath, historicalArchivePath: archivePath,
     maxRoundsPerEnvelope: 1, maxDrainPerTick: 1, now: () => clock,
     isRoundDeliverable: () => true, getSnapshot: async () => snapshot,
     onArchived: async (receipt) => archived.push(receipt),
@@ -67,23 +72,238 @@ test('an oversized backlog archives confirmed past-shoe Finals before delivering
   })
 
   assert.equal(await pusher.tick(), false)
-  assert.equal(pusher.snapshot().queueEntryCount, 3)
+  assert.equal(pusher.snapshot().queueEntryCount, 10)
   clock = 100_000
   assert.equal(await pusher.tick(), true)
-  assert.deepEqual(delivered[0].roundKeys, ['BAG01:101:2'])
-  assert.equal(delivered[0].snapshot.tables[0].shoe, 101)
+  assert.deepEqual(delivered[0].roundKeys, ['BAG09:3:50'])
+  const deliveredBag09 = delivered[0].snapshot.tables.find((table) => table.tableId === 'BAG09')
+  assert.deepEqual({ shoe: deliveredBag09.shoe, round: deliveredBag09.round }, { shoe: 3, round: 50 })
   const completedArchive = (await readdir(dir)).find((name) => name.startsWith('historical.jsonl.completed-') && name.endsWith('.jsonl.gz'))
   assert.ok(completedArchive, 'a completed historical batch must be compressed outside the active receipt log')
   const archive = gunzipSync(await readFile(path.join(dir, completedArchive))).toString('utf8').trim().split(/\r?\n/).map(JSON.parse)
   await assert.rejects(readFile(archivePath), { code: 'ENOENT' })
-  assert.equal(archive.length, 1)
-  assert.equal(archive[0].roundKey, 'BAG01:100:70')
-  assert.equal(archive[0].reason, 'historical_shoe_backlog')
-  assert.deepEqual(archived.map((receipt) => receipt.roundKeys), [['BAG01:100:70']])
-  assert.equal(pusher.snapshot().archivedRoundKeyCount, 1)
+  assert.equal(archive.length, 611)
+  assert.equal(archive.some((record) => record.roundKey === 'BAG09:3:50'), false)
+  assert.equal(archive.some((record) => record.roundKey === 'BAG09:999:70'), true)
+  assert.equal(archive.some((record) => record.reason === 'historical_shoe_backlog'), true)
+  assert.equal(archive.some((record) => record.reason === 'superseded_round_backlog'), true)
+  assert.deepEqual(archived.map((receipt) => receipt.roundKeys.length), [611])
+  assert.equal(pusher.snapshot().archivedRoundKeyCount, 611)
 })
 
-test('startup replays durable historical archive receipts before continuing delivery', async (t) => {
+test('a new live Final is delivered ahead of another idle table current-shoe backlog', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-live-final-priority-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  const source = { mode: 'api', ownerId: 'api-primary', epoch: 9, fence: 'fence-9' }
+  const idle = finalRound('BAG09', 44, 20, source, 20)
+  const live = finalRound('BAG01', 91, 8, source, 21)
+  await writeFile(queuePath, JSON.stringify({ version: 3, entries: [
+    queueEntry(idle, 10_001, source),
+    queueEntry(live, 10_002, source),
+  ] }))
+  const delivered = []
+  const snapshot = {
+    sessionId: 'worker-api-primary-9', buildVersion: '105', source,
+    tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
+      tableId, name: tableId,
+      shoe: tableId === 'BAG09' ? 44 : (tableId === 'BAG01' ? 91 : 1),
+      round: tableId === 'BAG09' ? 20 : (tableId === 'BAG01' ? 8 : 1),
+    })),
+    rounds: [idle, live],
+  }
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://proxy.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    maxRoundsPerEnvelope: 1, maxDrainPerTick: 1,
+    isRoundDeliverable: () => true, getSnapshot: async () => snapshot,
+    fetchImpl: async (_url, options) => {
+      const envelope = JSON.parse(options.body)
+      delivered.push(envelope.roundKeys)
+      return {
+        status: 200,
+        json: async () => ({
+          accepted: true, sessionId: envelope.sessionId, sequence: envelope.sequence,
+          acceptedRoundKeys: envelope.roundKeys, source: envelope.source,
+        }),
+      }
+    },
+  })
+
+  assert.equal(await pusher.tick(), true)
+  assert.deepEqual(delivered[0], ['BAG01:91:8'])
+})
+
+test('an empty failed heartbeat cannot stay ahead of a newly collected live Final', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-empty-heartbeat-priority-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  let clock = 1_000
+  let includeLive = false
+  let attempts = 0
+  const delivered = []
+  const source = { mode: 'api', ownerId: 'api-primary', epoch: 9, fence: 'fence-9' }
+  const live = finalRound('BAG01', 91, 8, source, 21)
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://proxy.example/api/cloud-ingest/snapshot', key: 'worker-key',
+    queuePath: path.join(dir, 'latest.json'), maxRoundsPerEnvelope: 1, maxDrainPerTick: 1,
+    baseBackoffMs: 1, now: () => clock, isRoundDeliverable: () => true,
+    getSnapshot: async () => ({
+      sessionId: 'worker-api-primary-9', buildVersion: '105', source,
+      tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: tableId === 'BAG01' ? 91 : 1, round: tableId === 'BAG01' ? 8 : 1 })),
+      rounds: includeLive ? [live] : [],
+    }),
+    fetchImpl: async (_url, options) => {
+      const envelope = JSON.parse(options.body)
+      attempts += 1
+      if (attempts === 1) throw new Error('downstream paused')
+      delivered.push(envelope.roundKeys)
+      return {
+        status: 200,
+        json: async () => ({
+          accepted: true, sessionId: envelope.sessionId, sequence: envelope.sequence,
+          acceptedRoundKeys: envelope.roundKeys, source: envelope.source,
+        }),
+      }
+    },
+  })
+
+  assert.equal(await pusher.tick(), false)
+  includeLive = true
+  clock = 2_000
+  assert.equal(await pusher.tick(), true)
+  assert.deepEqual(delivered[0], ['BAG01:91:8'])
+  assert.equal(pusher.snapshot().queuedRoundKeyCount, 0)
+})
+
+test('a lost ACK data envelope keeps its exact identity ahead of later live priority', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-attempted-envelope-identity-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  let clock = 1_000
+  let includeNew = false
+  let attempts = 0
+  const sent = []
+  const source = { mode: 'api', ownerId: 'api-primary', epoch: 9, fence: 'fence-9' }
+  const attempted = finalRound('BAG09', 44, 20, source, 20)
+  const newer = finalRound('BAG01', 91, 8, source, 21)
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://proxy.example/api/cloud-ingest/snapshot', key: 'worker-key',
+    queuePath: path.join(dir, 'latest.json'), maxRoundsPerEnvelope: 1, maxDrainPerTick: 1,
+    baseBackoffMs: 1, now: () => clock, isRoundDeliverable: () => true,
+    getSnapshot: async () => ({
+      sessionId: 'worker-api-primary-9', buildVersion: '105', source,
+      tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
+        tableId, shoe: tableId === 'BAG09' ? 44 : (tableId === 'BAG01' ? 91 : 1),
+        round: tableId === 'BAG09' ? 20 : (tableId === 'BAG01' ? 8 : 1),
+      })),
+      rounds: includeNew ? [attempted, newer] : [attempted],
+    }),
+    fetchImpl: async (_url, options) => {
+      const envelope = JSON.parse(options.body)
+      sent.push(envelope)
+      attempts += 1
+      if (attempts === 1) throw new Error('server committed but acknowledgement was lost')
+      return {
+        status: 200,
+        json: async () => ({
+          accepted: true, sessionId: envelope.sessionId, sequence: envelope.sequence,
+          acceptedRoundKeys: envelope.roundKeys, source: envelope.source,
+        }),
+      }
+    },
+  })
+
+  assert.equal(await pusher.tick(), false)
+  includeNew = true
+  clock = 2_000
+  assert.equal(await pusher.tick(), true)
+  assert.equal(sent[1].sessionId, sent[0].sessionId)
+  assert.equal(sent[1].sequence, sent[0].sequence)
+  assert.deepEqual(sent[1].roundKeys, sent[0].roundKeys)
+  assert.deepEqual(sent[1].snapshot.rounds, sent[0].snapshot.rounds)
+})
+
+test('an attempted stale-fence head exact-not-found rebinds safely and releases later live FIFO', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-attempted-not-found-rebind-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  const oldSource = { mode: 'api', ownerId: 'api-primary', epoch: 1, fence: 'fence-1' }
+  const newSource = { mode: 'api', ownerId: 'api-primary', epoch: 2, fence: 'fence-2' }
+  const attempted = finalRound('BAG01', 91, 8, oldSource, 10)
+  const later = finalRound('BAG02', 55, 4, newSource, 12)
+  const initial = createSnapshotPusher({
+    targetUrl: 'https://proxy.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    baseBackoffMs: 1, now: () => 1_000, isRoundDeliverable: () => true,
+    getSnapshot: async () => ({
+      sessionId: 'worker-api-primary-1', buildVersion: '105', source: oldSource,
+      tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: tableId === 'BAG01' ? 91 : 1, round: tableId === 'BAG01' ? 8 : 1 })),
+      rounds: [attempted],
+    }),
+    fetchImpl: async () => { throw new Error('request failed before durable commit') },
+  })
+  assert.equal(await initial.tick(), false)
+
+  const requests = []
+  const acknowledgements = []
+  const restarted = createSnapshotPusher({
+    targetUrl: 'https://proxy.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    baseBackoffMs: 1, now: () => 2_000, isRoundDeliverable: () => true,
+    getSnapshot: async () => ({
+      sessionId: 'worker-api-primary-2', buildVersion: '105', source: newSource,
+      tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
+        tableId,
+        shoe: tableId === 'BAG01' ? 91 : (tableId === 'BAG02' ? 55 : 1),
+        round: tableId === 'BAG01' ? 8 : (tableId === 'BAG02' ? 4 : 1),
+      })),
+      rounds: [attempted, later],
+    }),
+    onRebindQueue: async ({ roundKeys }) => roundKeys.map((identity) => identity === 'BAG01:91:8'
+      ? {
+          ...attempted,
+          capturedSource: attempted.source,
+          source: { ...newSource, sequence: 11 },
+        }
+      : later),
+    onAcknowledged: async (receipt) => acknowledgements.push(receipt),
+    fetchImpl: async (url, options) => {
+      const envelope = JSON.parse(options.body)
+      requests.push({ url, envelope })
+      if (url.endsWith('/reconcile')) {
+        return { status: 409, json: async () => ({ accepted: false, error: 'capture_reconciliation_not_found' }) }
+      }
+      if (envelope.source.epoch === 1) {
+        return { status: 409, json: async () => ({ accepted: false, error: 'stale_source_epoch' }) }
+      }
+      return {
+        status: 200,
+        json: async () => ({
+          accepted: true,
+          sessionId: envelope.sessionId,
+          sequence: envelope.sequence,
+          acceptedRoundKeys: envelope.roundKeys,
+          source: envelope.source,
+        }),
+      }
+    },
+  })
+
+  const recovered = await restarted.tick()
+  assert.equal(recovered, true, JSON.stringify({ requests, state: restarted.snapshot() }))
+  assert.equal(restarted.snapshot().queueEntryCount, 1)
+  assert.equal(await restarted.tick(), true)
+  assert.deepEqual(requests.map(({ url }) => url), [
+    'https://proxy.example/api/cloud-ingest/snapshot',
+    'https://proxy.example/api/cloud-ingest/snapshot/reconcile',
+    'https://proxy.example/api/cloud-ingest/snapshot',
+    'https://proxy.example/api/cloud-ingest/snapshot',
+  ])
+  assert.deepEqual(requests.map(({ envelope }) => envelope.source.epoch), [1, 1, 2, 2])
+  assert.deepEqual(acknowledgements.map((receipt) => receipt.acceptedRoundKeys), [
+    ['BAG01:91:8'],
+    ['BAG02:55:4'],
+  ])
+  assert.equal(restarted.snapshot().queueEntryCount, 0)
+})
+
+test('startup finalizes durable historical archive receipts locally without replaying them into live payload', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-archive-receipt-replay-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
@@ -94,16 +314,28 @@ test('startup replays durable historical archive receipts before continuing deli
     sessionId: 'vm', sequence: 100,
   })}\n`)
   const receipts = []
+  const sentRoundKeys = []
+  const live = finalRound('BAG01', 91, 9, { mode: 'api', ownerId: 'api-primary', epoch: 1, fence: 'fence-1' }, 1)
   const pusher = createSnapshotPusher({
     targetUrl: 'https://proxy.example/api/cloud-ingest/snapshot', key: 'worker-key',
     queuePath, historicalArchivePath: archivePath, now: () => 20_000,
-    getSnapshot: async () => ({ sessionId: 'vm', buildVersion: '105', tables: [], rounds: [] }),
+    getSnapshot: async () => ({
+      sessionId: 'vm', buildVersion: '105',
+      tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: tableId === 'BAG01' ? 91 : 1, round: tableId === 'BAG01' ? 9 : 1 })),
+      rounds: [live],
+    }),
     onArchived: async (receipt) => receipts.push(receipt),
-    fetchImpl: async (_url, options) => acceptedResponse(options),
+    fetchImpl: async (_url, options) => {
+      const envelope = JSON.parse(options.body)
+      sentRoundKeys.push(...envelope.roundKeys)
+      return acceptedResponse(options)
+    },
   })
 
   assert.equal(await pusher.tick(), true)
   assert.deepEqual(receipts.map((receipt) => receipt.roundKeys), [['BAG01:90:8']])
+  assert.deepEqual(sentRoundKeys, ['BAG01:91:9'])
+  assert.equal(sentRoundKeys.includes('BAG01:90:8'), false)
 })
 
 test('startup never replays an archive receipt while the same Final remains in the active queue', async (t) => {
@@ -578,7 +810,9 @@ test('pusher restores the queued envelope, keeps collecting, and only 2xx acknow
   assert.deepEqual(sent[0].snapshot, { ...original.snapshot, buildVersion: '105' })
   const queuedAfterRedirect = JSON.parse(await readFile(queuePath, 'utf8')).entries[0]
   assert.equal(queuedAfterRedirect.timestamp, 1000, 'transport retry time is not a durable capture identity')
-  assert.deepEqual({ ...queuedAfterRedirect, timestamp: sent[0].timestamp }, sent[0])
+  assert.equal(queuedAfterRedirect.deliveryState, 'attempted')
+  const { deliveryState: _deliveryState, ...durableQueuedAfterRedirect } = queuedAfterRedirect
+  assert.deepEqual({ ...durableQueuedAfterRedirect, timestamp: sent[0].timestamp }, sent[0])
   assert.equal(await pusher.tick(), true)
   assert.equal(snapshotCalls, 2)
   assert.deepEqual({ ...sent[1], timestamp: sent[0].timestamp }, sent[0])
@@ -1427,6 +1661,25 @@ test('Reviewer P1 rollback producer quiesce aborts and settles the current tick,
   assert.equal(await pusher.tick(), false)
   assert.equal(snapshotCalls, 1, 'no new pending work may be collected after quiesce')
 })
+
+function finalRound(tableId, shoe, round, source, sequence) {
+  return {
+    tableId, shoe, round, winner: 'banker', sourceAction: 'summary', final: true,
+    rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], source: { ...source, sequence },
+  }
+}
+
+function queueEntry(round, sequence, source) {
+  const sessionId = `worker-${source.ownerId}-${source.epoch}`
+  return {
+    protocolVersion: 'v105', sessionId, source, timestamp: sequence, captureTimestamp: sequence,
+    sequence, roundKeys: [`${round.tableId}:${round.shoe}:${round.round}`],
+    snapshot: {
+      sessionId, buildVersion: '105', source,
+      tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, name: tableId })), rounds: [round],
+    },
+  }
+}
 
 async function listen(server) {
   await new Promise((resolve, reject) => {

@@ -352,6 +352,51 @@ test('runtime delivery health is derived from API state and source progress inst
   assert.equal(snapshot.tableCount, 1, 'duplicate rows cannot impersonate the exact ten production tables')
 })
 
+test('runtime hydrates all ten omitted screens from durable cursor and newer pending Final chronology', async () => {
+  const lease = { mode: 'api', ownerId: 'api-primary', epoch: 1, fence: 'fence-1', status: 'active', expiresAt: 10_000 }
+  let handlers
+  const cursors = new Map(PRODUCTION_TABLE_IDS.map((tableId, index) => [tableId, {
+    shoe: tableId === 'BAG09' ? 999 : 100 + index,
+    round: tableId === 'BAG09' ? 70 : index + 1,
+    identity: `${tableId}:${tableId === 'BAG09' ? 999 : 100 + index}:${tableId === 'BAG09' ? 70 : index + 1}`,
+  }]))
+  const pending = [{
+    identity: 'BAG09:2:1', hash: 'pending-wrap',
+    event: { ...fixtureEvent(1), tableId: 'BAG09', shoe: 2, source: { ...lease, sequence: 99 } },
+  }, {
+    identity: 'BAG09:999:71', hash: 'delayed-old-shoe',
+    event: { ...fixtureEvent(71), tableId: 'BAG09', shoe: 999, source: { ...lease, sequence: 50 } },
+  }]
+  const runtime = createWorkerSourceRuntime({
+    sourceOwner: {
+      acquireOrRecover: async () => lease, lease: () => lease, assertCurrent: () => true,
+      renew: async () => lease, stop: async () => {},
+    },
+    journal: {
+      append: async () => {}, pending: () => structuredClone(pending),
+      cursor: (tableId) => structuredClone(cursors.get(tableId) ?? null),
+      rebindPending: async () => {},
+    },
+    gapDetector: { detect: () => [] }, replayProvider: { replay: async () => ({ ok: true, events: [] }) },
+    createApiClient: (value) => {
+      handlers = value
+      return { start: async () => {}, stop: () => {}, snapshot: () => ({ connected: true, authenticated: true, joined: true }) }
+    },
+  })
+  await runtime.start()
+  await handlers.onTables(PRODUCTION_TABLE_IDS.map((table_id) => ({ table_id, trend: [] })))
+
+  const snapshot = await runtime.getDeliverySnapshot()
+  assert.equal(snapshot.tables.length, 10)
+  for (const [index, tableId] of PRODUCTION_TABLE_IDS.entries()) {
+    const table = snapshot.tables.find((candidate) => candidate.tableId === tableId)
+    assert.deepEqual({ shoe: table.shoe, round: table.round }, {
+      shoe: tableId === 'BAG09' ? 2 : 100 + index,
+      round: tableId === 'BAG09' ? 1 : index + 1,
+    })
+  }
+})
+
 test('startup arms lease renewal before pending journal rebind and API start', async () => {
   const order = []
   let renewTick = null

@@ -1205,7 +1205,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       const snapshot = state.snapshot()
       return jsonResponse(200, { ...snapshot, tables: await readBestTables() }, frontendOrigin)
     }
-    if (method === 'POST' && pathname === '/api/cloud-ingest/snapshot') {
+    if (method === 'POST' && ['/api/cloud-ingest/snapshot', '/api/cloud-ingest/snapshot/reconcile'].includes(pathname)) {
+      const exactReconciliation = pathname.endsWith('/reconcile')
       if (!ingestKey && (production || deployConfig.deployMode === 'cloud')) return jsonResponse(503, { ok: false, error: 'ingest key is not configured' }, frontendOrigin)
       if (!ingestKey || !safeEqual(headers['x-worker-key'], ingestKey)) return jsonResponse(401, { ok: false, error: 'unauthorized' }, frontendOrigin)
       if (Buffer.byteLength(rawBody, 'utf8') > 1024 * 1024) return jsonResponse(413, { ok: false, error: 'payload_too_large' }, frontendOrigin)
@@ -1248,6 +1249,49 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           }
           const stableCapturedAt = new Date(Number(envelope.captureTimestamp ?? envelope.timestamp)).toISOString()
           const parsed = parseCloudCapturePayload(envelope.snapshot, stableCapturedAt)
+          if (exactReconciliation) {
+            if (typeof supabaseClient?.reconcileCaptureEnvelope !== 'function') {
+              return jsonResponse(503, { ok: false, accepted: false, error: 'capture_reconciliation_unavailable' }, frontendOrigin)
+            }
+            try {
+              const acknowledgement = await supabaseClient.reconcileCaptureEnvelope({
+                sessionId,
+                sequence: envelope.sequence,
+                roundKeys: validatedRoundKeys,
+                tables: parsed.tables,
+                rounds: parsed.rounds,
+                status: parsed.status,
+                capturedAt: stableCapturedAt,
+                ...(fencedSource ? { source: fencedSource } : {}),
+              })
+              const accepted = Array.isArray(acknowledgement?.acceptedRoundKeys)
+                ? acknowledgement.acceptedRoundKeys.map(String)
+                : []
+              if (acknowledgement?.duplicate !== true
+                  || accepted.length !== validatedRoundKeys.length
+                  || validatedRoundKeys.some((roundKey, index) => accepted[index] !== roundKey)) {
+                throw new Error('capture reconciliation acknowledgement mismatch')
+              }
+              return jsonResponse(200, {
+                ok: true, accepted: true, duplicate: true, sessionId,
+                sequence: envelope.sequence, acceptedRoundKeys: validatedRoundKeys,
+                ...(fencedSource ? { source: fencedSource } : {}),
+              }, frontendOrigin)
+            } catch (error) {
+              const message = error?.message ?? ''
+              const conflict = /capture identity conflict/i.test(message)
+              const notFound = /capture_reconciliation_not_found/i.test(message)
+              if (!conflict && !notFound) {
+                return jsonResponse(503, {
+                  ok: false, accepted: false, error: 'capture_reconciliation_unavailable',
+                }, frontendOrigin)
+              }
+              return jsonResponse(409, {
+                ok: false, accepted: false,
+                error: conflict ? 'sequence_payload_conflict' : 'capture_reconciliation_not_found',
+              }, frontendOrigin)
+            }
+          }
           let captureResult = null
           let duplicateCapture = false
           try {
@@ -2174,7 +2218,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     const poll = (async () => {
       let readAttempt = 0
       while (true) {
-        if (Date.now() >= deadlineAt) {
+        if (Date.now() >= deadlineAt || readAttempt >= 5) {
           rememberIssuedPredictionReadBackoff(key)
           return null
         }
@@ -2186,6 +2230,10 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         const exact = await waitForPredictionReadUntil(issuedPredictionRead, deadlineAt)
         if (exact) return exact
         if (Number(issuedPredictionReadRetryAt.get(key) ?? 0) > now()) return null
+        if (readAttempt >= 5) {
+          rememberIssuedPredictionReadBackoff(key)
+          return null
+        }
         const remainingMs = deadlineAt - Date.now()
         if (remainingMs <= 0) {
           rememberIssuedPredictionReadBackoff(key)

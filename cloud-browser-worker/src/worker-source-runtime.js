@@ -223,14 +223,43 @@ export function createWorkerSourceRuntime({
   }
 
   async function onTables(nextTables) {
+    const durableScreens = latestDurableScreens()
     tables = uniqueTables(sortProductionTables((Array.isArray(nextTables) ? nextTables : []).map((table) => ({
       ...table,
       tableId: canonicalProductionTableId(table?.tableId ?? table?.table_id),
-    }))))
+    })).map((table) => {
+      const shoe = Number(table?.shoe)
+      const round = Number(table?.round)
+      if (Number.isSafeInteger(shoe) && Number.isSafeInteger(round)) return table
+      const screen = durableScreens.get(table.tableId)
+      return screen ? { ...table, shoe: screen.shoe, round: screen.round } : table
+    })))
     sourceProgressTracker = updateSourceProgressTracker(sourceProgressTracker, {
       snapshotAt: now(), tables, rounds: [],
     })
     updateGaps()
+  }
+
+  function latestDurableScreens() {
+    const screens = new Map()
+    for (const tableId of PRODUCTION_TABLE_IDS) {
+      const cursor = journal.cursor(tableId)
+      if (Number.isSafeInteger(Number(cursor?.shoe)) && Number.isSafeInteger(Number(cursor?.round))) {
+        screens.set(tableId, {
+          shoe: Number(cursor.shoe), round: Number(cursor.round), source: normalizeRuntimeEventSource(cursor?.source),
+        })
+      }
+    }
+    for (const entry of journal.pending()) {
+      const tableId = canonicalProductionTableId(entry?.event?.tableId ?? entry?.event?.table_id)
+      const shoe = Number(entry?.event?.shoe)
+      const round = Number(entry?.event?.round)
+      if (!PRODUCTION_TABLE_IDS.includes(tableId) || !Number.isSafeInteger(shoe) || !Number.isSafeInteger(round)) continue
+      const current = screens.get(tableId)
+      const candidate = { shoe, round, source: normalizeRuntimeEventSource(entry?.event?.source) }
+      if (!current || runtimeScreenIsNewer(candidate, current)) screens.set(tableId, candidate)
+    }
+    return screens
   }
 
   async function getDeliverySnapshot() {
@@ -351,6 +380,34 @@ export function createWorkerSourceRuntime({
       sourceProgressAt: sourceProgressTracker?.sourceProgressAt ?? null,
     }),
   }
+}
+
+function normalizeRuntimeEventSource(source) {
+  const mode = String(source?.mode ?? '')
+  const ownerId = String(source?.ownerId ?? '')
+  const epoch = Number(source?.epoch)
+  const sequence = Number(source?.sequence)
+  if (!mode || !ownerId || !Number.isSafeInteger(epoch) || epoch < 1
+    || !Number.isSafeInteger(sequence) || sequence < 1) return null
+  return { mode, ownerId, epoch, sequence }
+}
+
+function compareRuntimeEventSource(candidate, current) {
+  if (!candidate || !current || candidate.mode !== current.mode || candidate.ownerId !== current.ownerId) return null
+  if (candidate.epoch !== current.epoch) return candidate.epoch < current.epoch ? -1 : 1
+  if (candidate.sequence === current.sequence) return 0
+  return candidate.sequence < current.sequence ? -1 : 1
+}
+
+function runtimeScreenIsNewer(candidate, current) {
+  const sourceOrder = compareRuntimeEventSource(candidate.source, current.source)
+  if (sourceOrder != null) return sourceOrder > 0
+  if (candidate.shoe === current.shoe) return candidate.round > current.round
+  const forward = candidate.shoe > current.shoe && !(current.shoe <= 10 && candidate.shoe >= 900)
+    && candidate.round < current.round
+  const wrapped = current.shoe >= 900 && candidate.shoe >= 1 && candidate.shoe <= 10
+    && candidate.round < current.round
+  return forward || wrapped
 }
 
 function selectGapPending(pending, gaps) {

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createSnapshotPusher } from '../src/snapshot-pusher.js'
@@ -40,7 +40,7 @@ test('delivery binds owner epoch fence to envelope and only ACKs after exact fen
   assert.deepEqual(acknowledged, [{ sessionId: 'api-owner', sequence: 10_000, acceptedRoundKeys: ['BAG01:100:4'], source }])
 })
 
-test('epoch2 restart atomically rebinds every persisted queue round before any delivery', async (t) => {
+test('epoch2 restart atomically rebinds every unattempted persisted queue round before delivery', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-fenced-restart-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'queue.json')
@@ -52,13 +52,15 @@ test('epoch2 restart atomically rebinds every persisted queue round before any d
     tableId: 'BAG01', shoe: 100, round: 4, winner: 'banker', sourceAction: 'summary', final: true,
     rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], source: captured,
   }
-  const first = createSnapshotPusher({
-    targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
-    now: () => 10_000, isRoundDeliverable: () => true,
-    getSnapshot: async () => ({ sessionId: 'worker-api-primary-1', buildVersion: '105', source: epoch1, tables: [], rounds: [baseRound] }),
-    fetchImpl: async () => { throw new Error('offline') },
-  })
-  assert.equal(await first.tick(), false)
+  await writeFile(queuePath, JSON.stringify({ version: 3, entries: [{
+    protocolVersion: 'v105', sessionId: 'worker-api-primary-1', source: epoch1,
+    timestamp: 10_000, captureTimestamp: 10_000, sequence: 10_000,
+    roundKeys: ['BAG01:100:4'],
+    snapshot: {
+      sessionId: 'worker-api-primary-1', buildVersion: '105', source: epoch1,
+      tables: [], rounds: [baseRound],
+    },
+  }] }))
 
   const reboundRound = { ...baseRound, capturedSource: captured, source: { ...epoch2, sequence: 101 } }
   let delivered = null

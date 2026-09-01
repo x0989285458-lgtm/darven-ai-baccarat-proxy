@@ -284,6 +284,27 @@ test('ten-table cold live read uses bounded exponential polling instead of datab
   assert.ok(readCalls <= 50)
 })
 
+test('one cold screen has a hard five-read budget even with the maximum wait window', async () => {
+  let readCalls = 0
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: false,
+    livePredictionReadWaitMs: 5000,
+    supabaseClient: {
+      configured: true,
+      issuePrediction: async () => { assert.fail('read-only endpoint must not issue predictions') },
+      readIssuedPrediction: async () => { readCalls += 1; return null },
+    },
+  })
+  app.state.setTables([{
+    tableId: 'BAG01', shoe: 100, round: 20, sourceUpdatedAt: new Date().toISOString(),
+  }])
+
+  const response = await app.inject({ url: '/api/tables' })
+  assert.equal(response.statusCode, 200)
+  assert.equal(readCalls, 5)
+})
+
 test('live prediction read wait rejects empty, fractional, or unbounded configuration', () => {
   for (const livePredictionReadWaitMs of ['', 0, 24, 5001, 1.5, 'not-a-number']) {
     assert.throws(

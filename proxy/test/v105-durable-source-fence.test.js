@@ -1,11 +1,16 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { createSupabaseIngestionClient } from '../src/supabase-writer.js'
 import { createApp } from '../src/server.js'
+import { createSnapshotPusher } from '../../cloud-browser-worker/src/snapshot-pusher.js'
 import { verifyRollbackReadiness } from '../../scripts/verify-v105-mt-api-release.mjs'
 
 const migrationUrl = new URL('../../supabase/migrations/20260731010000_v105_capture_source_fence.sql', import.meta.url)
+const reconciliationMigrationUrl = new URL('../../supabase/migrations/20260901010000_v105_lost_ack_fence_reconciliation.sql', import.meta.url)
 const manifestUrl = new URL('../../release/v105-mt-api-source-fence-release-manifest.json', import.meta.url)
 
 const source = (epoch, overrides = {}) => ({
@@ -119,6 +124,51 @@ test('fenced writer never falls back to the unfenced RPC after a fence rejection
   assert.deepEqual(paths, ['/rest/v1/rpc/persist_v105_fenced_capture_envelope'])
 })
 
+test('lost-ACK reconciliation RPC is read-only, payload-exact, and service-role-only', () => {
+  assert.equal(existsSync(reconciliationMigrationUrl), true)
+  const sql = readFileSync(reconciliationMigrationUrl, 'utf8')
+  assert.match(sql, /create or replace function public\.reconcile_v105_capture_envelope\(p_capture jsonb\)/i)
+  assert.match(sql, /pg_advisory_xact_lock\(pg_catalog\.hashtextextended\(capture_session, 0\)\)[\s\S]*from public\.v105_capture_settlement_outbox/i)
+  assert.match(sql, /from public\.v105_capture_settlement_outbox[\s\S]*session_id = capture_session[\s\S]*sequence = capture_sequence[\s\S]*for share/i)
+  assert.match(sql, /existing_payload_hash is distinct from canonical_payload_hash/i)
+  assert.match(sql, /existing_payload is distinct from p_capture/i)
+  assert.match(sql, /existing_round_keys is distinct from capture_round_keys/i)
+  assert.match(sql, /'persisted', true, 'duplicate', true/i)
+  assert.doesNotMatch(sql, /\b(insert\s+into|update|delete\s+from|drop|truncate)\b/i)
+  assert.match(sql, /revoke all on function public\.reconcile_v105_capture_envelope\(jsonb\) from public, anon, authenticated, service_role/i)
+  assert.match(sql, /grant execute on function public\.reconcile_v105_capture_envelope\(jsonb\) to service_role/i)
+})
+
+test('reconciliation writer sends the unchanged durable payload only to the exact readback RPC', async () => {
+  const requests = []
+  const client = createSupabaseIngestionClient({
+    url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
+    fetchImpl: async (url, options) => {
+      requests.push({ path: new URL(url).pathname, body: JSON.parse(options.body) })
+      return rpcResponse({ persisted: true, duplicate: true, accepted_round_keys: ['BAG01:89:1'] })
+    },
+  })
+  const candidate = source(8)
+  const capture = {
+    sessionId: 'immutable-session', sequence: 8123, roundKeys: ['BAG01:89:1'], source: candidate,
+    capturedAt: '2026-09-01T00:00:00.000Z', status: {},
+    tables: [{ tableId: 'BAG01', shoe: 89, round: 1 }],
+    rounds: [{
+      tableId: 'BAG01', shoe: 89, round: 1, winner: 'banker', sourceAction: 'summary',
+      rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], source: { ...candidate, sequence: 1 },
+    }],
+  }
+
+  const acknowledgement = await client.reconcileCaptureEnvelope(capture)
+
+  assert.deepEqual(requests.map(({ path }) => path), ['/rest/v1/rpc/reconcile_v105_capture_envelope'])
+  assert.equal(requests[0].body.p_capture.session_id, capture.sessionId)
+  assert.equal(requests[0].body.p_capture.sequence, capture.sequence)
+  assert.deepEqual(requests[0].body.p_capture.round_keys, capture.roundKeys)
+  assert.deepEqual(requests[0].body.p_capture.source, candidate)
+  assert.equal(acknowledgement.duplicate, true)
+})
+
 test('fenced writer uses the new RPC through the preferred Direct DB path', async () => {
   const queries = []
   const client = createSupabaseIngestionClient({
@@ -196,6 +246,138 @@ test('durable DB fence rejects stale and split-brain sources across fresh app in
   assert.equal(splitBrain.statusCode, 409)
   assert.equal(JSON.parse(splitBrain.body).error, 'source_epoch_fence_conflict')
   assert.equal(durable.persistCalls, 4, 'fresh processes must consult the durable fence')
+})
+
+test('lost ACK then source epoch advance exact-reconciles the immutable attempted head and unblocks FIFO', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-lost-ack-fence-reconcile-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'queue.json')
+  const durableRows = new Map()
+  let currentFence = null
+  let normalWrites = 0
+  let reconciliations = 0
+  const identity = ({ sessionId, sequence }) => `${sessionId}:${sequence}`
+  const writer = {
+    configured: true,
+    writeCloudCaptureStatus: async () => {},
+    writeCloudTableSnapshot: async () => {},
+    writeCloudRoundEvent: async () => {},
+    async persistCaptureEnvelope(capture) {
+      normalWrites += 1
+      if (currentFence && capture.source.epoch < currentFence.epoch) throw new Error('stale_source_epoch')
+      if (!currentFence || capture.source.epoch > currentFence.epoch) currentFence = structuredClone(capture.source)
+      const key = identity(capture)
+      const existing = durableRows.get(key)
+      if (existing && JSON.stringify(existing) !== JSON.stringify(capture)) throw new Error('capture identity conflict')
+      durableRows.set(key, structuredClone(capture))
+      return { persisted: true, duplicate: Boolean(existing), acceptedRoundKeys: capture.roundKeys }
+    },
+    async reconcileCaptureEnvelope(capture) {
+      reconciliations += 1
+      const existing = durableRows.get(identity(capture))
+      if (!existing) throw new Error('capture_reconciliation_not_found')
+      if (JSON.stringify(existing) !== JSON.stringify(capture)) throw new Error('capture identity conflict')
+      return { persisted: true, duplicate: true, acceptedRoundKeys: capture.roundKeys }
+    },
+  }
+  const app = createApp({
+    autoConnect: false, ingestKey: 'worker-key', now: () => 1_000_000,
+    requireFencedIngest: true, supabaseClient: writer,
+  })
+  const epoch1 = source(1)
+  const epoch2 = source(2)
+  const round = {
+    tableId: 'BAG01', shoe: 89, round: 1, winner: 'banker', sourceAction: 'summary', final: true,
+    rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], source: { ...epoch1, sequence: 1 },
+  }
+  const snapshot = (candidate, rounds = []) => ({
+    buildVersion: '105', sessionId: `worker-api-primary-${candidate.epoch}`, source: candidate,
+    connected: true, authenticated: true,
+    tables: [{ tableId: 'BAG01', shoe: 89, round: 1 }], rounds,
+  })
+  const injectFetch = async (url, init) => {
+    const response = await app.inject({
+      method: init.method, url: new URL(String(url)).pathname, body: init.body,
+      headers: { 'x-worker-key': init.headers['x-worker-key'] },
+    })
+    return { status: response.statusCode, body: response.body, json: async () => JSON.parse(response.body) }
+  }
+  let lostAck = true
+  const first = createSnapshotPusher({
+    targetUrl: 'https://proxy.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    baseBackoffMs: 0, now: () => 1_000_000,
+    isRoundDeliverable: () => true, getSnapshot: async () => snapshot(epoch1, [round]),
+    fetchImpl: async (url, init) => {
+      const response = await injectFetch(url, init)
+      assert.equal(response.status, 200, response.body)
+      if (lostAck) { lostAck = false; throw new Error('server committed but acknowledgement was lost') }
+      return response
+    },
+  })
+  assert.equal(await first.tick(), false)
+  const attemptedEnvelope = JSON.parse(readFileSync(queuePath, 'utf8')).entries[0]
+  const attemptedIdentity = {
+    sessionId: attemptedEnvelope.sessionId,
+    sequence: attemptedEnvelope.sequence,
+    roundKeys: attemptedEnvelope.roundKeys,
+  }
+  assert.equal(durableRows.size, 1, JSON.stringify({ health: first.snapshot(), normalWrites }))
+
+  const fenceAdvance = await app.inject(captureRequest(epoch2, 200))
+  assert.equal(fenceAdvance.statusCode, 200)
+  assert.equal(currentFence.epoch, 2)
+
+  const restarted = createSnapshotPusher({
+    targetUrl: 'https://proxy.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
+    baseBackoffMs: 0, now: () => 1_000_000,
+    isRoundDeliverable: () => true, getSnapshot: async () => snapshot(epoch2),
+    fetchImpl: injectFetch,
+  })
+  assert.equal(await restarted.tick(), true)
+  assert.equal(reconciliations, 1)
+  assert.deepEqual(attemptedIdentity, {
+    sessionId: 'worker-api-primary-1', sequence: attemptedEnvelope.sequence, roundKeys: ['BAG01:89:1'],
+  })
+  assert.equal(restarted.snapshot().queueEntryCount, 0)
+  assert.equal(durableRows.size, 2, 'exact reconciliation must not duplicate the lost-ACK row')
+
+  assert.equal(await restarted.tick(), true)
+  assert.equal(currentFence.epoch, 2)
+  assert.equal(restarted.snapshot().queueEntryCount, 0)
+  assert.equal(normalWrites, 4, 'lost commit, external fence advance, stale retry, then epoch-2 heartbeat')
+})
+
+test('exact reconciliation never persists a missing or payload-conflicting stale envelope', async () => {
+  let normalWrites = 0
+  let reconciliationError = new Error('capture_reconciliation_not_found')
+  const app = createApp({
+    autoConnect: false, ingestKey: 'worker-key', now: () => 1_000_000,
+    requireFencedIngest: true,
+    supabaseClient: {
+      configured: true,
+      persistCaptureEnvelope: async () => { normalWrites += 1; throw new Error('must_not_persist') },
+      reconcileCaptureEnvelope: async () => { throw reconciliationError },
+    },
+  })
+  const request = captureRequest(source(1), 1)
+  request.url = '/api/cloud-ingest/snapshot/reconcile'
+
+  const missing = await app.inject(request)
+  assert.equal(missing.statusCode, 409)
+  assert.equal(JSON.parse(missing.body).error, 'capture_reconciliation_not_found')
+  assert.equal(normalWrites, 0)
+
+  reconciliationError = new Error('capture identity conflict')
+  const conflicting = await app.inject(request)
+  assert.equal(conflicting.statusCode, 409)
+  assert.equal(JSON.parse(conflicting.body).error, 'sequence_payload_conflict')
+  assert.equal(normalWrites, 0)
+
+  reconciliationError = new Error('Supabase request timed out')
+  const unavailable = await app.inject(request)
+  assert.equal(unavailable.statusCode, 503)
+  assert.equal(JSON.parse(unavailable.body).error, 'capture_reconciliation_unavailable')
+  assert.equal(normalWrites, 0)
 })
 
 test('durable commits remain exact ACKs when cross-session responses complete epoch 2 before epoch 1', async () => {

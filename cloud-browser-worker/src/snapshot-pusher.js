@@ -3,7 +3,7 @@ import path from 'node:path'
 import { mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import { gzip, gunzip } from 'node:zlib'
-import { sanitizeProductionSnapshot } from './table-policy.js'
+import { PRODUCTION_TABLE_IDS, sanitizeProductionSnapshot } from './table-policy.js'
 import { BUILD_VERSION } from './runtime-config.js'
 
 const gzipAsync = promisify(gzip)
@@ -16,9 +16,6 @@ export function createSnapshotPusher({
   fetchImpl = globalThis.fetch,
   queuePath = './data/latest-snapshot.json',
   historicalArchivePath = `${queuePath}.historical.jsonl`,
-  historicalCompactThresholdEntries = 200,
-  historicalShoeConfirmations = 2,
-  historicalAheadShoeConfirmations = 6,
   cursorPath = `${queuePath}.cursor.json`,
   maxCursorEntries = 10000,
   maxDrainPerTick = 1,
@@ -65,7 +62,6 @@ export function createSnapshotPusher({
   let currentController = null
   let triggerRequested = false
   let triggerLoopPromise = null
-  const shoeObservations = new Map()
   let archivedRoundKeyCount = 0
   let lastCompactionAtMs = null
   let lastCompactionArchivedCount = 0
@@ -115,7 +111,7 @@ export function createSnapshotPusher({
       if (stateInvalid) return false
       if (await recoverRemoteAcknowledgement()) return true
       let timestamp = Number(now())
-      await collectSnapshot(timestamp)
+      const snapshot = await collectSnapshot(timestamp)
       if (timestamp < nextAttemptAt || queue.length === 0) return false
 
       const drainLimit = Math.max(1, Number(maxDrainPerTick) || 1)
@@ -125,19 +121,37 @@ export function createSnapshotPusher({
         const delivery = buildDeliveryEnvelope(requestTimestamp)
         const envelope = delivery.envelope
         if (!envelope) break
+        const retryingAttemptedEnvelope = queue[0]?.deliveryState === 'attempted'
+        if (envelope.roundKeys.length > 0 && queue[0]?.deliveryState !== 'attempted') {
+          queue[0] = { ...queue[0], deliveryState: 'attempted' }
+          await saveQueue()
+        }
         lastAttemptAtMs = requestTimestamp
         const controller = new AbortController()
         currentController = controller
         const timeout = setTimeout(() => controller.abort(), requestTimeoutMs)
         try {
-          const response = await fetchImpl(targetUrl, {
+          const request = {
             method: 'POST',
             redirect: 'error',
             headers: { 'content-type': 'application/json', 'x-worker-key': key },
             body: JSON.stringify(envelope),
             signal: controller.signal,
-          })
-          const acknowledgement = await readAcknowledgement(response, envelope)
+          }
+          const response = await fetchImpl(targetUrl, request)
+          let acknowledgement = await readAcknowledgement(response, envelope)
+          if (!acknowledgement && retryingAttemptedEnvelope && await isStaleFenceResponse(response)) {
+            const reconciliation = await fetchImpl(`${String(targetUrl).replace(/\/$/, '')}/reconcile`, request)
+            acknowledgement = await readAcknowledgement(reconciliation, envelope)
+            if (!acknowledgement && await isReconciliationNotFoundResponse(reconciliation)) {
+              await rebindQueuedTransport(snapshot, requestTimestamp, { notFoundEnvelope: envelope })
+              failures = 0
+              nextAttemptAt = 0
+              lastError = null
+              drained -= 1
+              continue
+            }
+          }
           if (!acknowledgement) throw new Error(`push failed with invalid acknowledgement (${response?.status ?? 'unknown'})`)
           const receipt = {
             sessionId: String(envelope.sessionId ?? ''),
@@ -180,11 +194,12 @@ export function createSnapshotPusher({
   function buildDeliveryEnvelope(timestamp) {
     const head = queue[0]
     if (!head) return { envelope: null, entryCount: 0 }
-    return { envelope: { ...head, timestamp }, entryCount: 1 }
+    const { deliveryState: _deliveryState, remoteAckReceipt: _remoteAckReceipt, ...durableEnvelope } = head
+    return { envelope: { ...durableEnvelope, timestamp }, entryCount: 1 }
   }
 
   async function collectSnapshot(timestamp) {
-    const snapshot = sanitizeProductionSnapshot(await getSnapshot())
+    const snapshot = hydrateSnapshotTableScreens(sanitizeProductionSnapshot(await getSnapshot()))
     await compactHistoricalBacklog(snapshot, timestamp)
     await rebindQueuedTransport(snapshot, timestamp)
     const rounds = Array.isArray(snapshot?.rounds) ? snapshot.rounds : []
@@ -224,11 +239,14 @@ export function createSnapshotPusher({
       if (useJournal) await appendQueueJournal(journalEntries)
       else await saveQueue()
     }
+    await compactHistoricalBacklog(snapshot, timestamp)
+    await prioritizeLiveQueue(snapshot, timestamp)
     await saveCursor()
     if (pending.length === 0 && queue.length === 0) {
       queue.push(createEnvelope(snapshot, [], [], timestamp))
       await saveQueue()
     }
+    return snapshot
   }
 
   async function recoverRemoteAcknowledgement() {
@@ -265,13 +283,13 @@ export function createSnapshotPusher({
 
   async function compactHistoricalBacklog(snapshot, timestamp) {
     const confirmedShoes = observeConfirmedShoes(snapshot)
-    const threshold = Math.max(1, Number(historicalCompactThresholdEntries) || 200)
-    if (queue.length <= threshold || confirmedShoes.size === 0) return
+    const prioritizeCurrentRound = hasExactTenTableScreens(snapshot)
+    if (queue.length === 0 || confirmedShoes.size === 0) return
 
     const archiveRecords = []
     const retainedQueue = []
     for (const entry of queue) {
-      if (entry.deliveryState === 'remote_ack_pending') {
+      if (entry.deliveryState) {
         retainedQueue.push(entry)
         continue
       }
@@ -284,10 +302,13 @@ export function createSnapshotPusher({
       const retainedKeys = []
       for (const round of rounds) {
         const keyValue = roundKey(round)
-        const currentObservation = confirmedShoes.get(String(round?.tableId ?? ''))
+        const currentObservation = confirmedShoes.get(canonicalTableId(round?.tableId))
         const currentShoe = currentObservation?.shoe ?? null
         const roundShoe = normalizeShoeIdentity(round?.shoe)
-        if (!isClearlyHistoricalShoe(roundShoe, currentObservation)) {
+        const historicalShoe = isClearlyHistoricalShoe(roundShoe, currentObservation)
+        const supersededRound = prioritizeCurrentRound && !historicalShoe
+          && currentObservation?.roundKey && keyValue !== currentObservation.roundKey
+        if (!historicalShoe && !supersededRound) {
           retainedRounds.push(round)
           retainedKeys.push(keyValue)
           continue
@@ -296,7 +317,7 @@ export function createSnapshotPusher({
           version: 1,
           archiveId: `${String(entry.sessionId ?? '')}:${Number(entry.sequence)}:${keyValue}`,
           archivedAt: Number(timestamp),
-          reason: 'historical_shoe_backlog',
+          reason: historicalShoe ? 'historical_shoe_backlog' : 'superseded_round_backlog',
           roundKey: keyValue,
           currentShoe,
           sessionId: String(entry.sessionId ?? ''),
@@ -328,21 +349,35 @@ export function createSnapshotPusher({
   }
 
   function observeConfirmedShoes(snapshot) {
-    const seenTables = new Set()
-    const required = Math.max(1, Number(historicalShoeConfirmations) || 2)
     const confirmed = new Map()
-    for (const table of Array.isArray(snapshot?.tables) ? snapshot.tables : []) {
-      const tableId = String(table?.tableId ?? '')
-      const shoe = normalizeShoeIdentity(table?.shoe)
-      if (!tableId || shoe == null) continue
-      seenTables.add(tableId)
-      const previous = shoeObservations.get(tableId)
-      const count = previous?.shoe === shoe ? previous.count + 1 : 1
-      shoeObservations.set(tableId, { shoe, count })
-      if (count >= required) confirmed.set(tableId, { shoe, count })
+    const activeSource = normalizeSource(snapshot?.source)
+    let chronology = 0
+    const observeRound = (round) => {
+      const tableId = canonicalTableId(round?.tableId)
+      const shoe = normalizeShoeIdentity(round?.shoe)
+      if (!tableId || shoe == null) return
+      chronology += 1
+      const source = normalizeEventSource(round?.capturedSource ?? round?.source)
+      const current = confirmed.get(tableId)
+      if (current) {
+        const candidateIsActive = sameSourceTransport(source, activeSource)
+        const currentIsActive = sameSourceTransport(current.source, activeSource)
+        if (!candidateIsActive && currentIsActive) return
+        if (candidateIsActive === currentIsActive
+          && compareEventSourceChronology(source, current.source ?? null) !== 1) return
+      }
+      confirmed.set(tableId, {
+        shoe, roundKey: roundKey(round), chronology, count: Number.MAX_SAFE_INTEGER, source,
+      })
     }
-    for (const tableId of shoeObservations.keys()) {
-      if (!seenTables.has(tableId)) shoeObservations.delete(tableId)
+    for (const entry of queue) {
+      for (const round of Array.isArray(entry?.snapshot?.rounds) ? entry.snapshot.rounds : []) observeRound(round)
+    }
+    for (const round of Array.isArray(snapshot?.rounds) ? snapshot.rounds : []) observeRound(round)
+    for (const table of Array.isArray(snapshot?.tables) ? snapshot.tables : []) {
+      const tableId = canonicalTableId(table?.tableId)
+      const shoe = normalizeShoeIdentity(table?.shoe)
+      if (tableId && shoe != null && !confirmed.has(tableId)) confirmed.set(tableId, { shoe, chronology: 0, count: 1 })
     }
     return confirmed
   }
@@ -350,14 +385,93 @@ export function createSnapshotPusher({
   function isClearlyHistoricalShoe(roundShoe, currentObservation) {
     const currentShoe = currentObservation?.shoe ?? null
     if (currentShoe == null || roundShoe == null || roundShoe === currentShoe) return false
-    const roundNumber = Number(roundShoe)
-    const currentNumber = Number(currentShoe)
-    if (Number.isFinite(roundNumber) && Number.isFinite(currentNumber) && roundNumber < currentNumber) return true
-    const aheadRequired = Math.max(
-      Math.max(1, Number(historicalShoeConfirmations) || 2),
-      Math.max(1, Number(historicalAheadShoeConfirmations) || 6),
-    )
-    return Number(currentObservation?.count ?? 0) >= aheadRequired
+    return true
+  }
+
+  function hydrateSnapshotTableScreens(snapshot) {
+    const latest = new Map()
+    const activeSource = normalizeSource(snapshot?.source)
+    const observe = (round) => {
+      const tableId = canonicalTableId(round?.tableId)
+      const shoe = Number(round?.shoe)
+      const roundNumber = Number(round?.round)
+      if (!tableId || !Number.isSafeInteger(shoe) || !Number.isSafeInteger(roundNumber)) return
+      const current = latest.get(tableId)
+      const source = normalizeEventSource(round?.capturedSource ?? round?.source)
+      if (!current) {
+        latest.set(tableId, { shoe, round: roundNumber, source })
+        return
+      }
+      const candidateIsActive = sameSourceTransport(source, activeSource)
+      const currentIsActive = sameSourceTransport(current.source, activeSource)
+      if (candidateIsActive && !currentIsActive) latest.set(tableId, { shoe, round: roundNumber, source })
+      else if (candidateIsActive === currentIsActive
+        && compareEventSourceChronology(source, current.source ?? null) === 1) {
+        latest.set(tableId, { shoe, round: roundNumber, source })
+      }
+    }
+    for (const entry of queue) {
+      for (const round of Array.isArray(entry?.snapshot?.rounds) ? entry.snapshot.rounds : []) observe(round)
+    }
+    for (const round of Array.isArray(snapshot?.rounds) ? snapshot.rounds : []) observe(round)
+    return {
+      ...snapshot,
+      tables: (Array.isArray(snapshot?.tables) ? snapshot.tables : []).map((table) => {
+        const shoe = Number(table?.shoe)
+        const round = Number(table?.round)
+        if (Number.isSafeInteger(shoe) && Number.isSafeInteger(round)) return table
+        const screen = latest.get(canonicalTableId(table?.tableId))
+        return screen ? { ...table, shoe: screen.shoe, round: screen.round } : table
+      }),
+    }
+  }
+
+  async function prioritizeLiveQueue(snapshot, timestamp) {
+    if (queue.length < 2 || queue.some((entry) => entry.deliveryState) || !hasExactTenTableScreens(snapshot)) return
+    const grouped = new Map()
+    const tableChronology = new Map()
+    let chronology = 0
+    for (const entry of queue) {
+      for (const round of Array.isArray(entry?.snapshot?.rounds) ? entry.snapshot.rounds : []) {
+        const tableId = canonicalTableId(round?.tableId)
+        if (!tableId) continue
+        chronology += 1
+        if (!grouped.has(tableId)) grouped.set(tableId, [])
+        grouped.get(tableId).push(round)
+        tableChronology.set(tableId, chronology)
+      }
+    }
+    for (const round of Array.isArray(snapshot?.rounds) ? snapshot.rounds : []) {
+      const tableId = canonicalTableId(round?.tableId)
+      if (tableId) tableChronology.set(tableId, ++chronology)
+    }
+    const prioritizedRounds = [...grouped.entries()]
+      .sort(([left], [right]) => (tableChronology.get(right) ?? 0) - (tableChronology.get(left) ?? 0))
+      .flatMap(([, rounds]) => rounds)
+    const prioritizedKeys = prioritizedRounds.map((round) => roundKey(round))
+    const currentKeys = queue.flatMap((entry) => entry.roundKeys.map(String))
+    const hasEmptyEnvelope = queue.some((entry) => entry.roundKeys.length === 0)
+    if (!hasEmptyEnvelope && JSON.stringify(prioritizedKeys) === JSON.stringify(currentKeys)) return
+    const rebuilt = []
+    for (let offset = 0; offset < prioritizedRounds.length; offset += roundLimit) {
+      const rounds = prioritizedRounds.slice(offset, offset + roundLimit)
+      rebuilt.push(createEnvelope(snapshot, rounds, rounds.map((round) => roundKey(round)), timestamp))
+    }
+    queue = rebuilt
+    await saveQueue()
+  }
+
+  function hasExactTenTableScreens(snapshot) {
+    const tables = Array.isArray(snapshot?.tables) ? snapshot.tables : []
+    if (tables.length !== PRODUCTION_TABLE_IDS.length) return false
+    const ids = new Set()
+    for (const table of tables) {
+      const tableId = canonicalTableId(table?.tableId)
+      if (!PRODUCTION_TABLE_IDS.includes(tableId) || ids.has(tableId)
+        || !Number.isSafeInteger(Number(table?.shoe)) || !Number.isSafeInteger(Number(table?.round))) return false
+      ids.add(tableId)
+    }
+    return ids.size === PRODUCTION_TABLE_IDS.length
   }
 
   function normalizeShoeIdentity(value) {
@@ -397,15 +511,31 @@ export function createSnapshotPusher({
     return String(record?.archiveId ?? `${String(record?.sessionId ?? '')}:${Number(record?.sequence)}:${String(record?.roundKey ?? '')}`)
   }
 
-  async function rebindQueuedTransport(snapshot, timestamp) {
+  async function rebindQueuedTransport(snapshot, timestamp, { notFoundEnvelope = null } = {}) {
     const targetSource = normalizeSource(snapshot?.source)
     const targetSessionId = String(snapshot?.sessionId ?? '')
     if (queue.length === 0 || !targetSource) return
+    const recoveringMissingAttempt = notFoundEnvelope != null
+    if (recoveringMissingAttempt) {
+      const head = queue[0]
+      const exactAttemptedHead = head?.deliveryState === 'attempted'
+        && String(head.sessionId ?? '') === String(notFoundEnvelope?.sessionId ?? '')
+        && Number(head.sequence) === Number(notFoundEnvelope?.sequence)
+        && JSON.stringify(head.roundKeys ?? []) === JSON.stringify(notFoundEnvelope?.roundKeys ?? [])
+        && JSON.stringify(normalizeSource(head.source)) === JSON.stringify(normalizeSource(notFoundEnvelope?.source))
+        && JSON.stringify(head.snapshot) === JSON.stringify(notFoundEnvelope?.snapshot)
+      if (!exactAttemptedHead || queue.slice(1).some((entry) => entry.deliveryState)) {
+        throw new Error('attempted_reconciliation_not_found_identity_mismatch')
+      }
+    } else if (queue.some((entry) => entry.deliveryState)) return
     const needsRebind = queue.some((entry) => (
       JSON.stringify(normalizeSource(entry.source)) !== JSON.stringify(targetSource)
       || String(entry.sessionId ?? '') !== targetSessionId
     ))
-    if (!needsRebind) return
+    if (!needsRebind) {
+      if (recoveringMissingAttempt) throw new Error('attempted_reconciliation_not_found_target_unchanged')
+      return
+    }
     if (typeof onRebindQueue !== 'function') throw new Error('queued_source_rebind_required')
     const roundKeys = queue.flatMap((entry) => entry.roundKeys.map(String))
     const reboundRounds = await onRebindQueue({
@@ -423,6 +553,7 @@ export function createSnapshotPusher({
     }
     let nextSequence = Math.max(lastSequence, Number(timestamp) || 0)
     const reboundQueue = queue.map((entry) => {
+      const { deliveryState: _deliveryState, remoteAckReceipt: _remoteAckReceipt, ...durableEntry } = entry
       const rounds = entry.snapshot.rounds.map((oldRound) => {
         const identity = roundKey(oldRound)
         const rebound = byIdentity.get(identity)
@@ -437,7 +568,7 @@ export function createSnapshotPusher({
       })
       nextSequence += 1
       return {
-        ...entry,
+        ...durableEntry,
         capturedSource: structuredClone(entry.capturedSource ?? entry.source),
         source: structuredClone(targetSource),
         sessionId: targetSessionId,
@@ -712,12 +843,15 @@ export function createSnapshotPusher({
         rounds: keyedRounds.map(({ round, key }) => normalizeRoundForEnvelope(round, key)),
       },
     }
-    if (envelope.deliveryState != null && envelope.deliveryState !== 'remote_ack_pending') {
+    if (envelope.deliveryState != null && !['attempted', 'remote_ack_pending'].includes(envelope.deliveryState)) {
       throw new Error('corrupt queue state: invalid delivery state')
     }
     if (envelope.deliveryState === 'remote_ack_pending') {
       normalizedEnvelope.deliveryState = 'remote_ack_pending'
       normalizedEnvelope.remoteAckReceipt = normalizeRemoteAckReceipt(normalizedEnvelope)
+    } else if (envelope.deliveryState === 'attempted') {
+      normalizedEnvelope.deliveryState = 'attempted'
+      delete normalizedEnvelope.remoteAckReceipt
     } else {
       delete normalizedEnvelope.deliveryState
       delete normalizedEnvelope.remoteAckReceipt
@@ -916,6 +1050,20 @@ async function readAcknowledgement(response, envelope) {
   return { acceptedRoundKeys: acceptedKeys }
 }
 
+async function isStaleFenceResponse(response) {
+  if (Number(response?.status) !== 409 || typeof response?.json !== 'function') return false
+  let body
+  try { body = await response.json() } catch { return false }
+  return body?.error === 'stale_source_epoch'
+}
+
+async function isReconciliationNotFoundResponse(response) {
+  if (Number(response?.status) !== 409 || typeof response?.json !== 'function') return false
+  let body
+  try { body = await response.json() } catch { return false }
+  return body?.accepted === false && body?.error === 'capture_reconciliation_not_found'
+}
+
 function normalizeRemoteAckReceipt(envelope) {
   const receipt = envelope?.remoteAckReceipt
   const expectedKeys = Array.isArray(envelope?.roundKeys) ? envelope.roundKeys.map(String) : []
@@ -955,6 +1103,23 @@ function normalizeEventSource(source) {
   const sequence = Number(source?.sequence)
   if (!transport || !Number.isSafeInteger(sequence) || sequence < 1) return null
   return { ...transport, sequence }
+}
+
+function sameSourceTransport(eventSource, transportSource) {
+  return Boolean(eventSource && transportSource
+    && eventSource.mode === transportSource.mode
+    && eventSource.ownerId === transportSource.ownerId
+    && eventSource.epoch === transportSource.epoch
+    && eventSource.fence === transportSource.fence)
+}
+
+function compareEventSourceChronology(candidate, current) {
+  if (!candidate && !current) return 1
+  if (candidate && !current) return 1
+  if (!candidate || !current || candidate.mode !== current.mode || candidate.ownerId !== current.ownerId) return null
+  if (candidate.epoch !== current.epoch) return candidate.epoch < current.epoch ? -1 : 1
+  if (candidate.sequence === current.sequence) return 0
+  return candidate.sequence < current.sequence ? -1 : 1
 }
 
 function withoutTransport(round = {}) {

@@ -46,8 +46,10 @@ test('backlog journals newly observed rounds before push and compacts them only 
     fetchImpl: async () => { throw new Error('offline') },
   })
   assert.equal(await first.tick(), false)
-  const journal = await readFile(`${queuePath}.journal`, 'utf8')
-  assert.match(journal, /BAG01:8:1/)
+  const attemptedCheckpoint = JSON.parse(await readFile(queuePath, 'utf8'))
+  assert.deepEqual(attemptedCheckpoint.entries[0].roundKeys, ['BAG01:8:1'])
+  assert.equal(attemptedCheckpoint.entries[0].deliveryState, 'attempted')
+  await assert.rejects(readFile(`${queuePath}.journal`), { code: 'ENOENT' })
 
   const sent = []
   const restarted = createSnapshotPusher({
