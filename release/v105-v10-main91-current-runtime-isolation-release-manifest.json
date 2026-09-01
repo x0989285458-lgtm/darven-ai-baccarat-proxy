@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "releaseVersion": "v105-v10-main.91",
+  "gitTag": "v105-v10-main.91",
+  "baseCommit": "0929cdbfbe01a1f2a53831cfd1231dc8d4442376",
+  "componentVersions": {
+    "proxy": "1.0.72",
+    "worker": "1.0.66"
+  },
+  "scope": "cross-shoe-durable-lag-bounded-by-per-table-live-freshness-and-current-runtime-isolation",
+  "changedPaths": [
+    ".github/workflows/trusted-release-images-main90.yml",
+    ".github/workflows/trusted-release-images-main91.yml",
+    "proxy/package-lock.json",
+    "proxy/package.json",
+    "proxy/src/server.js",
+    "proxy/src/v105-formal-runtime.js",
+    "proxy/test/capture-outbox-ack.test.js",
+    "proxy/test/current-runtime-test-runner.test.js",
+    "proxy/test/deploy-package.test.js",
+    "proxy/test/v104-iteration-shadow-release.test.js",
+    "proxy/test/v105-formal-runtime.test.js",
+    "proxy/test/v105-mt-session-auto-refresh-release.test.js",
+    "proxy/test/v105-service-work-scheduler-release.test.js",
+    "proxy/test/v105-v10-main90-current-runtime-isolation-release.test.js",
+    "proxy/test/v105-v10-main91-current-runtime-isolation-release.test.js",
+    "release/v105-v10-main90-current-runtime-isolation-release-manifest.json",
+    "release/v105-v10-main91-current-runtime-isolation-release-manifest.json"
+  ],
+  "releaseBinding": {
+    "changedFileGitBlobOids": {
+      ".github/workflows/trusted-release-images-main91.yml": "5a97c24e90c117d58d5c93c84bef0fc1f6cfeb30",
+      "proxy/package-lock.json": "ce449732ef92d559a9caaf44395165f1d942613d",
+      "proxy/package.json": "1d24a1779df731ba713eb1e5088d6583bedae688",
+      "proxy/src/server.js": "f2afd24bd2f0001cf3da8049728e821b907f460e",
+      "proxy/src/v105-formal-runtime.js": "cc01a7eed1f02bfca820932ff142262a147d8e1a",
+      "proxy/test/capture-outbox-ack.test.js": "b599be6c9503f1065a8c3e28d23c68352371b13a",
+      "proxy/test/current-runtime-test-runner.test.js": "a3c69fb101a85eb424fc2a4d5a065151814e423a",
+      "proxy/test/deploy-package.test.js": "3f53fb13e34c78b6c57c09b5bbfd4f49a28eb85d",
+      "proxy/test/v104-iteration-shadow-release.test.js": "028e8c913b5321d6328c04893a2ae2d3d6baf933",
+      "proxy/test/v105-formal-runtime.test.js": "f760636cf8595d10d201b9236d48f1073daf5418",
+      "proxy/test/v105-mt-session-auto-refresh-release.test.js": "0676b32d30cb6fd8a8c70b0f8137cec795de7415",
+      "proxy/test/v105-service-work-scheduler-release.test.js": "75286df31e2a775245ba2cdd63c2aa3cb4f57995",
+      "proxy/test/v105-v10-main91-current-runtime-isolation-release.test.js": "2f301599d73a137ad8612745b4765008e2d29681"
+    },
+    "deletedFileBaseGitBlobOids": {
+      ".github/workflows/trusted-release-images-main90.yml": "8cdf6214e3d468c98c0f78f31a158087c62108bb",
+      "proxy/test/v105-v10-main90-current-runtime-isolation-release.test.js": "d21748e864f69868851c53bd187a855036d49f3d",
+      "release/v105-v10-main90-current-runtime-isolation-release-manifest.json": "16b6817ce9d8c2838b9eff540fe5a0c9fb24a7f3"
+    },
+    "database": {
+      "path": "supabase/migrations/20260901010000_v105_lost_ack_fence_reconciliation.sql",
+      "gitBlobOid": "59a1e9a0b4bea83d42fbbe7b7fab2150863acd97"
+    }
+  },
+  "implementationTree": {
+    "algorithm": "sha256(path-NUL-git-blob-oid-LF)",
+    "paths": [
+      ".github/workflows/trusted-release-images-main91.yml",
+      "proxy/package-lock.json",
+      "proxy/package.json",
+      "proxy/src/server.js",
+      "proxy/src/v105-formal-runtime.js",
+      "proxy/test/capture-outbox-ack.test.js",
+      "proxy/test/current-runtime-test-runner.test.js",
+      "proxy/test/deploy-package.test.js",
+      "proxy/test/v104-iteration-shadow-release.test.js",
+      "proxy/test/v105-formal-runtime.test.js",
+      "proxy/test/v105-mt-session-auto-refresh-release.test.js",
+      "proxy/test/v105-service-work-scheduler-release.test.js",
+      "proxy/test/v105-v10-main91-current-runtime-isolation-release.test.js"
+    ],
+    "sha256": "e25bf44c9e9ea5d9980dac4432bc20a02d648e3e07fc2c8aab1ebe4c69b4b87f"
+  },
+  "testDiscovery": {
+    "canonicalCommand": "npm test --prefix proxy",
+    "historicalExactReleaseIdentityCount": 0,
+    "obsoleteDeletedTests": [
+      "proxy/test/v105-v10-main90-current-runtime-isolation-release.test.js"
+    ]
+  },
+  "deploymentOrder": [
+    "database-additive-lost-ack-reconciliation",
+    "database-catalog-acl-and-function-readback",
+    "database-reconciliation-negative-and-duplicate-probes",
+    "proxy-v1.0.72-cutover",
+    "worker-v1.0.66-cutover",
+    "public-edge-readiness",
+    "canonical-current-runtime-regression",
+    "cross-shoe-durable-lag-per-table-freshness-e2e",
+    "lagging-durable-screen-monotonic-refresh-e2e",
+    "round-only-final-screen-materialization-e2e",
+    "current-table-current-round-priority-e2e",
+    "exact-lost-ack-reconciliation-e2e"
+  ],
+  "rollback": {
+    "database": "preserve-applied-additive-migration-and-function",
+    "application": "rollback-proxy-formal-worker-but-keep-producers-stopped-until-explicit-safe-resume",
+    "historicalEvidence": "preserve-all-prior-tags-and-artifacts"
+  }
+}

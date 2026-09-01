@@ -255,7 +255,15 @@ function acceptLifecycleScreenIdentity(guardsByTable, { tableId, shoe, visibleRo
     if (guard.seenShoes.has(shoe)) return false
     const candidateNumericShoe = numericShoe(shoe)
     const latestNumericShoe = numericShoe(guard.latestShoe)
-    if (candidateNumericShoe != null && latestNumericShoe != null && candidateNumericShoe <= latestNumericShoe) return false
+    const providerWrapForward = latestNumericShoe === 999n
+      && candidateNumericShoe === 1n
+      && Number.isSafeInteger(visibleRound)
+      && visibleRound >= 0
+      && visibleRound <= 1
+    if (candidateNumericShoe != null
+      && latestNumericShoe != null
+      && !providerWrapForward
+      && compareNumericShoeProgress(shoe, guard.latestShoe) !== 1) return false
   }
 
   guard.latestShoe = shoe
@@ -271,6 +279,28 @@ function numericShoe(value) {
   return /^\d+$/.test(normalized) ? BigInt(normalized) : null
 }
 
+function compareNumericShoeProgress(candidateValue, currentValue) {
+  const candidate = numericShoe(candidateValue)
+  const current = numericShoe(currentValue)
+  if (candidate == null || current == null) return null
+  if (candidate === current) return 0
+  return candidate < current ? -1 : 1
+}
+
+function isProviderWrapPair(leftValue, rightValue) {
+  const left = numericShoe(leftValue)
+  const right = numericShoe(rightValue)
+  return (left === 1n && right === 999n) || (left === 999n && right === 1n)
+}
+
+function isExactlyOneShoeBehind(candidateValue, currentValue) {
+  const candidate = numericShoe(candidateValue)
+  const current = numericShoe(currentValue)
+  if (candidate == null || current == null) return false
+  if (candidate === 999n && current === 1n) return true
+  return current - candidate === 1n
+}
+
 function isOlderTableScreen(candidate = {}, current = {}) {
   const candidateShoe = String(candidate?.shoe ?? '')
   const currentShoe = String(current?.shoe ?? '')
@@ -278,9 +308,12 @@ function isOlderTableScreen(candidate = {}, current = {}) {
   const currentRound = Number(current?.round)
   if (!candidateShoe || !currentShoe || !Number.isSafeInteger(candidateRound) || !Number.isSafeInteger(currentRound)) return false
   if (candidateShoe === currentShoe) return candidateRound < currentRound
+  if (isProviderWrapPair(candidateShoe, currentShoe)) return true
   const candidateNumericShoe = numericShoe(candidateShoe)
   const currentNumericShoe = numericShoe(currentShoe)
-  return candidateNumericShoe != null && currentNumericShoe != null && candidateNumericShoe < currentNumericShoe
+  return candidateNumericShoe != null
+    && currentNumericShoe != null
+    && compareNumericShoeProgress(candidateShoe, currentShoe) === -1
 }
 
 function tableScreenIdentitySignature(tables = []) {
@@ -488,6 +521,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     : () => {})
   let tablesReceivedAtMs = 0
   const tableReceivedAtMsById = new Map()
+  const liveSourceScreenByTableId = new Map()
   const serviceWorkScheduler = createServiceWorkScheduler()
   const v104Formal = v104FormalRuntime ?? createV105FormalRuntime({
     writer: supabaseClient,
@@ -515,7 +549,17 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
           ? new Set()
           : new Set(tables.map((table) => canonicalProductionTableId(table?.tableId)).filter(Boolean))
       if (receivedTableIds.size > 0) tablesReceivedAtMs = receivedAtMs
-      for (const tableId of receivedTableIds) tableReceivedAtMsById.set(tableId, receivedAtMs)
+      const updatedTableById = new Map(tables.map((table) => [canonicalProductionTableId(table?.tableId), table]))
+      for (const tableId of receivedTableIds) {
+        tableReceivedAtMsById.set(tableId, receivedAtMs)
+        if (updateContext?.suppressPredictionWork !== true) {
+          const liveTable = updatedTableById.get(tableId)
+          liveSourceScreenByTableId.set(tableId, {
+            shoe: liveTable?.shoe == null ? '' : String(liveTable.shoe).trim(),
+            receivedAtMs,
+          })
+        }
+      }
       const streamScreenSignature = tableScreenIdentitySignature(tables)
       let screenProgressChanged = streamScreenSignature !== latestStreamScreenSignature
       const changedScreenTables = []
@@ -832,8 +876,18 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         const freshShoeText = table?.shoe == null ? '' : String(table.shoe).trim()
         const previousNumericShoe = numericShoe(previousShoeText)
         const freshNumericShoe = numericShoe(freshShoeText)
-        if (previousNumericShoe != null && freshNumericShoe != null && freshNumericShoe < previousNumericShoe) {
-          throw new Error('fresh cloud table shoe regression is not refreshable')
+        if (previousNumericShoe != null
+          && freshNumericShoe != null
+          && (isProviderWrapPair(freshShoeText, previousShoeText)
+            || compareNumericShoeProgress(freshShoeText, previousShoeText) === -1)) {
+          const liveSourceScreen = liveSourceScreenByTableId.get(tableId)
+          const liveScreenStillFresh = Number(liveSourceScreen?.receivedAtMs) > 0
+            && (Number(now()) - Number(liveSourceScreen.receivedAtMs)) <= actionablePredictionTtlMs
+          const liveSourceObservedCurrentShoe = String(liveSourceScreen?.shoe ?? '') === previousShoeText
+          const durableIsExactlyOneShoeBehind = isExactlyOneShoeBehind(freshShoeText, previousShoeText)
+          if (!liveScreenStillFresh || !liveSourceObservedCurrentShoe || !durableIsExactlyOneShoeBehind) {
+            throw new Error('fresh cloud table shoe regression is not refreshable')
+          }
         }
       }
       const previousTables = state.snapshot().tables

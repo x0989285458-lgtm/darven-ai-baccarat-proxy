@@ -1349,6 +1349,196 @@ test('lagging same-shoe refresh does not renew a retained local screen after the
   await app.stop()
 })
 
+test('fresh local new-shoe screen allows backlog claim while durable snapshot is one shoe behind, then fails closed after local TTL', async () => {
+  let claims = 0
+  let durableShoe = 92
+  let nowMs = Date.parse('2026-09-01T02:00:00.000Z')
+  const snapshotAt = new Date().toISOString()
+  const app = createApp({
+    autoConnect: false,
+    now: () => nowMs,
+    production: true,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    supabaseClient: {
+      configured: true,
+      async getLatestCloudTableSnapshot() {
+        return {
+          session_id: 'cross-shoe-durable-lag', snapshot_at: snapshotAt, capture_source: 'cloud_browser',
+          tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: durableShoe, round: 60, sourceUpdatedAt: snapshotAt })),
+        }
+      },
+      async claimCaptureOutbox() { claims += 1; return [] },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot({ tables: current }) { return { tables: current } } },
+  })
+  app.state.setTables(PRODUCTION_TABLE_IDS.map((tableId) => ({
+    tableId, shoe: 93, round: 1, sourceUpdatedAt: snapshotAt,
+  })))
+  await app.waitForServiceWorkIdle()
+
+  await app.drainCaptureOutbox()
+  assert.equal(claims, 1)
+  assert.equal(app.state.snapshot().tables.find((table) => table.tableId === 'BAG10')?.shoe, 93)
+
+  durableShoe = 90
+  await assert.rejects(app.drainCaptureOutbox(), /shoe regression is not refreshable/)
+  assert.equal(claims, 1)
+
+  durableShoe = 92
+  nowMs += 120_001
+  await assert.rejects(app.drainCaptureOutbox(), /shoe regression is not refreshable/)
+  assert.equal(claims, 1)
+  await app.stop()
+})
+
+test('fresh live shoe one treats durable shoe 999 as exactly one shoe behind without rolling state backward', async () => {
+  let claims = 0
+  let nowMs = Date.parse('2026-09-01T02:00:00.000Z')
+  const snapshotAt = new Date().toISOString()
+  const app = createApp({
+    autoConnect: false,
+    now: () => nowMs,
+    production: true,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    supabaseClient: {
+      configured: true,
+      async getLatestCloudTableSnapshot() {
+        return {
+          session_id: 'cross-shoe-wrap-durable-lag', snapshot_at: snapshotAt, capture_source: 'cloud_browser',
+          tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: 999, round: 60, sourceUpdatedAt: snapshotAt })),
+        }
+      },
+      async claimCaptureOutbox() { claims += 1; return [] },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot({ tables: current }) { return { tables: current } } },
+  })
+  app.state.setTables(PRODUCTION_TABLE_IDS.map((tableId) => ({
+    tableId, shoe: 1, round: 1, sourceUpdatedAt: snapshotAt,
+  })))
+  await app.waitForServiceWorkIdle()
+
+  await app.drainCaptureOutbox()
+  assert.equal(claims, 1)
+  assert.equal(app.state.snapshot().tables.find((table) => table.tableId === 'BAG10')?.shoe, 1)
+
+  nowMs += 120_001
+  await assert.rejects(app.drainCaptureOutbox(), /shoe regression is not refreshable/)
+  assert.equal(claims, 1)
+  await app.stop()
+})
+
+test('numeric distance cannot reinterpret live shoe 600 and durable shoe 1 as a provider wrap', async () => {
+  let claims = 0
+  const snapshotAt = new Date().toISOString()
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    supabaseClient: {
+      configured: true,
+      async getLatestCloudTableSnapshot() {
+        return {
+          session_id: 'not-a-provider-wrap', snapshot_at: snapshotAt, capture_source: 'cloud_browser',
+          tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: 1, round: 1, sourceUpdatedAt: snapshotAt })),
+        }
+      },
+      async claimCaptureOutbox() { claims += 1; return [] },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot({ tables: current }) { return { tables: current } } },
+  })
+  app.state.setTables(PRODUCTION_TABLE_IDS.map((tableId) => ({
+    tableId, shoe: 600, round: 20, sourceUpdatedAt: snapshotAt,
+  })))
+  await app.waitForServiceWorkIdle()
+
+  await assert.rejects(app.drainCaptureOutbox(), /shoe regression is not refreshable/)
+  assert.equal(claims, 0)
+  assert.equal(app.state.snapshot().tables.find((table) => table.tableId === 'BAG10')?.shoe, 600)
+  await app.stop()
+})
+
+test('historical durable shoe 1 cannot masquerade as a new wrap while live shoe 999 is current', async () => {
+  let claims = 0
+  const snapshotAt = new Date().toISOString()
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    supabaseClient: {
+      configured: true,
+      async getLatestCloudTableSnapshot() {
+        return {
+          session_id: 'historical-shoe-one-replay', snapshot_at: snapshotAt, capture_source: 'cloud_browser',
+          tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: 1, round: 1, sourceUpdatedAt: snapshotAt })),
+        }
+      },
+      async claimCaptureOutbox() { claims += 1; return [] },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot({ tables: current }) { return { tables: current } } },
+  })
+  app.state.setTables(PRODUCTION_TABLE_IDS.map((tableId) => ({
+    tableId, shoe: 999, round: 60, sourceUpdatedAt: snapshotAt,
+  })))
+  await app.waitForServiceWorkIdle()
+
+  await assert.rejects(app.drainCaptureOutbox(), /shoe regression is not refreshable/)
+  assert.equal(claims, 0)
+  assert.equal(app.state.snapshot().tables.find((table) => table.tableId === 'BAG10')?.shoe, 999)
+  await app.stop()
+})
+
+test('durable forward shoe cannot borrow an older live-source timestamp to tolerate a later rollback', async () => {
+  let claims = 0
+  let durableShoe = 93
+  const snapshotAt = new Date().toISOString()
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    supabaseClient: {
+      configured: true,
+      async getLatestCloudTableSnapshot() {
+        return {
+          session_id: 'durable-forward-then-rollback', snapshot_at: snapshotAt, capture_source: 'cloud_browser',
+          tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: durableShoe, round: 1, sourceUpdatedAt: snapshotAt })),
+        }
+      },
+      async claimCaptureOutbox() { claims += 1; return [] },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot({ tables: current }) { return { tables: current } } },
+  })
+  app.state.setTables(PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: 92, round: 60, sourceUpdatedAt: snapshotAt })))
+  await app.waitForServiceWorkIdle()
+
+  await app.refreshLatestDurablePredictions()
+  assert.equal(app.state.snapshot().tables.find((table) => table.tableId === 'BAG10')?.shoe, 93)
+
+  durableShoe = 92
+  await assert.rejects(app.drainCaptureOutbox(), /shoe regression is not refreshable/)
+  assert.equal(claims, 0)
+  await app.stop()
+})
+
 for (const invalidCase of [
   { name: 'null round', round: null, primeRound: null },
   { name: 'negative round', round: -1, primeRound: null },
@@ -1357,12 +1547,14 @@ for (const invalidCase of [
 ]) {
   test(`production consumer rejects ${invalidCase.name} before backlog claim`, async () => {
     let claims = 0
-    const snapshotAt = new Date(Date.now() - 1_000).toISOString()
+    let nowMs = Date.now()
+    const snapshotAt = new Date(nowMs - 1_000).toISOString()
     const tables = PRODUCTION_TABLE_IDS.map((tableId) => ({
       tableId, shoe: invalidCase.shoe ?? 92, round: tableId === 'BAG10' ? invalidCase.round : 7, sourceUpdatedAt: snapshotAt,
     }))
     const app = createApp({
       autoConnect: false,
+      now: () => nowMs,
       production: true,
       requireVerifiedStrategy: false,
       memberAuthRequired: false,
@@ -1383,6 +1575,7 @@ for (const invalidCase of [
         tableId, shoe: invalidCase.primeShoe ?? 92, round: invalidCase.primeRound, sourceUpdatedAt: snapshotAt,
       })))
       await app.waitForServiceWorkIdle()
+      nowMs += 120_001
     }
 
     await assert.rejects(app.drainCaptureOutbox(), /round must be a non-negative integer|round regression is not claimable|shoe regression is not refreshable/)
@@ -2163,6 +2356,7 @@ test('external consumer materializes a finalized table missing beside unrelated 
 test('outbox publication refreshes only tables that actually advanced', async () => {
   let claimed = false
   let durableReadsEnabled = false
+  let durableBag01Shoe = 88
   let nowMs = Date.now()
   const sourceUpdatedAt = new Date(nowMs).toISOString()
   const work = {
@@ -2183,7 +2377,7 @@ test('outbox publication refreshes only tables that actually advanced', async ()
           session_id: 'durable-fallback', snapshot_at: new Date().toISOString(), capture_source: 'cloud_browser',
           tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
             tableId,
-            shoe: tableId === 'BAG01' ? 88 : 92,
+            shoe: tableId === 'BAG01' ? durableBag01Shoe : 92,
             round: tableId === 'BAG10' ? 5 : tableId === 'BAG01' ? 21 : 13,
             sourceUpdatedAt,
           })),
@@ -2238,6 +2432,8 @@ test('outbox publication refreshes only tables that actually advanced', async ()
 
   assert.equal(tables.find((table) => table.tableId === 'BAG10')?.round, 5)
   assert.equal(tables.find((table) => table.tableId === 'BAG01')?.round, 21)
+  durableBag01Shoe = 87
+  await assert.rejects(app.refreshLatestDurablePredictions(), /shoe regression is not refreshable/)
   await app.stop()
 })
 

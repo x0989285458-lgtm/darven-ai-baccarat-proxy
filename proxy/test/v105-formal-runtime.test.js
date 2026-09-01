@@ -123,6 +123,66 @@ test('v105 runtime rejects an older-shoe issuance after a newer shoe is active',
   }), /older shoe|move backward/)
 })
 
+test('v105 runtime accepts provider shoe 999 to shoe 1 issuance wrap and resets the shoe streak', async () => {
+  const latest = {
+    prediction_id: 'shoe-999', strategy_version: 'v105', prediction_timing: 'pre_result_context',
+    prediction_issued_at: '2026-08-28T12:00:00.000Z', table_id: 'BAG01', shoe_no: '999', round_no: 60,
+    predicted_result: 'banker', final_v105_predicted_result: 'banker', issued_same_side_streak: 3,
+  }
+  const runtime = createV105FormalRuntime({
+    writer: { configured: true, async getV105FormalHistory() { return [latest] } },
+  })
+  await runtime.start()
+  assert.doesNotThrow(() => runtime.recordIssuance({
+    predictionId: 'shoe-1', issuedAt: '2026-08-28T12:01:00.000Z',
+    strategyVersion: 'v105', predictionTiming: 'pre_result_context', source: 'ofalive99',
+    targetTableId: 'BAG01', targetShoe: '1', targetRound: 1,
+    predictedResult: 'player', sameSideStreak: 1,
+  }))
+  assert.deepEqual(runtime.snapshot().lastIssuanceByTable.BAG01, {
+    shoe: '1', direction: 'player', sameSideStreak: 1, round: 1,
+  })
+})
+
+test('v105 runtime accepts provider shoe 999 to shoe 1 issuance when the first visible round targets round 2', async () => {
+  const latest = {
+    prediction_id: 'shoe-999', strategy_version: 'v105', prediction_timing: 'pre_result_context',
+    prediction_issued_at: '2026-08-28T12:00:00.000Z', table_id: 'BAG01', shoe_no: '999', round_no: 60,
+    predicted_result: 'banker', final_v105_predicted_result: 'banker', issued_same_side_streak: 3,
+  }
+  const runtime = createV105FormalRuntime({
+    writer: { configured: true, async getV105FormalHistory() { return [latest] } },
+  })
+  await runtime.start()
+  runtime.recordIssuance({
+    predictionId: 'shoe-1-round-2', issuedAt: '2026-08-28T12:01:00.000Z',
+    strategyVersion: 'v105', predictionTiming: 'pre_result_context', source: 'ofalive99',
+    targetTableId: 'BAG01', targetShoe: '1', targetRound: 2,
+    predictedResult: 'player', sameSideStreak: 1,
+  })
+  assert.deepEqual(runtime.snapshot().lastIssuanceByTable.BAG01, {
+    shoe: '1', direction: 'player', sameSideStreak: 1, round: 2,
+  })
+})
+
+test('v105 runtime rejects a stale shoe 1 issuance that lacks the provider wrap boundary after shoe 999', async () => {
+  const latest = {
+    prediction_id: 'shoe-999', strategy_version: 'v105', prediction_timing: 'pre_result_context',
+    prediction_issued_at: '2026-08-28T12:00:00.000Z', table_id: 'BAG01', shoe_no: '999', round_no: 60,
+    predicted_result: 'banker', final_v105_predicted_result: 'banker', issued_same_side_streak: 3,
+  }
+  const runtime = createV105FormalRuntime({
+    writer: { configured: true, async getV105FormalHistory() { return [latest] } },
+  })
+  await runtime.start()
+  assert.throws(() => runtime.recordIssuance({
+    predictionId: 'stale-shoe-1', issuedAt: '2026-08-28T12:01:00.000Z',
+    strategyVersion: 'v105', predictionTiming: 'pre_result_context', source: 'ofalive99',
+    targetTableId: 'BAG01', targetShoe: '1', targetRound: 99,
+    predictedResult: 'player', sameSideStreak: 1,
+  }), /older shoe|provider wrap/)
+})
+
 test('v105 hydration fails closed when issued time order moves back to an older shoe', async () => {
   const rows = [
     {

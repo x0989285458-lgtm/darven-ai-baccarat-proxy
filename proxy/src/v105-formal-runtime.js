@@ -76,7 +76,7 @@ export function createV105FormalRuntime({ writer = null, requestTimeoutMs = 6000
     const round = Number(issued.targetRound)
     const direction = String(issued.predictedResult)
     const issuedStreak = Number(issued.sameSideStreak)
-    assertForwardIssuanceIdentity(prior, { shoe, round })
+    assertForwardIssuanceIdentity(prior, { shoe, round, issuedAt: issued.issuedAt })
     const sameTarget = prior?.shoe === shoe
       && Number.isSafeInteger(prior?.round)
       && round === prior.round
@@ -106,7 +106,7 @@ export function createV105FormalRuntime({ writer = null, requestTimeoutMs = 6000
     if (issuedStreak !== sameSideStreak) {
       throw new Error('v105 formal issuance streak acknowledgement mismatch')
     }
-    issuanceStreaks.set(key, { shoe, direction, sameSideStreak, round })
+    issuanceStreaks.set(key, { shoe, direction, sameSideStreak, round, issuedAt: issued.issuedAt })
     issuancePredictionIds.set(key, String(issued.predictionId))
     issuanceStrategyVersions.set(key, V105_FORMAL_STRATEGY_VERSION)
     appendIssuanceHistory(historyRows, issued)
@@ -165,7 +165,12 @@ export function createV105FormalRuntime({ writer = null, requestTimeoutMs = 6000
         error,
         historySource: 'v104_predecessor_plus_v105_formal_issuance_and_final',
         historyRows: historyRows.length,
-        lastIssuanceByTable: Object.fromEntries([...issuanceStreaks.entries()].map(([key, value]) => [key, { ...value }])),
+        lastIssuanceByTable: Object.fromEntries([...issuanceStreaks.entries()].map(([key, value]) => [key, {
+          shoe: value.shoe,
+          direction: value.direction,
+          sameSideStreak: value.sameSideStreak,
+          round: value.round,
+        }])),
       }
     },
   }
@@ -191,7 +196,8 @@ function hydrateIssuanceStreaks(rows, state, predictionIds, strategyVersions) {
     if (!tableId || !predictionId || !Number.isSafeInteger(round) || !['banker', 'player'].includes(direction)) continue
     const key = tableKey(tableId)
     const prior = state.get(key)
-    assertForwardIssuanceIdentity(prior, { shoe, round })
+    const issuedAt = row?.prediction_issued_at ?? row?.predictionIssuedAt
+    assertForwardIssuanceIdentity(prior, { shoe, round, issuedAt })
     const sameShoeForward = prior?.shoe === shoe && prior?.direction === direction && round > prior.round
     const finalIssuedStreak = row?.issued_same_side_streak
       ?? row?.prediction_payload?.sameSideStreak
@@ -213,7 +219,7 @@ function hydrateIssuanceStreaks(rows, state, predictionIds, strategyVersions) {
     const sameSideStreak = !prior
       ? (hasPersistedStreak ? persistedStreak : 1)
       : (sameShoeForward ? Math.max(hasPersistedStreak ? persistedStreak : 1, derivedStreak) : 1)
-    state.set(key, { shoe, direction, sameSideStreak, round })
+    state.set(key, { shoe, direction, sameSideStreak, round, issuedAt })
     predictionIds.set(key, predictionId)
     strategyVersions.set(key, strategyVersion)
   }
@@ -251,7 +257,7 @@ function assertFormalIssuance(issued) {
   }
 }
 
-function assertForwardIssuanceIdentity(prior, { shoe, round }) {
+function assertForwardIssuanceIdentity(prior, { shoe, round, issuedAt }) {
   if (!prior) return
   if (prior.shoe === shoe) {
     if (Number.isSafeInteger(prior.round) && round < prior.round) {
@@ -261,9 +267,27 @@ function assertForwardIssuanceIdentity(prior, { shoe, round }) {
   }
   const candidateNumericShoe = /^\d+$/.test(String(shoe)) ? BigInt(shoe) : null
   const priorNumericShoe = /^\d+$/.test(String(prior.shoe)) ? BigInt(prior.shoe) : null
-  if (candidateNumericShoe != null && priorNumericShoe != null && candidateNumericShoe <= priorNumericShoe) {
-    throw new Error('v105 formal issuance cannot move to an older shoe')
+  const candidateIssuedAtMs = Date.parse(String(issuedAt ?? ''))
+  const priorIssuedAtMs = Date.parse(String(prior.issuedAt ?? ''))
+  const verifiedProviderWrap = priorNumericShoe === 999n
+    && candidateNumericShoe === 1n
+    && Number.isSafeInteger(round)
+    && round >= 1
+    && round <= 2
+    && Number.isFinite(candidateIssuedAtMs)
+    && Number.isFinite(priorIssuedAtMs)
+    && candidateIssuedAtMs > priorIssuedAtMs
+  if (verifiedProviderWrap) return
+  if (candidateNumericShoe != null
+    && priorNumericShoe != null
+    && compareProviderShoeProgress(candidateNumericShoe, priorNumericShoe) !== 1) {
+    throw new Error('v105 formal issuance cannot move to an older shoe or unverified provider wrap')
   }
+}
+
+function compareProviderShoeProgress(candidate, prior) {
+  if (candidate === prior) return 0
+  return candidate < prior ? -1 : 1
 }
 
 function tableKey(tableId) {
