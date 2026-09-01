@@ -2874,7 +2874,7 @@ test('thirty-row formal batch scales the bounded lease deadline instead of reusi
   const app = createApp({
     autoConnect: false,
     captureOutboxBatchLimit: 30,
-    outboxWorkDeadlineMs: 40,
+    outboxWorkDeadlineMs: 100,
     outboxBackoffMs: 1,
     supabaseClient: {
       configured: true,
@@ -2894,7 +2894,7 @@ test('thirty-row formal batch scales the bounded lease deadline instead of reusi
     v100FormalRuntime: {
       enabled: true,
       async processSnapshot({ tables }) {
-        await delay(90)
+        await delay(250)
         return { tables }
       },
     },

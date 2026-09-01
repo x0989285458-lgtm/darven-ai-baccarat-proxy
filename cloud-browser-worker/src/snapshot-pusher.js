@@ -389,39 +389,54 @@ export function createSnapshotPusher({
   }
 
   function hydrateSnapshotTableScreens(snapshot) {
-    const latest = new Map()
-    const activeSource = normalizeSource(snapshot?.source)
-    const observe = (round) => {
-      const tableId = canonicalTableId(round?.tableId)
-      const shoe = Number(round?.shoe)
-      const roundNumber = Number(round?.round)
-      if (!tableId || !Number.isSafeInteger(shoe) || !Number.isSafeInteger(roundNumber)) return
-      const current = latest.get(tableId)
-      const source = normalizeEventSource(round?.capturedSource ?? round?.source)
-      if (!current) {
-        latest.set(tableId, { shoe, round: roundNumber, source })
-        return
+    const lifecycles = new Map()
+    const observeLifecycle = (value, { authoritative = false } = {}) => {
+      const tableId = canonicalTableId(value?.tableId)
+      const activeShoe = Number(value?.activeShoe)
+      const screenShoe = Number(value?.currentScreen?.shoe)
+      const screenRound = Number(value?.currentScreen?.round)
+      const retiredShoes = Array.isArray(value?.retiredShoes) ? value.retiredShoes.map(Number) : null
+      const source = normalizeEventSource(value?.source)
+      if (!tableId || activeShoe !== screenShoe || !Number.isSafeInteger(activeShoe)
+        || !Number.isSafeInteger(screenRound) || !retiredShoes || !retiredShoes.every(Number.isSafeInteger)
+        || retiredShoes.includes(activeShoe) || !source) return
+      const candidate = {
+        tableId, activeShoe, retiredShoes: [...new Set(retiredShoes)],
+        currentScreen: { shoe: screenShoe, round: screenRound }, source,
       }
-      const candidateIsActive = sameSourceTransport(source, activeSource)
-      const currentIsActive = sameSourceTransport(current.source, activeSource)
-      if (candidateIsActive && !currentIsActive) latest.set(tableId, { shoe, round: roundNumber, source })
-      else if (candidateIsActive === currentIsActive
-        && compareEventSourceChronology(source, current.source ?? null) === 1) {
-        latest.set(tableId, { shoe, round: roundNumber, source })
+      const current = lifecycles.get(tableId)
+      if (authoritative || !current || compareEventSourceChronology(source, current.source) === 1) {
+        lifecycles.set(tableId, candidate)
       }
     }
     for (const entry of queue) {
-      for (const round of Array.isArray(entry?.snapshot?.rounds) ? entry.snapshot.rounds : []) observe(round)
+      for (const round of Array.isArray(entry?.snapshot?.rounds) ? entry.snapshot.rounds : []) {
+        if (round?.shoeLifecycle) observeLifecycle(round.shoeLifecycle)
+      }
     }
-    for (const round of Array.isArray(snapshot?.rounds) ? snapshot.rounds : []) observe(round)
+    for (const round of Array.isArray(snapshot?.rounds) ? snapshot.rounds : []) {
+      if (round?.shoeLifecycle) observeLifecycle(round.shoeLifecycle)
+    }
+    for (const lifecycle of Array.isArray(snapshot?.shoeLifecycles) ? snapshot.shoeLifecycles : []) {
+      observeLifecycle(lifecycle, { authoritative: true })
+    }
+    const { shoeLifecycles: _shoeLifecycles, ...publicSnapshot } = snapshot
     return {
-      ...snapshot,
+      ...publicSnapshot,
+      rounds: (Array.isArray(snapshot?.rounds) ? snapshot.rounds : []).map(({ shoeLifecycle: _proof, ...round }) => round),
       tables: (Array.isArray(snapshot?.tables) ? snapshot.tables : []).map((table) => {
+        const tableId = canonicalTableId(table?.tableId)
+        const proof = lifecycles.get(tableId)
+        if (!proof) return table
         const shoe = Number(table?.shoe)
         const round = Number(table?.round)
-        if (Number.isSafeInteger(shoe) && Number.isSafeInteger(round)) return table
-        const screen = latest.get(canonicalTableId(table?.tableId))
-        return screen ? { ...table, shoe: screen.shoe, round: screen.round } : table
+        const missingScreen = !Number.isSafeInteger(shoe) || !Number.isSafeInteger(round)
+        const unconfirmedShoe = shoe !== proof.activeShoe
+        const staleActiveScreen = shoe === proof.activeShoe && round < proof.currentScreen.round
+        if (missingScreen || unconfirmedShoe || staleActiveScreen) {
+          return { ...table, shoe: proof.currentScreen.shoe, round: proof.currentScreen.round }
+        }
+        return table
       }),
     }
   }

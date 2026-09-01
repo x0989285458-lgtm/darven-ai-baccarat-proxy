@@ -97,7 +97,13 @@ export function createWorkerSourceRuntime({
       await leaseRenewTail
       if (leaseRenewalError) throw leaseRenewalError
       if (stopRequested) return
-      apiClient = createApiClient({ onFinal, onTables })
+      const initialShoeLifecycles = typeof journal.shoeLifecycle === 'function'
+        ? PRODUCTION_TABLE_IDS.map((tableId) => journal.shoeLifecycle(tableId)).filter(Boolean)
+        : []
+      const lifecycleOptions = typeof journal.transitionShoeLifecycle === 'function'
+        ? { onShoeLifecycleTransition: (value) => journal.transitionShoeLifecycle(value) }
+        : {}
+      apiClient = createApiClient({ onFinal, onTables, initialShoeLifecycles, ...lifecycleOptions })
       await apiClient.start()
       await leaseRenewTail
       if (leaseRenewalError) throw leaseRenewalError
@@ -269,6 +275,9 @@ export function createWorkerSourceRuntime({
     if (gaps.length > 0 && deliverable.length === 0) throw new Error(`live_ack_blocked:${lastReplayGate ?? 'replay_incomplete'}`)
     const source = currentSource()
     const apiState = apiClient?.snapshot?.() ?? {}
+    const shoeLifecycles = typeof journal.shoeLifecycle === 'function'
+      ? PRODUCTION_TABLE_IDS.map((tableId) => journal.shoeLifecycle(tableId)).filter(Boolean)
+      : []
     return {
       buildVersion: '105',
       sessionId: `worker-${source.ownerId}-${source.epoch}`,
@@ -283,6 +292,7 @@ export function createWorkerSourceRuntime({
       sourceProgressAt: sourceProgressTracker?.sourceProgressAt ?? null,
       tableCount: tables.length,
       tables: structuredClone(tables),
+      shoeLifecycles: structuredClone(shoeLifecycles),
       rounds: deliverable.map((entry) => structuredClone(entry.event)),
     }
   }

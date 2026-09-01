@@ -13,6 +13,7 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
   const cursorOrders = new Map()
   const retiredCursorShoes = new Map()
   const closedShoes = new Map()
+  const shoeLifecycles = new Map()
   let nextFinalOrder = 0
   let journalHeader = null
   let tail = Promise.resolve()
@@ -30,9 +31,11 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
         if (current.hash !== hash) throw new Error('final_identity_payload_conflict')
         return { status: 'duplicate', identity, hash, event: structuredClone(current.event) }
       }
+      if (normalized.shoeLifecycle) validateFinalShoeLifecycle(normalized.shoeLifecycle)
       const record = { version: 1, type: 'final', identity, hash, event: normalized }
       await appendRecord(record)
       finals.set(identity, { hash, event: normalized, order: ++nextFinalOrder })
+      if (normalized.shoeLifecycle) applyShoeLifecycle(normalized.shoeLifecycle)
       return { status: 'appended', identity, hash, event: structuredClone(normalized) }
     })
   }
@@ -102,6 +105,54 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
     })
   }
 
+  async function transitionShoeLifecycle(value = {}) {
+    return serialize(async () => {
+      const candidate = normalizeShoeLifecycle(value)
+      await assertSource(candidate.source)
+      const current = shoeLifecycles.get(candidate.tableId)
+      const sourceOrder = compareTransportSource(candidate.source, current?.source)
+      if (current && sourceOrder != null && sourceOrder <= 0) {
+        if (JSON.stringify(current) === JSON.stringify(candidate)) return { status: 'duplicate', lifecycle: structuredClone(current) }
+        throw new Error('shoe_lifecycle_source_regression')
+      }
+      const retiredShoes = current ? [...current.retiredShoes] : []
+      if (current && current.activeShoe !== candidate.activeShoe) retiredShoes.push(current.activeShoe)
+      const bounded = [...new Set(retiredShoes.filter((shoe) => shoe !== candidate.activeShoe))]
+      if (bounded.length > 64) bounded.splice(0, bounded.length - 64)
+      const lifecycle = { ...candidate, retiredShoes: bounded }
+      await appendRecord({ version: 1, type: 'shoe_lifecycle', lifecycle })
+      shoeLifecycles.set(candidate.tableId, lifecycle)
+      return { status: 'appended', lifecycle: structuredClone(lifecycle) }
+    })
+  }
+
+  function shoeLifecycle(tableId) {
+    const value = shoeLifecycles.get(canonicalProductionTableId(tableId))
+    return value ? structuredClone(value) : null
+  }
+
+  function applyShoeLifecycle(lifecycle, { restoring = false } = {}) {
+    validateFinalShoeLifecycle(lifecycle, { restoring })
+    shoeLifecycles.set(lifecycle.tableId, structuredClone(lifecycle))
+  }
+
+  function validateFinalShoeLifecycle(lifecycle, { restoring = false } = {}) {
+    const current = shoeLifecycles.get(lifecycle.tableId)
+    if (current && current.activeShoe !== lifecycle.activeShoe) {
+      throw new Error(restoring ? 'final_journal_corrupt' : 'final_shoe_lifecycle_transition_without_provider')
+    }
+    const sourceOrder = compareTransportSource(lifecycle.source, current?.source)
+    if (current && sourceOrder != null && sourceOrder < 0) {
+      throw new Error(restoring ? 'final_journal_corrupt' : 'shoe_lifecycle_source_regression')
+    }
+    if (current && sourceOrder === 0) {
+      if (JSON.stringify(current) !== JSON.stringify(lifecycle)) {
+        throw new Error(restoring ? 'final_journal_corrupt' : 'shoe_lifecycle_source_conflict')
+      }
+      return
+    }
+  }
+
   async function rebindPending(allocateSource, targetSource = null) {
     if (typeof allocateSource !== 'function') throw new Error('final_rebind_allocator_required')
     return serialize(async () => {
@@ -128,7 +179,7 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
         if (JSON.stringify(journalHeader) !== JSON.stringify(header)) throw new Error('final_journal_header_conflict')
         return { status: 'duplicate', ...header }
       }
-      if (finals.size > 0 || acknowledgements.size > 0 || closedShoes.size > 0) throw new Error('final_journal_header_must_be_first')
+      if (finals.size > 0 || acknowledgements.size > 0 || closedShoes.size > 0 || shoeLifecycles.size > 0) throw new Error('final_journal_header_must_be_first')
       await appendRecord({ version: 1, type: 'header', ...header })
       journalHeader = header
       return { status: 'appended', ...header }
@@ -195,6 +246,7 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
         const current = finals.get(identity)
         if (current && current.hash !== hash) throw new Error('final_identity_payload_conflict')
         finals.set(identity, { hash, event, order: current?.order ?? ++nextFinalOrder })
+        if (event.shoeLifecycle) applyShoeLifecycle(event.shoeLifecycle, { restoring: true })
       } else if (record?.type === 'ack') {
         const current = finals.get(String(record.identity ?? ''))
         if (!current || current.hash !== record.hash) throw new Error('final_ack_mismatch')
@@ -211,6 +263,12 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
         const current = closedShoes.get(key)
         if (current && current.hash !== hash) throw new Error('shoe_closed_marker_conflict')
         closedShoes.set(key, { ...marker, hash })
+      } else if (record?.type === 'shoe_lifecycle') {
+        const lifecycle = normalizeRestoredShoeLifecycle(record.lifecycle)
+        const current = shoeLifecycles.get(lifecycle.tableId)
+        const sourceOrder = compareTransportSource(lifecycle.source, current?.source)
+        if (current && sourceOrder != null && sourceOrder <= 0) throw new Error('final_journal_corrupt')
+        shoeLifecycles.set(lifecycle.tableId, lifecycle)
       } else if (record?.type === 'rebind') {
         const identity = String(record.identity ?? '')
         const current = finals.get(identity)
@@ -318,7 +376,11 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
     return current
   }
 
-  return { append, ack, ackMany, closeShoe, rebindPending, writeHeader, bootstrapFromSnapshotPusherCursor, pending, cursor, status, header: () => journalHeader && structuredClone(journalHeader) }
+  return {
+    append, ack, ackMany, closeShoe, transitionShoeLifecycle, shoeLifecycle,
+    rebindPending, writeHeader, bootstrapFromSnapshotPusherCursor, pending, cursor, status,
+    header: () => journalHeader && structuredClone(journalHeader),
+  }
 }
 
 export function finalIdentity(event = {}) {
@@ -363,7 +425,10 @@ function normalizeFinal(event = {}) {
     || !Number.isSafeInteger(Number(source.epoch)) || Number(source.epoch) < 1
     || !String(source.fence ?? '')
     || !Number.isSafeInteger(Number(source.sequence)) || Number(source.sequence) < 1) throw new Error('final_source_invalid')
-  return structuredClone({ ...event, tableId, shoe, round, rawResult: event.rawResult.map(Number), source: { ...source, epoch: Number(source.epoch), sequence: Number(source.sequence) } })
+  const normalizedSource = { ...source, epoch: Number(source.epoch), sequence: Number(source.sequence) }
+  const normalized = structuredClone({ ...event, tableId, shoe, round, rawResult: event.rawResult.map(Number), source: normalizedSource })
+  if (event.shoeLifecycle != null) normalized.shoeLifecycle = normalizeFinalShoeLifecycle(event.shoeLifecycle, normalized)
+  return normalized
 }
 
 function normalizeTransportSource(source = {}) {
@@ -375,6 +440,54 @@ function normalizeTransportSource(source = {}) {
     || !Number.isSafeInteger(normalized.epoch) || normalized.epoch < 1 || !normalized.fence
     || !Number.isSafeInteger(normalized.sequence) || normalized.sequence < 1) throw new Error('final_source_invalid')
   return normalized
+}
+
+function normalizeShoeLifecycle(value = {}) {
+  const tableId = canonicalProductionTableId(value.tableId)
+  const activeShoe = Number(value.activeShoe)
+  const round = Number(value.round)
+  const origin = String(value.origin ?? '')
+  if (!PRODUCTION_TABLE_IDS.includes(tableId) || !Number.isSafeInteger(activeShoe)
+    || !Number.isSafeInteger(round) || round < 0 || !['provider', 'final'].includes(origin)) {
+    throw new Error('shoe_lifecycle_invalid')
+  }
+  return {
+    tableId, activeShoe, retiredShoes: [], currentScreen: { shoe: activeShoe, round },
+    origin, source: normalizeTransportSource(value.source),
+  }
+}
+
+function normalizeRestoredShoeLifecycle(value = {}) {
+  const normalized = normalizeShoeLifecycle({
+    tableId: value.tableId, activeShoe: value.activeShoe,
+    round: value.currentScreen?.round, origin: value.origin, source: value.source,
+  })
+  if (Number(value.currentScreen?.shoe) !== normalized.activeShoe || !Array.isArray(value.retiredShoes)
+    || value.retiredShoes.length > 64) throw new Error('shoe_lifecycle_invalid')
+  const retiredShoes = value.retiredShoes.map(Number)
+  if (!retiredShoes.every(Number.isSafeInteger) || new Set(retiredShoes).size !== retiredShoes.length
+    || retiredShoes.includes(normalized.activeShoe)) throw new Error('shoe_lifecycle_invalid')
+  return { ...normalized, retiredShoes }
+}
+
+function normalizeFinalShoeLifecycle(value, event) {
+  const lifecycle = normalizeRestoredShoeLifecycle(value)
+  const source = event.capturedSource == null ? event.source : normalizeTransportSource(event.capturedSource)
+  if (lifecycle.tableId !== event.tableId || lifecycle.activeShoe !== event.shoe
+    || lifecycle.currentScreen.shoe !== event.shoe || lifecycle.currentScreen.round !== event.round
+    || lifecycle.origin !== 'final' || lifecycle.source.mode !== source.mode
+    || lifecycle.source.ownerId !== source.ownerId || lifecycle.source.epoch !== source.epoch
+    || lifecycle.source.fence !== source.fence || lifecycle.source.sequence !== source.sequence) {
+    throw new Error('final_shoe_lifecycle_invalid')
+  }
+  return lifecycle
+}
+
+function compareTransportSource(candidate, current) {
+  if (!candidate || !current || candidate.mode !== current.mode || candidate.ownerId !== current.ownerId) return null
+  if (candidate.epoch !== current.epoch) return candidate.epoch < current.epoch ? -1 : 1
+  if (candidate.sequence === current.sequence) return 0
+  return candidate.sequence < current.sequence ? -1 : 1
 }
 
 function sameTransportOwner(source, target) {

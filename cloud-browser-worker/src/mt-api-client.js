@@ -11,6 +11,8 @@ export function createMtApiClient({
   createSocket,
   onFinal = async () => {},
   onTables = async () => {},
+  onShoeLifecycleTransition = null,
+  initialShoeLifecycles = [],
   onError = () => {},
   gameUrl = DEFAULT_GAME_URL,
   chatUrl = DEFAULT_CHAT_URL,
@@ -39,7 +41,7 @@ export function createMtApiClient({
   let refreshCycle = null
   let latestTables = null
   const latestFinalScreenByTable = new Map()
-  const shoeChronologyByTable = new Map()
+  let shoeChronologyByTable = bootstrapShoeChronology(initialShoeLifecycles, latestFinalScreenByTable)
   const resolvedTablesRefreshTimeoutMs = Math.max(1_000, Number(tablesRefreshTimeoutMs) || 10_000)
 
   async function start() {
@@ -179,9 +181,17 @@ export function createMtApiClient({
       current.tablesRefreshRequestedAtMs = null
       const validated = validateExactTables(payload.msg.tables)
       if (validated) {
+        const workingChronology = cloneShoeChronology(shoeChronologyByTable)
         const merged = mergeExactTablesMonotonic(
-          latestTables, validated, latestFinalScreenByTable, shoeChronologyByTable,
+          latestTables, validated, latestFinalScreenByTable, workingChronology,
         )
+        if (typeof onShoeLifecycleTransition === 'function') {
+          for (const lifecycle of providerLifecycleTransitions(shoeChronologyByTable, workingChronology, merged)) {
+            const source = await allocateEventSource(current)
+            await onShoeLifecycleTransition({ ...lifecycle, source })
+          }
+        }
+        shoeChronologyByTable = workingChronology
         latestTables = merged
         if (exactJoinComplete(current)) await onTables(merged)
         else current.pendingTables = merged
@@ -196,17 +206,17 @@ export function createMtApiClient({
     const shoeDecision = inspectFinalShoe(shoeChronologyByTable, final, latestTables)
     if (!shoeDecision.accept) return
     refreshGenerationLease(current)
-    eventSequence += 1
-    const source = typeof sourceOwner.nextEventSource === 'function'
-      ? await sourceOwner.nextEventSource(current.lease)
-      : sourceOwner.eventSource(eventSequence, current.lease)
-    refreshGenerationLease(current)
-    if (source?.mode !== current.lease.mode || source?.ownerId !== current.lease.ownerId
-      || Number(source?.epoch) !== Number(current.lease.epoch) || source?.fence !== current.lease.fence) {
-      throw new Error('stale_source_fence')
+    const source = await allocateEventSource(current)
+    const acceptedChronology = cloneShoeChronology(shoeChronologyByTable)
+    if (shoeDecision.transition) transitionActiveShoe(acceptedChronology, final.tableId, final.shoe)
+    const lifecycle = acceptedChronology.get(final.tableId)
+    if (!lifecycle || lifecycle.active !== final.shoe) throw new Error('mt_api_final_lifecycle_missing')
+    const shoeLifecycle = {
+      tableId: final.tableId, activeShoe: lifecycle.active, retiredShoes: [...lifecycle.retired],
+      currentScreen: { shoe: final.shoe, round: final.round }, origin: 'final', source,
     }
-    await onFinal({ ...final, source })
-    if (shoeDecision.transition) transitionActiveShoe(shoeChronologyByTable, final.tableId, final.shoe)
+    await onFinal({ ...final, source, shoeLifecycle })
+    shoeChronologyByTable = acceptedChronology
     const previousFinalScreen = latestFinalScreenByTable.get(final.tableId)
     if (isStrictlyNewerScreen(previousFinalScreen, final)) {
       latestFinalScreenByTable.set(final.tableId, { shoe: final.shoe, round: final.round })
@@ -216,6 +226,20 @@ export function createMtApiClient({
       await onTables(latestTables)
     }
     requestTables(current)
+  }
+
+  async function allocateEventSource(current) {
+    refreshGenerationLease(current)
+    eventSequence += 1
+    const source = typeof sourceOwner.nextEventSource === 'function'
+      ? await sourceOwner.nextEventSource(current.lease)
+      : sourceOwner.eventSource(eventSequence, current.lease)
+    refreshGenerationLease(current)
+    if (source?.mode !== current.lease.mode || source?.ownerId !== current.lease.ownerId
+      || Number(source?.epoch) !== Number(current.lease.epoch) || source?.fence !== current.lease.fence) {
+      throw new Error('stale_source_fence')
+    }
+    return source
   }
 
   function joinWhenReady(current) {
@@ -402,6 +426,43 @@ export function createMtApiClient({
   }
 }
 
+function bootstrapShoeChronology(values, latestScreens) {
+  if (!Array.isArray(values)) throw new Error('mt_api_initial_shoe_lifecycles_invalid')
+  const chronology = new Map()
+  for (const value of values) {
+    const tableId = canonicalProductionTableId(value?.tableId)
+    const active = Number(value?.activeShoe)
+    const retired = Array.isArray(value?.retiredShoes) ? value.retiredShoes.map(Number) : null
+    const shoe = Number(value?.currentScreen?.shoe)
+    const round = Number(value?.currentScreen?.round)
+    if (!PRODUCTION_TABLE_IDS.includes(tableId) || chronology.has(tableId) || !Number.isSafeInteger(active)
+      || !retired || retired.length > 64 || !retired.every(Number.isSafeInteger)
+      || new Set(retired).size !== retired.length || retired.includes(active)
+      || shoe !== active || !Number.isSafeInteger(round) || round < 0) {
+      throw new Error('mt_api_initial_shoe_lifecycles_invalid')
+    }
+    chronology.set(tableId, { active, retired: [...retired], origin: String(value?.origin ?? 'provider') })
+    latestScreens.set(tableId, { shoe, round })
+  }
+  return chronology
+}
+
+function cloneShoeChronology(chronology) {
+  return new Map([...chronology].map(([tableId, state]) => [tableId, structuredClone(state)]))
+}
+
+function providerLifecycleTransitions(previous, current, tables) {
+  const transitions = []
+  for (const [tableId, state] of current) {
+    if (previous.get(tableId)?.active === state.active) continue
+    const table = tables.find((candidate) => canonicalProductionTableId(candidate?.tableId ?? candidate?.table_id) === tableId)
+    const round = Number(table?.round)
+    if (!Number.isSafeInteger(round) || round < 0) throw new Error('mt_api_provider_lifecycle_screen_invalid')
+    transitions.push({ tableId, activeShoe: state.active, round, origin: 'provider' })
+  }
+  return transitions
+}
+
 export function multipleJoinPacket(tableIds = PRODUCTION_TABLE_IDS) {
   const exact = tableIds.map(canonicalProductionTableId)
   if (exact.length !== PRODUCTION_TABLE_IDS.length || exact.some((value, index) => value !== PRODUCTION_TABLE_IDS[index])) {
@@ -506,13 +567,8 @@ function mergeExactTablesMonotonic(
       && Number.isSafeInteger(incomingShoe) && Number.isSafeInteger(incomingRound)
     const missingIncomingScreen = previousHasScreen && !incomingHasScreen
     const staleSameShoeRound = previousHasScreen && incomingHasScreen && incomingShoe === previousShoe && incomingRound < previousRound
-    const forwardProviderTransition = previousHasScreen && incomingHasScreen
-      && incomingShoe > previousShoe && !(previousShoe <= 10 && incomingShoe >= 900)
-    const wrappedProviderTransition = previousHasScreen && incomingHasScreen
-      && previousShoe >= 900 && incomingShoe >= 1 && incomingShoe <= 10
-    const unsupportedCrossShoe = previousHasScreen && incomingHasScreen && incomingShoe !== previousShoe
-      && !forwardProviderTransition && !wrappedProviderTransition
-    if (missingIncomingScreen || staleSameShoeRound || unsupportedCrossShoe) selected = previous
+    const providerShoeTransition = previousHasScreen && incomingHasScreen && incomingShoe !== previousShoe
+    if (missingIncomingScreen || staleSameShoeRound) selected = previous
     const finalScreen = finalScreens.get(tableId)
     const selectedShoe = Number(selected?.shoe)
     const selectedRound = Number(selected?.round)
@@ -524,8 +580,10 @@ function mergeExactTablesMonotonic(
       : (previousHasScreen ? previousShoe : (selectedHasScreen ? selectedShoe : null))
     const initialOrigin = Number.isSafeInteger(finalShoe) ? 'final' : 'provider'
     const shoeState = ensureShoeState(shoeChronology, tableId, initialShoe, initialOrigin)
-    if ((forwardProviderTransition || wrappedProviderTransition)
-      && selectedHasScreen && selectedShoe === incomingShoe && shoeState?.active === previousShoe) {
+    const providerReconnectTransition = !previousHasScreen && incomingHasScreen && shoeState
+      && shoeState.active !== incomingShoe && !shoeState.retired.includes(incomingShoe)
+    if ((providerShoeTransition || providerReconnectTransition)
+      && selectedHasScreen && selectedShoe === incomingShoe && shoeState?.active !== selectedShoe) {
       transitionActiveShoe(shoeChronology, tableId, selectedShoe, 'provider')
     }
     if (selectedHasScreen && shoeState?.active === selectedShoe) shoeState.origin = 'provider'
@@ -551,28 +609,19 @@ function mergeExactTablesMonotonic(
 function inspectFinalShoe(chronology, final, tables) {
   const tableId = canonicalProductionTableId(final?.tableId)
   const shoe = Number(final?.shoe)
-  const round = Number(final?.round)
   if (!PRODUCTION_TABLE_IDS.includes(tableId) || !Number.isSafeInteger(shoe)) return { accept: false, transition: false }
   const table = (Array.isArray(tables) ? tables : [])
     .find((candidate) => canonicalProductionTableId(candidate?.tableId ?? candidate?.table_id) === tableId)
-  const tableShoe = Number(table?.shoe)
-  const tableRound = Number(table?.round)
-  const hasTableScreen = Number.isSafeInteger(tableShoe) && Number.isSafeInteger(tableRound)
-  const state = ensureShoeState(chronology, tableId, hasTableScreen ? tableShoe : null)
+  const tableShoe = table?.shoe != null && table?.shoe !== '' ? Number(table.shoe) : null
+  const state = ensureShoeState(chronology, tableId, Number.isSafeInteger(tableShoe) ? tableShoe : null)
   if (!state) return { accept: true, transition: true }
   if (state.active === shoe) return { accept: true, transition: false }
-  if (state.retired.includes(shoe)) return { accept: false, transition: false }
-  if (!hasTableScreen) return { accept: true, transition: true }
-  if (tableShoe === shoe) return { accept: true, transition: true }
-  if (shoe === Number(state.active) + 1) return { accept: true, transition: true }
-  const providerWrap = Number(state.active) >= 900 && shoe >= 1 && shoe <= 10 && round < tableRound
-  if (providerWrap) return { accept: true, transition: true }
   return { accept: false, transition: false }
 }
 
 function ensureShoeState(chronology, tableId, initialShoe, origin = 'provider') {
   let state = chronology.get(tableId)
-  if (!state && Number.isSafeInteger(Number(initialShoe))) {
+  if (!state && initialShoe != null && initialShoe !== '' && Number.isSafeInteger(Number(initialShoe))) {
     state = { active: Number(initialShoe), retired: [], origin }
     chronology.set(tableId, state)
   }

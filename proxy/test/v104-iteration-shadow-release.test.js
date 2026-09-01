@@ -22,9 +22,6 @@ test('v2 threshold-only shadow release manifest is isolated and exact', () => {
   const url = new URL('../../release/v104-seven-head-shadow-v2-release-manifest.json', import.meta.url)
   assert.equal(existsSync(url), true)
   const manifest = readJson('../../release/v104-seven-head-shadow-v2-release-manifest.json')
-  const proxy = readJson('../package.json')
-  const frontend = readJson('../../frontend/package.json')
-  const worker = readJson('../../cloud-browser-worker/package.json')
   assert.equal(manifest.releaseVersion, 'v104.2.0-seven-head-shadow.2')
   assert.equal(manifest.shadowStrategyVersion, 'v104-seven-head-shadow-v2-player-pair-threshold-41')
   assert.equal(manifest.formalStrategyVersion, 'v104')
@@ -39,9 +36,9 @@ test('v2 threshold-only shadow release manifest is isolated and exact', () => {
   assert.equal(manifest.deployment.catalogAclReadbackBeforeProxy, true)
   assert.equal(manifest.deployment.rollbackBeforeProxy, true)
   assert.deepEqual(manifest.thresholds, { tie: 30, superSix: 50, bankerDragon: 40, playerDragon: 40, bankerPair: 50, playerPair: 41 })
-  assert.equal(proxy.version, '1.0.72')
-  assert.equal(frontend.version, '1.0.65')
-  assert.equal(worker.version, '1.0.66')
+  assert.equal(manifest.proxyPackageVersion, '1.0.13')
+  assert.equal(manifest.deployment.frontend, 'unchanged')
+  assert.equal(manifest.deployment.worker, 'unchanged')
 })
 
 test('v3 reweight shadow manifest is isolated and exact', () => {

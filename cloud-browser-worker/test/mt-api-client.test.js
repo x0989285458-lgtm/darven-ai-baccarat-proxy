@@ -137,7 +137,11 @@ test('Reviewer P1 Join/Tables: Chat has no ACK, so exact Tables release only aft
 
 test('first summary initializes shoe and round when the initial ten-table list omits screen identity', async () => {
   const delivered = []
-  const harness = createHarness({ onTables: async (tables) => delivered.push(tables) })
+  const finals = []
+  const harness = createHarness({
+    onTables: async (tables) => delivered.push(tables),
+    onFinal: async (event) => finals.push(event),
+  })
   const client = createMtApiClient(harness.options)
   const initialTables = PRODUCTION_TABLE_IDS.map((table_id) => ({ table_id, trend: [] }))
   await client.start()
@@ -152,6 +156,10 @@ test('first summary initializes shoe and round when the initial ten-table list o
   const current = delivered.at(-1).find((table) => table.table_id === 'BAG01')
   assert.equal(current.shoe, 88)
   assert.equal(current.round, 9)
+  assert.deepEqual(finals[0].shoeLifecycle, {
+    tableId: 'BAG01', activeShoe: 88, retiredShoes: [],
+    currentScreen: { shoe: 88, round: 9 }, origin: 'final', source: finals[0].source,
+  })
   client.stop()
 })
 
@@ -205,10 +213,17 @@ test('startup current-shoe screen rejects a lower-round unknown old-shoe summary
   client.stop()
 })
 
-test('startup current-shoe provider screen rejects a delayed unknown cross-shoe table refresh', async () => {
+test('startup persisted lifecycle rejects a delayed retired cross-shoe table refresh', async () => {
   const delivered = []
   const harness = createHarness({ onTables: async (tables) => delivered.push(tables) })
-  const client = createMtApiClient(harness.options)
+  const client = createMtApiClient({
+    ...harness.options,
+    initialShoeLifecycles: [{
+      tableId: 'BAG01', activeShoe: 89, retiredShoes: [88],
+      currentScreen: { shoe: 89, round: 5 }, origin: 'provider',
+      source: { mode: 'api', ownerId: 'api-primary', epoch: 3, fence: 'prior-fence', sequence: 90 },
+    }],
+  })
   const startupTables = PRODUCTION_TABLE_IDS.map((table_id) => ({ table_id, shoe: 89, round: 5, trend: [] }))
   await client.start()
   harness.openAll()
@@ -228,7 +243,7 @@ test('startup current-shoe provider screen rejects a delayed unknown cross-shoe 
   client.stop()
 })
 
-test('provider shoe 999 accepts wrapped shoe 1 round 1 summary before table refresh', async () => {
+test('wrapped shoe 1 Final stays blocked until provider shoe transition is persisted', async () => {
   const delivered = []
   const finals = []
   const harness = createHarness({
@@ -244,6 +259,15 @@ test('provider shoe 999 accepts wrapped shoe 1 round 1 summary before table refr
   harness.acknowledgeJoins()
   await harness.flush(2)
 
+  harness.receive('game', summaryPacketFor('BAG01', 1, 1))
+  await harness.flush(4)
+  assert.deepEqual(finals, [])
+
+  const wrappedTables = startupTables.map((table) => table.table_id === 'BAG01'
+    ? { ...table, shoe: 1, round: 0 }
+    : table)
+  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: wrappedTables } })
+  await harness.flush(4)
   harness.receive('game', summaryPacketFor('BAG01', 1, 1))
   await harness.flush(4)
 
@@ -359,6 +383,159 @@ test('authoritative provider refresh accepts a skipped-shoe reconnect transition
   client.stop()
 })
 
+test('provider reconnect transitions from durable lifecycle before any latest table screen exists', async () => {
+  const order = []
+  const harness = createHarness()
+  const client = createMtApiClient({
+    ...harness.options,
+    initialShoeLifecycles: [{
+      tableId: 'BAG01', activeShoe: 92, retiredShoes: [91],
+      currentScreen: { shoe: 92, round: 70 }, origin: 'provider',
+      source: { mode: 'api', ownerId: 'api-primary', epoch: 3, fence: 'prior-fence', sequence: 90 },
+    }],
+    onShoeLifecycleTransition: async (lifecycle) => {
+      if (lifecycle.tableId === 'BAG01') order.push(`lifecycle:${lifecycle.activeShoe}`)
+    },
+    onTables: async (tables) => {
+      order.push(`tables:${tables.find((table) => table.table_id === 'BAG01')?.shoe}`)
+    },
+  })
+  const tables = PRODUCTION_TABLE_IDS.map((table_id) => ({
+    table_id, shoe: table_id === 'BAG01' ? 95 : 200, round: table_id === 'BAG01' ? 8 : 1, trend: [],
+  }))
+  await client.start()
+  harness.openAll()
+  harness.authenticateAll()
+  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables } })
+  harness.acknowledgeJoins()
+  await harness.flush(4)
+
+  assert.deepEqual(order.filter((value) => value.endsWith(':95')), ['lifecycle:95', 'tables:95'])
+  client.stop()
+})
+
+test('provider reconnect cannot revive a durable retired shoe before latest tables hydrate', async () => {
+  const transitions = []
+  const delivered = []
+  const harness = createHarness()
+  const client = createMtApiClient({
+    ...harness.options,
+    initialShoeLifecycles: [{
+      tableId: 'BAG09', activeShoe: 999, retiredShoes: [1],
+      currentScreen: { shoe: 999, round: 70 }, origin: 'provider',
+      source: { mode: 'api', ownerId: 'api-primary', epoch: 3, fence: 'prior-fence', sequence: 90 },
+    }],
+    onShoeLifecycleTransition: async (lifecycle) => transitions.push(lifecycle),
+    onTables: async (tables) => delivered.push(tables),
+  })
+  const tables = PRODUCTION_TABLE_IDS.map((table_id) => ({
+    table_id, shoe: table_id === 'BAG09' ? 1 : 200, round: table_id === 'BAG09' ? 70 : 1, trend: [],
+  }))
+  await client.start()
+  harness.openAll()
+  harness.authenticateAll()
+  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables } })
+  harness.acknowledgeJoins()
+  await harness.flush(4)
+
+  assert.equal(transitions.some((value) => value.tableId === 'BAG09' && value.activeShoe === 1), false)
+  const current = delivered.at(-1).find((table) => table.table_id === 'BAG09')
+  assert.deepEqual({ shoe: current.shoe, round: current.round }, { shoe: 999, round: 70 })
+  client.stop()
+})
+
+test('provider shoe transition is durably acknowledged before publishing the advanced table screen', async () => {
+  const order = []
+  const lifecycles = []
+  const harness = createHarness()
+  const client = createMtApiClient({
+    ...harness.options,
+    onShoeLifecycleTransition: async (lifecycle) => {
+      lifecycles.push(structuredClone(lifecycle))
+      order.push(`lifecycle:${lifecycle.activeShoe}`)
+    },
+    onTables: async (tables) => {
+      order.push(`tables:${tables.find((table) => table.table_id === 'BAG01')?.shoe}`)
+    },
+  })
+  const startupTables = PRODUCTION_TABLE_IDS.map((table_id) => ({ table_id, shoe: 92, round: 70, trend: [] }))
+  await client.start()
+  harness.openAll()
+  harness.authenticateAll()
+  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: startupTables } })
+  harness.acknowledgeJoins()
+  await harness.flush(4)
+  order.length = 0
+
+  const reconnectedTables = startupTables.map((table) => table.table_id === 'BAG01'
+    ? { ...table, shoe: 95, round: 3 }
+    : table)
+  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: reconnectedTables } })
+  await harness.flush(4)
+
+  assert.deepEqual(order.slice(0, 2), ['lifecycle:95', 'tables:95'])
+  const transition = lifecycles.find((lifecycle) => lifecycle.tableId === 'BAG01' && lifecycle.activeShoe === 95)
+  assert.equal(transition.round, 3)
+  assert.equal(transition.origin, 'provider')
+  assert.equal(transition.source.mode, 'api')
+  assert.equal(Number.isSafeInteger(transition.source.sequence), true)
+  client.stop()
+})
+
+test('durable retired-shoe bootstrap rejects a delayed historical wrap Final after restart', async () => {
+  const finals = []
+  const harness = createHarness({ onFinal: async (event) => finals.push(event) })
+  const client = createMtApiClient({
+    ...harness.options,
+    initialShoeLifecycles: [{
+      tableId: 'BAG09', activeShoe: 999, retiredShoes: [1],
+      currentScreen: { shoe: 999, round: 70 }, origin: 'provider',
+      source: { mode: 'api', ownerId: 'api-primary', epoch: 3, fence: 'prior-fence', sequence: 90 },
+    }],
+  })
+  const tables = PRODUCTION_TABLE_IDS.map((table_id) => ({
+    table_id, shoe: table_id === 'BAG09' ? 999 : 200, round: table_id === 'BAG09' ? 70 : 1, trend: [],
+  }))
+  await client.start()
+  harness.openAll()
+  harness.authenticateAll()
+  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables } })
+  harness.acknowledgeJoins()
+  await harness.flush(3)
+  harness.receive('game', summaryPacketFor('BAG09', 1, 1))
+  await harness.flush(4)
+
+  assert.deepEqual(finals, [])
+  client.stop()
+})
+
+test('cross-shoe Final cannot create a lifecycle without a persisted provider transition', async () => {
+  const finals = []
+  const harness = createHarness({ onFinal: async (event) => finals.push(event) })
+  const client = createMtApiClient({
+    ...harness.options,
+    initialShoeLifecycles: [{
+      tableId: 'BAG01', activeShoe: 92, retiredShoes: [],
+      currentScreen: { shoe: 92, round: 70 }, origin: 'provider',
+      source: { mode: 'api', ownerId: 'api-primary', epoch: 3, fence: 'prior-fence', sequence: 90 },
+    }],
+  })
+  const tables = PRODUCTION_TABLE_IDS.map((table_id) => ({
+    table_id, shoe: table_id === 'BAG01' ? 92 : 200, round: table_id === 'BAG01' ? 70 : 1, trend: [],
+  }))
+  await client.start()
+  harness.openAll()
+  harness.authenticateAll()
+  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables } })
+  harness.acknowledgeJoins()
+  await harness.flush(3)
+  harness.receive('game', summaryPacketFor('BAG01', 93, 1))
+  await harness.flush(4)
+
+  assert.deepEqual(finals, [])
+  client.stop()
+})
+
 test('delayed previous-shoe table refresh cannot regress the current Final shoe', async () => {
   const delivered = []
   const harness = createHarness({ onTables: async (tables) => delivered.push(tables) })
@@ -370,6 +547,11 @@ test('delayed previous-shoe table refresh cannot regress the current Final shoe'
   harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: initialTables } })
   harness.acknowledgeJoins()
   await harness.flush(2)
+  const advancedTables = initialTables.map((table) => table.table_id === 'BAG01'
+    ? { ...table, shoe: 89, round: 7 }
+    : table)
+  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: advancedTables } })
+  await harness.flush(3)
   harness.receive('game', summaryPacketFor('BAG01', 89, 8))
   await harness.flush(4)
 
@@ -398,6 +580,11 @@ test('delayed previous-shoe summary cannot regress the current Final shoe', asyn
   harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: initialTables } })
   harness.acknowledgeJoins()
   await harness.flush(2)
+  const advancedTables = initialTables.map((table) => table.table_id === 'BAG01'
+    ? { ...table, shoe: 89, round: 0 }
+    : table)
+  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: advancedTables } })
+  await harness.flush(3)
   harness.receive('game', summaryPacketFor('BAG01', 89, 1))
   await harness.flush(4)
   harness.receive('game', summaryPacketFor('BAG01', 88, 10))
@@ -424,6 +611,12 @@ test('all ten missing table screens hydrate from latest trustworthy Final chrono
   await harness.flush(2)
 
   harness.receive('game', summaryPacketFor('BAG09', 999, 70))
+  await harness.flush(4)
+  const wrappedProviderTables = providerTables.map((table) => table.table_id === 'BAG09'
+    ? { ...table, shoe: 2, round: 0 }
+    : table)
+  harness.receive('game', { action: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: wrappedProviderTables } })
+  await harness.flush(3)
   PRODUCTION_TABLE_IDS.forEach((tableId, index) => {
     const shoe = tableId === 'BAG09' ? 2 : 200 + index
     harness.receive('game', summaryPacketFor(tableId, shoe, index + 1))

@@ -1,11 +1,23 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
-import { readFileSync } from 'node:fs'
+import { request as httpRequest } from 'node:http'
 import { buildLivePrediction, buildPredictionResultRow, createSupabaseIngestionClient, ALL_MT_EQUAL_MAIN_WEIGHTS, SIDE_PREDICTION_THRESHOLDS as FORMAL_SIDE_THRESHOLDS } from '../src/supabase-writer.js'
 import { createApp, readRequestBody } from '../src/server.js'
 import { createLicenseAdminClient } from '../src/license-admin.js'
 import { createStableReportSession, FORMAL_MAIN_PREDICTION_WEIGHTS, REPORT_MAIN_WEIGHTS, SIDE_PREDICTION_THRESHOLDS } from '../src/stable-report.js'
+
+const requestStatus = (port, path, headers = {}) => new Promise((resolve, reject) => {
+  const request = httpRequest({ host: '127.0.0.1', port, path, headers }, (response) => {
+    response.resume()
+    resolve({
+      status: response.statusCode,
+      close: () => { response.destroy(); request.destroy() },
+    })
+  })
+  request.once('error', reject)
+  request.end()
+})
 
 const table = {
   tableId: 'BAG01', shoe: 88, round: 20,
@@ -254,15 +266,17 @@ test('SSE accepts bearer authorization and rejects every query token', async () 
   const session = JSON.parse(login.body)
   await app.start()
   const address = app.server.address()
-  const controller = new AbortController()
+  let first
+  let queryToken
   try {
-    const first = await fetch(`http://127.0.0.1:${address.port}/api/tables/stream`, { headers: { authorization: `Bearer ${session.memberSessionToken}` }, signal: controller.signal })
+    first = await requestStatus(address.port, '/api/tables/stream', { authorization: `Bearer ${session.memberSessionToken}` })
     assert.equal(first.status, 200)
-    controller.abort()
-    const queryToken = await fetch(`http://127.0.0.1:${address.port}/api/tables/stream?streamTicket=forbidden-query-token`)
+    first.close()
+    queryToken = await requestStatus(address.port, '/api/tables/stream?streamTicket=forbidden-query-token')
     assert.equal(queryToken.status, 400)
   } finally {
-    controller.abort()
+    first?.close()
+    queryToken?.close()
     await app.stop()
   }
 

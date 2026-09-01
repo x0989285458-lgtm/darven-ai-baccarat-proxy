@@ -664,6 +664,46 @@ test('cross-shoe coverage is not remembered until every replay Final is journale
   assert.equal(replayCalls, 2)
 })
 
+test('runtime bootstraps durable shoe lifecycle and wires provider transitions back to the journal', async () => {
+  const lease = { mode: 'api', ownerId: 'api-primary', epoch: 4, fence: 'fence-4', status: 'active', expiresAt: 99_999 }
+  const persisted = {
+    tableId: 'BAG09', activeShoe: 999, retiredShoes: [1],
+    currentScreen: { shoe: 999, round: 70 }, origin: 'provider',
+    source: { mode: 'api', ownerId: 'api-primary', epoch: 3, fence: 'prior-fence', sequence: 90 },
+  }
+  const transitions = []
+  let apiOptions
+  const runtime = createWorkerSourceRuntime({
+    sourceOwner: {
+      acquireOrRecover: async () => lease, lease: () => lease, assertCurrent: () => true,
+      renew: async () => lease, stop: async () => {},
+    },
+    journal: {
+      pending: () => [], cursor: () => null, status: () => null, append: async () => {}, ack: async () => {},
+      shoeLifecycle: (tableId) => tableId === 'BAG09' ? structuredClone(persisted) : null,
+      transitionShoeLifecycle: async (value) => { transitions.push(structuredClone(value)) },
+    },
+    gapDetector: createGapDetector(),
+    replayProvider: { replay: async () => ({ ok: false, events: [] }) },
+    createApiClient: (options) => {
+      apiOptions = options
+      return { start: async () => {}, stop: () => {}, snapshot: () => ({}) }
+    },
+  })
+
+  await runtime.start()
+  assert.deepEqual(apiOptions.initialShoeLifecycles, [persisted])
+  const delivery = await runtime.getDeliverySnapshot()
+  assert.deepEqual(delivery.shoeLifecycles, [persisted])
+  const next = {
+    tableId: 'BAG09', activeShoe: 1, round: 0, origin: 'provider',
+    source: { mode: 'api', ownerId: 'api-primary', epoch: 4, fence: 'fence-4', sequence: 91 },
+  }
+  await apiOptions.onShoeLifecycleTransition(next)
+  assert.deepEqual(transitions, [next])
+  await runtime.stop()
+})
+
 async function runtimeFixture(t, {
   replayProvider = { replay: async () => ({ ok: false, events: [], liveGate: 'record_contract_unverified' }) },
   allowFreshBaseline = false,

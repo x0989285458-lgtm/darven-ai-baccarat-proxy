@@ -19,6 +19,193 @@ test('formal backlog delivery preserves the stable five-second cadence with boun
   assert.doesNotMatch(server, /PUSH_HISTORICAL_COMPACT_THRESHOLD_ENTRIES/)
 })
 
+test('a durable live Final overlays a valid but stale provider table screen before publication', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-stale-provider-screen-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const queuePath = path.join(dir, 'latest.json')
+  const source = { mode: 'api', ownerId: 'api-primary', epoch: 9, fence: 'fence-9' }
+  const live = finalRound('BAG09', 5367, 2, source, 101)
+  const snapshot = {
+    sessionId: 'worker-api-primary-9', buildVersion: '105', source,
+    connected: true, authenticated: true,
+    tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
+      tableId, name: tableId,
+      shoe: tableId === 'BAG09' ? 5366 : 100,
+      round: tableId === 'BAG09' ? 59 : 1,
+    })),
+    shoeLifecycles: [{
+      tableId: 'BAG09', activeShoe: 5367, retiredShoes: [5366],
+      currentScreen: { shoe: 5367, round: 2 }, origin: 'final', source: live.source,
+    }],
+    rounds: [live],
+  }
+  const delivered = []
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://proxy.example/api/cloud-ingest/snapshot', key: 'worker-key',
+    queuePath, getSnapshot: async () => snapshot, isRoundDeliverable: () => true,
+    fetchImpl: async (_url, options) => {
+      const envelope = JSON.parse(options.body)
+      delivered.push(envelope)
+      return {
+        status: 200,
+        json: async () => ({
+          ok: true, accepted: true, duplicate: false,
+          sessionId: envelope.sessionId, sequence: envelope.sequence,
+          acceptedRoundKeys: envelope.roundKeys, source: envelope.source,
+        }),
+      }
+    },
+  })
+
+  assert.equal(await pusher.tick(), true)
+  const table = delivered[0].snapshot.tables.find((candidate) => candidate.tableId === 'BAG09')
+  assert.deepEqual({ shoe: table.shoe, round: table.round }, { shoe: 5367, round: 2 })
+})
+
+test('a persisted source-current lifecycle overlays stale provider without shoe-distance or round-reset heuristics', async (t) => {
+  const source = { mode: 'api', ownerId: 'api-primary', epoch: 9, fence: 'fence-9' }
+  const scenarios = [
+    { name: 'higher-round', provider: { shoe: 5366, round: 1 }, final: { shoe: 5367, round: 2 } },
+    { name: 'same-round', provider: { shoe: 5366, round: 2 }, final: { shoe: 5367, round: 2 } },
+    { name: 'skipped-shoe-reconnect', provider: { shoe: 92, round: 3 }, final: { shoe: 95, round: 9 } },
+    { name: 'provider-confirmed-arbitrary-skip', provider: { shoe: 92, round: 3 }, final: { shoe: 103, round: 9 } },
+    { name: 'trusted-wrap-same-round', provider: { shoe: 999, round: 1 }, final: { shoe: 1, round: 1 } },
+    { name: 'trusted-wrap-skips-first-shoe', provider: { shoe: 999, round: 1 }, final: { shoe: 2, round: 2 } },
+  ]
+  for (const scenario of scenarios) {
+    const dir = await mkdtemp(path.join(tmpdir(), `darven-reviewer-${scenario.name}-`))
+    t.after(() => rm(dir, { recursive: true, force: true }))
+    const live = finalRound('BAG09', scenario.final.shoe, scenario.final.round, source, 101)
+    const snapshot = {
+      sessionId: 'worker-api-primary-9', buildVersion: '105', source,
+      connected: true, authenticated: true,
+      tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
+        tableId, name: tableId,
+        shoe: tableId === 'BAG09' ? scenario.provider.shoe : 100,
+        round: tableId === 'BAG09' ? scenario.provider.round : 1,
+      })),
+      shoeLifecycles: [{
+        tableId: 'BAG09', activeShoe: scenario.final.shoe, retiredShoes: [scenario.provider.shoe],
+        currentScreen: { ...scenario.final }, origin: 'final', source: live.source,
+      }],
+      rounds: [live],
+    }
+    let delivered
+    const pusher = createSnapshotPusher({
+      targetUrl: 'https://proxy.example/api/cloud-ingest/snapshot', key: 'worker-key',
+      queuePath: path.join(dir, 'latest.json'), getSnapshot: async () => snapshot,
+      isRoundDeliverable: () => true,
+      fetchImpl: async (_url, options) => {
+        delivered = JSON.parse(options.body)
+        return {
+          status: 200,
+          json: async () => ({
+            ok: true, accepted: true, duplicate: false,
+            sessionId: delivered.sessionId, sequence: delivered.sequence,
+            acceptedRoundKeys: delivered.roundKeys, source: delivered.source,
+          }),
+        }
+      },
+    })
+    assert.equal(await pusher.tick(), true)
+    const table = delivered.snapshot.tables.find((candidate) => candidate.tableId === 'BAG09')
+    assert.deepEqual(
+      { shoe: table.shoe, round: table.round }, scenario.final,
+      `${scenario.name} must publish the source-current durable Final`,
+    )
+  }
+})
+
+test('durable hydration rejects non-adjacent and reverse-wrap shoes without source-current lifecycle proof', async (t) => {
+  const source = { mode: 'api', ownerId: 'api-primary', epoch: 9, fence: 'fence-9' }
+  const scenarios = [
+    { name: 'non-wrap-600-to-1', provider: { shoe: 1, round: 1 }, final: { shoe: 600, round: 20 } },
+    { name: 'beyond-forward-window', provider: { shoe: 92, round: 3 }, final: { shoe: 103, round: 9 } },
+    { name: 'delayed-999-after-current-3', provider: { shoe: 3, round: 50 }, final: { shoe: 999, round: 70 } },
+    { name: 'previous-shoe-final', provider: { shoe: 5367, round: 1 }, final: { shoe: 5366, round: 59 } },
+  ]
+  for (const scenario of scenarios) {
+    const dir = await mkdtemp(path.join(tmpdir(), `darven-reviewer-negative-${scenario.name}-`))
+    t.after(() => rm(dir, { recursive: true, force: true }))
+    const snapshot = {
+      sessionId: 'worker-api-primary-9', buildVersion: '105', source,
+      connected: true, authenticated: true,
+      tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
+        tableId, name: tableId,
+        shoe: tableId === 'BAG09' ? scenario.provider.shoe : 100,
+        round: tableId === 'BAG09' ? scenario.provider.round : 1,
+      })),
+      rounds: [finalRound('BAG09', scenario.final.shoe, scenario.final.round, source, 101)],
+    }
+    let delivered
+    const pusher = createSnapshotPusher({
+      targetUrl: 'https://proxy.example/api/cloud-ingest/snapshot', key: 'worker-key',
+      queuePath: path.join(dir, 'latest.json'), getSnapshot: async () => snapshot,
+      isRoundDeliverable: () => true,
+      fetchImpl: async (_url, options) => {
+        delivered = JSON.parse(options.body)
+        return {
+          status: 200,
+          json: async () => ({
+            ok: true, accepted: true, duplicate: false,
+            sessionId: delivered.sessionId, sequence: delivered.sequence,
+            acceptedRoundKeys: delivered.roundKeys, source: delivered.source,
+          }),
+        }
+      },
+    })
+    assert.equal(await pusher.tick(), true)
+    const table = delivered.snapshot.tables.find((candidate) => candidate.tableId === 'BAG09')
+    assert.deepEqual(
+      { shoe: table.shoe, round: table.round }, scenario.provider,
+      `${scenario.name} must retain the provider screen`,
+    )
+  }
+})
+
+test('persisted lifecycle proof prevents an evicted retired wrap shoe from reviving over active shoe 999', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-retired-wrap-proof-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const source = { mode: 'api', ownerId: 'api-primary', epoch: 9, fence: 'fence-9' }
+  const historical = {
+    tableId: 'BAG09', shoe: 1, round: 1, winner: 'banker', sourceAction: 'summary', final: true,
+    rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], source: { ...source, sequence: 101 },
+  }
+  const snapshot = {
+    sessionId: 'worker-api-primary-9', buildVersion: '105', source,
+    tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
+      tableId, name: tableId, shoe: tableId === 'BAG09' ? 1 : 100,
+      round: tableId === 'BAG09' ? 70 : 1,
+    })),
+    shoeLifecycles: [{
+      tableId: 'BAG09', activeShoe: 999, retiredShoes: [],
+      currentScreen: { shoe: 999, round: 70 }, origin: 'provider',
+      source: { ...source, sequence: 200 },
+    }],
+    rounds: [historical],
+  }
+  let delivered
+  const pusher = createSnapshotPusher({
+    targetUrl: 'https://proxy.example/snapshot', key: 'secret', queuePath: path.join(dir, 'queue.json'),
+    getSnapshot: async () => snapshot, isRoundDeliverable: () => true,
+    fetchImpl: async (_url, options) => {
+      delivered = JSON.parse(options.body)
+      return {
+        status: 200,
+        json: async () => ({
+          ok: true, accepted: true, duplicate: false,
+          sessionId: delivered.sessionId, sequence: delivered.sequence,
+          acceptedRoundKeys: delivered.roundKeys, source: delivered.source,
+        }),
+      }
+    },
+  })
+
+  assert.equal(await pusher.tick(), true)
+  const table = delivered.snapshot.tables.find((item) => item.tableId === 'BAG09')
+  assert.deepEqual({ shoe: table.shoe, round: table.round }, { shoe: 999, round: 70 })
+})
+
 test('latest durable Final chronology selects the current shoe across wrap without table screen metadata', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-current-shoe-queue-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
@@ -39,10 +226,22 @@ test('latest durable Final chronology selects the current shoe across wrap witho
   const otherCurrentFinals = PRODUCTION_TABLE_IDS
     .filter((tableId) => tableId !== 'BAG09')
     .map((tableId, index) => finalRound(tableId, 200 + index, index + 1, source, ++sourceSequence))
+  const shoeLifecycles = [
+    {
+      tableId: 'BAG09', activeShoe: 3,
+      retiredShoes: [...new Set([...bag09Backlog.map((round) => round.shoe).filter((shoe) => shoe !== 3), 999])],
+      currentScreen: { shoe: 3, round: 50 }, origin: 'final', source: currentFinal.source,
+    },
+    ...otherCurrentFinals.map((round) => ({
+      tableId: round.tableId, activeShoe: round.shoe, retiredShoes: [],
+      currentScreen: { shoe: round.shoe, round: round.round }, origin: 'final', source: round.source,
+    })),
+  ]
   const snapshot = {
     sessionId: 'worker-api-primary-9', buildVersion: '105', source,
     connected: true, authenticated: true,
     tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, name: tableId })),
+    shoeLifecycles,
     rounds: [delayedOldWrapFinal, ...otherCurrentFinals, ...bag09Backlog],
   }
   const delivered = []

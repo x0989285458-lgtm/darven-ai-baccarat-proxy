@@ -27,6 +27,80 @@ test('append-only journal recovers Final, durable ACK, and per-table cursor acro
   assert.deepEqual(records.map((record) => record.type), ['final', 'ack'])
 })
 
+test('append-only shoe lifecycle restores active, retired, screen, and source chronology', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-final-shoe-lifecycle-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const journalPath = path.join(dir, 'finals.jsonl')
+  const journal = await createFinalJournal({ journalPath, assertSource: () => true })
+  const source999 = { mode: 'api', ownerId: 'api-primary', epoch: 4, fence: 'fence-4', sequence: 30 }
+  const source1 = { ...source999, sequence: 31 }
+
+  await journal.transitionShoeLifecycle({
+    tableId: 'BAG09', activeShoe: 999, round: 70, origin: 'provider', source: source999,
+  })
+  await journal.transitionShoeLifecycle({
+    tableId: 'BAG09', activeShoe: 1, round: 0, origin: 'provider', source: source1,
+  })
+
+  assert.deepEqual(journal.shoeLifecycle('BAG09'), {
+    tableId: 'BAG09', activeShoe: 1, retiredShoes: [999],
+    currentScreen: { shoe: 1, round: 0 }, origin: 'provider', source: source1,
+  })
+  const restored = await createFinalJournal({ journalPath, assertSource: () => true })
+  assert.deepEqual(restored.shoeLifecycle('BAG09'), journal.shoeLifecycle('BAG09'))
+  const records = (await readFile(journalPath, 'utf8')).trim().split('\n').map(JSON.parse)
+  assert.deepEqual(records.map((record) => record.type), ['shoe_lifecycle', 'shoe_lifecycle'])
+})
+
+test('one Final record atomically restores its accepted shoe lifecycle proof', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-final-atomic-lifecycle-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const journalPath = path.join(dir, 'finals.jsonl')
+  const source = { mode: 'api', ownerId: 'api-primary', epoch: 4, fence: 'fence-4', sequence: 40 }
+  const event = {
+    ...finalEvent({ round: 1, sequence: 40 }), shoe: 92, source,
+    shoeLifecycle: {
+      tableId: 'BAG01', activeShoe: 92, retiredShoes: [],
+      currentScreen: { shoe: 92, round: 1 }, origin: 'final', source,
+    },
+  }
+  const journal = await createFinalJournal({ journalPath, assertSource: () => true })
+
+  await journal.append(event)
+  assert.deepEqual(journal.shoeLifecycle('BAG01'), event.shoeLifecycle)
+  const restored = await createFinalJournal({ journalPath, assertSource: () => true })
+  assert.deepEqual(restored.shoeLifecycle('BAG01'), event.shoeLifecycle)
+  const records = (await readFile(journalPath, 'utf8')).trim().split('\n').map(JSON.parse)
+  assert.deepEqual(records.map((record) => record.type), ['final'])
+})
+
+test('cross-shoe Final lifecycle proof is rejected before append when provider transition is absent', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'darven-final-cross-shoe-proof-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const journalPath = path.join(dir, 'finals.jsonl')
+  const journal = await createFinalJournal({ journalPath, assertSource: () => true })
+  const providerSource = { mode: 'api', ownerId: 'api-primary', epoch: 4, fence: 'fence-4', sequence: 40 }
+  await journal.transitionShoeLifecycle({
+    tableId: 'BAG01', activeShoe: 92, round: 70, origin: 'provider', source: providerSource,
+  })
+  const before = await readFile(journalPath, 'utf8')
+  const finalSource = { ...providerSource, sequence: 41 }
+  const event = {
+    ...finalEvent({ round: 1, sequence: 41 }), shoe: 93, source: finalSource,
+    shoeLifecycle: {
+      tableId: 'BAG01', activeShoe: 93, retiredShoes: [92],
+      currentScreen: { shoe: 93, round: 1 }, origin: 'final', source: finalSource,
+    },
+  }
+
+  await assert.rejects(journal.append(event), /final_shoe_lifecycle_transition_without_provider/)
+  assert.equal(await readFile(journalPath, 'utf8'), before, 'rejected Final must append no record')
+  assert.equal(journal.pending().length, 0)
+  assert.equal(journal.shoeLifecycle('BAG01').activeShoe, 92)
+  const restored = await createFinalJournal({ journalPath, assertSource: () => true })
+  assert.equal(restored.shoeLifecycle('BAG01').activeShoe, 92)
+})
+
 test('batch ACK validates every Final before one durable append and restores all acknowledgements', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-final-batch-ack-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
@@ -213,7 +287,12 @@ test('append-only rebind survives restart without changing Final identity or pay
   t.after(() => rm(dir, { recursive: true, force: true }))
   const journalPath = path.join(dir, 'finals.jsonl')
   const journal = await createFinalJournal({ journalPath, assertSource: () => true })
-  const original = await journal.append(finalEvent({ round: 9, sequence: 7, fence: 'old-fence' }))
+  const event = finalEvent({ round: 9, sequence: 7, fence: 'old-fence' })
+  event.shoeLifecycle = {
+    tableId: event.tableId, activeShoe: event.shoe, retiredShoes: [],
+    currentScreen: { shoe: event.shoe, round: event.round }, origin: 'final', source: event.source,
+  }
+  const original = await journal.append(event)
   const newSource = { mode: 'api', ownerId: 'api-primary', epoch: 3, fence: 'new-fence', sequence: 1 }
 
   const rebound = await journal.rebindPending(async () => newSource, { mode: 'api', ownerId: 'api-primary', epoch: 3, fence: 'new-fence' })
@@ -221,11 +300,13 @@ test('append-only rebind survives restart without changing Final identity or pay
   assert.equal(rebound[0].hash, original.hash)
   assert.deepEqual(rebound[0].event.capturedSource, original.event.source)
   assert.deepEqual(rebound[0].event.source, newSource)
+  assert.deepEqual(rebound[0].event.shoeLifecycle.source, original.event.source)
 
   const restored = await createFinalJournal({ journalPath, assertSource: () => true })
   assert.equal(restored.pending()[0].identity, original.identity)
   assert.equal(restored.pending()[0].hash, original.hash)
   assert.deepEqual(restored.pending()[0].event.source, newSource)
+  assert.deepEqual(restored.shoeLifecycle('BAG01'), original.event.shoeLifecycle)
   assert.deepEqual((await readFile(journalPath, 'utf8')).trim().split('\n').map(JSON.parse).map((record) => record.type), ['final', 'rebind'])
 })
 
