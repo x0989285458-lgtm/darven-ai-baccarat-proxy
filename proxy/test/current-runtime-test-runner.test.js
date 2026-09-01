@@ -12,18 +12,21 @@ import { buildCurrentRuntimeTestArgs } from '../scripts/run-tests.mjs'
 
 const proxyRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-test('canonical current-runtime discovery accounts for every proxy test and excludes only audited exact-release identities', () => {
+test('canonical current-runtime discovery includes every present proxy test and no obsolete exact-release identity', () => {
   const discovered = discoverProxyTests(proxyRoot)
   const { currentRuntime, historicalExactRelease } = classifyProxyTests(discovered)
 
-  assert.deepEqual(historicalExactRelease, [...HISTORICAL_EXACT_RELEASE_TESTS])
-  assert.equal(currentRuntime.length + historicalExactRelease.length, discovered.length)
-  assert.equal(new Set([...currentRuntime, ...historicalExactRelease]).size, discovered.length)
+  assert.deepEqual(HISTORICAL_EXACT_RELEASE_TESTS, [])
+  assert.deepEqual(historicalExactRelease, [])
+  assert.deepEqual(currentRuntime, discovered)
+  assert.equal(new Set(currentRuntime).size, discovered.length)
   assert.ok(currentRuntime.includes('test/current-runtime-test-runner.test.js'))
   assert.ok(currentRuntime.includes('test/security-contract.test.js'))
   assert.ok(currentRuntime.includes('test/v105-durable-source-fence.test.js'))
-  assert.ok(!currentRuntime.includes('test/v105-v10-main60-formal-batch30-release.test.js'))
-  assert.ok(!discovered.includes('test/v102-release-integrity.test.js'))
+  const exactReleaseIdentityTests = currentRuntime.filter((relativePath) => (
+    /^test\/v105-v10-main(?:\d+)?(?:-.+)?-release\.test\.js$/.test(relativePath)
+  ))
+  assert.deepEqual(exactReleaseIdentityTests, ['test/v105-v10-main87-current-runtime-isolation-release.test.js'])
 })
 
 test('runner places caller filters before discovered files and narrows explicit test paths', () => {
@@ -38,8 +41,6 @@ test('runner places caller filters before discovered files and narrows explicit 
   )
 })
 
-test('audited historical classifier contains only immutable exact-release identity tests', () => {
-  for (const relativePath of HISTORICAL_EXACT_RELEASE_TESTS) {
-    assert.match(relativePath, /^test\/v105-v10-main\d+-.+-release\.test\.js$/)
-  }
+test('historical exact-release identity tests remain in immutable Git tags, not the current runtime tree', () => {
+  assert.deepEqual(HISTORICAL_EXACT_RELEASE_TESTS, [])
 })

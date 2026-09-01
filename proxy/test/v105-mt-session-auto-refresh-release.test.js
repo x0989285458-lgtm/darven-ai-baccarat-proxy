@@ -47,8 +47,8 @@ test('MT session auto-refresh release freezes the two production incident fixes'
   ])
 })
 
-test('current Main86 proxy and worker versions advance while the frontend remains unchanged', async () => {
-  assert.equal(readJson('../package.json').version, '1.0.67')
+test('current Main87 proxy and worker versions advance while the frontend remains unchanged', async () => {
+  assert.equal(readJson('../package.json').version, '1.0.68')
   assert.equal(readJson('../../frontend/package.json').version, '1.0.65')
   assert.equal(readJson('../../cloud-browser-worker/package.json').version, '1.0.66')
   const authorityCommit = execFileSync('git', ['log', '-1', '--format=%H', '--', 'release/v105-mt-session-auto-refresh-release-manifest.json'], { cwd: repoRoot, encoding: 'utf8' }).trim()

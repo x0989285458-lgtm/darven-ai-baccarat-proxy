@@ -1,22 +1,10 @@
 import { readdirSync } from 'node:fs'
 import path from 'node:path'
 
-// Audited release-identity tests. Each entry binds an obsolete candidate to an
-// exact parent/delta and is intentionally separate from current runtime gates.
-export const HISTORICAL_EXACT_RELEASE_TESTS = Object.freeze([
-  'test/v105-v10-main31-trusted-workflow-release.test.js',
-  'test/v105-v10-main50-lifecycle-hotpath-release.test.js',
-  'test/v105-v10-main54-batch100-release.test.js',
-  'test/v105-v10-main56-adaptive-batch-release.test.js',
-  'test/v105-v10-main57-migration-ci-release.test.js',
-  'test/v105-v10-main58-node24-migration-release.test.js',
-  'test/v105-v10-main59-formal-lifecycle-priority-release.test.js',
-  'test/v105-v10-main60-formal-batch30-release.test.js',
-  'test/v105-v10-main61-three-tier-adaptive-batch-release.test.js',
-  'test/v105-v10-main62-typed-migration-harness-release.test.js',
-])
+// Exact release-identity tests belong only to their immutable tags. They are
+// deleted from the next current tree, so old releases cannot gate new runtime.
+export const HISTORICAL_EXACT_RELEASE_TESTS = Object.freeze([])
 
-const historicalExactReleaseSet = new Set(HISTORICAL_EXACT_RELEASE_TESTS)
 const normalize = (value) => value.split(path.sep).join('/')
 
 export function discoverProxyTests(proxyRoot) {
@@ -36,11 +24,5 @@ export function discoverProxyTests(proxyRoot) {
 }
 
 export function classifyProxyTests(discovered) {
-  const currentRuntime = []
-  const historicalExactRelease = []
-  for (const relativePath of discovered) {
-    if (historicalExactReleaseSet.has(relativePath)) historicalExactRelease.push(relativePath)
-    else currentRuntime.push(relativePath)
-  }
-  return { currentRuntime, historicalExactRelease }
+  return { currentRuntime: [...discovered], historicalExactRelease: [] }
 }
