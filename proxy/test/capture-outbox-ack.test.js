@@ -1233,10 +1233,125 @@ test('production consumer does not block backlog claim for zero-history new-shoe
   await app.stop()
 })
 
+test('production consumer preserves a newer same-shoe live screen when durable cloud snapshot rows lag behind', async () => {
+  let claims = 0
+  const snapshotAt = new Date(Date.now() - 1_000).toISOString()
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    supabaseClient: {
+      configured: true,
+      async getLatestCloudTableSnapshot() {
+        return {
+          session_id: 'lagging-durable-screen', snapshot_at: snapshotAt, capture_source: 'cloud_browser',
+          tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: 92, round: tableId === 'BAG10' ? 5 : 13, sourceUpdatedAt: snapshotAt })),
+        }
+      },
+      async claimCaptureOutbox() { claims += 1; return [] },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot({ tables: current }) { return { tables: current } } },
+  })
+  app.state.setTables(PRODUCTION_TABLE_IDS.map((tableId) => ({
+    tableId, shoe: 92, round: 13, sourceUpdatedAt: snapshotAt,
+  })))
+  await app.waitForServiceWorkIdle()
+
+  await app.drainCaptureOutbox()
+
+  assert.equal(claims, 1)
+  assert.equal(app.state.snapshot().tables.find((table) => table.tableId === 'BAG10')?.round, 13)
+  await app.stop()
+})
+
+test('same-round durable refresh updates the public payload without regressing the screen identity', async () => {
+  const snapshotAt = new Date().toISOString()
+  const app = createApp({
+    autoConnect: false,
+    production: true,
+    requireVerifiedStrategy: false,
+    captureOutboxConsumerEnabled: true,
+    supabaseClient: {
+      configured: true,
+      async getLatestCloudTableSnapshot() {
+        return {
+          session_id: 'same-round-payload-refresh', snapshot_at: snapshotAt, capture_source: 'cloud_browser',
+          tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
+            tableId, shoe: 92, round: 13, beadPlateRaw: tableId === 'BAG10' ? '0102' : '', sourceUpdatedAt: snapshotAt,
+          })),
+        }
+      },
+      async claimCaptureOutbox() { return [] },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot({ tables: current }) { return { tables: current } } },
+  })
+  app.state.setTables(PRODUCTION_TABLE_IDS.map((tableId) => ({
+    tableId, shoe: 92, round: 13, beadPlateRaw: '', sourceUpdatedAt: snapshotAt,
+  })))
+  await app.waitForServiceWorkIdle()
+
+  await app.refreshLatestDurablePredictions()
+
+  const bag10 = app.state.snapshot().tables.find((table) => table.tableId === 'BAG10')
+  assert.equal(bag10?.round, 13)
+  assert.equal(bag10?.beadPlateRaw, '0102')
+  await app.stop()
+})
+
+test('lagging same-shoe refresh does not renew a retained local screen after the source stops advancing', async () => {
+  let nowMs = Date.parse('2026-09-01T01:00:00.000Z')
+  let bag09Round = 13
+  const snapshotAt = new Date(nowMs).toISOString()
+  const app = createApp({
+    autoConnect: false,
+    now: () => nowMs,
+    production: true,
+    requireVerifiedStrategy: false,
+    memberAuthRequired: false,
+    captureOutboxConsumerEnabled: true,
+    supabaseClient: {
+      configured: true,
+      async getLatestCloudTableSnapshot() {
+        return {
+          session_id: 'stopped-live-source', snapshot_at: new Date().toISOString(), capture_source: 'cloud_browser',
+          tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
+            tableId, shoe: 92,
+            round: tableId === 'BAG10' ? 5 : tableId === 'BAG09' ? bag09Round : 13,
+            sourceUpdatedAt: snapshotAt,
+          })),
+        }
+      },
+      async claimCaptureOutbox() { return [] },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+    },
+    v100FormalRuntime: { enabled: true, async processSnapshot({ tables: current }) { return { tables: current } } },
+  })
+  app.state.setTables(PRODUCTION_TABLE_IDS.map((tableId) => ({
+    tableId, shoe: 92, round: 13, sourceUpdatedAt: snapshotAt,
+  })))
+  await app.waitForServiceWorkIdle()
+  for (let index = 0; index < 3; index += 1) {
+    nowMs += 60_000
+    bag09Round += 1
+    await app.refreshLatestDurablePredictions()
+  }
+  const response = await app.inject({ url: '/api/tables', headers: { 'x-forwarded-proto': 'https' } })
+  const tables = JSON.parse(response.body)
+
+  assert.equal(response.statusCode, 200)
+  assert.equal(tables.find((table) => table.tableId === 'BAG10')?.round, 5)
+  assert.equal(tables.find((table) => table.tableId === 'BAG09')?.round, 16)
+  await app.stop()
+})
+
 for (const invalidCase of [
   { name: 'null round', round: null, primeRound: null },
   { name: 'negative round', round: -1, primeRound: null },
-  { name: 'same-shoe round regression', round: 0, primeRound: 7 },
   { name: 'cross-shoe regression', shoe: 91, round: 8, primeShoe: 92, primeRound: 7 },
   { name: 'large cross-shoe regression', shoe: '9007199254740993', round: 8, primeShoe: '9007199254740994', primeRound: 7 },
 ]) {
@@ -2043,6 +2158,87 @@ test('external consumer materializes a finalized table missing beside unrelated 
   assert.equal(completed, 1)
   assert.equal(failed, 0)
   assert.equal(app.state.snapshot().status.persistenceError, null)
+})
+
+test('outbox publication refreshes only tables that actually advanced', async () => {
+  let claimed = false
+  let durableReadsEnabled = false
+  let nowMs = Date.now()
+  const sourceUpdatedAt = new Date(nowMs).toISOString()
+  const work = {
+    ...envelope().snapshot,
+    tables: [{ ...envelope().snapshot.tables[0], sourceUpdatedAt, beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+  }
+  const app = createApp({
+    autoConnect: false,
+    captureOutboxConsumerEnabled: true,
+    outboxCoalesceMs: 0,
+    now: () => nowMs,
+    requireVerifiedStrategy: false,
+    supabaseClient: {
+      configured: true,
+      async getLatestCloudTableSnapshot() {
+        if (!durableReadsEnabled) return null
+        return {
+          session_id: 'durable-fallback', snapshot_at: new Date().toISOString(), capture_source: 'cloud_browser',
+          tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
+            tableId,
+            shoe: tableId === 'BAG01' ? 88 : 92,
+            round: tableId === 'BAG10' ? 5 : tableId === 'BAG01' ? 21 : 13,
+            sourceUpdatedAt,
+          })),
+        }
+      },
+      async claimCaptureOutbox() {
+        if (claimed) return []
+        claimed = true
+        return [claimedRow(9, { payload: { work } })]
+      },
+      async completeCaptureOutbox() {},
+      async failCaptureOutbox({ error }) { assert.fail(error) },
+      async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
+      async readIssuedPrediction() { return null },
+      async reconcilePredictionLifecycle() {},
+      async issuePrediction(candidate) {
+        return { ...candidate, predictionId: 'pid-BAG01-88-22', issuedAt: new Date().toISOString() }
+      },
+    },
+    v100FormalRuntime: {
+      enabled: true,
+      async processSnapshot() {
+        return { enabled: true, predictions: [], tables: work.tables }
+      },
+    },
+  })
+  app.state.settleRoundEvent = async (round) => ({
+    ok: true,
+    receipt: {
+      durable: true,
+      disposition: 'no_issuance',
+      tableId: String(round.tableId),
+      shoe: String(round.shoe),
+      round: Number(round.round),
+    },
+  })
+  app.state.setTables(PRODUCTION_TABLE_IDS.map((tableId) => ({
+    tableId,
+    shoe: tableId === 'BAG01' ? 88 : 92,
+    round: tableId === 'BAG01' ? 20 : 13,
+    sourceUpdatedAt,
+  })))
+  await app.waitForServiceWorkIdle()
+  nowMs += 110_000
+
+  await app.drainCaptureOutbox()
+  await app.waitForServiceWorkIdle()
+  durableReadsEnabled = true
+  nowMs += 20_000
+  const response = await app.inject({ url: '/api/tables' })
+  const tables = JSON.parse(response.body)
+
+  assert.equal(tables.find((table) => table.tableId === 'BAG10')?.round, 5)
+  assert.equal(tables.find((table) => table.tableId === 'BAG01')?.round, 21)
+  await app.stop()
 })
 
 test('external consumer polls for durable work that arrives without an in-process ACK wake', async () => {

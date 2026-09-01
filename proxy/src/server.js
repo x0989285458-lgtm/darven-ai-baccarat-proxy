@@ -1,6 +1,7 @@
 import http from 'node:http'
 import crypto from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { isDeepStrictEqual } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { createProxyState } from './state-store.js'
 import { createMtClient } from './mt-client.js'
@@ -282,6 +283,28 @@ function isOlderTableScreen(candidate = {}, current = {}) {
   return candidateNumericShoe != null && currentNumericShoe != null && candidateNumericShoe < currentNumericShoe
 }
 
+function tableScreenIdentitySignature(tables = []) {
+  return JSON.stringify(tables
+    .map((table) => ({
+      tableId: canonicalProductionTableId(table?.tableId),
+      shoe: table?.shoe == null ? '' : String(table.shoe),
+      round: Number(table?.round),
+    }))
+    .filter((screen) => screen.tableId && screen.shoe && Number.isSafeInteger(screen.round))
+    .sort((left, right) => left.tableId.localeCompare(right.tableId)))
+}
+
+function changedNonRegressedTableIds(currentTables = [], candidateTables = []) {
+  const currentByTableId = new Map(currentTables.map((table) => [canonicalProductionTableId(table?.tableId), table]))
+  return new Set(candidateTables
+    .filter((candidate) => {
+      const current = currentByTableId.get(canonicalProductionTableId(candidate?.tableId))
+      return !current || (!isOlderTableScreen(candidate, current) && !isDeepStrictEqual(candidate, current))
+    })
+    .map((table) => canonicalProductionTableId(table?.tableId))
+    .filter(Boolean))
+}
+
 function mergeMonotonicTableScreens(currentTables = [], candidateTables = []) {
   const candidateByTable = new Map(candidateTables.map((table) => [canonicalProductionTableId(table?.tableId), table]))
   const merged = currentTables.map((current) => {
@@ -464,6 +487,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     ? ({ exitCode }) => process.exit(exitCode)
     : () => {})
   let tablesReceivedAtMs = 0
+  const tableReceivedAtMsById = new Map()
   const serviceWorkScheduler = createServiceWorkScheduler()
   const v104Formal = v104FormalRuntime ?? createV105FormalRuntime({
     writer: supabaseClient,
@@ -483,15 +507,16 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   const state = createProxyState({
     inferSnapshotRounds: !strictRealCardRounds,
     onTablesUpdated: (tables) => {
-      tablesReceivedAtMs = now()
-      const streamScreenSignature = JSON.stringify(tables
-        .map((table) => ({
-          tableId: canonicalProductionTableId(table?.tableId),
-          shoe: table?.shoe == null ? '' : String(table.shoe),
-          round: Number(table?.round),
-        }))
-        .filter((screen) => screen.tableId && screen.shoe && Number.isSafeInteger(screen.round))
-        .sort((left, right) => left.tableId.localeCompare(right.tableId)))
+      const receivedAtMs = now()
+      const updateContext = tableUpdateWorkContext.getStore()
+      const receivedTableIds = updateContext?.receivedTableIds instanceof Set
+        ? updateContext.receivedTableIds
+        : updateContext?.suppressPredictionWork === true
+          ? new Set()
+          : new Set(tables.map((table) => canonicalProductionTableId(table?.tableId)).filter(Boolean))
+      if (receivedTableIds.size > 0) tablesReceivedAtMs = receivedAtMs
+      for (const tableId of receivedTableIds) tableReceivedAtMsById.set(tableId, receivedAtMs)
+      const streamScreenSignature = tableScreenIdentitySignature(tables)
       let screenProgressChanged = streamScreenSignature !== latestStreamScreenSignature
       const changedScreenTables = []
       latestStreamScreenSignature = streamScreenSignature
@@ -792,7 +817,6 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       const previousTableById = new Map(state.snapshot().tables.map((table) => [
         canonicalProductionTableId(table?.tableId), table,
       ]))
-      const normalizedFreshRounds = new Map()
       for (const table of freshTables) {
         const tableId = canonicalProductionTableId(table?.tableId)
         const roundText = table?.round == null ? '' : String(table.round).trim()
@@ -811,21 +835,24 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         if (previousNumericShoe != null && freshNumericShoe != null && freshNumericShoe < previousNumericShoe) {
           throw new Error('fresh cloud table shoe regression is not refreshable')
         }
-        if (previous && previousShoeText === freshShoeText
-          && Number.isSafeInteger(Number(previous?.round)) && round < Number(previous.round)) {
-          throw new Error('fresh cloud table round regression is not claimable')
-        }
-        normalizedFreshRounds.set(tableId, round)
       }
-      await tableUpdateWorkContext.run({ suppressPredictionWork: true }, async () => {
-        state.setTables(mergeMonotonicTableScreens(state.snapshot().tables, freshTables))
-      })
-      const freshPredictionSignaturesByTable = new Map(freshTables.map((table) => {
+      const previousTables = state.snapshot().tables
+      const effectiveFreshTables = mergeMonotonicTableScreens(previousTables, freshTables)
+      const effectiveFreshRounds = new Map(effectiveFreshTables.map((table) => [
+        canonicalProductionTableId(table?.tableId), Number(table?.round),
+      ]))
+      const receivedTableIds = changedNonRegressedTableIds(previousTables, freshTables)
+      if (!isDeepStrictEqual(effectiveFreshTables, previousTables)) {
+        tableUpdateWorkContext.run({ suppressPredictionWork: true, receivedTableIds }, () => {
+          state.setTables(effectiveFreshTables)
+        })
+      }
+      const freshPredictionSignaturesByTable = new Map(effectiveFreshTables.map((table) => {
         const tableId = canonicalProductionTableId(table?.tableId)
         return [tableId, JSON.stringify([
           tableId,
           String(table?.shoe ?? ''),
-          normalizedFreshRounds.get(tableId),
+          effectiveFreshRounds.get(tableId),
         ])]
       }))
       if (!(production && isDurablePredictionIssuanceRequired())) {
@@ -834,9 +861,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         }
         return { refreshed: true, durableRequired: false }
       }
-      const actionableFreshTables = freshTables.filter((table) => {
+      const actionableFreshTables = effectiveFreshTables.filter((table) => {
         const tableId = canonicalProductionTableId(table?.tableId)
-        return Number(normalizedFreshRounds.get(tableId)) > 0
+        return Number(effectiveFreshRounds.get(tableId)) > 0
           && lastSuccessfulLatestPredictionSignatureByTable.get(tableId) !== freshPredictionSignaturesByTable.get(tableId)
       })
       if (actionableFreshTables.length === 0) {
@@ -944,7 +971,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             } else {
               let publishedTables
               let settlementReceipts
-              await tableUpdateWorkContext.run({ suppressPredictionWork: true }, async () => {
+              const outboxUpdateContext = { suppressPredictionWork: true, receivedTableIds: new Set() }
+              await tableUpdateWorkContext.run(outboxUpdateContext, async () => {
                 const applied = await runLeasePhase('formal', () => (
                   applyCloudCapturePayload({
                     parsed, state, writer: supabaseClient, v100Formal,
@@ -962,7 +990,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                 publishedTables = Array.isArray(applied?.tables) ? applied.tables : parsed.tables
                 settlementReceipts = Array.isArray(applied?.settlementReceipts) ? applied.settlementReceipts : []
                 state.setStatus(parsed.status)
-                state.setTables(mergeMonotonicTableScreens(state.snapshot().tables, publishedTables))
+                const previousTables = state.snapshot().tables
+                outboxUpdateContext.receivedTableIds = changedNonRegressedTableIds(previousTables, publishedTables)
+                state.setTables(mergeMonotonicTableScreens(previousTables, publishedTables))
               })
               const finalizedIdentities = new Set(parsed.rounds.map((round) => JSON.stringify([
                 String(round?.tableId ?? ''),
@@ -1776,13 +1806,19 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   async function readBestTables({ includePrediction = true, predictionWillBeBroadcast = false } = {}) {
     const localSnapshot = state.snapshot()
     const localTables = localSnapshot.tables
-    const localTablesAreFresh = localTables.length > 0
-      && tablesReceivedAtMs > 0
-      && now() - tablesReceivedAtMs <= CLOUD_SNAPSHOT_MAX_AGE_MS
-    if (localTablesAreFresh) {
-      const actionable = now() - tablesReceivedAtMs <= actionablePredictionTtlMs
+    const localFreshnessByTable = new Map(localTables.map((table) => {
+      const tableId = canonicalProductionTableId(table?.tableId)
+      const receivedAtMs = tableReceivedAtMsById.get(tableId) ?? tablesReceivedAtMs
+      return [tableId, receivedAtMs > 0 && now() - receivedAtMs <= CLOUD_SNAPSHOT_MAX_AGE_MS]
+    }))
+    const allLocalTablesAreFresh = localTables.length > 0
+      && localTables.every((table) => localFreshnessByTable.get(canonicalProductionTableId(table?.tableId)) === true)
+    if (allLocalTablesAreFresh) {
       return includePrediction
-        ? Promise.all(localTables.map((table) => withLivePrediction(table, actionable, predictionWillBeBroadcast)))
+        ? Promise.all(localTables.map((table) => {
+            const receivedAtMs = tableReceivedAtMsById.get(canonicalProductionTableId(table?.tableId)) ?? tablesReceivedAtMs
+            return withLivePrediction(table, now() - receivedAtMs <= actionablePredictionTtlMs, predictionWillBeBroadcast)
+          }))
         : localTables
     }
     const cloudSnapshot = await readLatestCloudSnapshot({ requireFresh: true })
@@ -1803,9 +1839,26 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         if (!Number.isFinite(durableSnapshotAtMs) || durableSnapshotAtMs <= localSourceAtMs) return []
       }
     }
+    const cloudTables = cloudSnapshot?.tables ?? []
+    if (localTables.length === 0) {
+      return includePrediction
+        ? Promise.all(cloudTables.map((table) => withLivePrediction(table, true, predictionWillBeBroadcast)))
+        : cloudTables
+    }
+    const cloudByTableId = new Map(cloudTables.map((table) => [canonicalProductionTableId(table?.tableId), table]))
+    const selected = localTables.map((localTable) => {
+      const tableId = canonicalProductionTableId(localTable?.tableId)
+      const localFresh = localFreshnessByTable.get(tableId) === true
+      const table = localFresh ? localTable : cloudByTableId.get(tableId)
+      cloudByTableId.delete(tableId)
+      return table ? { table, actionable: localFresh
+        ? now() - (tableReceivedAtMsById.get(tableId) ?? tablesReceivedAtMs) <= actionablePredictionTtlMs
+        : true } : null
+    }).filter(Boolean)
+    for (const table of cloudByTableId.values()) selected.push({ table, actionable: true })
     return includePrediction
-      ? Promise.all((cloudSnapshot?.tables ?? []).map((table) => withLivePrediction(table, true, predictionWillBeBroadcast)))
-      : (cloudSnapshot?.tables ?? [])
+      ? Promise.all(selected.map(({ table, actionable }) => withLivePrediction(table, actionable, predictionWillBeBroadcast)))
+      : selected.map(({ table }) => table)
   }
 
   async function ensureRecentPerformanceReady() {
