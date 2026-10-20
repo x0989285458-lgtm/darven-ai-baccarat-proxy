@@ -12,15 +12,15 @@ function ingestEnvelope(overrides = {}) {
     protocolVersion: 'v105',
     timestamp: NOW,
     sequence: 7,
-    roundKeys: ['BAG01:88:21'],
+    roundKeys: ['BAV01:88:21'],
     snapshot: {
       buildVersion: '105',
       sessionId: 'worker-session-opaque',
       connected: true,
       authenticated: true,
-      tables: [{ tableId: 'BAG01', shoe: '88', round: 21 }],
+      tables: [{ tableId: 'BAV01', shoe: '88', round: 21 }],
       rounds: [{
-        tableId: 'BAG01', shoe: '88', round: 21, winner: 'banker',
+        tableId: 'BAV01', shoe: '88', round: 21, winner: 'banker',
         rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9],
         sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
       }],
@@ -92,7 +92,7 @@ test('ingest validates exact roundKeys before writes and ACKs only the validated
     }),
   })
 
-  for (const roundKeys of [undefined, [], ['BAG01:88:22'], ['BAG01:88:21', 'BAG01:88:21']]) {
+  for (const roundKeys of [undefined, [], ['BAG01:88:22'], ['BAG01:88:21', 'BAG01:88:21'], ['BAV01:88:22'], ['BAV01:88:21', 'BAV01:88:21']]) {
     const response = await ingest(app, ingestEnvelope({ roundKeys }))
     assert.equal(response.statusCode, 400)
     assert.match(JSON.parse(response.body).error, /roundKeys/)
@@ -100,7 +100,7 @@ test('ingest validates exact roundKeys before writes and ACKs only the validated
   assert.equal(writes, 0)
 
   const accepted = JSON.parse((await ingest(app)).body)
-  assert.deepEqual(accepted.acceptedRoundKeys, ['BAG01:88:21'])
+  assert.deepEqual(accepted.acceptedRoundKeys, ['BAV01:88:21'])
 })
 
 test('ingest validates completed-round schema before any durable write', async () => {
@@ -141,7 +141,7 @@ test('ingest ACK is emitted only after all durable writes and contains accepted 
     duplicate: false,
     sessionId: 'worker-session-opaque',
     sequence: 7,
-    acceptedRoundKeys: ['BAG01:88:21'],
+    acceptedRoundKeys: ['BAV01:88:21'],
   })
   const status = app.state.snapshot().status
   assert.equal(status.expectedProtocolVersion, 'v105')

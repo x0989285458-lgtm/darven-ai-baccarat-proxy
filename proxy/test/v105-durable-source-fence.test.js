@@ -287,13 +287,13 @@ test('lost ACK then source epoch advance exact-reconciles the immutable attempte
   const epoch1 = source(1)
   const epoch2 = source(2)
   const round = {
-    tableId: 'BAG01', shoe: 89, round: 1, winner: 'banker', sourceAction: 'summary', final: true,
+    tableId: 'BAV01', shoe: 89, round: 1, winner: 'banker', sourceAction: 'summary', final: true,
     rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], source: { ...epoch1, sequence: 1 },
   }
   const snapshot = (candidate, rounds = []) => ({
     buildVersion: '105', sessionId: `worker-api-primary-${candidate.epoch}`, source: candidate,
     connected: true, authenticated: true,
-    tables: [{ tableId: 'BAG01', shoe: 89, round: 1 }], rounds,
+    tables: [{ tableId: 'BAV01', shoe: 89, round: 1 }], rounds,
   })
   const injectFetch = async (url, init) => {
     const response = await app.inject({
@@ -336,7 +336,7 @@ test('lost ACK then source epoch advance exact-reconciles the immutable attempte
   assert.equal(await restarted.tick(), true)
   assert.equal(reconciliations, 1)
   assert.deepEqual(attemptedIdentity, {
-    sessionId: 'worker-api-primary-1', sequence: attemptedEnvelope.sequence, roundKeys: ['BAG01:89:1'],
+    sessionId: 'worker-api-primary-1', sequence: attemptedEnvelope.sequence, roundKeys: ['BAV01:89:1'],
   })
   assert.equal(restarted.snapshot().queueEntryCount, 0)
   assert.equal(durableRows.size, 2, 'exact reconciliation must not duplicate the lost-ACK row')

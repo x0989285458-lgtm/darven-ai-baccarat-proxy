@@ -1,6 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { parseCloudCapturePayload } from '../src/cloud-capture.js'
+import { importHistoricalModule } from './helpers/immutable-six-raw-history.mjs'
+
+// Immutable ten-table policy lane; current six-raw policy is tested separately.
+const { parseCloudCapturePayload } = await importHistoricalModule('proxy/src/cloud-capture.js')
 
 const EXPECTED_TABLE_IDS = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
 

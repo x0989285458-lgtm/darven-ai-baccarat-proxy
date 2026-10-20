@@ -260,7 +260,7 @@ function normalizeTableId(value) {
 }
 
 function isWantedBaccaratTable(table) {
-  return /^BAG(?:\d{2}|\d{1,2}A)$/.test(table.tableId)
+  return isProductionTableId(table.tableId)
     && String(table.tableType ?? '').toUpperCase().startsWith('BA')
 }
 

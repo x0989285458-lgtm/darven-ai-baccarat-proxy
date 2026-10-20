@@ -354,7 +354,7 @@ test('v105 history reader uses one JSON-free settled-history RPC plus one latest
   assert.ok(stateRequests.every(({ request }) => request.searchParams.get('limit') === '1'))
   assert.deepEqual(new Set(stateRequests.map(({ request }) => request.searchParams.get('table_id')?.replace(/^eq\./, ''))), new Set(PRODUCTION_TABLE_IDS))
   assert.ok(rows.every((row) => row.strategy_version === 'v105'))
-  const latest = rows.find((row) => row.id === 'BAG01-latest')
+  const latest = rows.find((row) => row.id === 'BAV01-latest')
   assert.equal(latest.final_v105_predicted_result, 'banker')
   assert.equal(latest.predicted_result, 'player')
   assert.equal(latest.same_side_streak, 3)
@@ -396,7 +396,7 @@ test('v105 formal history prefers backend-only database reads for settled and la
   const rows = await client.getV105FormalHistory()
   assert.equal(fetchCalls, 0)
   assert.equal(queries.length, 2)
-  assert.equal(rows.length, 610)
+  assert.equal(rows.length, PRODUCTION_TABLE_IDS.length * 61)
   assert.deepEqual(new Set(rows.map((row) => row.table_id)), new Set(PRODUCTION_TABLE_IDS))
 })
 

@@ -15,15 +15,15 @@ test('runtime starts API as sole owner, journals Final, and advances cursor only
   assert.equal(fixture.apiStarts, 1)
   assert.equal(fixture.browserStarts, 0)
 
-  await fixture.handlers.onTables([{ table_id: 'BAG01', shoe: 91, round: 1 }])
+  await fixture.handlers.onTables([{ table_id: 'BAV01', shoe: 91, round: 1 }])
   await fixture.handlers.onFinal(await fixture.finalEvent(1))
   const snapshot = await fixture.runtime.getDeliverySnapshot()
   assert.equal(snapshot.source.mode, 'api')
   assert.deepEqual(snapshot.rounds.map((round) => round.round), [1])
-  assert.equal(fixture.journal.cursor('BAG01'), null)
+  assert.equal(fixture.journal.cursor('BAV01'), null)
 
-  await fixture.runtime.acknowledge({ acceptedRoundKeys: ['BAG01:91:1'] })
-  assert.equal(fixture.journal.cursor('BAG01').round, 1)
+  await fixture.runtime.acknowledge({ acceptedRoundKeys: ['BAV01:91:1'] })
+  assert.equal(fixture.journal.cursor('BAV01').round, 1)
   assert.deepEqual((await fixture.runtime.getDeliverySnapshot()).rounds, [])
 })
 
@@ -36,7 +36,7 @@ test('a durably journaled Final signals immediate delivery without waiting for t
 
   await fixture.handlers.onFinal(await fixture.finalEvent(1))
 
-  assert.deepEqual(deliverySignals, [['BAG01:91:1']])
+  assert.deepEqual(deliverySignals, [['BAV01:91:1']])
 })
 
 test('runtime blocks Live ACK on a gap, replays exact missing Finals first, then resumes live event', async (t) => {
@@ -52,7 +52,7 @@ test('runtime blocks Live ACK on a gap, replays exact missing Finals first, then
   await fixture.runtime.start()
   const durable = await fixture.journal.append(await fixture.finalEvent(7))
   await fixture.journal.ack(durable.identity, durable.hash)
-  await fixture.handlers.onTables([{ table_id: 'BAG01', shoe: 91, round: 11 }])
+  await fixture.handlers.onTables([{ table_id: 'BAV01', shoe: 91, round: 11 }])
   await fixture.handlers.onFinal(await fixture.finalEvent(11))
 
   const replaySnapshot = await fixture.runtime.getDeliverySnapshot()
@@ -64,8 +64,8 @@ test('runtime blocks Live ACK on a gap, replays exact missing Finals first, then
     batchCalls.push(claims.map((claim) => claim.identity))
     return originalAckMany(claims)
   }
-  await fixture.runtime.acknowledge({ acceptedRoundKeys: ['BAG01:91:8', 'BAG01:91:9', 'BAG01:91:10'] })
-  assert.deepEqual(batchCalls, [['BAG01:91:8', 'BAG01:91:9', 'BAG01:91:10']])
+  await fixture.runtime.acknowledge({ acceptedRoundKeys: ['BAV01:91:8', 'BAV01:91:9', 'BAV01:91:10'] })
+  assert.deepEqual(batchCalls, [['BAV01:91:8', 'BAV01:91:9', 'BAV01:91:10']])
 
   const liveSnapshot = await fixture.runtime.getDeliverySnapshot()
   assert.deepEqual(liveSnapshot.rounds.map((round) => round.round), [11])
@@ -76,11 +76,11 @@ test('operator gap-delivery mode records missing rounds but keeps later Finals j
   await fixture.runtime.start()
   const durable = await fixture.journal.append(await fixture.finalEvent(7))
   await fixture.journal.ack(durable.identity, durable.hash)
-  await fixture.handlers.onTables([{ table_id: 'BAG01', shoe: 91, round: 9 }])
+  await fixture.handlers.onTables([{ table_id: 'BAV01', shoe: 91, round: 9 }])
 
   await fixture.handlers.onFinal(await fixture.finalEvent(9))
   assert.deepEqual((await fixture.runtime.getDeliverySnapshot()).rounds.map((round) => round.round), [9])
-  await fixture.runtime.acknowledge({ acceptedRoundKeys: ['BAG01:91:9'] })
+  await fixture.runtime.acknowledge({ acceptedRoundKeys: ['BAV01:91:9'] })
 
   await fixture.handlers.onFinal(await fixture.finalEvent(11))
   assert.deepEqual((await fixture.runtime.getDeliverySnapshot()).rounds.map((round) => round.round), [11])
@@ -101,7 +101,7 @@ test('Reviewer P0: durable cursor 7 rejects same-shoe Final 9 before journal app
     },
     journal: {
       append: async (event) => { appended.push(event) }, pending: () => [],
-      cursor: () => ({ shoe: 91, round: 7, identity: 'BAG01:91:7', hash: 'ack-7' }),
+      cursor: () => ({ shoe: 91, round: 7, identity: 'BAV01:91:7', hash: 'ack-7' }),
       ack: async () => {},
     },
     gapDetector: createGapDetector(),
@@ -115,11 +115,11 @@ test('Reviewer P0: durable cursor 7 rejects same-shoe Final 9 before journal app
   assert.equal(stopped, true, 'the live API generation must stop accepting ACK-bound work')
   assert.deepEqual(appended, [], 'Final 9 must not reach the append-only journal before round 8 is recovered')
   assert.equal(runtime.snapshot().liveGate, 'record_contract_unverified')
-  assert.deepEqual(runtime.snapshot().gaps, [{ type: 'same_shoe', tableId: 'BAG01', shoe: 91, rounds: [8] }])
+  assert.deepEqual(runtime.snapshot().gaps, [{ type: 'same_shoe', tableId: 'BAV01', shoe: 91, rounds: [8] }])
   await assert.rejects(runtime.getDeliverySnapshot(), /live_ack_blocked:record_contract_unverified/)
 })
 
-test('Reviewer P0 empty journal: BAG01 shoe 91 round 9 is gap blocked before append, push, ACK, or cursor advance', async () => {
+test('Reviewer P0 empty journal: BAV01 shoe 91 round 9 is gap blocked before append, push, ACK, or cursor advance', async () => {
   const appended = []
   let stopped = false
   const lease = { mode: 'api', ownerId: 'api-primary', epoch: 1, fence: 'fence-1', status: 'active', expiresAt: 10_000 }
@@ -142,17 +142,17 @@ test('Reviewer P0 empty journal: BAG01 shoe 91 round 9 is gap blocked before app
   assert.deepEqual(appended, [])
   assert.equal(stopped, true)
   assert.equal(runtime.snapshot().liveGate, 'journal_cursor_baseline_missing')
-  assert.deepEqual(runtime.snapshot().gaps, [{ type: 'baseline_missing', tableId: 'BAG01', shoe: 91, rounds: [1, 2, 3, 4, 5, 6, 7, 8] }])
+  assert.deepEqual(runtime.snapshot().gaps, [{ type: 'baseline_missing', tableId: 'BAV01', shoe: 91, rounds: [1, 2, 3, 4, 5, 6, 7, 8] }])
   await assert.rejects(runtime.getDeliverySnapshot(), /live_ack_blocked:journal_cursor_baseline_missing/)
 })
 
 test('operator-approved fresh baseline accepts first observed Final, then restores gap fail-closed after ACK', async (t) => {
   const fixture = await runtimeFixture(t, { allowFreshBaseline: true })
   await fixture.runtime.start()
-  await fixture.handlers.onTables([{ table_id: 'BAG01' }])
+  await fixture.handlers.onTables([{ table_id: 'BAV01' }])
   await fixture.handlers.onFinal(await fixture.finalEvent(9))
   assert.deepEqual((await fixture.runtime.getDeliverySnapshot()).rounds.map((round) => round.round), [9])
-  await fixture.runtime.acknowledge({ acceptedRoundKeys: ['BAG01:91:9'] })
+  await fixture.runtime.acknowledge({ acceptedRoundKeys: ['BAV01:91:9'] })
   await assert.rejects(fixture.handlers.onFinal(await fixture.finalEvent(11)), /live_ack_blocked:/)
 })
 
@@ -195,13 +195,13 @@ test('Reviewer P0 exact-ACK bootstrap 7 persists without forging Final/ACK and p
 
   await journal.bootstrapFromSnapshotPusherCursor({
     version: 3, initialized: true,
-    observedRoundKeys: ['BAG01:91:7', 'BAG01:91:8'],
-    acknowledgedRoundKeys: ['BAG01:91:7'],
+    observedRoundKeys: ['BAV01:91:7', 'BAV01:91:8'],
+    acknowledgedRoundKeys: ['BAV01:91:7'],
   })
-  assert.deepEqual(journal.cursor('BAG01'), {
-    shoe: 91, round: 7, identity: 'BAG01:91:7', origin: 'snapshot-pusher-exact-ack-cursor',
+  assert.deepEqual(journal.cursor('BAV01'), {
+    shoe: 91, round: 7, identity: 'BAV01:91:7', origin: 'snapshot-pusher-exact-ack-cursor',
   })
-  assert.equal(journal.status('BAG01:91:7'), null, 'bootstrap cannot forge a Final or ACK record')
+  assert.equal(journal.status('BAV01:91:7'), null, 'bootstrap cannot forge a Final or ACK record')
   const records = (await readFile(journalPath, 'utf8')).trim().split(/\r?\n/).map(JSON.parse)
   assert.deepEqual(records.map(({ type }) => type), ['cursor_bootstrap'])
   assert.equal(records[0].origin, 'snapshot-pusher-exact-ack-cursor')
@@ -221,8 +221,8 @@ test('Reviewer P0 exact-ACK bootstrap 7 persists without forging Final/ACK and p
   assert.deepEqual(journal.pending().map(({ event }) => event.round), [8])
 
   const restored = await createFinalJournal({ journalPath, assertSource: () => true })
-  assert.deepEqual(restored.cursor('BAG01'), journal.cursor('BAG01'), 'restart must restore the durable bootstrap cursor')
-  assert.equal(restored.status('BAG01:91:7'), null)
+  assert.deepEqual(restored.cursor('BAV01'), journal.cursor('BAV01'), 'restart must restore the durable bootstrap cursor')
+  assert.equal(restored.status('BAV01:91:7'), null)
 })
 
 test('Reviewer P0 bootstrap rejects malformed or merely observed/unproven cursor identities', async (t) => {
@@ -230,18 +230,18 @@ test('Reviewer P0 bootstrap rejects malformed or merely observed/unproven cursor
   t.after(() => rm(dir, { recursive: true, force: true }))
   const journal = await createFinalJournal({ journalPath: path.join(dir, 'finals.jsonl'), assertSource: () => true })
   await assert.rejects(journal.bootstrapFromSnapshotPusherCursor({
-    version: 3, initialized: true, observedRoundKeys: ['BAG01:91:7'], acknowledgedRoundKeys: [],
+    version: 3, initialized: true, observedRoundKeys: ['BAV01:91:7'], acknowledgedRoundKeys: [],
   }), /snapshot_pusher_exact_ack_cursor_unproven/)
   await assert.rejects(journal.bootstrapFromSnapshotPusherCursor({
-    version: 3, initialized: true, observedRoundKeys: [], acknowledgedRoundKeys: ['BAG01:not-a-shoe:7'],
+    version: 3, initialized: true, observedRoundKeys: [], acknowledgedRoundKeys: ['BAV01:not-a-shoe:7'],
   }), /snapshot_pusher_exact_ack_cursor_invalid/)
-  assert.equal(journal.cursor('BAG01'), null)
+  assert.equal(journal.cursor('BAV01'), null)
 })
 
 test('Reviewer P0: only cursor plus one and exact ACKed duplicate are accepted; unknown cross-shoe Final blocks', async () => {
   const appended = []
   const lease = { mode: 'api', ownerId: 'api-primary', epoch: 1, fence: 'fence-1', status: 'active', expiresAt: 10_000 }
-  let cursor = { shoe: 91, round: 7, identity: 'BAG01:91:7', hash: 'ack-7' }
+  let cursor = { shoe: 91, round: 7, identity: 'BAV01:91:7', hash: 'ack-7' }
   const runtime = createWorkerSourceRuntime({
     sourceOwner: {
       acquireOrRecover: async () => lease, lease: () => lease, assertCurrent: () => true,
@@ -259,7 +259,7 @@ test('Reviewer P0: only cursor plus one and exact ACKed duplicate are accepted; 
 
   await runtime.onFinal({ ...fixtureEvent(7), shoe: 91 })
   await runtime.onFinal({ ...fixtureEvent(8), shoe: 91 })
-  cursor = { shoe: 91, round: 8, identity: 'BAG01:91:8', hash: 'ack-8' }
+  cursor = { shoe: 91, round: 8, identity: 'BAV01:91:8', hash: 'ack-8' }
   await assert.rejects(runtime.onFinal({ ...fixtureEvent(1), shoe: 92 }), /live_ack_blocked:record_contract_unverified/)
 
   assert.deepEqual(appended.map(({ shoe, round }) => [shoe, round]), [[91, 7], [91, 8]])
@@ -275,7 +275,7 @@ test('Reviewer P0: an older same-shoe Final absent from durable ACK history is n
     },
     journal: {
       append: async (event) => { appended.push(event) }, pending: () => [], status: () => null,
-      cursor: () => ({ shoe: 91, round: 7, identity: 'BAG01:91:7', hash: 'ack-7' }), ack: async () => {},
+      cursor: () => ({ shoe: 91, round: 7, identity: 'BAV01:91:7', hash: 'ack-7' }), ack: async () => {},
     },
     gapDetector: createGapDetector(),
     replayProvider: { replay: async () => ({ ok: false, liveGate: 'record_contract_unverified', events: [] }) },
@@ -343,29 +343,29 @@ test('runtime delivery health is derived from API state and source progress inst
   assert.equal(snapshot.connected, true)
   assert.equal(snapshot.authenticated, true)
   assert.equal(snapshot.joined, true)
-  assert.equal(snapshot.tableCount, 10)
+  assert.equal(snapshot.tableCount, 6)
   assert.equal(snapshot.sourceProgressAt, '2026-07-31T01:00:00.000Z')
   assert.equal(snapshot.lastMessageAt, '2026-07-31T01:00:00.000Z')
 
-  await handlers.onTables(Array.from({ length: 10 }, () => ({ table_id: 'BAG01', shoe: 91, round: 1 })))
+  await handlers.onTables(Array.from({ length: 10 }, () => ({ table_id: 'BAV01', shoe: 91, round: 1 })))
   snapshot = await runtime.getDeliverySnapshot()
   assert.equal(snapshot.tableCount, 1, 'duplicate rows cannot impersonate the exact ten production tables')
 })
 
-test('runtime hydrates all ten omitted screens from durable cursor and newer pending Final chronology', async () => {
+test('runtime hydrates all six omitted screens from durable cursor and newer pending Final chronology', async () => {
   const lease = { mode: 'api', ownerId: 'api-primary', epoch: 1, fence: 'fence-1', status: 'active', expiresAt: 10_000 }
   let handlers
   const cursors = new Map(PRODUCTION_TABLE_IDS.map((tableId, index) => [tableId, {
-    shoe: tableId === 'BAG09' ? 999 : 100 + index,
-    round: tableId === 'BAG09' ? 70 : index + 1,
-    identity: `${tableId}:${tableId === 'BAG09' ? 999 : 100 + index}:${tableId === 'BAG09' ? 70 : index + 1}`,
+    shoe: tableId === 'BAV06' ? 999 : 100 + index,
+    round: tableId === 'BAV06' ? 70 : index + 1,
+    identity: `${tableId}:${tableId === 'BAV06' ? 999 : 100 + index}:${tableId === 'BAV06' ? 70 : index + 1}`,
   }]))
   const pending = [{
-    identity: 'BAG09:2:1', hash: 'pending-wrap',
-    event: { ...fixtureEvent(1), tableId: 'BAG09', shoe: 2, source: { ...lease, sequence: 99 } },
+    identity: 'BAV06:2:1', hash: 'pending-wrap',
+    event: { ...fixtureEvent(1), tableId: 'BAV06', shoe: 2, source: { ...lease, sequence: 99 } },
   }, {
-    identity: 'BAG09:999:71', hash: 'delayed-old-shoe',
-    event: { ...fixtureEvent(71), tableId: 'BAG09', shoe: 999, source: { ...lease, sequence: 50 } },
+    identity: 'BAV06:999:71', hash: 'delayed-old-shoe',
+    event: { ...fixtureEvent(71), tableId: 'BAV06', shoe: 999, source: { ...lease, sequence: 50 } },
   }]
   const runtime = createWorkerSourceRuntime({
     sourceOwner: {
@@ -387,12 +387,12 @@ test('runtime hydrates all ten omitted screens from durable cursor and newer pen
   await handlers.onTables(PRODUCTION_TABLE_IDS.map((table_id) => ({ table_id, trend: [] })))
 
   const snapshot = await runtime.getDeliverySnapshot()
-  assert.equal(snapshot.tables.length, 10)
+  assert.equal(snapshot.tables.length, 6)
   for (const [index, tableId] of PRODUCTION_TABLE_IDS.entries()) {
     const table = snapshot.tables.find((candidate) => candidate.tableId === tableId)
     assert.deepEqual({ shoe: table.shoe, round: table.round }, {
-      shoe: tableId === 'BAG09' ? 2 : 100 + index,
-      round: tableId === 'BAG09' ? 1 : index + 1,
+      shoe: tableId === 'BAV06' ? 2 : 100 + index,
+      round: tableId === 'BAV06' ? 1 : index + 1,
     })
   }
 })
@@ -597,7 +597,7 @@ test('restart rebinds old-fence pending Finals after new lease acquisition and b
   const order = []
   const oldSource = { mode: 'api', ownerId: 'api-primary', epoch: 1, fence: 'old-fence', sequence: 7 }
   const lease = { mode: 'api', ownerId: 'api-primary', epoch: 2, fence: 'new-fence', status: 'active', expiresAt: 10_000 }
-  const pending = [{ identity: 'BAG01:91:7', hash: 'payload-hash', event: { ...fixtureEvent(7), source: oldSource } }]
+  const pending = [{ identity: 'BAV01:91:7', hash: 'payload-hash', event: { ...fixtureEvent(7), source: oldSource } }]
   const sourceOwner = {
     acquireOrRecover: async () => { order.push('lease'); return lease },
     lease: () => lease,
@@ -629,14 +629,14 @@ test('restart rebinds old-fence pending Finals after new lease acquisition and b
   assert.deepEqual(snapshot.rounds[0].capturedSource, oldSource)
   assert.deepEqual({ ...snapshot.rounds[0].source, sequence: undefined }, { ...snapshot.source, sequence: undefined })
   assert.equal(snapshot.rounds[0].source.sequence, 11)
-  assert.equal(pending[0].identity, 'BAG01:91:7')
+  assert.equal(pending[0].identity, 'BAV01:91:7')
   assert.equal(pending[0].hash, 'payload-hash')
 })
 
 test('cross-shoe coverage is not remembered until every replay Final is journaled', async () => {
   let replayCalls = 0
   let appendCalls = 0
-  const gap = { type: 'cross_shoe', tableId: 'BAG01', from: { shoe: 91, round: 70 }, to: { shoe: 92, round: 3 } }
+  const gap = { type: 'cross_shoe', tableId: 'BAV01', from: { shoe: 91, round: 70 }, to: { shoe: 92, round: 3 } }
   const lease = { mode: 'api', ownerId: 'api-primary', epoch: 2, fence: 'new-fence', status: 'active', expiresAt: 10_000 }
   const sourceOwner = {
     acquireOrRecover: async () => lease, lease: () => lease, assertCurrent: () => true,
@@ -656,7 +656,7 @@ test('cross-shoe coverage is not remembered until every replay Final is journale
         return { ok: true, coverage: gap, events: [{ ...fixtureEvent(1), shoe: 92 }, { ...fixtureEvent(2), shoe: 92 }] }
       },
     },
-    createApiClient: ({ onTables }) => ({ start: async () => onTables([{ tableId: 'BAG01', shoe: 92, round: 3 }]), stop: () => {} }),
+    createApiClient: ({ onTables }) => ({ start: async () => onTables([{ tableId: 'BAV01', shoe: 92, round: 3 }]), stop: () => {} }),
   })
   await runtime.start()
   await assert.rejects(runtime.getDeliverySnapshot(), /journal_write_failed/)
@@ -667,7 +667,7 @@ test('cross-shoe coverage is not remembered until every replay Final is journale
 test('runtime bootstraps durable shoe lifecycle and wires provider transitions back to the journal', async () => {
   const lease = { mode: 'api', ownerId: 'api-primary', epoch: 4, fence: 'fence-4', status: 'active', expiresAt: 99_999 }
   const persisted = {
-    tableId: 'BAG09', activeShoe: 999, retiredShoes: [1],
+    tableId: 'BAV06', activeShoe: 999, retiredShoes: [1],
     currentScreen: { shoe: 999, round: 70 }, origin: 'provider',
     source: { mode: 'api', ownerId: 'api-primary', epoch: 3, fence: 'prior-fence', sequence: 90 },
   }
@@ -680,7 +680,7 @@ test('runtime bootstraps durable shoe lifecycle and wires provider transitions b
     },
     journal: {
       pending: () => [], cursor: () => null, status: () => null, append: async () => {}, ack: async () => {},
-      shoeLifecycle: (tableId) => tableId === 'BAG09' ? structuredClone(persisted) : null,
+      shoeLifecycle: (tableId) => tableId === 'BAV06' ? structuredClone(persisted) : null,
       transitionShoeLifecycle: async (value) => { transitions.push(structuredClone(value)) },
     },
     gapDetector: createGapDetector(),
@@ -696,7 +696,7 @@ test('runtime bootstraps durable shoe lifecycle and wires provider transitions b
   const delivery = await runtime.getDeliverySnapshot()
   assert.deepEqual(delivery.shoeLifecycles, [persisted])
   const next = {
-    tableId: 'BAG09', activeShoe: 1, round: 0, origin: 'provider',
+    tableId: 'BAV06', activeShoe: 1, round: 0, origin: 'provider',
     source: { mode: 'api', ownerId: 'api-primary', epoch: 4, fence: 'fence-4', sequence: 91 },
   }
   await apiOptions.onShoeLifecycleTransition(next)
@@ -742,7 +742,7 @@ async function runtimeFixture(t, {
 
 function fixtureEvent(round) {
   return {
-    tableId: 'BAG01', shoe: 91, round, winner: 'banker', sourceAction: 'summary', final: true,
+    tableId: 'BAV01', shoe: 91, round, winner: 'banker', sourceAction: 'summary', final: true,
     rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], playerPoint: 4, bankerPoint: 6,
   }
 }

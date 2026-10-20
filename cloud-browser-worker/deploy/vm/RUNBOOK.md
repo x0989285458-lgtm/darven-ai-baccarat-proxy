@@ -1,3 +1,5 @@
+> **六 raw 候選入口（PRECOMMIT ONLY，尚未獲准部署）**：請先讀 [六 raw 操作手冊](../../../docs/six-raw-operations.md) 與 [不可變回滾矩陣](../../../docs/six-raw-rollback-matrix.json)。六桌 raw ID／顯示映射、DB-before-runtime、所有 writer 停止、Consumer=false、Outbox HOLD、Watchdog 排除與安全 BLOCK 以該文件為準。HTTPS 傳輸層已於 2026-10-20 建立並完成憑證／主機名驗證；僅傳輸層已安裝，正式 Pages 尚未切換，六 raw 產品仍未部署，不得據此啟動抓牌或部署。下方 v104／十桌內容完整保留為歷史，不得拿十桌 gate 或自動 restart 回滾操作六 raw。
+
 # v104 GCP VM部署、回滾與驗證
 
 正式VM：`darven-mt-taiwan-worker-5`（`asia-east1-b`）。正式服務：`darven-worker.service`。正式Queue／Cursor：`/var/lib/darven-worker`。

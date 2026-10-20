@@ -44,7 +44,7 @@ test('recent calibration rows quarantine predictions without a verified final se
   let requestedUrl
   let requestedInit
   const finalRow = {
-    table_id: 'BAG01', shoe_no: '8', round_no: 3,
+    table_id: 'BAV01', shoe_no: '8', round_no: 3,
     strategy_version: 'v105', predicted_result: 'banker', actual_result: 'banker', is_hit: true,
     settlement_final: true, prediction_issued_at: '2026-07-15T08:02:00Z',
     prediction_features: { settlement_final: true, prediction_timing: 'pre_result_context' }, created_at: '2026-07-15T08:03:00Z',
@@ -68,7 +68,7 @@ test('v102 recent calibration reads and accepts only v102 settlements', async ()
   let requestedUrl
   let requestedInit
   const v102Row = {
-    table_id: 'BAG01', shoe_no: '100', round_no: 2,
+    table_id: 'BAV01', shoe_no: '100', round_no: 2,
     strategy_version: 'v105', predicted_result: 'banker', actual_result: 'banker', is_hit: true,
     settlement_final: true, prediction_issued_at: '2026-07-18T08:01:00Z',
     prediction_features: { settlement_final: true, prediction_timing: 'pre_result_context' }, created_at: '2026-07-18T08:02:00Z',
@@ -89,7 +89,7 @@ test('v102 recent calibration reads and accepts only v102 settlements', async ()
 
 test('v102 recent calibration rejects post-result or non-issued history', async () => {
   const causal = {
-    id: 'causal', table_id: 'BAG01', shoe_no: '100', round_no: 3,
+    id: 'causal', table_id: 'BAV01', shoe_no: '100', round_no: 3,
     strategy_version: 'v105', predicted_result: 'banker', actual_result: 'banker', is_hit: true,
     settlement_final: true, prediction_issued_at: '2026-07-18T08:02:00Z',
     prediction_features: { prediction_timing: 'pre_result_context' }, created_at: '2026-07-18T08:03:00Z',

@@ -17,7 +17,7 @@ function body(overrides = {}) {
       authenticated: true,
       sessionId: 'vm-worker',
       snapshotAt: new Date(now).toISOString(),
-      tables: [{ tableId: 'BAG01', tableType: 'BAC', displayName: '測試桌', round: 9 }],
+      tables: [{ tableId: 'BAV01', tableType: 'BAC', displayName: '測試桌', round: 9 }],
       rounds: [],
     },
     ...overrides,
@@ -55,7 +55,7 @@ test('cloud ingest treats duplicate sequence as idempotent without rewriting', a
 
 test('duplicate accepted sequence returns only the retried subset of previously accepted round keys', async () => {
   const finalRound = (round) => ({
-    tableId: 'BAG01', shoe: 14509, round, winner: 'banker',
+    tableId: 'BAV01', shoe: 14509, round, winner: 'banker',
     playerPoint: 4, bankerPoint: 6,
     rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
     sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
@@ -78,7 +78,7 @@ test('duplicate accepted sequence returns only the retried subset of previously 
       snapshot: {
         buildVersion: '105', connected: true, authenticated: true,
         sessionId: 'vm-worker', snapshotAt: new Date(now).toISOString(),
-        tables: [{ tableId: 'BAG01', tableType: 'BAC', shoe: 14509, round: 3 }],
+        tables: [{ tableId: 'BAV01', tableType: 'BAC', shoe: 14509, round: 3 }],
         rounds: selectedRounds,
       },
     }),
@@ -102,7 +102,7 @@ test('valid cloud ingest updates tables and uses existing Supabase capture flow'
   app.state.setStatus({ eventLayer: 'monitor_error', eventSeverity: 'error', eventComponent: 'cloud_status', eventMessage: 'Cloud snapshot is stale', eventKind: 'stale_data', eventAt: '2026-07-12T07:50:00.000Z' })
   const response = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': key }, body: body() })
   assert.equal(response.statusCode, 200)
-  assert.equal(app.state.snapshot().tables[0].tableId, 'BAG01')
+  assert.equal(app.state.snapshot().tables[0].tableId, 'BAV01')
   assert.equal(app.state.snapshot().status.eventMessage, null)
   assert.equal(app.state.snapshot().status.eventKind, null)
   assert.deepEqual(calls.map(([name]) => name), ['status', 'tables'])
@@ -124,7 +124,7 @@ test('same-session concurrent sequences are serialized and never regress or rewr
   })
   const request = (sequence) => ({
     method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': key },
-    body: body({ sequence, snapshot: { buildVersion: '105', connected: true, authenticated: true, sessionId: 'vm-worker', snapshotAt: new Date(now).toISOString(), tables: [{ tableId: 'BAG01', tableType: 'BAC', round: sequence }], rounds: [] } }),
+    body: body({ sequence, snapshot: { buildVersion: '105', connected: true, authenticated: true, sessionId: 'vm-worker', snapshotAt: new Date(now).toISOString(), tables: [{ tableId: 'BAV01', tableType: 'BAC', round: sequence }], rounds: [] } }),
   })
 
   const first = app.inject(request(1))
@@ -166,14 +166,14 @@ test('v102 runtime mounts durable rank data before formal table state', async ()
   })
   const response = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': key }, body: body() })
   assert.equal(response.statusCode, 200)
-  assert.deepEqual(calls, [['shadow', 'BAG01', 0, 0], ['tables']])
+  assert.deepEqual(calls, [['shadow', 'BAV01', 0, 0], ['tables']])
   assert.equal(app.state.snapshot().tables[0].v102RankLedger.rankDataAvailable, true)
 })
 
 test('cloud ingest rejects an exact-looking provisional show_poker before any durable write', async () => {
   const writes = []
   const provisional = {
-    tableId: 'BAG01', shoe: 14509, round: 7, winner: 'player',
+    tableId: 'BAV01', shoe: 14509, round: 7, winner: 'player',
     playerPoint: 5, bankerPoint: 0,
     rawResult: [31, 51, 25, 52, 0, 0, -1, -1, 5, 0],
     sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/show_poker',
@@ -189,11 +189,11 @@ test('cloud ingest rejects an exact-looking provisional show_poker before any du
   const response = await app.inject({
     method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': key },
     body: body({
-      roundKeys: ['BAG01:14509:7'],
+      roundKeys: ['BAV01:14509:7'],
       snapshot: {
         buildVersion: '105', connected: true, authenticated: true,
         sessionId: 'vm-worker', snapshotAt: new Date(now).toISOString(),
-        tables: [{ tableId: 'BAG01', tableType: 'BAC', displayName: '測試桌', shoe: 14509, round: 8 }],
+        tables: [{ tableId: 'BAV01', tableType: 'BAC', displayName: '測試桌', shoe: 14509, round: 8 }],
         rounds: [provisional],
       },
     }),

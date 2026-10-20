@@ -10,17 +10,15 @@ const SUPER_ADMIN = 'dv1788'
 const MEMBER_SESSION_TOKEN_KEY = 'darven-member-session-token'
 const MEMBER_SESSION_EXPIRES_KEY = 'darven-member-session-expires-at'
 const tableDisplayOrder = ['1', '2', '3', '3A', '5', '6', '7', '8', '9', '10']
-const MEMBER_TABLE_IDS = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10'] as const
-const memberTableLabels: ReadonlyMap<string, string> = new Map(MEMBER_TABLE_IDS.map((tableId, index) => [tableId, ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'][index]]))
+const MEMBER_TABLE_IDS = ['BAV01', 'BAV02', 'BAV03', 'BAV03A', 'BAV05', 'BAV06'] as const
+const memberTableLabels: ReadonlyMap<string, string> = new Map(MEMBER_TABLE_IDS.map((tableId, index) => [tableId, ['1', '2', '3', '4', '5', '6'][index]]))
 const HISTORY_RETRY_DELAYS_MS = [150, 400] as const
 type BackendScoreTotals = NonNullable<NonNullable<LiveTable['prediction']>['scoreTotals']>
 const sidePredictionKeys: SidePredictionKey[] = ['tie', 'superSix', 'bankerPair', 'playerPair', 'bankerDragon', 'playerDragon']
 
 function canonicalMemberTableId(table: LiveTable) {
-  const id = String(table.id ?? table.name ?? '').trim().toUpperCase()
-  const match = id.match(/^BAG(\d{1,2})(A?)$/)
-  if (!match) return id
-  return `BAG${match[1].padStart(2, '0')}${match[2]}`
+  // Raw provider identity owns selection and history; display labels never alias it.
+  return String(table.id ?? '')
 }
 
 function orderedMemberTables(tables: LiveTable[]) {
@@ -42,7 +40,8 @@ function tableNumber(table: LiveTable, index: number) {
 }
 
 function memberTableDisplayId(table: LiveTable) {
-  return canonicalMemberTableId(table)
+  const number = memberTableLabels.get(canonicalMemberTableId(table))
+  return number ? `B${number.padStart(2, '0')}-L` : canonicalMemberTableId(table)
 }
 
 function formatPredictionReasonWeight(weight: number) {

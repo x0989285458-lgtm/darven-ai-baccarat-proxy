@@ -6,7 +6,7 @@ const strategyVersion = 'v105'
 
 function table(overrides: Record<string, unknown> = {}) {
   return {
-    tableId: 'BAG01',
+    tableId: 'BAV01',
     displayName: 'MT百家樂第1桌',
     tableType: 'BAC',
     shoe: 123,
@@ -19,7 +19,7 @@ function table(overrides: Record<string, unknown> = {}) {
       source: 'backend',
       strategyVersion,
       buildVersion: 'v105',
-      targetTableId: 'BAG01',
+      targetTableId: 'BAV01',
       targetShoe: '123',
       targetRound: 18,
       predictionId: 'pid-round-18',
@@ -90,7 +90,7 @@ describe('App prediction and session contract', () => {
     expect(reasonCard).toHaveTextContent('路單趨勢 27.5%')
   })
 
-  it('clears every action and reports unavailable when buildVersion is not 098.23', async () => {
+  it('clears every action and reports unavailable when buildVersion is not v105', async () => {
     stubBackend(table({ buildVersion: '097' }))
     await renderMemberApp()
 

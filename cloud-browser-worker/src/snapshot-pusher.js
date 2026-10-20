@@ -3,7 +3,7 @@ import path from 'node:path'
 import { mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import { gzip, gunzip } from 'node:zlib'
-import { PRODUCTION_TABLE_IDS, sanitizeProductionSnapshot } from './table-policy.js'
+import { PRODUCTION_TABLE_IDS, LEGACY_TABLE_IDS, sanitizeProductionSnapshot } from './table-policy.js'
 import { BUILD_VERSION } from './runtime-config.js'
 
 const gzipAsync = promisify(gzip)
@@ -656,6 +656,11 @@ export function createSnapshotPusher({
       if (queued) {
         try {
           const entries = Array.isArray(queued.entries) ? queued.entries : [queued]
+          if (entries.some(hasLegacyTableScope)) {
+            stateInvalid = true
+            lastError = 'legacy_table_scope_requires_new_queue'
+            return
+          }
           const legacyV105DataQueue = Number(queued.version ?? 1) < 3
             && entries.some((entry) => entry?.protocolVersion === 'v105'
               && Array.isArray(entry?.roundKeys) && entry.roundKeys.length > 0)
@@ -677,6 +682,11 @@ export function createSnapshotPusher({
         }
       }
       const journalEntries = await readQueueJournal()
+      if (journalEntries.some(hasLegacyTableScope)) {
+        stateInvalid = true
+        lastError = 'legacy_table_scope_requires_new_queue'
+        return
+      }
       if (journalEntries.length > 0) {
         const seenSequences = new Set(queue.map((entry) => entry.sequence))
         for (const rawEntry of journalEntries) {
@@ -823,6 +833,15 @@ export function createSnapshotPusher({
     const quarantinePath = `${filePath}.corrupt-${Number(now())}`
     await rename(filePath, quarantinePath)
     throw new Error(`corrupt ${label} state quarantined at ${quarantinePath}`, { cause: error })
+  }
+
+  // Keep old durable bytes untouched; cutover requires a fresh queue scope.
+  function hasLegacyTableScope(envelope) {
+    return [
+      ...(envelope?.roundKeys ?? []).map((key) => String(key).split(':')[0]),
+      ...(envelope?.snapshot?.rounds ?? []).map((round) => round?.tableId ?? round?.table_id),
+      ...(envelope?.snapshot?.tables ?? []).map((table) => table?.tableId ?? table?.table_id),
+    ].some((tableId) => LEGACY_TABLE_IDS.includes(canonicalTableId(tableId)))
   }
 
   function normalizeQueuedEnvelope(envelope) {

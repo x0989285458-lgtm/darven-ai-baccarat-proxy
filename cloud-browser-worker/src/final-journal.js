@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import path from 'node:path'
 import { mkdir, open, readFile } from 'node:fs/promises'
 import { isExactTenRawResult, isVerifiedFinalRoundAction } from '../../shared/real-card-validator.js'
-import { canonicalProductionTableId, PRODUCTION_TABLE_IDS } from './table-policy.js'
+import { canonicalProductionTableId, PRODUCTION_TABLE_IDS, JOURNAL_TABLE_IDS } from './table-policy.js'
 
 export async function createFinalJournal({ journalPath, assertSource = () => true } = {}) {
   const target = String(journalPath ?? '').trim()
@@ -158,6 +158,7 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
     return serialize(async () => {
       const rebound = []
       for (const [identity, current] of finals) {
+        if (!PRODUCTION_TABLE_IDS.includes(current.event.tableId)) continue
         if (acknowledgements.has(identity) || sameTransportOwner(current.event.source, targetSource)) continue
         const source = normalizeTransportSource(await allocateSource({ identity, hash: current.hash, event: structuredClone(current.event) }))
         if (targetSource && !sameTransportOwner(source, targetSource)) throw new Error('final_rebind_source_mismatch')
@@ -189,7 +190,7 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
   async function bootstrapFromSnapshotPusherCursor(value) {
     return serialize(async () => {
       const candidates = normalizeSnapshotPusherAckCursors(value)
-      const missing = candidates.filter(({ tableId }) => !cursors.has(tableId))
+      const missing = candidates.filter(({ tableId }) => PRODUCTION_TABLE_IDS.includes(tableId) && !cursors.has(tableId))
       if (missing.length === 0) return { status: candidates.length === 0 ? 'empty' : 'duplicate', cursors: [] }
       const record = {
         version: 1,
@@ -205,7 +206,7 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
 
   function pending() {
     return [...finals.entries()]
-      .filter(([identity]) => !acknowledgements.has(identity))
+      .filter(([identity, value]) => PRODUCTION_TABLE_IDS.includes(value.event.tableId) && !acknowledgements.has(identity))
       .map(([identity, value]) => ({ identity, hash: value.hash, event: structuredClone(value.event) }))
   }
 
@@ -239,7 +240,7 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
         if (index !== 0 || journalHeader) throw new Error('final_journal_corrupt')
         journalHeader = normalizeJournalHeader(record)
       } else if (record?.type === 'final') {
-        const event = normalizeFinal(record.event)
+        const event = normalizeFinal(record.event, JOURNAL_TABLE_IDS)
         const identity = finalIdentity(event)
         const hash = finalHash(event)
         if (record.identity !== identity || record.hash !== hash) throw new Error('final_journal_corrupt')
@@ -255,7 +256,7 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
         const tableId = canonicalProductionTableId(record.tableId)
         const marker = { tableId, shoe: Number(record.shoe), finalRound: Number(record.finalRound) }
         const hash = markerHash(marker)
-        if (!PRODUCTION_TABLE_IDS.includes(tableId) || !Number.isSafeInteger(marker.shoe)
+        if (!JOURNAL_TABLE_IDS.includes(tableId) || !Number.isSafeInteger(marker.shoe)
           || !Number.isSafeInteger(marker.finalRound) || marker.finalRound < 1 || record.hash !== hash) {
           throw new Error('final_journal_corrupt')
         }
@@ -275,7 +276,7 @@ export async function createFinalJournal({ journalPath, assertSource = () => tru
         if (!current || current.hash !== record.hash) throw new Error('final_rebind_mismatch')
         const capturedSource = normalizeTransportSource(record.capturedSource)
         const source = normalizeTransportSource(record.source)
-        const event = normalizeFinal({ ...current.event, capturedSource, source })
+        const event = normalizeFinal({ ...current.event, capturedSource, source }, JOURNAL_TABLE_IDS)
         if (finalIdentity(event) !== identity || finalHash(event) !== current.hash) throw new Error('final_rebind_mismatch')
         finals.set(identity, { hash: current.hash, event, order: current.order })
       } else if (record?.type === 'cursor_bootstrap') {
@@ -408,11 +409,11 @@ export function markerHash(marker = {}) {
   })).digest('hex')
 }
 
-function normalizeFinal(event = {}) {
+function normalizeFinal(event = {}, allowedTableIds = PRODUCTION_TABLE_IDS) {
   const tableId = canonicalProductionTableId(event.tableId)
   const shoe = Number(event.shoe)
   const round = Number(event.round)
-  if (!PRODUCTION_TABLE_IDS.includes(tableId)
+  if (!allowedTableIds.includes(tableId)
     || !Number.isSafeInteger(shoe)
     || !Number.isSafeInteger(round) || round < 1
     || event.final !== true
@@ -442,12 +443,12 @@ function normalizeTransportSource(source = {}) {
   return normalized
 }
 
-function normalizeShoeLifecycle(value = {}) {
+function normalizeShoeLifecycle(value = {}, allowedTableIds = PRODUCTION_TABLE_IDS) {
   const tableId = canonicalProductionTableId(value.tableId)
   const activeShoe = Number(value.activeShoe)
   const round = Number(value.round)
   const origin = String(value.origin ?? '')
-  if (!PRODUCTION_TABLE_IDS.includes(tableId) || !Number.isSafeInteger(activeShoe)
+  if (!allowedTableIds.includes(tableId) || !Number.isSafeInteger(activeShoe)
     || !Number.isSafeInteger(round) || round < 0 || !['provider', 'final'].includes(origin)) {
     throw new Error('shoe_lifecycle_invalid')
   }
@@ -461,7 +462,7 @@ function normalizeRestoredShoeLifecycle(value = {}) {
   const normalized = normalizeShoeLifecycle({
     tableId: value.tableId, activeShoe: value.activeShoe,
     round: value.currentScreen?.round, origin: value.origin, source: value.source,
-  })
+  }, JOURNAL_TABLE_IDS)
   if (Number(value.currentScreen?.shoe) !== normalized.activeShoe || !Array.isArray(value.retiredShoes)
     || value.retiredShoes.length > 64) throw new Error('shoe_lifecycle_invalid')
   const retiredShoes = value.retiredShoes.map(Number)
@@ -528,7 +529,7 @@ function normalizeBootstrapCursor(value = {}) {
   const tableId = canonicalProductionTableId(match[1])
   const shoe = Number(match[2])
   const round = Number(match[3])
-  if (!PRODUCTION_TABLE_IDS.includes(tableId) || !Number.isSafeInteger(shoe) || shoe < 1
+  if (!JOURNAL_TABLE_IDS.includes(tableId) || !Number.isSafeInteger(shoe) || shoe < 1
     || !Number.isSafeInteger(round) || round < 1 || identity !== `${tableId}:${shoe}:${round}`) {
     throw new Error('snapshot_pusher_exact_ack_cursor_invalid')
   }

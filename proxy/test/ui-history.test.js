@@ -37,13 +37,13 @@ test('ui-history uses bearer auth, canonical live-table allowlist, and authorita
       getTableUiRealCardRounds: async (query) => { calls.push(['rounds', query]); return [] },
     },
   })
-  app.state.setTables([{ tableId: 'BAG01', shoe: 88, round: 4, sourceUpdatedAt: new Date().toISOString() }])
+  app.state.setTables([{ tableId: 'BAV01', shoe: 88, round: 4, sourceUpdatedAt: new Date().toISOString() }])
   const token = await login(app)
 
-  const unauthorized = await app.inject({ url: '/api/tables/bag1/ui-history' })
+  const unauthorized = await app.inject({ url: '/api/tables/BAV01/ui-history' })
   assert.equal(unauthorized.statusCode, 401)
   const queryToken = await app.inject({
-    url: '/api/tables/bag1/ui-history?memberSessionToken=forbidden',
+    url: '/api/tables/BAV01/ui-history?memberSessionToken=forbidden',
     headers: { authorization: `Bearer ${token}` },
   })
   assert.equal(queryToken.statusCode, 400)
@@ -53,37 +53,37 @@ test('ui-history uses bearer auth, canonical live-table allowlist, and authorita
   })
   assert.equal(excluded.statusCode, 404)
   const absent = await app.inject({
-    url: '/api/tables/BAG02/ui-history',
+    url: '/api/tables/BAV02/ui-history',
     headers: { authorization: `Bearer ${token}` },
   })
   assert.equal(absent.statusCode, 404)
 
   const response = await app.inject({
-    url: '/api/tables/bag1/ui-history?shoe=999',
+    url: '/api/tables/BAV01/ui-history?shoe=999',
     headers: { authorization: `Bearer ${token}` },
   })
   assert.equal(response.statusCode, 200)
   assert.deepEqual(JSON.parse(response.body), {
     ok: true,
     buildVersion: 'v105',
-    tableId: 'BAG01',
+    tableId: 'BAV01',
     shoe: 88,
     settledPredictions: [],
     realCardRounds: [],
     realCardHistoryCompleteThroughRound: 0,
   })
   assert.deepEqual(calls, [
-    ['predictions', { tableId: 'BAG01', shoe: 88, limit: 10 }],
-    ['rounds', { tableId: 'BAG01', shoe: 88, limit: 100 }],
+    ['predictions', { tableId: 'BAV01', shoe: 88, limit: 10 }],
+    ['rounds', { tableId: 'BAV01', shoe: 88, limit: 100 }],
   ])
 })
 
 test('ui-history fails closed with 503 when either DB getter is unavailable or fails', async () => {
   const missing = createMemberApp({ supabaseClient: { configured: true } })
-  missing.state.setTables([{ tableId: 'BAG01', shoe: 9, round: 1 }])
+  missing.state.setTables([{ tableId: 'BAV01', shoe: 9, round: 1 }])
   const missingToken = await login(missing)
   assert.equal((await missing.inject({
-    url: '/api/tables/BAG01/ui-history',
+    url: '/api/tables/BAV01/ui-history',
     headers: { authorization: `Bearer ${missingToken}` },
   })).statusCode, 503)
 
@@ -94,10 +94,10 @@ test('ui-history fails closed with 503 when either DB getter is unavailable or f
       getTableUiRealCardRounds: async () => [],
     },
   })
-  failed.state.setTables([{ tableId: 'BAG01', shoe: 9, round: 1 }])
+  failed.state.setTables([{ tableId: 'BAV01', shoe: 9, round: 1 }])
   const failedToken = await login(failed)
   const failedResponse = await failed.inject({
-    url: '/api/tables/BAG01/ui-history',
+    url: '/api/tables/BAV01/ui-history',
     headers: { authorization: `Bearer ${failedToken}` },
   })
   assert.equal(failedResponse.statusCode, 503)
@@ -110,10 +110,10 @@ test('ui-history fails closed with 503 when either DB getter is unavailable or f
       getTableUiRealCardRounds: async () => ({ rounds: [], completeThroughRound: 0 }),
     },
   })
-  malformed.state.setTables([{ tableId: 'BAG01', shoe: 9, round: 1 }])
+  malformed.state.setTables([{ tableId: 'BAV01', shoe: 9, round: 1 }])
   const malformedToken = await login(malformed)
   assert.equal((await malformed.inject({
-    url: '/api/tables/BAG01/ui-history',
+    url: '/api/tables/BAV01/ui-history',
     headers: { authorization: `Bearer ${malformedToken}` },
   })).statusCode, 503)
 })

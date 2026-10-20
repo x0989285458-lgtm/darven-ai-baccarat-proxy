@@ -23,40 +23,40 @@ test('worker real-card gate requires exact legal integer ranges in all ten posit
   assert.equal(hasRealCardCodes({ rawResult: exact.rawResult.map((value, index) => index === 8 ? 10 : value) }), false)
 })
 
-test('keeps only the approved ten tables and completed rounds in production order', () => {
-  const tableIds = ['BAG15', 'BAG3A', 'BAG11', 'BAG02', 'BAG13A', 'BAG01', 'BAG12', 'BAG10', 'BAG09', 'BAG08', 'BAG07', 'BAG06', 'BAG05', 'BAG13', 'BAG03']
+test('keeps only the approved six tables and completed rounds in production order', () => {
+  const tableIds = ['BAV15', ' bav03a ', 'BAV11', 'BAV02', 'BAV13A', 'BAV01', 'BAV12', 'BAV10', 'BAV09', 'BAV08', 'BAV07', 'BAV06', 'BAV05', 'BAV13', 'BAV03']
   const snapshot = extractSnapshotFromPayloads([
     { tables: tableIds.map((tableId) => ({ tableId, tableType: 'BAC', shoe: 1, round: 1, name: tableId })) },
     ...tableIds.map((tableId) => ({ action: { name: '/summary' }, body: { tableId, shoe: 1, round: 1, winner: 'banker', rawResult: [1, 2, 3, 4, 0, 0, -1, -1, 4, 6] } })),
   ])
 
-  const expected = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
+  const expected = ['BAV01', 'BAV02', 'BAV03', 'BAV03A', 'BAV05', 'BAV06']
   assert.deepEqual(snapshot.tables.map((table) => table.tableId), expected)
   assert.deepEqual(snapshot.rounds.map((round) => round.tableId).sort(), expected.slice().sort())
-  assert.equal(snapshot.diagnostics.tableCount, 10)
+  assert.equal(snapshot.diagnostics.tableCount, 6)
 })
 
 test('canonicalizes alias round IDs before dedupe', () => {
   const round = { shoe: 1, round: 1, winner: 'banker', rawResult: [1, 2, 3, 4, 0, 0, -1, -1, 4, 6] }
   const snapshot = extractSnapshotFromPayloads([
-    { action: { name: '/summary' }, body: { ...round, tableId: 'BAG3A' } },
-    { action: { name: '/summary' }, body: { ...round, tableId: 'BAG03A' } },
+    { action: { name: '/summary' }, body: { ...round, tableId: ' bav03a ' } },
+    { action: { name: '/summary' }, body: { ...round, tableId: 'BAV03A' } },
   ])
 
-  assert.deepEqual(snapshot.rounds.map((item) => `${item.tableId}:${item.shoe}:${item.round}`), ['BAG03A:1:1'])
+  assert.deepEqual(snapshot.rounds.map((item) => `${item.tableId}:${item.shoe}:${item.round}`), ['BAV03A:1:1'])
 })
 
 test('annotates a captured JSON round with a stable event id', () => {
   assert.equal(
-    annotateRoundPayload('{"action":"show_poker","body":{"table_id":"BAG01","round":1}}', 'capture-1:2'),
-    '{"action":"show_poker","body":{"table_id":"BAG01","round":1},"__captureEventId":"capture-1:2"}',
+    annotateRoundPayload('{"action":"show_poker","body":{"table_id":"BAV01","round":1}}', 'capture-1:2'),
+    '{"action":"show_poker","body":{"table_id":"BAV01","round":1},"__captureEventId":"capture-1:2"}',
   )
 })
 
 test('annotates every object in a captured JSON round array with a distinct event id', () => {
   assert.equal(
-    annotateRoundPayload('[{"table_id":"BAG01","round":1},{"table_id":"BAG02","round":1}]', 'capture-1:2'),
-    '[{"table_id":"BAG01","round":1,"__captureEventId":"capture-1:2:0"},{"table_id":"BAG02","round":1,"__captureEventId":"capture-1:2:1"}]',
+    annotateRoundPayload('[{"table_id":"BAV01","round":1},{"table_id":"BAV02","round":1}]', 'capture-1:2'),
+    '[{"table_id":"BAV01","round":1,"__captureEventId":"capture-1:2:0"},{"table_id":"BAV02","round":1,"__captureEventId":"capture-1:2:1"}]',
   )
 })
 
@@ -64,11 +64,11 @@ test('retains MT summary events with exact cards in the dedicated round buffer',
   assert.equal(isRoundPayload(JSON.stringify({
     action: { name: '/api/v1/gametype/*/game/*/room/*/table/*/summary' },
     body: {
-      table_id: 'BAG01', shoe: 9, round: 21, winner: 2,
+      table_id: 'BAV01', shoe: 9, round: 21, winner: 2,
       result: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
     },
   })), true)
-  assert.equal(isRoundPayload(JSON.stringify({ action: { name: '/summary' }, body: { table_id: 'BAG01' } })), false)
+  assert.equal(isRoundPayload(JSON.stringify({ action: { name: '/summary' }, body: { table_id: 'BAV01' } })), false)
 })
 
 test('normalizes common banker/player/tie winner values for backend round contract', () => {
@@ -138,11 +138,11 @@ test('extracts tables and rounds recursively from websocket/localStorage payload
     JSON.stringify({
       data: {
         tables: [
-          { tableId: 'BAG01', name: 'A桌', shoe: 7, round: 18, bankerCount: 9, playerCount: 8, tieCount: 1, bigRoadRaw: 'BP' },
+          { tableId: 'BAV01', name: 'A桌', shoe: 7, round: 18, bankerCount: 9, playerCount: 8, tieCount: 1, bigRoadRaw: 'BP' },
         ],
       },
     }),
-    { action: { name: '/summary' }, body: { table_id: 'BAG01', shoe: 7, round_no: 19, winner: 'B', rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6] } },
+    { action: { name: '/summary' }, body: { table_id: 'BAV01', shoe: 7, round_no: 19, winner: 'B', rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6] } },
   ], { sessionId: 'test-session', now: '2026-06-30T00:00:00.000Z' })
 
   assert.equal(snapshot.connected, true)
@@ -150,10 +150,10 @@ test('extracts tables and rounds recursively from websocket/localStorage payload
   assert.equal(snapshot.authenticated, true)
   assert.equal(snapshot.sessionId, 'test-session')
   assert.equal(snapshot.tables.length, 1)
-  assert.equal(snapshot.tables[0].tableId, 'BAG01')
+  assert.equal(snapshot.tables[0].tableId, 'BAV01')
   assert.equal(snapshot.rounds.length, 1)
   assert.deepEqual(snapshot.rounds[0], {
-    tableId: 'BAG01',
+    tableId: 'BAV01',
     shoe: 7,
     round: 19,
     winner: 'banker',
@@ -169,7 +169,7 @@ test('extracts verified MT summary result with banker/player points for Super Si
     JSON.stringify({
       action: { name: '/api/v1/gametype/*/game/*/room/*/table/*/summary' },
       body: {
-        table_id: 'BAG06',
+        table_id: 'BAV06',
         shoe: 15669,
         round: 12,
         winner: 2,
@@ -179,7 +179,7 @@ test('extracts verified MT summary result with banker/player points for Super Si
   ], { sessionId: 'test-session', now: '2026-06-30T00:00:00.000Z' })
 
   assert.equal(snapshot.rounds.length, 1)
-  assert.equal(snapshot.rounds[0].tableId, 'BAG06')
+  assert.equal(snapshot.rounds[0].tableId, 'BAV06')
   assert.equal(snapshot.rounds[0].winner, 'banker')
   assert.equal(snapshot.rounds[0].playerPoint, 4)
   assert.equal(snapshot.rounds[0].bankerPoint, 6)
@@ -188,8 +188,8 @@ test('extracts verified MT summary result with banker/player points for Super Si
 
 test('excludes completed-round candidates without an exact ten-value rawResult', () => {
   const snapshot = extractSnapshotFromPayloads([
-    { event: 'roundResult', round: { table_id: 'BAG01', shoe: 7, round_no: 19, result: 'B' } },
-    { event: 'roundResult', round: { table_id: 'BAG02', shoe: 8, round_no: 20, winner: 2, rawResult: [1, 2, 3] } },
+    { event: 'roundResult', round: { table_id: 'BAV01', shoe: 7, round_no: 19, result: 'B' } },
+    { event: 'roundResult', round: { table_id: 'BAV02', shoe: 8, round_no: 20, winner: 2, rawResult: [1, 2, 3] } },
   ])
 
   assert.deepEqual(snapshot.rounds, [])
@@ -199,16 +199,16 @@ test('prefers explicit previous.round and preserves its table shoe round and car
   const cards = [11, 25, 7, 19, -1, -1, -1, -1, 4, 6]
   const snapshot = extractSnapshotFromPayloads([{
     action: { name: '/summary' },
-    table_id: 'BAG01',
+    table_id: 'BAV01',
     shoe: 9,
     round: 1,
     previous: {
-      round: { table_id: 'BAG01', shoe: 8, round: 44, winner: 2, cards },
+      round: { table_id: 'BAV01', shoe: 8, round: 44, winner: 2, cards },
     },
   }])
 
   assert.equal(snapshot.rounds.length, 1)
-  assert.equal(snapshot.rounds[0].tableId, 'BAG01')
+  assert.equal(snapshot.rounds[0].tableId, 'BAV01')
   assert.equal(snapshot.rounds[0].shoe, 8)
   assert.equal(snapshot.rounds[0].round, 44)
   assert.deepEqual(snapshot.rounds[0].cards, cards)
@@ -217,9 +217,9 @@ test('prefers explicit previous.round and preserves its table shoe round and car
 
 test('fails closed when the completed round itself has no shoe', () => {
   const snapshot = extractSnapshotFromPayloads([{
-    tables: [{ tableId: 'BAG01', shoe: 9, round: 4, name: '1' }],
+    tables: [{ tableId: 'BAV01', shoe: 9, round: 4, name: '1' }],
     previous: {
-      round: { table_id: 'BAG01', round: 3, winner: 2, cards: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6] },
+      round: { table_id: 'BAV01', round: 3, winner: 2, cards: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6] },
     },
   }])
 
@@ -231,7 +231,7 @@ test('keeps exact show_poker provisional while final summary wins the same round
   const finalCards = [11, 25, 7, 19, -1, -1, -1, -1, 4, 6]
   const payload = (actionName, result) => JSON.stringify({
     action: { name: `/api/v1/gametype/*/game/*/room/*/table/*/${actionName}` },
-    body: { table_id: 'BAG01', shoe: 8, round: 3, result },
+    body: { table_id: 'BAV01', shoe: 8, round: 3, result },
   })
 
   const provisionalOnly = extractSnapshotFromPayloads([payload('show_poker', provisionalCards)])
@@ -248,11 +248,11 @@ test('keeps exact show_poker provisional while final summary wins the same round
 
 test('keeps the verified final summary over a provisional same-identity candidate', () => {
   const snapshot = extractSnapshotFromPayloads([
-    { event: 'show_poker', round: { table_id: 'BAG06', shoe: 15669, round_no: 12, result: 'B' } },
+    { event: 'show_poker', round: { table_id: 'BAV06', shoe: 15669, round_no: 12, result: 'B' } },
     JSON.stringify({
       action: { name: '/api/v1/gametype/*/game/*/room/*/table/*/summary' },
       body: {
-        table_id: 'BAG06',
+        table_id: 'BAV06',
         shoe: 15669,
         round: 12,
         winner: 2,
@@ -282,7 +282,7 @@ test('extracts MT tables from msg.tables with nested trend roads', () => {
       msg: {
         tables: [
           {
-            table_id: 'BAG01',
+            table_id: 'BAV01',
             table_name: '1',
             table_type: 'BAC',
             trend: {
@@ -301,7 +301,7 @@ test('extracts MT tables from msg.tables with nested trend roads', () => {
   ], { sessionId: 'test-session', now: '2026-06-30T00:00:00.000Z' })
 
   assert.equal(snapshot.tables.length, 1)
-  assert.equal(snapshot.tables[0].tableId, 'BAG01')
+  assert.equal(snapshot.tables[0].tableId, 'BAV01')
   assert.equal(snapshot.tables[0].round, 34)
   assert.equal(snapshot.tables[0].bankerCount, 11)
   assert.equal(snapshot.tables[0].beadPlateRaw, '0102#0201')
@@ -309,14 +309,14 @@ test('extracts MT tables from msg.tables with nested trend roads', () => {
 })
 
 
-test('prefers nested trend roads over body text duplicates and filters non-BAG games', () => {
+test('prefers nested trend roads over body text duplicates and filters non-BAV games', () => {
   const snapshot = extractSnapshotFromPayloads([
     { bodyProbe: '百家樂\n7\n367\n局數 23\n莊 10\n閒 11\n和 2' },
     JSON.stringify({
       msg: {
         tables: [
           {
-            table_id: 'BAG07',
+            table_id: 'BAV05',
             table_name: '7',
             table_type: 'BAC',
             trend: {
@@ -329,14 +329,14 @@ test('prefers nested trend roads over body text duplicates and filters non-BAG g
             },
           },
           { table_id: 'DTG01', table_name: '1', table_type: 'DT', trend: { current_round: '12', big2: '0101' } },
-          { table_id: 'BAG03A', table_name: '3A', table_type: 'BAC', trend: { current_round: '5', big2: '0202' } },
+          { table_id: 'BAV03A', table_name: '3A', table_type: 'BAC', trend: { current_round: '5', big2: '0202' } },
         ],
       },
     }),
-    { tables: [{ tableId: 'BAG3A', tableType: 'BAC', round: 5, bigRoadRaw: '' }] },
+    { tables: [{ tableId: ' bav03a ', tableType: 'BAC', round: 5, bigRoadRaw: '' }] },
   ])
 
   assert.equal(snapshot.tables.some((table) => table.tableId === 'DTG01'), false)
-  assert.equal(snapshot.tables.find((table) => table.tableId === 'BAG07').bigRoadRaw, '0901,0801,#0702')
-  assert.equal(snapshot.tables.find((table) => table.tableId === 'BAG03A').bigRoadRaw, '0202')
+  assert.equal(snapshot.tables.find((table) => table.tableId === 'BAV05').bigRoadRaw, '0901,0801,#0702')
+  assert.equal(snapshot.tables.find((table) => table.tableId === 'BAV03A').bigRoadRaw, '0202')
 })

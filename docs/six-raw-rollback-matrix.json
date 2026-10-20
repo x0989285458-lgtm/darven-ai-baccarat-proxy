@@ -1,0 +1,232 @@
+{
+  "schemaVersion": 1,
+  "documentVersion": "six-raw-operations.20261020.1",
+  "executionTier": "PRECOMMIT_CANDIDATE_TRANSPORT_ONLY_INSTALLED",
+  "releaseAuthorized": false,
+  "authorRole": "implementer_self_check_not_independent_reviewer",
+  "candidateBase": {
+    "commit": "796bd573fa39b71ba2d0061e555de92ad45276fd",
+    "tree": "818770a15310c5c24d5dbb507ba29933040e227a",
+    "note": "此為base，不是最終staged tree；最終Tree由repo外驗收清單綁定。"
+  },
+  "identity": {
+    "source": "ofalive99",
+    "strategy": "v105",
+    "tables": [
+      {
+        "ordinal": 1,
+        "rawId": "BAV01",
+        "displayId": "B01-L",
+        "displayTitle": "MT 真人百家 第1桌",
+        "catalogKeyNotStorageId": "BAV01_LIVE"
+      },
+      {
+        "ordinal": 2,
+        "rawId": "BAV02",
+        "displayId": "B02-L",
+        "displayTitle": "MT 真人百家 第2桌",
+        "catalogKeyNotStorageId": "BAV02_LIVE"
+      },
+      {
+        "ordinal": 3,
+        "rawId": "BAV03",
+        "displayId": "B03-L",
+        "displayTitle": "MT 真人百家 第3桌",
+        "catalogKeyNotStorageId": "BAV03_LIVE"
+      },
+      {
+        "ordinal": 4,
+        "rawId": "BAV03A",
+        "displayId": "B04-L",
+        "displayTitle": "MT 真人百家 第4桌",
+        "catalogKeyNotStorageId": "BAV03A_LIVE"
+      },
+      {
+        "ordinal": 5,
+        "rawId": "BAV05",
+        "displayId": "B05-L",
+        "displayTitle": "MT 真人百家 第5桌",
+        "catalogKeyNotStorageId": "BAV05_LIVE"
+      },
+      {
+        "ordinal": 6,
+        "rawId": "BAV06",
+        "displayId": "B06-L",
+        "displayTitle": "MT 真人百家 第6桌",
+        "catalogKeyNotStorageId": "BAV06_LIVE"
+      }
+    ],
+    "legacyHistoryIds": [
+      "BAG01",
+      "BAG02",
+      "BAG03",
+      "BAG03A",
+      "BAG05",
+      "BAG06",
+      "BAG07",
+      "BAG08",
+      "BAG09",
+      "BAG10"
+    ]
+  },
+  "components": [
+    {
+      "role": "worker",
+      "commit": "796bd573fa39b71ba2d0061e555de92ad45276fd",
+      "tree": "818770a15310c5c24d5dbb507ba29933040e227a",
+      "package": {
+        "name": "darven-cloud-browser-worker",
+        "version": "1.0.67"
+      },
+      "imageRef": "ghcr.io/x0989285458-lgtm/darven-ai-baccarat-worker@sha256:cebe686a6d862d98cb0406e292965420812b7119e039948a21df9a6290c2fae4",
+      "observedImageId": "sha256:cebe686a6d862d98cb0406e292965420812b7119e039948a21df9a6290c2fae4",
+      "releaseLabel": "v105-v10-main.92",
+      "evidence": "baseline.json",
+      "status": "HISTORICAL_OBSERVED_NOT_CURRENT_READBACK",
+      "automaticResumeAllowed": false
+    },
+    {
+      "role": "proxy",
+      "commit": "a88bcf9d371841d9b9f16f57495cff7218ebcb86",
+      "tree": "6dbdff7cd08e1d71d23c6858dc88d1073407bd17",
+      "package": {
+        "name": "draven-mt-data-proxy-v105",
+        "version": "1.0.72"
+      },
+      "imageRef": "ghcr.io/x0989285458-lgtm/darven-ai-baccarat-proxy@sha256:f330091c49c0b700fcc28b32bba568464754f6994dbace2d5add7caba128a5f9",
+      "observedImageId": "sha256:f330091c49c0b700fcc28b32bba568464754f6994dbace2d5add7caba128a5f9",
+      "releaseLabel": "v105-v10-main.91",
+      "evidence": "baseline.json",
+      "status": "HISTORICAL_OBSERVED_NOT_CURRENT_READBACK",
+      "automaticResumeAllowed": false
+    },
+    {
+      "role": "frontend_and_pages_edge",
+      "commit": "b842f12ff5afbc017ff44e400f4abc00cf8820b0",
+      "tree": "a3a8cc4f106381080a8bf1de38ffc6976b5b8afd",
+      "package": {
+        "name": "darven-ai-baccarat-frontend",
+        "version": "1.0.65"
+      },
+      "tag": "v105-origin-recovery.20261019.1",
+      "deploymentId": "b514e727-c429-4a9e-9b36-73239e391c91",
+      "artifactType": "Cloudflare Pages deployment, not OCI",
+      "imageRef": null,
+      "workerSha256": "e9c0135571f298ffaaec11f9c3334d248ace14163d996227bb47c67237efc62e",
+      "indexHtmlSha256": "07c4a4df9835b9318ac5ee318b6f83be880fdc02484b53197df84c1e75c2aa97",
+      "evidence": [
+        "origin-release-identity.json",
+        "origin-production-readback.json"
+      ],
+      "status": "HISTORICAL_ORIGIN_RECOVERY_CAPTURE_NOT_RESTORED_SECURITY_BLOCK",
+      "automaticResumeAllowed": false
+    },
+    {
+      "role": "external_formal_consumer",
+      "commit": null,
+      "tree": null,
+      "imageRef": null,
+      "status": "ABSENT_ON_INSPECTED_VM_PRESERVE_STOPPED",
+      "automaticResumeAllowed": false,
+      "evidence": "2026-10-20 docker ps -a and systemctl darven* readback: no consumer container/unit on this VM",
+      "rollbackAction": "保持未部署/停止，不選取磁碟上任意consumer映像。若未來切換盤點發現其他owner，先補exact commit/tree/digest再准其變更；不在此次候選部署矩陣。"
+    },
+    {
+      "role": "vm_nginx_edge",
+      "commit": null,
+      "tree": null,
+      "imageRef": "nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "observedImageId": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "observedMutableReference": "nginx:1.27-alpine",
+      "configPath": "/etc/darven/public-proxy-nginx.conf",
+      "configSha256": "f2508209f638f334c8a896197638674415d55b1064df4ad92a9a71090ee5f743",
+      "status": "CURRENT_READBACK_UNCHANGED_NOT_REDEPLOYED",
+      "evidence": "2026-10-20 docker image inspect + remote sha256sum",
+      "automaticResumeAllowed": false,
+      "rollbackAction": "保留原容器與原config不替換；config含secret不入Git，未來若要修改先另行備份授權。"
+    },
+    {
+      "role": "origin_tls",
+      "imageRef": "caddy@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f",
+      "status": "TRANSPORT_ONLY_INSTALLED_AND_TLS_VERIFIED",
+      "unit": "darven-origin-tls.service",
+      "configuration": "deploy/six-raw-origin/Caddyfile",
+      "runbook": "deploy/six-raw-origin/README.md",
+      "automaticResumeAllowed": false,
+      "rollbackAction": "僅在正式Pages尚未依賴HTTPS時，經授權disable --now TLS unit；保留ACME資料。正式HTTPS依賴後禁止downgrade，須加密替代或HOLD。"
+    }
+  ],
+  "database": {
+    "sqlSha256": {
+      "supabase/migrations/20261019000100_v105_six_raw_table_compatibility.sql": "dcbb2ee5c69449e643cf0de3b13a2bbc9aa4db98dfb62997958512d7129cf6e3",
+      "supabase/operations/rollback_20261019_v105_six_raw_table_compatibility.sql": "44dd92dbbfdfd81a4b9e6d8c49f04b906f9a9d5c1e8884ea00f82209c39115f3"
+    },
+    "realPgAccepted": true,
+    "acceptedEvidence": "six-raw-real-pg-verification.json",
+    "acceptedScope": "real production PostgreSQL transaction; always ROLLBACK; no committed fixture",
+    "acceptedChecks": [
+      "exact predecessor guards and forward compile",
+      "three candidate definition hashes and owner/ACL/search_path match",
+      "service_role recent RPC executes with exact raw/version scope",
+      "internal accumulator remains denied to service_role",
+      "owner accumulator null/catalog/unknown identity guards",
+      "six raw IDs reach unchanged authoritative-shoe guard; catalog/unknown rejected",
+      "rollback SQL restores exact prior definitions/ACLs",
+      "fresh post-rollback catalog equals predecessor"
+    ],
+    "rerunInThisTask": false,
+    "committedMigrationProven": false,
+    "rollbackWithBavCompactRows": "KEEP_WIDENED_BAG_BAV_CHECK_NO_DATA_DELETION",
+    "disabledCompactTrigger": "sync_v105_formal_compact_settlement remains D"
+  },
+  "outbox": {
+    "default": "HOLD_PRESERVE_NO_MUTATION",
+    "consumerEnabled": false,
+    "pollMs": 0,
+    "historicalPendingCount": 424,
+    "historicalDeadLetterCount": 13484,
+    "historicalProspectiveDeadLetterCount": 13908,
+    "countsAreNotCurrentGate": true,
+    "historicalHoldForwardSha256": "d04ffa2a40e068ece3ae570783896e5a6b06694798ca5bb3067f362d62a2f35f",
+    "historicalHoldRollbackSha256": "be4029ec858925f95da2791a31495509b4fa3dec429c54174b8b2fdb727f15c0",
+    "historicalEvidence": "outbox-six-real-pg-verification.json",
+    "historicalVerdict": "PASS_ROLLED_BACK",
+    "warning": "plan.json 舊 rollback.sql hash 不等於已驗證 outbox-six-cutover-rollback.sql；不得互換。未提交 HOLD，未授權 COMMIT。",
+    "releaseGate": "版本化 exact HOLD/reversal SQL、fresh 全列 preimage/afterimage 與 checksum、獨立審查及另行操作授權；缺任一保持 HOLD。"
+  },
+  "watchdog": {
+    "excludedFromThisProductCommit": [
+      "scripts/ai_baccarat_data_watchdog_six_raw_candidate.py",
+      "scripts/test_watchdog_six_raw_candidate.py",
+      "scripts/watchdog-six-raw-candidate.json",
+      "scripts/watchdog-six-raw-*.log"
+    ],
+    "modifyOrEnable": false,
+    "addCi": false,
+    "futureSeparateGate": "portable tooling/fixture、狀態與 recovery 權限審查；本輪不處理不啟用"
+  },
+  "releaseBlocks": [
+    "FRESH_RUNTIME_AND_DATA_CONTINUITY_READBACK_REQUIRED",
+    "EXACT_VERSIONED_OUTBOX_HOLD_HANDOFF_AND_AUTHORIZATION_REQUIRED",
+    "TRUSTED_IMAGES_AND_PRODUCT_DEPLOYMENT_AUTHORIZATION_REQUIRED",
+    "PRODUCTION_PAGES_HTTPS_CUTOVER_AND_LOGIN_E2E_NOT_EXECUTED"
+  ],
+  "historicalEvidenceSha256": {
+    "baseline.json": "747c66038417c5436d7b4b88a5d0b9bddba3745acf6acb1134d5a182c97b46c8",
+    "origin-release-identity.json": "6ed0666b654fcdc4ee2edef4827302801f29a7b340da053e560fa7d3992b7dfc",
+    "origin-production-readback.json": "fcb2865693df0f08f331ea3503fff74c63d458cbfa1b55d7ff7bf897f92faac9",
+    "six-raw-real-pg-verification.json": "f7107aa3cfaec9320ad57fd90a129176213314003491f0e39bded1825642b3b0",
+    "integration-precommit/release-review.json": "701d97aa9d33142a88a634a1f4d6d3f489c68798bc88321f40a4042561c0df12",
+    "plan.json": "3fe6ef3b6aee64ff10e5a036abd3f57a6729829e56a6bfbf2d2467909861c28f",
+    "outbox-six-real-pg-verification.json": "195711386d06193650c83b316ef3e504d95dfbf7f13505bdd4aa6efa502d0159"
+  },
+  "transport": {
+    "candidateEndpoint": "https://35.189.177.125.sslip.io",
+    "verification": "TLS_V1_3_DEFAULT_CA_HOSTNAME_PASS_UNAUTHENTICATED_403_AUTHENTICATED_STATUS_200",
+    "verifiedAt": "2026-10-20T07:45:10.764629+00:00",
+    "candidateEdge": "HTTPS_ONLY_REDIRECTS_BLOCKED_NO_HTTP_FALLBACK",
+    "productionPagesChanged": false,
+    "doesNotAuthorizeProductDeploy": true,
+    "loopbackHops": "TLS terminator -> 127.0.0.1:80 nginx -> 127.0.0.1:8792; no public plaintext on candidate route"
+  }
+}

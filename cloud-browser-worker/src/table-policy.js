@@ -1,9 +1,12 @@
 export const PRODUCTION_TABLE_IDS = Object.freeze([
-  'BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05',
-  'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10',
+  'BAV01', 'BAV02', 'BAV03',
+  'BAV03A', 'BAV05', 'BAV06',
 ])
 
 const productionTableOrder = new Map(PRODUCTION_TABLE_IDS.map((tableId, index) => [tableId, index]))
+// Historical identities remain readable, not active capture identities.
+export const LEGACY_TABLE_IDS = Object.freeze(['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10'])
+export const JOURNAL_TABLE_IDS = Object.freeze([...PRODUCTION_TABLE_IDS, ...LEGACY_TABLE_IDS])
 
 export function canonicalProductionTableId(value) {
   const id = String(value ?? '').trim().toUpperCase()

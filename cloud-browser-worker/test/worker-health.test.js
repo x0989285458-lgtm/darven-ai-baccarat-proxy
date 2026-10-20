@@ -50,7 +50,7 @@ test('worker health exposes normalized source capture progress without table pay
     ...base,
     source: {
       sessionId: 'vm-1', connected: true, authenticated: true,
-      tables: Array.from({ length: 10 }, (_, index) => ({ tableId: `BAG${index + 1}` })),
+      tables: Array.from({ length: 10 }, (_, index) => ({ tableId: `BAV${index + 1}` })),
       snapshotAt: '2026-07-29T11:30:00.000Z',
     },
     push: { stateInvalid: false, queueEntryCount: 0, queuedRoundKeyCount: 0, consecutiveFailures: 0 },
@@ -65,25 +65,25 @@ test('worker health exposes normalized source capture progress without table pay
 test('source progress tracker ignores heartbeat-only snapshots and advances on real table progress', () => {
   const first = updateSourceProgressTracker(null, {
     snapshotAt: '2026-07-29T11:30:00.000Z',
-    tables: [{ tableId: 'BAG01', shoe: 8, round: 1, bigRoadRaw: 'B' }],
+    tables: [{ tableId: 'BAV01', shoe: 8, round: 1, bigRoadRaw: 'B' }],
     rounds: [],
   })
   const heartbeat = updateSourceProgressTracker(first, {
     snapshotAt: '2026-07-29T11:31:00.000Z',
-    tables: [{ tableId: 'BAG01', shoe: 8, round: 1, bigRoadRaw: 'B' }],
+    tables: [{ tableId: 'BAV01', shoe: 8, round: 1, bigRoadRaw: 'B' }],
     rounds: [],
   })
   const progressed = updateSourceProgressTracker(heartbeat, {
     snapshotAt: '2026-07-29T11:31:05.000Z',
-    tables: [{ tableId: 'BAG01', shoe: 8, round: 2, bigRoadRaw: 'BP' }],
-    rounds: [{ tableId: 'BAG01', shoe: 8, round: 1, sourceAction: '/summary' }],
+    tables: [{ tableId: 'BAV01', shoe: 8, round: 2, bigRoadRaw: 'BP' }],
+    rounds: [{ tableId: 'BAV01', shoe: 8, round: 1, sourceAction: '/summary' }],
   })
   assert.equal(first.sourceProgressAt, '2026-07-29T11:30:00.000Z')
   assert.equal(heartbeat.sourceProgressAt, first.sourceProgressAt)
   assert.equal(progressed.sourceProgressAt, '2026-07-29T11:31:05.000Z')
 })
 
-test('worker health fails closed when ten-table source progress is frozen', () => {
+test('worker health fails closed when six-table source progress is frozen', () => {
   const health = buildWorkerHealth({
     ...base,
     nowMs: Date.parse('2026-07-29T11:34:01.000Z'),

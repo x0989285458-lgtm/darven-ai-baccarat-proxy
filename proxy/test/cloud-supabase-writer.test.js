@@ -12,7 +12,7 @@ import {
   resolveBackendReadConnectionString,
 } from '../src/supabase-writer.js'
 
-const FORMAL_TABLES = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
+const FORMAL_TABLES = ['BAV01', 'BAV02', 'BAV03', 'BAV03A', 'BAV05', 'BAV06']
 
 test('v105 formal history hydrates all latest table states in one bounded direct query', async () => {
   const queries = []
@@ -36,7 +36,7 @@ test('v105 formal history hydrates all latest table states in one bounded direct
   })
 
   const rows = await client.getV105FormalHistory({ limit: 1000, requestTimeoutMs: 30000 })
-  assert.equal(rows.length, 610)
+  assert.equal(rows.length, FORMAL_TABLES.length * 61)
   assert.equal(queries.length, 2)
   assert.match(queries[1].text, /cross join lateral/i)
   assert.match(queries[1].text, /order by prediction_issued_at desc\s+limit 1/i)
@@ -51,7 +51,7 @@ test('v105 formal history accepts an explicitly empty reset and partial v105-onl
 
   let queryCount = 0
   const partial = {
-    id: 'v105-reset-1', table_id: 'BAG01', strategy_version: 'v105',
+    id: 'v105-reset-1', table_id: 'BAV01', strategy_version: 'v105',
     prediction_timing: 'pre_result_context', prediction_issued_at: '2026-07-27T00:00:00.000Z',
     settlement_final: true,
   }
@@ -68,7 +68,7 @@ test('v105 formal history accepts an explicitly empty reset and partial v105-onl
 test('v105 formal history still fails closed on incomplete predecessor hydration', async () => {
   let queryCount = 0
   const partialV104 = {
-    id: 'v104-partial', table_id: 'BAG01', strategy_version: 'v104',
+    id: 'v104-partial', table_id: 'BAV01', strategy_version: 'v104',
     prediction_timing: 'pre_result_context', prediction_issued_at: '2026-07-26T00:00:00.000Z',
     settlement_final: true,
   }
@@ -77,7 +77,7 @@ test('v105 formal history still fails closed on incomplete predecessor hydration
   })
   await assert.rejects(
     client.getV105FormalHistory({ requestTimeoutMs: 30000 }),
-    /requires 60 settled rows for BAG01/,
+    /requires 60 settled rows for BAV01/,
   )
 })
 

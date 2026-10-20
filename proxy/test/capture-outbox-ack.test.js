@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createApp, resolveCaptureOutboxLeaseDeadlineMs } from '../src/server.js'
 
-const PRODUCTION_TABLE_IDS = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
+const PRODUCTION_TABLE_IDS = ['BAV01', 'BAV02', 'BAV03', 'BAV03A', 'BAV05', 'BAV06']
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const waitFor = async (predicate, timeoutMs = 1000) => {
@@ -27,15 +27,15 @@ function envelope() {
     protocolVersion: 'v105',
     timestamp: 1_000_000,
     sequence: 7,
-    roundKeys: ['BAG01:88:21'],
+    roundKeys: ['BAV01:88:21'],
     snapshot: {
       buildVersion: '105',
       sessionId: 'outbox-worker',
       connected: true,
       authenticated: true,
-      tables: [{ tableId: 'BAG01', shoe: 88, round: 21 }],
+      tables: [{ tableId: 'BAV01', shoe: 88, round: 21 }],
       rounds: [{
-        tableId: 'BAG01', shoe: 88, round: 21, winner: 'banker',
+        tableId: 'BAV01', shoe: 88, round: 21, winner: 'banker',
         rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9],
         sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
       }],
@@ -63,7 +63,7 @@ test('durable raw capture and outbox ACK do not wait for formal settlement', asy
     now: () => 1_000_000,
     supabaseClient: {
       configured: true,
-      async persistCaptureEnvelope() { order.push('raw-outbox'); return { acceptedRoundKeys: ['BAG01:88:21'] } },
+      async persistCaptureEnvelope() { order.push('raw-outbox'); return { acceptedRoundKeys: ['BAV01:88:21'] } },
       async claimCaptureOutbox() {
         if (claimed) return []
         claimed = true
@@ -100,7 +100,7 @@ test('durable raw capture and outbox ACK do not wait for formal settlement', asy
       delay(50).then(() => ({ statusCode: 599, body: '{"error":"ACK waited for settlement"}' })),
     ])
     assert.equal(response.statusCode, 200)
-    assert.deepEqual(JSON.parse(response.body).acceptedRoundKeys, ['BAG01:88:21'])
+    assert.deepEqual(JSON.parse(response.body).acceptedRoundKeys, ['BAV01:88:21'])
     assert.equal(order[0], 'raw-outbox')
     assert.equal(order.includes('formal-start'), false, 'HTTP ACK must be created before Formal Outbox work starts')
     await delay(0)
@@ -146,7 +146,7 @@ for (const disabledValue of [false, 'false']) {
       body: JSON.stringify(envelope()),
     })
     assert.equal(response.statusCode, 200)
-    assert.deepEqual(JSON.parse(response.body).acceptedRoundKeys, ['BAG01:88:21'])
+    assert.deepEqual(JSON.parse(response.body).acceptedRoundKeys, ['BAV01:88:21'])
     const statusResponse = await app.inject({ method: 'GET', url: '/api/status' })
     const statusBody = JSON.parse(statusResponse.body)
     assert.equal(statusResponse.statusCode, 200)
@@ -194,9 +194,9 @@ test('consumer-disabled HTTP parent does not start formal or shadow runtimes', a
   await app.start()
   try {
     await delay(0)
-    app.state.setTables([{ tableId: 'BAG01', shoe: 1, round: 1 }])
+    app.state.setTables([{ tableId: 'BAV01', shoe: 1, round: 1 }])
     app.state.upsertRoundEvent({
-      tableId: 'BAG01', shoe: 1, round: 1, sourceAction: 'summary', winner: 'banker',
+      tableId: 'BAV01', shoe: 1, round: 1, sourceAction: 'summary', winner: 'banker',
       rawResult: [1, 2, 3, 4, -1, -1, -1, -1, 4, 6],
     })
     await delay(10)
@@ -294,7 +294,7 @@ test('external consumer publishes a finalized screen and issues the next predict
   const issued = []
   const snapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+    tables: [{ tableId: 'BAV01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
   }
   const app = createApp({
     autoConnect: false,
@@ -316,7 +316,7 @@ test('external consumer publishes a finalized screen and issues the next predict
       async issuePrediction(candidate) {
         issued.push(candidate)
         order.push('issue')
-        return { ...candidate, predictionId: 'pid-BAG01-88-22', issuedAt: '2026-08-25T16:00:01.000Z' }
+        return { ...candidate, predictionId: 'pid-BAV01-88-22', issuedAt: '2026-08-25T16:00:01.000Z' }
       },
     },
     v100FormalRuntime: {
@@ -329,7 +329,7 @@ test('external consumer publishes a finalized screen and issues the next predict
   await app.waitForServiceWorkIdle()
 
   assert.equal(issued.length, 1)
-  assert.equal(issued[0].targetTableId, 'BAG01')
+  assert.equal(issued[0].targetTableId, 'BAV01')
   assert.equal(issued[0].targetShoe, '88')
   assert.equal(issued[0].targetRound, 22)
   assert.deepEqual(order, ['reconcile', 'issue', 'complete'])
@@ -342,7 +342,7 @@ test('formal settlement state publication does not enqueue duplicate background 
   const issued = []
   const snapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+    tables: [{ tableId: 'BAV01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
   }
   let app
   app = createApp({
@@ -363,8 +363,8 @@ test('formal settlement state publication does not enqueue duplicate background 
       async readIssuedPrediction(identity) {
         if (identity.round !== 21) return null
         return {
-          predictionId: 'pid-BAG01-88-21',
-          targetTableId: 'BAG01',
+          predictionId: 'pid-BAV01-88-21',
+          targetTableId: 'BAV01',
           targetShoe: '88',
           targetRound: 21,
           strategyVersion: 'v105',
@@ -375,8 +375,8 @@ test('formal settlement state publication does not enqueue duplicate background 
         app.state.setTables(snapshot.tables)
         return {
           prediction: {
-            predictionId: 'pid-BAG01-88-21',
-            targetTableId: 'BAG01',
+            predictionId: 'pid-BAV01-88-21',
+            targetTableId: 'BAV01',
             targetShoe: '88',
             targetRound: 21,
             strategyVersion: 'v105',
@@ -391,7 +391,7 @@ test('formal settlement state publication does not enqueue duplicate background 
       async issuePrediction(candidate) {
         issued.push(candidate)
         order.push('issue')
-        return { ...candidate, predictionId: 'pid-BAG01-88-22', issuedAt: '2026-08-25T16:00:01.000Z' }
+        return { ...candidate, predictionId: 'pid-BAV01-88-22', issuedAt: '2026-08-25T16:00:01.000Z' }
       },
     },
     v100FormalRuntime: {
@@ -417,7 +417,7 @@ test('concurrent external table update is not dropped while formal settlement su
   const reconciledTables = []
   const snapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+    tables: [{ tableId: 'BAV01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
   }
   const app = createApp({
     autoConnect: false,
@@ -437,8 +437,8 @@ test('concurrent external table update is not dropped while formal settlement su
       async readIssuedPrediction(identity) {
         if (identity.round !== 21) return null
         return {
-          predictionId: 'pid-BAG01-88-21',
-          targetTableId: 'BAG01',
+          predictionId: 'pid-BAV01-88-21',
+          targetTableId: 'BAV01',
           targetShoe: '88',
           targetRound: 21,
           strategyVersion: 'v105',
@@ -449,8 +449,8 @@ test('concurrent external table update is not dropped while formal settlement su
         await settlementGate
         return {
           prediction: {
-            predictionId: 'pid-BAG01-88-21',
-            targetTableId: 'BAG01',
+            predictionId: 'pid-BAV01-88-21',
+            targetTableId: 'BAV01',
             targetShoe: '88',
             targetRound: 21,
             strategyVersion: 'v105',
@@ -471,13 +471,13 @@ test('concurrent external table update is not dropped while formal settlement su
 
   const drain = app.drainCaptureOutbox()
   await settlementStarted
-  app.state.setTables([{ tableId: 'BAG02', shoe: 99, round: 7, sourceUpdatedAt: '2026-08-25T16:00:00.500Z' }])
+  app.state.setTables([{ tableId: 'BAV02', shoe: 99, round: 7, sourceUpdatedAt: '2026-08-25T16:00:00.500Z' }])
   releaseSettlement()
   const result = await drain
   await app.waitForServiceWorkIdle()
 
   assert.deepEqual(result, { processed: 1, failed: 0 })
-  assert.deepEqual(reconciledTables, ['BAG02', 'BAG01'])
+  assert.deepEqual(reconciledTables, ['BAV02', 'BAV01'])
 })
 
 test('formal completion does not wait for unrelated background service work to become idle', async () => {
@@ -491,7 +491,7 @@ test('formal completion does not wait for unrelated background service work to b
   const formalIssued = new Promise((resolve) => { markFormalIssued = resolve })
   const snapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+    tables: [{ tableId: 'BAV01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
   }
   const app = createApp({
     autoConnect: false,
@@ -508,10 +508,10 @@ test('formal completion does not wait for unrelated background service work to b
       async failCaptureOutbox() { assert.fail('unrelated background work must not fail the exact lease') },
       async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
       async readIssuedPrediction(identity) {
-        if (identity.tableId !== 'BAG01' || identity.round !== 21) return null
+        if (identity.tableId !== 'BAV01' || identity.round !== 21) return null
         return {
-          predictionId: 'pid-BAG01-88-21',
-          targetTableId: 'BAG01',
+          predictionId: 'pid-BAV01-88-21',
+          targetTableId: 'BAV01',
           targetShoe: '88',
           targetRound: 21,
           strategyVersion: 'v105',
@@ -520,8 +520,8 @@ test('formal completion does not wait for unrelated background service work to b
       async persistRound() {
         return {
           prediction: {
-            predictionId: 'pid-BAG01-88-21',
-            targetTableId: 'BAG01',
+            predictionId: 'pid-BAV01-88-21',
+            targetTableId: 'BAV01',
             targetShoe: '88',
             targetRound: 21,
             strategyVersion: 'v105',
@@ -530,13 +530,13 @@ test('formal completion does not wait for unrelated background service work to b
         }
       },
       async reconcilePredictionLifecycle(identity) {
-        if (identity.tableId === 'BAG02') {
+        if (identity.tableId === 'BAV02') {
           markBackgroundStarted()
           await backgroundGate
         }
       },
       async issuePrediction(candidate) {
-        if (candidate.targetTableId === 'BAG01') markFormalIssued()
+        if (candidate.targetTableId === 'BAV01') markFormalIssued()
         return { ...candidate, predictionId: `pid-${candidate.targetTableId}-${candidate.targetRound}`, issuedAt: '2026-08-25T16:00:01.000Z' }
       },
     },
@@ -546,7 +546,7 @@ test('formal completion does not wait for unrelated background service work to b
     },
   })
 
-  app.state.setTables([{ tableId: 'BAG02', shoe: 99, round: 7, sourceUpdatedAt: '2026-08-25T16:00:00.500Z' }])
+  app.state.setTables([{ tableId: 'BAV02', shoe: 99, round: 7, sourceUpdatedAt: '2026-08-25T16:00:00.500Z' }])
   await backgroundStarted
   const drain = app.drainCaptureOutbox()
   let completedBeforeBackgroundRelease
@@ -590,7 +590,7 @@ test('formal apply failure restores background prediction scheduling', async () 
   })
 
   const result = await app.drainCaptureOutbox()
-  app.state.setTables([{ tableId: 'BAG01', shoe: 88, round: 22 }])
+  app.state.setTables([{ tableId: 'BAV01', shoe: 88, round: 22 }])
   await app.waitForServiceWorkIdle()
 
   assert.deepEqual(result, { processed: 0, failed: 1 })
@@ -606,7 +606,7 @@ test('external consumer completes an idempotent replay when exact next issuance 
   let durablePrediction = null
   const snapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+    tables: [{ tableId: 'BAV01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
   }
   const app = createApp({
     autoConnect: false,
@@ -626,12 +626,12 @@ test('external consumer completes an idempotent replay when exact next issuance 
       async reconcilePredictionLifecycle() {},
       async issuePrediction(candidate) {
         issueCalls += 1
-        durablePrediction = { ...candidate, predictionId: 'pid-BAG01-88-22', issuedAt: '2026-08-25T16:00:01.000Z' }
+        durablePrediction = { ...candidate, predictionId: 'pid-BAV01-88-22', issuedAt: '2026-08-25T16:00:01.000Z' }
         throw new Error('durable issuance acknowledgement was lost')
       },
       async readIssuedPrediction(identity) {
         if (identity.round === 21) return null
-        assert.deepEqual(identity, { tableId: 'BAG01', shoe: 88, round: 22, strategyVersion: 'v105' })
+        assert.deepEqual(identity, { tableId: 'BAV01', shoe: 88, round: 22, strategyVersion: 'v105' })
         return durablePrediction
       },
     },
@@ -655,7 +655,7 @@ test('external consumer retains the exact outbox lease when next prediction issu
   let failed = 0
   const snapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+    tables: [{ tableId: 'BAV01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
   }
   const app = createApp({
     autoConnect: false,
@@ -697,7 +697,7 @@ test('external consumer acknowledges durable stale Final work without requiring 
   const issuedTargets = []
   const staleSnapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+    tables: [{ tableId: 'BAV01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
   }
   const app = createApp({
     autoConnect: false,
@@ -731,10 +731,10 @@ test('external consumer acknowledges durable stale Final work without requiring 
   })
 
   app.state.setTables([{
-    tableId: 'BAG01', shoe: 88, round: 25, sourceUpdatedAt: '2026-08-25T16:00:05.000Z',
+    tableId: 'BAV01', shoe: 88, round: 25, sourceUpdatedAt: '2026-08-25T16:00:05.000Z',
     beadPlateRaw: '0102010201', bigRoadRaw: 'BPBPB',
   }, {
-    tableId: 'BAG02', shoe: 99, round: 12, sourceUpdatedAt: '2026-08-25T16:00:05.000Z',
+    tableId: 'BAV02', shoe: 99, round: 12, sourceUpdatedAt: '2026-08-25T16:00:05.000Z',
     beadPlateRaw: '02010102', bigRoadRaw: 'PBPB',
   }])
   await app.waitForServiceWorkIdle()
@@ -746,7 +746,7 @@ test('external consumer acknowledges durable stale Final work without requiring 
   assert.deepEqual(issuedTargets.sort((left, right) => left - right), [13, 26], 'only current-screen predictions may be issued')
   assert.deepEqual(
     app.state.snapshot().tables.map((table) => [table.tableId, table.round]),
-    [['BAG01', 25], ['BAG02', 12]],
+    [['BAV01', 25], ['BAV02', 12]],
     'partial stale work must preserve every unrelated live table',
   )
 })
@@ -760,10 +760,10 @@ test('external consumer refreshes the fresh durable screen before stale cross-sh
   const currentSnapshotAt = new Date(nowMs - 1_000).toISOString()
   const staleSnapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+    tables: [{ tableId: 'BAV01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
   }
   const currentTable = {
-    tableId: 'BAG01', shoe: 89, round: 3, sourceUpdatedAt: currentSnapshotAt,
+    tableId: 'BAV01', shoe: 89, round: 3, sourceUpdatedAt: currentSnapshotAt,
     beadPlateRaw: '010201', bigRoadRaw: 'BPB',
   }
   const app = createApp({
@@ -814,7 +814,7 @@ test('external consumer refreshes the fresh durable screen before stale cross-sh
   assert.deepEqual(app.state.snapshot().tables.map((table) => [String(table.shoe), Number(table.round)]), [['89', 3]])
 })
 
-test('production consumer refuses to claim backlog without a fresh complete ten-table snapshot', async () => {
+test('production consumer refuses to claim backlog without a fresh complete six-table snapshot', async () => {
   let claims = 0
   const snapshotAt = new Date(Date.now() - 1_000).toISOString()
   const app = createApp({
@@ -831,7 +831,7 @@ test('production consumer refuses to claim backlog without a fresh complete ten-
           session_id: 'worker-incomplete',
           snapshot_at: snapshotAt,
           capture_source: 'cloud_browser',
-          tables: [{ tableId: 'BAG01', shoe: 89, round: 3, sourceUpdatedAt: snapshotAt }],
+          tables: [{ tableId: 'BAV01', shoe: 89, round: 3, sourceUpdatedAt: snapshotAt }],
         }
       },
       async claimCaptureOutbox() { claims += 1; return [] },
@@ -845,7 +845,7 @@ test('production consumer refuses to claim backlog without a fresh complete ten-
   await app.stop()
 })
 
-test('production consumer rejects a ten-row snapshot that duplicates one table identity', async () => {
+test('production consumer rejects a six-row snapshot that duplicates one table identity', async () => {
   let claims = 0
   const snapshotAt = new Date(Date.now() - 1_000).toISOString()
   const app = createApp({
@@ -862,8 +862,8 @@ test('production consumer rejects a ten-row snapshot that duplicates one table i
           session_id: 'worker-duplicate',
           snapshot_at: snapshotAt,
           capture_source: 'cloud_browser',
-          tables: Array.from({ length: 10 }, (_, index) => ({
-            tableId: 'BAG01', shoe: 89, round: 3 + index, sourceUpdatedAt: snapshotAt,
+          tables: Array.from({ length: PRODUCTION_TABLE_IDS.length }, (_, index) => ({
+            tableId: 'BAV01', shoe: 89, round: 3 + index, sourceUpdatedAt: snapshotAt,
           })),
         }
       },
@@ -944,7 +944,7 @@ test('production consumer rejects a far-future snapshot before claiming backlog'
   await app.stop()
 })
 
-test('production consumer claims only after a fresh exact ten-table snapshot', async () => {
+test('production consumer claims only after a fresh exact six-table snapshot', async () => {
   let claims = 0
   const snapshotAt = new Date(Date.now() - 1_000).toISOString()
   const app = createApp({
@@ -975,7 +975,7 @@ test('production consumer claims only after a fresh exact ten-table snapshot', a
   await app.stop()
 })
 
-test('production consumer restores all latest ten-table predictions before claiming historical backlog', async () => {
+test('production consumer restores all latest six-table predictions before claiming historical backlog', async () => {
   let claims = 0
   const issuedTables = new Set()
   const snapshotAt = new Date(Date.now() - 1_000).toISOString()
@@ -1029,7 +1029,7 @@ test('production consumer restores all latest ten-table predictions before claim
   await app.waitForServiceWorkIdle()
   await app.drainCaptureOutbox()
   assert.equal(claims, 1)
-  assert.equal(issuedTables.size, 10)
+  assert.equal(issuedTables.size, PRODUCTION_TABLE_IDS.length)
   await app.stop()
 })
 
@@ -1074,7 +1074,7 @@ test('latest prediction refresh advances while a claimed backlog batch is still 
         claimed = true
         return Array.from({ length: 30 }, (_, index) => {
           const tableId = PRODUCTION_TABLE_IDS[index % PRODUCTION_TABLE_IDS.length]
-          const finalRound = 5 + Math.floor(index / PRODUCTION_TABLE_IDS.length)
+          const finalRound = currentRound - Math.ceil(30 / PRODUCTION_TABLE_IDS.length) + 1 + Math.floor(index / PRODUCTION_TABLE_IDS.length)
           return claimedRow(68 + index, {
             payload: {
               work: {
@@ -1117,9 +1117,9 @@ test('latest prediction refresh advances while a claimed backlog batch is still 
   try {
     await completeStartedGate
     currentRound = 8
-    await waitFor(() => issuedTargets.includes('BAG01:9'), 2_000)
+    await waitFor(() => issuedTargets.includes('BAV01:9'), 2_000)
     await delay(50)
-    assert.equal(issuedTargets.filter((identity) => identity === 'BAG01:9').length, 1)
+    assert.equal(issuedTargets.filter((identity) => identity === 'BAV01:9').length, 1)
   } finally {
     releaseComplete()
     await app.waitForCaptureOutboxIdle()
@@ -1153,9 +1153,9 @@ test('latest prediction refresh persists success per changed table and retries o
       async reconcilePredictionLifecycle() {},
       async readIssuedPrediction() { return null },
       async issuePrediction(candidate) {
-        if (failBag01Target9 && candidate.targetTableId === 'BAG01' && candidate.targetRound === 9) {
+        if (failBag01Target9 && candidate.targetTableId === 'BAV01' && candidate.targetRound === 9) {
           failBag01Target9 = false
-          throw new Error('BAG01 transient issuance failure')
+          throw new Error('BAV01 transient issuance failure')
         }
         issuedTargets.push(`${candidate.targetTableId}:${candidate.targetRound}`)
         return { ...candidate, predictionId: `pid-${candidate.targetTableId}-${candidate.targetRound}`, issuedAt: snapshotAt() }
@@ -1181,20 +1181,20 @@ test('latest prediction refresh persists success per changed table and retries o
 
   try {
     await app.refreshLatestDurablePredictions()
-    assert.equal(issuedTargets.filter((identity) => identity.endsWith(':8')).length, 10)
+    assert.equal(issuedTargets.filter((identity) => identity.endsWith(':8')).length, PRODUCTION_TABLE_IDS.length)
 
-    rounds.set('BAG01', 8)
-    rounds.set('BAG02', 8)
+    rounds.set('BAV01', 8)
+    rounds.set('BAV02', 8)
     failBag01Target9 = true
-    await assert.rejects(app.refreshLatestDurablePredictions(), /latest actionable|BAG01 transient issuance failure/)
-    assert.equal(issuedTargets.filter((identity) => identity === 'BAG02:9').length, 1)
-    assert.equal(issuedTargets.filter((identity) => identity === 'BAG01:9').length, 0)
+    await assert.rejects(app.refreshLatestDurablePredictions(), /latest actionable|BAV01 transient issuance failure/)
+    assert.equal(issuedTargets.filter((identity) => identity === 'BAV02:9').length, 1)
+    assert.equal(issuedTargets.filter((identity) => identity === 'BAV01:9').length, 0)
 
     clockMs += 10_001
     await app.refreshLatestDurablePredictions()
-    assert.equal(issuedTargets.filter((identity) => identity === 'BAG01:9').length, 1)
-    assert.equal(issuedTargets.filter((identity) => identity === 'BAG02:9').length, 1)
-    assert.equal(issuedTargets.filter((identity) => identity.endsWith(':8')).length, 10)
+    assert.equal(issuedTargets.filter((identity) => identity === 'BAV01:9').length, 1)
+    assert.equal(issuedTargets.filter((identity) => identity === 'BAV02:9').length, 1)
+    assert.equal(issuedTargets.filter((identity) => identity.endsWith(':8')).length, PRODUCTION_TABLE_IDS.length)
   } finally {
     await app.stop()
   }
@@ -1248,7 +1248,7 @@ test('production consumer preserves a newer same-shoe live screen when durable c
       async getLatestCloudTableSnapshot() {
         return {
           session_id: 'lagging-durable-screen', snapshot_at: snapshotAt, capture_source: 'cloud_browser',
-          tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: 92, round: tableId === 'BAG10' ? 5 : 13, sourceUpdatedAt: snapshotAt })),
+          tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: 92, round: tableId === 'BAV06' ? 5 : 13, sourceUpdatedAt: snapshotAt })),
         }
       },
       async claimCaptureOutbox() { claims += 1; return [] },
@@ -1264,7 +1264,7 @@ test('production consumer preserves a newer same-shoe live screen when durable c
   await app.drainCaptureOutbox()
 
   assert.equal(claims, 1)
-  assert.equal(app.state.snapshot().tables.find((table) => table.tableId === 'BAG10')?.round, 13)
+  assert.equal(app.state.snapshot().tables.find((table) => table.tableId === 'BAV06')?.round, 13)
   await app.stop()
 })
 
@@ -1281,7 +1281,7 @@ test('same-round durable refresh updates the public payload without regressing t
         return {
           session_id: 'same-round-payload-refresh', snapshot_at: snapshotAt, capture_source: 'cloud_browser',
           tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
-            tableId, shoe: 92, round: 13, beadPlateRaw: tableId === 'BAG10' ? '0102' : '', sourceUpdatedAt: snapshotAt,
+            tableId, shoe: 92, round: 13, beadPlateRaw: tableId === 'BAV06' ? '0102' : '', sourceUpdatedAt: snapshotAt,
           })),
         }
       },
@@ -1297,7 +1297,7 @@ test('same-round durable refresh updates the public payload without regressing t
 
   await app.refreshLatestDurablePredictions()
 
-  const bag10 = app.state.snapshot().tables.find((table) => table.tableId === 'BAG10')
+  const bag10 = app.state.snapshot().tables.find((table) => table.tableId === 'BAV06')
   assert.equal(bag10?.round, 13)
   assert.equal(bag10?.beadPlateRaw, '0102')
   await app.stop()
@@ -1321,7 +1321,7 @@ test('lagging same-shoe refresh does not renew a retained local screen after the
           session_id: 'stopped-live-source', snapshot_at: new Date().toISOString(), capture_source: 'cloud_browser',
           tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
             tableId, shoe: 92,
-            round: tableId === 'BAG10' ? 5 : tableId === 'BAG09' ? bag09Round : 13,
+            round: tableId === 'BAV06' ? 5 : tableId === 'BAV05' ? bag09Round : 13,
             sourceUpdatedAt: snapshotAt,
           })),
         }
@@ -1344,8 +1344,8 @@ test('lagging same-shoe refresh does not renew a retained local screen after the
   const tables = JSON.parse(response.body)
 
   assert.equal(response.statusCode, 200)
-  assert.equal(tables.find((table) => table.tableId === 'BAG10')?.round, 5)
-  assert.equal(tables.find((table) => table.tableId === 'BAG09')?.round, 16)
+  assert.equal(tables.find((table) => table.tableId === 'BAV06')?.round, 5)
+  assert.equal(tables.find((table) => table.tableId === 'BAV05')?.round, 16)
   await app.stop()
 })
 
@@ -1382,7 +1382,7 @@ test('fresh local new-shoe screen allows backlog claim while durable snapshot is
 
   await app.drainCaptureOutbox()
   assert.equal(claims, 1)
-  assert.equal(app.state.snapshot().tables.find((table) => table.tableId === 'BAG10')?.shoe, 93)
+  assert.equal(app.state.snapshot().tables.find((table) => table.tableId === 'BAV06')?.shoe, 93)
 
   durableShoe = 90
   await assert.rejects(app.drainCaptureOutbox(), /shoe regression is not refreshable/)
@@ -1427,7 +1427,7 @@ test('fresh live shoe one treats durable shoe 999 as exactly one shoe behind wit
 
   await app.drainCaptureOutbox()
   assert.equal(claims, 1)
-  assert.equal(app.state.snapshot().tables.find((table) => table.tableId === 'BAG10')?.shoe, 1)
+  assert.equal(app.state.snapshot().tables.find((table) => table.tableId === 'BAV06')?.shoe, 1)
 
   nowMs += 120_001
   await assert.rejects(app.drainCaptureOutbox(), /shoe regression is not refreshable/)
@@ -1465,7 +1465,7 @@ test('numeric distance cannot reinterpret live shoe 600 and durable shoe 1 as a 
 
   await assert.rejects(app.drainCaptureOutbox(), /shoe regression is not refreshable/)
   assert.equal(claims, 0)
-  assert.equal(app.state.snapshot().tables.find((table) => table.tableId === 'BAG10')?.shoe, 600)
+  assert.equal(app.state.snapshot().tables.find((table) => table.tableId === 'BAV06')?.shoe, 600)
   await app.stop()
 })
 
@@ -1499,7 +1499,7 @@ test('historical durable shoe 1 cannot masquerade as a new wrap while live shoe 
 
   await assert.rejects(app.drainCaptureOutbox(), /shoe regression is not refreshable/)
   assert.equal(claims, 0)
-  assert.equal(app.state.snapshot().tables.find((table) => table.tableId === 'BAG10')?.shoe, 999)
+  assert.equal(app.state.snapshot().tables.find((table) => table.tableId === 'BAV06')?.shoe, 999)
   await app.stop()
 })
 
@@ -1531,7 +1531,7 @@ test('durable forward shoe cannot borrow an older live-source timestamp to toler
   await app.waitForServiceWorkIdle()
 
   await app.refreshLatestDurablePredictions()
-  assert.equal(app.state.snapshot().tables.find((table) => table.tableId === 'BAG10')?.shoe, 93)
+  assert.equal(app.state.snapshot().tables.find((table) => table.tableId === 'BAV06')?.shoe, 93)
 
   durableShoe = 92
   await assert.rejects(app.drainCaptureOutbox(), /shoe regression is not refreshable/)
@@ -1550,7 +1550,7 @@ for (const invalidCase of [
     let nowMs = Date.now()
     const snapshotAt = new Date(nowMs - 1_000).toISOString()
     const tables = PRODUCTION_TABLE_IDS.map((tableId) => ({
-      tableId, shoe: invalidCase.shoe ?? 92, round: tableId === 'BAG10' ? invalidCase.round : 7, sourceUpdatedAt: snapshotAt,
+      tableId, shoe: invalidCase.shoe ?? 92, round: tableId === 'BAV06' ? invalidCase.round : 7, sourceUpdatedAt: snapshotAt,
     }))
     const app = createApp({
       autoConnect: false,
@@ -1643,11 +1643,11 @@ test('external consumer rejects a hydrated later-round issuance that is not the 
   const exactReads = []
   const staleSnapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+    tables: [{ tableId: 'BAV01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
   }
   const hydratedIssuance = {
     predictionId: 'pid-ahead-30',
-    targetTableId: 'BAG01',
+    targetTableId: 'BAV01',
     targetShoe: '88',
     targetRound: 30,
     strategyVersion: 'v105',
@@ -1682,7 +1682,7 @@ test('external consumer rejects a hydrated later-round issuance that is not the 
     v104FormalRuntime: {
       async start() {},
       snapshot() { return { status: 'ready' } },
-      latestIssuance(tableId) { return tableId === 'BAG01' ? hydratedIssuance : null },
+      latestIssuance(tableId) { return tableId === 'BAV01' ? hydratedIssuance : null },
       async buildPrediction() { assert.fail('a backward candidate must not be built') },
       recordIssuance() {},
       recordSettlement() {},
@@ -1694,7 +1694,7 @@ test('external consumer rejects a hydrated later-round issuance that is not the 
   })
 
   app.state.setTables([{
-    tableId: 'BAG01', shoe: 88, round: 25, sourceUpdatedAt: '2026-08-25T16:00:05.000Z',
+    tableId: 'BAV01', shoe: 88, round: 25, sourceUpdatedAt: '2026-08-25T16:00:05.000Z',
     beadPlateRaw: '0102010201', bigRoadRaw: 'BPBPB',
   }])
   await app.waitForServiceWorkIdle()
@@ -1712,12 +1712,12 @@ test('external consumer rejects a non-current hydrated issuance before inspectin
   let claimed = false
   let failed = 0
   const hydratedIssuance = {
-    predictionId: 'pid-ahead-30', targetTableId: 'BAG01', targetShoe: '88', targetRound: 30,
+    predictionId: 'pid-ahead-30', targetTableId: 'BAV01', targetShoe: '88', targetRound: 30,
     strategyVersion: 'v105', predictionTiming: 'pre_result_context', predictedResult: 'banker', sameSideStreak: 2,
   }
   const staleSnapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+    tables: [{ tableId: 'BAV01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
   }
   const app = createApp({
     autoConnect: false,
@@ -1767,7 +1767,7 @@ test('external consumer retains stale Final lease when the newer same-shoe scree
   const issuedTargets = []
   const staleSnapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+    tables: [{ tableId: 'BAV01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
   }
   const app = createApp({
     autoConnect: false,
@@ -1795,7 +1795,7 @@ test('external consumer retains stale Final lease when the newer same-shoe scree
   })
 
   app.state.setTables([{
-    tableId: 'BAG01', shoe: 88, round: 25, sourceUpdatedAt: '2026-08-25T16:00:05.000Z',
+    tableId: 'BAV01', shoe: 88, round: 25, sourceUpdatedAt: '2026-08-25T16:00:05.000Z',
     beadPlateRaw: '0102010201', bigRoadRaw: 'BPBPB',
   }])
   await app.waitForServiceWorkIdle()
@@ -1818,7 +1818,7 @@ test('external consumer retains stale Final lease when the same-shoe screen adva
   let app
   const staleSnapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+    tables: [{ tableId: 'BAV01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
   }
   app = createApp({
     autoConnect: false,
@@ -1841,7 +1841,7 @@ test('external consumer retains stale Final lease when the same-shoe screen adva
         if (!formalStarted || round !== 26 || advanced) return null
         advanced = true
         app.state.setTables([{
-          tableId: 'BAG01', shoe: 88, round: 26, sourceUpdatedAt: '2026-08-25T16:00:06.000Z',
+          tableId: 'BAV01', shoe: 88, round: 26, sourceUpdatedAt: '2026-08-25T16:00:06.000Z',
           beadPlateRaw: '010201020101', bigRoadRaw: 'BPBPBP',
         }])
         return { ...candidates.get(26), predictionId: 'stale-screen-26', issuedAt: '2026-08-25T16:00:05.500Z' }
@@ -1854,7 +1854,7 @@ test('external consumer retains stale Final lease when the same-shoe screen adva
   })
 
   app.state.setTables([{
-    tableId: 'BAG01', shoe: 88, round: 25, sourceUpdatedAt: '2026-08-25T16:00:05.000Z',
+    tableId: 'BAV01', shoe: 88, round: 25, sourceUpdatedAt: '2026-08-25T16:00:05.000Z',
     beadPlateRaw: '0102010201', bigRoadRaw: 'BPBPB',
   }])
   await app.waitForServiceWorkIdle()
@@ -1875,7 +1875,7 @@ test('external consumer retains the exact outbox lease when prediction reconcili
   let issued = 0
   const snapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+    tables: [{ tableId: 'BAV01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
   }
   const app = createApp({
     autoConnect: false,
@@ -1921,12 +1921,12 @@ test('external consumer settles every cross-table prediction sibling before fail
   const snapshot = {
     ...base,
     tables: [
-      { tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' },
-      { tableId: 'BAG02', shoe: 99, round: 7, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'PB' },
+      { tableId: 'BAV01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' },
+      { tableId: 'BAV02', shoe: 99, round: 7, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'PB' },
     ],
     rounds: [
-      { ...firstRound, tableId: 'BAG01', shoe: 88, round: 21 },
-      { ...firstRound, tableId: 'BAG02', shoe: 99, round: 7 },
+      { ...firstRound, tableId: 'BAV01', shoe: 88, round: 21 },
+      { ...firstRound, tableId: 'BAV02', shoe: 99, round: 7 },
     ],
   }
   const app = createApp({
@@ -1949,7 +1949,7 @@ test('external consumer settles every cross-table prediction sibling before fail
       async getCaptureOutboxHealth() { return { pending: 0, processing: 0, error: 0, dead_letter: 0, next_wakeup_at: null } },
       async readIssuedPrediction() { return null },
       async reconcilePredictionLifecycle({ tableId }) {
-        if (tableId === 'BAG01') throw new Error('BAG01 reconciliation failed')
+        if (tableId === 'BAV01') throw new Error('BAV01 reconciliation failed')
         await new Promise((resolve) => setTimeout(resolve, 30))
         siblingFinished = true
       },
@@ -1978,7 +1978,7 @@ test('external consumer acknowledges a historical Final without issuing from a s
   let issued = 0
   const snapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: null, round: null, state: 'waiting', sourceUpdatedAt: '2026-08-25T16:00:00.000Z' }],
+    tables: [{ tableId: 'BAV01', shoe: null, round: null, state: 'waiting', sourceUpdatedAt: '2026-08-25T16:00:00.000Z' }],
   }
   const app = createApp({
     autoConnect: false,
@@ -2024,7 +2024,7 @@ test('external consumer fails closed when a finalized shoe identity is empty', a
   const snapshot = {
     ...base,
     rounds: base.rounds.map((round) => ({ ...round, shoe: '' })),
-    tables: [{ tableId: 'BAG01', shoe: 89, round: 1, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '01', bigRoadRaw: 'B' }],
+    tables: [{ tableId: 'BAV01', shoe: 89, round: 1, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '01', bigRoadRaw: 'B' }],
   }
   const app = createApp({
     autoConnect: false,
@@ -2063,7 +2063,7 @@ test('external consumer fails closed when exact issuance read capability is unav
   let failed = 0
   const snapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: 89, round: 1, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '01', bigRoadRaw: 'B' }],
+    tables: [{ tableId: 'BAV01', shoe: 89, round: 1, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '01', bigRoadRaw: 'B' }],
   }
   const app = createApp({
     autoConnect: false,
@@ -2100,7 +2100,7 @@ test('external consumer fails closed when exact issuance read returns undefined 
   let failed = 0
   const snapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: 89, round: 1, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '01', bigRoadRaw: 'B' }],
+    tables: [{ tableId: 'BAV01', shoe: 89, round: 1, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '01', bigRoadRaw: 'B' }],
   }
   const app = createApp({
     autoConnect: false,
@@ -2138,7 +2138,7 @@ test('external consumer requires a matching Final persistence receipt before ack
   let failed = 0
   const snapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+    tables: [{ tableId: 'BAV01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
   }
   const app = createApp({
     autoConnect: false,
@@ -2158,8 +2158,8 @@ test('external consumer requires a matching Final persistence receipt before ack
       async readIssuedPrediction(identity) {
         if (identity.round !== 21) return null
         return {
-          predictionId: 'pid-BAG01-88-21',
-          targetTableId: 'BAG01',
+          predictionId: 'pid-BAV01-88-21',
+          targetTableId: 'BAV01',
           targetShoe: '88',
           targetRound: 21,
           strategyVersion: 'v105',
@@ -2168,7 +2168,7 @@ test('external consumer requires a matching Final persistence receipt before ack
       async persistRound() { return null },
       async reconcilePredictionLifecycle() {},
       async issuePrediction(candidate) {
-        return { ...candidate, predictionId: 'pid-BAG01-88-22', issuedAt: '2026-08-25T16:00:01.000Z' }
+        return { ...candidate, predictionId: 'pid-BAV01-88-22', issuedAt: '2026-08-25T16:00:01.000Z' }
       },
     },
     v100FormalRuntime: {
@@ -2190,7 +2190,7 @@ test('external consumer rejects a Final persistence receipt with the wrong predi
   let failed = 0
   const snapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+    tables: [{ tableId: 'BAV01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
   }
   const app = createApp({
     autoConnect: false,
@@ -2210,8 +2210,8 @@ test('external consumer rejects a Final persistence receipt with the wrong predi
       async readIssuedPrediction(identity) {
         if (identity.round !== 21) return null
         return {
-          predictionId: 'pid-BAG01-88-21',
-          targetTableId: 'BAG01',
+          predictionId: 'pid-BAV01-88-21',
+          targetTableId: 'BAV01',
           targetShoe: '88',
           targetRound: 21,
           strategyVersion: 'v105',
@@ -2252,13 +2252,13 @@ test('external consumer reconciles and predicts only the newest shoe when one ba
   const issuedShoes = []
   const oldSnapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+    tables: [{ tableId: 'BAV01', shoe: 88, round: 21, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
   }
   const base = envelope().snapshot
   const newSnapshot = {
     ...base,
     rounds: base.rounds.map((round) => ({ ...round, shoe: 89, round: 1 })),
-    tables: [{ tableId: 'BAG01', shoe: 89, round: 1, sourceUpdatedAt: '2026-08-25T16:00:01.000Z', beadPlateRaw: '01', bigRoadRaw: 'B' }],
+    tables: [{ tableId: 'BAV01', shoe: 89, round: 1, sourceUpdatedAt: '2026-08-25T16:00:01.000Z', beadPlateRaw: '01', bigRoadRaw: 'B' }],
   }
   const app = createApp({
     autoConnect: false,
@@ -2308,7 +2308,7 @@ test('external consumer materializes a finalized table missing beside unrelated 
   let issued = 0
   const snapshot = {
     ...envelope().snapshot,
-    tables: [{ tableId: 'BAG02', shoe: 91, round: 7, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+    tables: [{ tableId: 'BAV02', shoe: 91, round: 7, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
   }
   const app = createApp({
     autoConnect: false,
@@ -2329,7 +2329,7 @@ test('external consumer materializes a finalized table missing beside unrelated 
       async reconcilePredictionLifecycle() {},
       async issuePrediction(candidate) {
         issued += 1
-        return { ...candidate, predictionId: 'pid-BAG01-88-22', issuedAt: '2026-08-25T16:00:01.000Z' }
+        return { ...candidate, predictionId: 'pid-BAV01-88-22', issuedAt: '2026-08-25T16:00:01.000Z' }
       },
     },
     v100FormalRuntime: {
@@ -2338,7 +2338,7 @@ test('external consumer materializes a finalized table missing beside unrelated 
         return {
           enabled: true,
           predictions: [],
-          tables: [{ tableId: 'BAG02', shoe: 91, round: 7, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
+          tables: [{ tableId: 'BAV02', shoe: 91, round: 7, sourceUpdatedAt: '2026-08-25T16:00:00.000Z', beadPlateRaw: '0102', bigRoadRaw: 'BP' }],
         }
       },
     },
@@ -2377,8 +2377,8 @@ test('outbox publication refreshes only tables that actually advanced', async ()
           session_id: 'durable-fallback', snapshot_at: new Date().toISOString(), capture_source: 'cloud_browser',
           tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
             tableId,
-            shoe: tableId === 'BAG01' ? durableBag01Shoe : 92,
-            round: tableId === 'BAG10' ? 5 : tableId === 'BAG01' ? 21 : 13,
+            shoe: tableId === 'BAV01' ? durableBag01Shoe : 92,
+            round: tableId === 'BAV06' ? 5 : tableId === 'BAV01' ? 21 : 13,
             sourceUpdatedAt,
           })),
         }
@@ -2394,7 +2394,7 @@ test('outbox publication refreshes only tables that actually advanced', async ()
       async readIssuedPrediction() { return null },
       async reconcilePredictionLifecycle() {},
       async issuePrediction(candidate) {
-        return { ...candidate, predictionId: 'pid-BAG01-88-22', issuedAt: new Date().toISOString() }
+        return { ...candidate, predictionId: 'pid-BAV01-88-22', issuedAt: new Date().toISOString() }
       },
     },
     v100FormalRuntime: {
@@ -2416,8 +2416,8 @@ test('outbox publication refreshes only tables that actually advanced', async ()
   })
   app.state.setTables(PRODUCTION_TABLE_IDS.map((tableId) => ({
     tableId,
-    shoe: tableId === 'BAG01' ? 88 : 92,
-    round: tableId === 'BAG01' ? 20 : 13,
+    shoe: tableId === 'BAV01' ? 88 : 92,
+    round: tableId === 'BAV01' ? 20 : 13,
     sourceUpdatedAt,
   })))
   await app.waitForServiceWorkIdle()
@@ -2430,8 +2430,8 @@ test('outbox publication refreshes only tables that actually advanced', async ()
   const response = await app.inject({ url: '/api/tables' })
   const tables = JSON.parse(response.body)
 
-  assert.equal(tables.find((table) => table.tableId === 'BAG10')?.round, 5)
-  assert.equal(tables.find((table) => table.tableId === 'BAG01')?.round, 21)
+  assert.equal(tables.find((table) => table.tableId === 'BAV06')?.round, 5)
+  assert.equal(tables.find((table) => table.tableId === 'BAV01')?.round, 21)
   durableBag01Shoe = 87
   await assert.rejects(app.refreshLatestDurablePredictions(), /shoe regression is not refreshable/)
   await app.stop()
@@ -2622,7 +2622,7 @@ test('fresh durable ACK cannot delay an existing immediate backlog continuation'
   const freshEnvelope = envelope()
   freshEnvelope.sessionId = 'fresh-worker'
   freshEnvelope.sequence = 23
-  freshEnvelope.roundKeys = ['BAG01:88:23']
+  freshEnvelope.roundKeys = ['BAV01:88:23']
   freshEnvelope.snapshot.tables[0].round = 23
   freshEnvelope.snapshot.rounds[0].round = 23
   const response = await app.inject({
@@ -2681,7 +2681,7 @@ test('durable ACK remains successful when graceful stop begins before outbox wak
   await stopping
 
   assert.equal(response.statusCode, 200)
-  assert.deepEqual(JSON.parse(response.body).acceptedRoundKeys, ['BAG01:88:21'])
+  assert.deepEqual(JSON.parse(response.body).acceptedRoundKeys, ['BAV01:88:21'])
 })
 
 test('sequential durable ACKs coalesce before one formal outbox batch claim', async () => {
@@ -2728,7 +2728,7 @@ test('sequential durable ACKs coalesce before one formal outbox batch claim', as
   const first = envelope()
   const second = structuredClone(first)
   second.sequence = 8
-  second.roundKeys = ['BAG01:88:22']
+  second.roundKeys = ['BAV01:88:22']
   second.snapshot.tables[0].round = 22
   second.snapshot.rounds[0].round = 22
   const firstResponse = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': 'worker-key' }, body: JSON.stringify(first) })
@@ -2805,7 +2805,7 @@ test('same-session 100-row outbox batch preserves per-table round order and comp
     tables: [{ ...envelope().snapshot.tables[0], tableId, shoe: 88, round }],
     rounds: [makeFinal(tableId, round)],
   })
-  const tableIds = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
+  const tableIds = ['BAV01', 'BAV02', 'BAV03', 'BAV03A', 'BAV05', 'BAV06']
   const rows = Array.from({ length: 100 }, (_, index) => {
     const sequence = 21 + index
     const tableRound = 21 + Math.floor(index / tableIds.length)
@@ -2850,7 +2850,7 @@ test('same-session 100-row outbox batch preserves per-table round order and comp
   for (const tableId of tableIds) {
     assert.deepEqual(
       formalInputs[0].rounds.filter((round) => round.tableId === tableId).map((round) => round.round),
-      Array.from({ length: 10 }, (_, index) => 21 + index),
+      rows.filter((row) => row.payload.work.rounds[0].tableId === tableId).map((row) => row.payload.work.rounds[0].round),
     )
   }
   assert.equal(completedBatches.length, 1)
@@ -2858,22 +2858,33 @@ test('same-session 100-row outbox batch preserves per-table round order and comp
   assert.deepEqual(completedBatches[0].map((claim) => claim.sequence), Array.from({ length: 100 }, (_, index) => 21 + index))
 })
 
-test('thirty-row formal batch scales the bounded lease deadline instead of reusing the single-work-item budget', async () => {
+// This contract measures logical lease time, not OS scheduling latency. Keep
+// the real server deadline code and thresholds; control Date and timers together.
+for (const scenario of [
+  { name: 'thirty-row formal batch scales the bounded lease deadline instead of reusing the single-work-item budget', count: 30, elapsedMs: 250, succeeds: true },
+  { name: 'thirty-row formal batch rejects work at the exact scaled deadline', count: 30, elapsedMs: 400, succeeds: false },
+  { name: 'single-row formal work does not inherit the scaled batch deadline', count: 1, elapsedMs: 250, succeeds: false },
+]) {
+test(scenario.name, async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1_000_000 })
+  let enteredFormal
+  const formalStarted = new Promise((resolve) => { enteredFormal = resolve })
   let claimed = false
   let completed = 0
   let failed = 0
-  const rows = Array.from({ length: 30 }, (_, index) => claimedRow(101 + index, {
+  let failureReason = null
+  const rows = Array.from({ length: scenario.count }, (_, index) => claimedRow(101 + index, {
     payload: {
       work: {
         ...envelope().snapshot,
-        tables: [{ ...envelope().snapshot.tables[0], tableId: 'BAG01', shoe: 88, round: 130 }],
-        rounds: [{ ...envelope().snapshot.rounds[0], tableId: 'BAG01', shoe: 88, round: 101 + index }],
+        tables: [{ ...envelope().snapshot.tables[0], tableId: 'BAV01', shoe: 88, round: 100 + scenario.count }],
+        rounds: [{ ...envelope().snapshot.rounds[0], tableId: 'BAV01', shoe: 88, round: 101 + index }],
       },
     },
   }))
   const app = createApp({
     autoConnect: false,
-    captureOutboxBatchLimit: 30,
+    captureOutboxBatchLimit: scenario.count,
     outboxWorkDeadlineMs: 100,
     outboxBackoffMs: 1,
     supabaseClient: {
@@ -2884,7 +2895,7 @@ test('thirty-row formal batch scales the bounded lease deadline instead of reusi
         return rows
       },
       async completeCaptureOutboxBatch({ claims }) { completed = claims.length; return { completed: true, count: claims.length } },
-      async failCaptureOutboxBatch() { failed += 1; return { failed: true, count: rows.length } },
+      async failCaptureOutboxBatch({ error }) { failureReason = error; failed += 1; return { failed: true, count: rows.length } },
       async readIssuedPrediction() { return null },
       async reconcilePredictionLifecycle() {},
       async issuePrediction(candidate) {
@@ -2894,18 +2905,35 @@ test('thirty-row formal batch scales the bounded lease deadline instead of reusi
     v100FormalRuntime: {
       enabled: true,
       async processSnapshot({ tables }) {
-        await delay(250)
+        const work = delay(scenario.elapsedMs)
+        enteredFormal()
+        await work
         return { tables }
       },
     },
   })
 
-  await app.drainCaptureOutbox()
+  const draining = app.drainCaptureOutbox()
+  await formalStarted
+  assert.equal(completed, 0, 'a pending formal operation must not acknowledge its lease')
+  const startedAt = Date.now()
+  t.mock.timers.tick(scenario.elapsedMs)
+  assert.equal(Date.now() - startedAt, scenario.elapsedMs)
+  await draining
+  // Drain's deferred zero-delay wake is also on the controlled timer clock.
+  t.mock.timers.tick(0)
   await app.waitForCaptureOutboxIdle()
 
-  assert.equal(completed, 30)
-  assert.equal(failed, 0)
+  if (scenario.succeeds) {
+    assert.equal(completed, 30)
+    assert.equal(failed, 0)
+  } else {
+    assert.equal(completed, 0)
+    assert.equal(failed, 1)
+    assert.match(failureReason, /capture outbox work deadline exceeded/)
+  }
 })
+}
 
 test('same-session outbox batch failure drains merged work then fails every exact lease atomically', async () => {
   let claimed = false
@@ -3415,7 +3443,7 @@ test('formal deadline waits for the underlying work to settle before failure ACK
       async readIssuedPrediction() { return null },
       async reconcilePredictionLifecycle() {},
       async issuePrediction(candidate) {
-        return { ...candidate, predictionId: 'pid-BAG01-88-22', issuedAt: '2026-08-25T16:00:01.000Z' }
+        return { ...candidate, predictionId: 'pid-BAV01-88-22', issuedAt: '2026-08-25T16:00:01.000Z' }
       },
     },
     v100FormalRuntime: {

@@ -67,24 +67,24 @@ test('api/status replaces stale non-empty in-memory capture state with fresher d
         session_id: 'fresh-session',
         connected: true,
         authenticated: true,
-        table_count: 10,
+        table_count: 6,
         last_message_at: freshTime,
         last_round_at: freshTime,
       }),
       getLatestCloudTableSnapshot: async () => ({
         capture_source: 'cloud_browser',
         snapshot_at: freshTime,
-        table_count: 10,
-        tables: [{ tableId: 'BAG01', shoe: 14182, round: 36 }],
+        table_count: 6,
+        tables: [{ tableId: 'BAV01', shoe: 14182, round: 36 }],
       }),
     },
   })
-  const staleTables = ['BAG01','BAG02','BAG03','BAG03A','BAG05','BAG06','BAG07','BAG08','BAG09','BAG10']
+  const staleTables = ['BAV01','BAV02','BAV03','BAV03A','BAV05','BAV06']
     .map((tableId) => ({ tableId, shoe: 14182, round: 35, sourceUpdatedAt: staleTime }))
   app.state.setTables(staleTables)
   app.state.setStatus({
     captureSource: 'cloud_browser', captureSessionId: 'stale-session',
-    connected: true, authenticated: true, tableCount: 10,
+    connected: true, authenticated: true, tableCount: 6,
     lastMessageAt: staleTime, lastRoundAt: staleTime,
   })
 
@@ -92,7 +92,7 @@ test('api/status replaces stale non-empty in-memory capture state with fresher d
   const body = JSON.parse(response.body)
   assert.equal(body.connected, true)
   assert.equal(body.authenticated, true)
-  assert.equal(body.tableCount, 10)
+  assert.equal(body.tableCount, 6)
   assert.equal(body.lastMessageAt, freshTime)
   assert.equal(body.lastRoundAt, freshTime)
   assert.equal(body.health, 'ok')
@@ -121,7 +121,7 @@ test('api/status reads durable capture status and snapshot in parallel', async (
   assert.ok(elapsed < 105, `durable status reads remained sequential (${elapsed}ms)`)
 })
 
-test('health fails closed when ten connected tables have no authoritative Final progress', async () => {
+test('health fails closed when six connected tables have no authoritative Final progress', async () => {
   const currentTimeMs = Date.now()
   const app = createApp({
     autoConnect: false,
@@ -130,11 +130,11 @@ test('health fails closed when ten connected tables have no authoritative Final 
     ingestKey: 'worker-key',
     now: () => currentTimeMs,
   })
-  const liveTables = ['BAG01','BAG02','BAG03','BAG03A','BAG05','BAG06','BAG07','BAG08','BAG09','BAG10']
+  const liveTables = ['BAV01','BAV02','BAV03','BAV03A','BAV05','BAV06']
     .map((tableId) => ({ tableId, shoe: 14182, round: 35, sourceUpdatedAt: new Date(currentTimeMs).toISOString() }))
   app.state.setTables(liveTables)
   app.state.setStatus({
-    connected: true, authenticated: true, tableCount: 10,
+    connected: true, authenticated: true, tableCount: 6,
     lastMessageAt: new Date(currentTimeMs).toISOString(),
     lastRoundAt: new Date(currentTimeMs - 10 * 60 * 1000).toISOString(),
   })

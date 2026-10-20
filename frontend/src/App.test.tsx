@@ -75,7 +75,7 @@ function proxyTablesFromMocks() {
   }))
 }
 
-function tableUiHistory(tableId = 'BAG01', shoe: string | number = 12) {
+function tableUiHistory(tableId = 'BAV01', shoe: string | number = 12) {
   return {
     ok: true,
     buildVersion: '098',
@@ -100,7 +100,7 @@ describe('AI百家預測軟體', () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, sessionExpiresAt: new Date(Date.now() + 600000).toISOString() }) })
       if (url.includes('/ui-history')) {
-        const tableId = url.match(/\/api\/tables\/([^/]+)\/ui-history/)?.[1] ?? 'BAG01'
+        const tableId = url.match(/\/api\/tables\/([^/]+)\/ui-history/)?.[1] ?? 'BAV01'
         const table = proxyTablesFromMocks().find((item) => item.tableId === tableId)
         return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(tableUiHistory(tableId, table?.shoe ?? 0)) })
       }
@@ -295,8 +295,8 @@ describe('AI百家預測軟體', () => {
   it('shows settled predictions when real-card history is incomplete for the selected round', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) })
-      if (url.includes('/api/tables/BAG01/ui-history')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
-        ...tableUiHistory('BAG01', 12),
+      if (url.includes('/api/tables/BAV01/ui-history')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
+        ...tableUiHistory('BAV01', 12),
         settledPredictions: [
           { round: 20, predictedResult: 'banker', actualResult: 'banker', isHit: true },
           { round: 21, predictedResult: 'player', actualResult: 'banker', isHit: false },
@@ -322,9 +322,9 @@ describe('AI百家預測軟體', () => {
     const bag01History = new Promise<Response>((resolve) => { resolveBag01 = resolve })
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) })
-      if (url.includes('/api/tables/BAG01/ui-history')) return bag01History
-      if (url.includes('/api/tables/BAG02/ui-history')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
-        ...tableUiHistory('BAG02', mockTables[1].trend.current_shoe ?? 0),
+      if (url.includes('/api/tables/BAV01/ui-history')) return bag01History
+      if (url.includes('/api/tables/BAV02/ui-history')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
+        ...tableUiHistory('BAV02', mockTables[1].trend.current_shoe ?? 0),
         settledPredictions: [{ round: 22, predictedResult: 'player', actualResult: 'player', isHit: true }],
       }) })
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(proxyTablesFromMocks()) })
@@ -335,7 +335,7 @@ describe('AI百家預測軟體', () => {
     fireEvent.click(buttons[1])
     expect(screen.queryByText('第1局')).not.toBeInTheDocument()
     expect(await screen.findByText('第22局')).toBeInTheDocument()
-    resolveBag01({ ok: true, status: 200, json: async () => ({ ...tableUiHistory('BAG01', mockTables[0].trend.current_shoe ?? 0), settledPredictions: [{ round: 99, predictedResult: 'banker', actualResult: 'banker', isHit: true }] }) } as Response)
+    resolveBag01({ ok: true, status: 200, json: async () => ({ ...tableUiHistory('BAV01', mockTables[0].trend.current_shoe ?? 0), settledPredictions: [{ round: 99, predictedResult: 'banker', actualResult: 'banker', isHit: true }] }) } as Response)
     await act(async () => { await Promise.resolve() })
     expect(screen.queryByText('第99局')).not.toBeInTheDocument()
     expect(screen.getByText('第22局')).toBeInTheDocument()
@@ -355,9 +355,9 @@ describe('AI百家預測軟體', () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) })
       if (url.includes('/api/tables/stream')) return Promise.resolve({ ok: true, status: 200, body: stream })
-      if (url.includes('/api/tables/BAG01/ui-history')) {
+      if (url.includes('/api/tables/BAV01/ui-history')) {
         historyCalls += 1
-        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(tableUiHistory('BAG01', 12)) })
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(tableUiHistory('BAV01', 12)) })
       }
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ connected: true, configured: true, buildVersion: 'v105' }) })
     }))
@@ -384,11 +384,11 @@ describe('AI百家預測軟體', () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) })
       if (url.includes('/api/tables/stream')) return Promise.resolve({ ok: true, status: 200, body: stream })
-      if (url.includes('/api/tables/BAG01/ui-history')) {
+      if (url.includes('/api/tables/BAV01/ui-history')) {
         historyCalls += 1
         const durable = historyCalls !== 2
         return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
-          ...tableUiHistory('BAG01', 12),
+          ...tableUiHistory('BAV01', 12),
           settledPredictions: [{ round: durable && historyCalls > 2 ? 4 : 3, predictedResult: 'player', actualResult: 'player', isHit: true }],
           realCardHistoryCompleteThroughRound: durable ? (historyCalls > 2 ? 1 : 0) : 0,
         }) })
@@ -422,10 +422,10 @@ describe('AI百家預測軟體', () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) })
       if (url.includes('/api/tables/stream')) return Promise.resolve({ ok: true, status: 200, body: stream })
-      if (url.includes('/api/tables/BAG01/ui-history')) {
+      if (url.includes('/api/tables/BAV01/ui-history')) {
         historyCalls += 1
         return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
-          ...tableUiHistory('BAG01', 12),
+          ...tableUiHistory('BAV01', 12),
           settledPredictions: [{ round: 3, predictedResult: 'player', actualResult: 'player', isHit: true }],
           realCardHistoryCompleteThroughRound: historyCalls === 1 ? 3 : 4,
         }) })
@@ -516,9 +516,9 @@ describe('AI百家預測軟體', () => {
     expect(within(sidebar).queryByText('百家樂桌')).not.toBeInTheDocument()
     expect(within(sidebar).queryByText('Cloudflare Turnstile')).not.toBeInTheDocument()
     expect(within(sidebar).queryByRole('heading', { name: '連線控制' })).not.toBeInTheDocument()
-    expect(within(sidebar).getAllByText(/^BAG(?:\d+|03A)$/)).toHaveLength(10)
+    expect(within(sidebar).getAllByText(/^B0[1-6]-L$/)).toHaveLength(6)
 
-    const expectedLabels = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']
+    const expectedLabels = ['1', '2', '3', '4', '5', '6']
     const tableButtons = within(sidebar).getAllByRole('button', { name: /MT百家樂第.+桌 第\d+局/ })
     expect(tableButtons).toHaveLength(expectedLabels.length)
     expectedLabels.forEach((tableLabel, index) => {
@@ -526,8 +526,8 @@ describe('AI百家預測軟體', () => {
     })
   })
 
-  it('shows only the approved ten member tables in exact identity order', async () => {
-    const ids = ['BAG15', 'BAG03A', 'BAG11', 'BAG02', 'BAG13A', 'BAG01', 'BAG12', 'BAG10', 'BAG09', 'BAG08', 'BAG07', 'BAG06', 'BAG05', 'BAG13', 'BAG03', 'BAG03A']
+  it('shows only the approved six raw member tables in exact identity order', async () => {
+    const ids = ['BAV15', 'BAV03A', 'BAV11', 'BAV02', 'BAV13A', 'BAV01', 'BAV12', 'BAV10', 'BAV09', 'BAV08', 'BAV07', 'BAV06', 'BAV05', 'BAV13', 'BAV03', 'BAV03A']
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(ids.map((tableId, index) => ({
         tableId, displayName: tableId, tableType: 'BAC', shoe: 1, round: 100 + index,
@@ -541,16 +541,16 @@ describe('AI百家預測軟體', () => {
 
     const sidebar = await screen.findByLabelText('桌號與資料選擇')
     const buttons = within(sidebar).getAllByRole('button', { name: /MT百家樂第.+桌 第\d+局/ })
-    expect(buttons).toHaveLength(10)
-    expect(buttons.map((button) => button.textContent?.match(/第(.+?)桌/)?.[1])).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'])
-    expect(buttons[3]).toHaveAttribute('data-table-id', 'BAG03A')
+    expect(buttons).toHaveLength(6)
+    expect(buttons.map((button) => button.textContent?.match(/第(.+?)桌/)?.[1])).toEqual(['1', '2', '3', '4', '5', '6'])
+    expect(buttons[3]).toHaveAttribute('data-table-id', 'BAV03A')
     expect(buttons[3]).toHaveTextContent('第4桌')
-    expect(buttons[3]).toHaveTextContent('BAG03A')
-    expect(buttons[3]).not.toHaveTextContent('BAG04')
+    expect(buttons[3]).toHaveTextContent('B04-L')
+    expect(buttons[3]).not.toHaveTextContent('BAV04')
   })
 
   it('reports the loaded table count without claiming every table is online', async () => {
-    const ids = ['BAG01', 'BAG02']
+    const ids = ['BAV01', 'BAV02']
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(ids.map((tableId, index) => ({
         tableId, displayName: tableId, tableType: 'BAC', shoe: 1, round: 100 + index,
@@ -629,7 +629,7 @@ describe('AI百家預測軟體', () => {
   it('overlays a green tie slash on banker/player big-road cells when a tie appears', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/ui-history')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
-        ...tableUiHistory('BAG01', 1),
+        ...tableUiHistory('BAV01', 1),
         settledPredictions: [],
         realCardRounds: [
           { round: 1, result: 'tie', bankerPoint: 6, playerPoint: 6 },
@@ -642,7 +642,7 @@ describe('AI百家預測軟體', () => {
         realCardHistoryCompleteThroughRound: 6,
       }) })
       if (url.includes('/api/tables')) return Promise.resolve({ ok: true, json: () => Promise.resolve([{
-        tableId: 'BAG01',
+        tableId: 'BAV01',
         displayName: 'MT百家樂第1桌',
         tableType: 'baccarat',
         shoe: 1,
@@ -697,10 +697,10 @@ describe('AI百家預測軟體', () => {
   })
 
   it('keeps the selected approved table identity when an earlier table disappears and reappears', () => {
-    const selectedTableId = 'BAG02'
-    expect(selectMemberTable(mockTables, selectedTableId)?.id).toBe('BAG02')
-    expect(selectMemberTable(mockTables.filter((table) => table.id !== 'BAG01'), selectedTableId)?.id).toBe('BAG02')
-    expect(selectMemberTable(mockTables, selectedTableId)?.id).toBe('BAG02')
+    const selectedTableId = 'BAV02'
+    expect(selectMemberTable(mockTables, selectedTableId)?.id).toBe('BAV02')
+    expect(selectMemberTable(mockTables.filter((table) => table.id !== 'BAV01'), selectedTableId)?.id).toBe('BAV02')
+    expect(selectMemberTable(mockTables, selectedTableId)?.id).toBe('BAV02')
   })
 
   it('ignores pair metadata when parsing bead outcomes', () => {
@@ -919,7 +919,7 @@ describe('AI百家預測軟體', () => {
       askRoad: { next_banker2: { big: '111' }, next_player2: { big: '222' } },
       tableStats: { banker: 31, player: 22, tie: 4, total_round_banker_pair: 3, total_round_player_pair: 2 },
       globalStats: { banker: 188, player: 164, tie: 30 },
-      tableContext: { table_id: 'BAG01', display_name: 'MT百家樂第1桌', dealer_name: '小旻', total_players: 123, room_id: '29', shoe: 12, round: 34 },
+      tableContext: { table_id: 'BAV01', display_name: 'MT百家樂第1桌', dealer_name: '小旻', total_players: 123, room_id: '29', shoe: 12, round: 34 },
       roadRaw: { bead_road: '0102#0201', big_road: '0102,0201', big_eye_road: '1,2', small_road: '2,1', cockroach_road: '1,1' },
     })
 
@@ -1072,7 +1072,7 @@ describe('AI百家預測軟體', () => {
     expect(screen.queryByRole('heading', { name: 'AI百家預測軟體' })).not.toBeInTheDocument()
     expect(screen.queryByText('AI BACCARAT INTELLIGENCE')).not.toBeInTheDocument()
     expect(dashboard?.querySelector('.member-account-avatar')).not.toBeInTheDocument()
-    expect(dashboard?.querySelectorAll('.table-casino-icon')).toHaveLength(10)
+    expect(dashboard?.querySelectorAll('.table-casino-icon')).toHaveLength(6)
     expect(dashboard?.querySelector('.prediction-meta-chip')).toBeInTheDocument()
     expect(Array.from(screen.getByLabelText('副項目預測機率').querySelectorAll('.prediction-metric span')).map((node) => node.textContent)).toEqual(['閒龍寶', '閒對', '超六', '莊對', '莊龍寶'])
     expect(Array.from(screen.getByLabelText('莊閒預測機率').querySelectorAll('.prediction-metric span')).map((node) => node.textContent)).toEqual(['閒', '和', '莊'])

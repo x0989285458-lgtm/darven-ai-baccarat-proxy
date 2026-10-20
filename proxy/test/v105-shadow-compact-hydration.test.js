@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createSupabaseIngestionClient } from '../src/supabase-writer.js'
 
-const TABLE_IDS = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
+const TABLE_IDS = ['BAV01', 'BAV02', 'BAV03', 'BAV03A', 'BAV05', 'BAV06']
 const CASES = [
   { label: 'V9', version: 'v105-shadow-v9-weighted-v7-v8', rpc: 'get_v105_shadow_v9_compact_history', method: 'getV105ShadowV9History', issueMethod: 'issueV105ShadowV9Prediction', readMethod: 'readV105ShadowV9Issuance', settleMethod: 'settleV105ShadowV9Prediction', runtime: '../src/v105-shadow-v9-runtime.js', factory: 'createV105ShadowV9Runtime' },
 ]
@@ -28,6 +28,11 @@ function compactRow(version, { tableId = 'BAG01', index = 1, final = true } = {}
   }
 }
 
+// Current reader baseline must be valid; keep compactRow's BAG restore default unchanged.
+function currentCompactRow(version, options = {}) {
+  return compactRow(version, { tableId: 'BAV01', ...options })
+}
+
 function response(payload) {
   return { ok: true, status: 200, text: async () => JSON.stringify(payload), json: async () => payload }
 }
@@ -35,7 +40,7 @@ function response(payload) {
 for (const item of CASES) {
   test(`${item.label} history reader posts the compact per-table RPC and returns only the compact schema`, async () => {
     const requests = []
-    const row = compactRow(item.version)
+    const row = currentCompactRow(item.version)
     const client = createSupabaseIngestionClient({
       url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
       retryAttempts: 1,
@@ -61,14 +66,14 @@ for (const item of CASES) {
     let calls = 0
     const sameTime = '2026-07-29T00:00:00.000Z'
     const malformedResponses = [
-      [{ ...compactRow(item.version), prediction_payload: { huge: true } }],
-      [{ ...compactRow(item.version), strategy_version: 'wrong-version' }],
-      [{ ...compactRow(item.version, { final: false }), actual_result: 'banker' }],
-      [{ ...compactRow(item.version), actual_result: null }],
-      [{ ...compactRow(item.version), table_id: 'BAG04' }],
+      [{ ...currentCompactRow(item.version), prediction_payload: { huge: true } }],
+      [{ ...currentCompactRow(item.version), strategy_version: 'wrong-version' }],
+      [{ ...currentCompactRow(item.version, { final: false }), actual_result: 'banker' }],
+      [{ ...currentCompactRow(item.version), actual_result: null }],
+      [{ ...currentCompactRow(item.version), table_id: 'BAG04' }],
       [
-        { ...compactRow(item.version), prediction_id: 'b', prediction_issued_at: sameTime },
-        { ...compactRow(item.version), prediction_id: 'a', prediction_issued_at: sameTime },
+        { ...currentCompactRow(item.version), prediction_id: 'b', prediction_issued_at: sameTime },
+        { ...currentCompactRow(item.version), prediction_id: 'a', prediction_issued_at: sameTime },
       ],
     ]
     const client = createSupabaseIngestionClient({
@@ -91,8 +96,8 @@ for (const item of CASES) {
 
   test(`${item.label} history reader allows one pending row beside the Final limit and rejects excess or duplicate rows`, async () => {
     const valid = [
-      ...Array.from({ length: 60 }, (_, index) => compactRow(item.version, { index: index + 1 })),
-      compactRow(item.version, { index: 61, final: false }),
+      ...Array.from({ length: 60 }, (_, index) => currentCompactRow(item.version, { index: index + 1 })),
+      currentCompactRow(item.version, { index: 61, final: false }),
     ]
     let payload = valid
     const client = createSupabaseIngestionClient({
@@ -101,14 +106,14 @@ for (const item of CASES) {
     })
     assert.equal((await client[item.method]({ perTableLimit: 60 })).length, 61)
 
-    const tooManyForOneTable = Array.from({ length: 61 }, (_, index) => compactRow(item.version, { index: index + 1 }))
+    const tooManyForOneTable = Array.from({ length: 61 }, (_, index) => currentCompactRow(item.version, { index: index + 1 }))
     payload = tooManyForOneTable
     await assert.rejects(client[item.method]({ perTableLimit: 60 }), /compact history/i)
-    payload = [compactRow(item.version), compactRow(item.version)]
+    payload = [currentCompactRow(item.version), currentCompactRow(item.version)]
     await assert.rejects(client[item.method]({ perTableLimit: 60 }), /compact history/i)
     payload = [
-      compactRow(item.version, { index: 1, final: false }),
-      compactRow(item.version, { index: 2, final: false }),
+      currentCompactRow(item.version, { index: 1, final: false }),
+      currentCompactRow(item.version, { index: 2, final: false }),
     ]
     await assert.rejects(client[item.method]({ perTableLimit: 60 }), /compact history/i)
   })
@@ -214,31 +219,31 @@ for (const item of CASES) {
 }
 
 for (const item of CASES) {
-  test(`${item.label} compact history reader accepts at most ten-table 60 Final plus one pending cap`, async () => {
+  test(`${item.label} compact history reader accepts at most six-table 60 Final plus one pending cap`, async () => {
     const rows = TABLE_IDS.flatMap((tableId, tableIndex) => [
-      ...Array.from({ length: 60 }, (_, index) => compactRow(item.version, {
+      ...Array.from({ length: 60 }, (_, index) => currentCompactRow(item.version, {
         tableId, index: tableIndex * 100 + index + 1,
       })),
-      compactRow(item.version, { tableId, index: tableIndex * 100 + 61, final: false }),
+      currentCompactRow(item.version, { tableId, index: tableIndex * 100 + 61, final: false }),
     ]).sort((a, b) => Date.parse(a.prediction_issued_at) - Date.parse(b.prediction_issued_at)
       || String(a.prediction_id).localeCompare(String(b.prediction_id)))
     const client = createSupabaseIngestionClient({
       url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,
       retryAttempts: 1, fetchImpl: async () => response(rows),
     })
-    assert.equal((await client[item.method]({ perTableLimit: 60 })).length, 610)
+    assert.equal((await client[item.method]({ perTableLimit: 60 })).length, TABLE_IDS.length * 61)
   })
 }
 
 test('Direct DB compact history preserves millisecond ordering from pg Date objects', async () => {
   const version = 'v105-shadow-v9-weighted-v7-v8'
   const first = {
-    ...compactRow(version, { index: 1 }),
+    ...currentCompactRow(version, { index: 1 }),
     prediction_id: 'ad53098a-ab2b-4cda-8e66-854e47561f69',
     prediction_issued_at: new Date('2026-07-29T14:20:23.839Z'),
   }
   const second = {
-    ...compactRow(version, { index: 2 }),
+    ...currentCompactRow(version, { index: 2 }),
     prediction_id: '9f3add63-1845-487a-ad4c-246604cf47c6',
     prediction_issued_at: new Date('2026-07-29T14:20:23.945Z'),
   }
@@ -263,7 +268,7 @@ test('compact history rejects non-Date non-RFC3339 and timezone-less timestamps'
     '2026-07-29T24:00:00Z', '2026-07-29T14:60:00Z', '2026-07-29T14:20:60Z',
     '2026-07-29T14:20:23+24:00', '2026-07-29T14:20:23+12:60',
   ]) {
-    const row = { ...compactRow(version), prediction_issued_at: invalidTimestamp }
+    const row = { ...currentCompactRow(version), prediction_issued_at: invalidTimestamp }
     const strategyPool = { async query() { return { rows: [row] } } }
     const client = createSupabaseIngestionClient({
       url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false,

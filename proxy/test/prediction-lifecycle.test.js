@@ -87,7 +87,7 @@ test('direct reconcile and issuance share one ordered write queue without overla
   assert.deepEqual(events, ['reconcile:start', 'reconcile:end', 'issue:start'])
 })
 
-test('runtime reconciles once per changed screen identity per table, including ten tables and restart', async () => {
+test('runtime reconciles once per changed screen identity per table, including six tables and restart', async () => {
   const calls = []
   const writer = {
     configured: true,
@@ -95,24 +95,24 @@ test('runtime reconciles once per changed screen identity per table, including t
     async issuePrediction(candidate) { return { ...candidate, predictionId: `pid-${candidate.targetTableId}-${candidate.targetShoe}-${candidate.targetRound}`, issuedAt: '2026-07-17T01:00:00.000Z' } },
     async readIssuedPrediction() { return null },
   }
-  const ten = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10'].map((id) => table(id))
+  const six = ['BAV01','BAV02','BAV03','BAV03A','BAV05','BAV06'].map((id) => table(id))
   const app = createApp({ autoConnect: false, supabaseClient: writer })
-  app.state.setTables(ten)
-  app.state.setTables(ten.map((item) => ({ ...item, sourceUpdatedAt: '2026-07-17T01:00:01.000Z' })))
+  app.state.setTables(six)
+  app.state.setTables(six.map((item) => ({ ...item, sourceUpdatedAt: '2026-07-17T01:00:01.000Z' })))
   await app.waitForServiceWorkIdle()
-  assert.equal(calls.length, 10)
+  assert.equal(calls.length, 6)
   assert.ok(calls.every((item) => item.source === 'ofalive99' && item.currentVisibleRound === 20))
-  app.state.setTables(ten.map((item) => item.tableId === 'BAG05' ? { ...item, round: 21 } : item))
+  app.state.setTables(six.map((item) => item.tableId === 'BAV05' ? { ...item, round: 21 } : item))
   await app.waitForServiceWorkIdle()
-  assert.equal(calls.length, 11)
-  assert.equal(calls.at(-1).tableId, 'BAG05')
+  assert.equal(calls.length, 7)
+  assert.equal(calls.at(-1).tableId, 'BAV05')
   assert.equal(calls.at(-1).currentVisibleRound, 21)
 
   const restartedCalls = []
   const restarted = createApp({ autoConnect: false, supabaseClient: { ...writer, reconcilePredictionLifecycle: async (identity) => { restartedCalls.push(identity); return { ...identity, counts: { pending: 0, expiredNoFinal: 0, abandonedShoeChange: 0, updatedTotal: 0 } } } } })
-  restarted.state.setTables(ten)
+  restarted.state.setTables(six)
   await restarted.waitForServiceWorkIdle()
-  assert.equal(restartedCalls.length, 10)
+  assert.equal(restartedCalls.length, 6)
 })
 
 test('lifecycle guard rejects same-shoe round regression without stale reconcile or issuance mutation', async () => {
@@ -129,7 +129,7 @@ test('lifecycle guard rejects same-shoe round regression without stale reconcile
   }
   const app = createApp({ autoConnect: false, supabaseClient: writer })
   for (const round of [20, 21, 20]) {
-    app.state.setTables([table('BAG01', 88, round)])
+    app.state.setTables([table('BAV01', 88, round)])
     await new Promise((resolve) => setImmediate(resolve))
   }
   assert.deepEqual(reconciled.map(({ currentShoe, currentVisibleRound }) => [currentShoe, currentVisibleRound]), [['88', 20], ['88', 21]])
@@ -150,7 +150,7 @@ test('lifecycle guard rejects old-shoe replay and still accepts a legitimate new
   }
   const app = createApp({ autoConnect: false, supabaseClient: writer })
   for (const shoe of [88, 89, 88, 90]) {
-    app.state.setTables([table('BAG01', shoe, 20)])
+    app.state.setTables([table('BAV01', shoe, 20)])
     await new Promise((resolve) => setImmediate(resolve))
   }
   assert.deepEqual(reconciled.map(({ currentShoe, currentVisibleRound }) => [currentShoe, currentVisibleRound]), [['88', 20], ['89', 20], ['90', 20]])
@@ -166,8 +166,8 @@ test('reconcile failure records persistence error without pretending settlement 
     async issuePrediction(candidate) { issueCalls += 1; return { ...candidate, predictionId: 'pid', issuedAt: '2026-07-17T01:00:00.000Z' } },
     async readIssuedPrediction() { return null },
   } })
-  app.state.setTables([table()])
-  app.state.setTables([{ ...table(), sourceUpdatedAt: '2026-07-17T01:00:02.000Z' }])
+  app.state.setTables([table('BAV01')])
+  app.state.setTables([{ ...table('BAV01'), sourceUpdatedAt: '2026-07-17T01:00:02.000Z' }])
   await new Promise((resolve) => setImmediate(resolve))
   assert.equal(reconcileCalls, 1)
   assert.equal(issueCalls, 1, 'preissuance may proceed independently')

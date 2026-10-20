@@ -24,17 +24,17 @@ test('a durable live Final overlays a valid but stale provider table screen befo
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
   const source = { mode: 'api', ownerId: 'api-primary', epoch: 9, fence: 'fence-9' }
-  const live = finalRound('BAG09', 5367, 2, source, 101)
+  const live = finalRound('BAV06', 5367, 2, source, 101)
   const snapshot = {
     sessionId: 'worker-api-primary-9', buildVersion: '105', source,
     connected: true, authenticated: true,
     tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
       tableId, name: tableId,
-      shoe: tableId === 'BAG09' ? 5366 : 100,
-      round: tableId === 'BAG09' ? 59 : 1,
+      shoe: tableId === 'BAV06' ? 5366 : 100,
+      round: tableId === 'BAV06' ? 59 : 1,
     })),
     shoeLifecycles: [{
-      tableId: 'BAG09', activeShoe: 5367, retiredShoes: [5366],
+      tableId: 'BAV06', activeShoe: 5367, retiredShoes: [5366],
       currentScreen: { shoe: 5367, round: 2 }, origin: 'final', source: live.source,
     }],
     rounds: [live],
@@ -58,7 +58,7 @@ test('a durable live Final overlays a valid but stale provider table screen befo
   })
 
   assert.equal(await pusher.tick(), true)
-  const table = delivered[0].snapshot.tables.find((candidate) => candidate.tableId === 'BAG09')
+  const table = delivered[0].snapshot.tables.find((candidate) => candidate.tableId === 'BAV06')
   assert.deepEqual({ shoe: table.shoe, round: table.round }, { shoe: 5367, round: 2 })
 })
 
@@ -75,17 +75,17 @@ test('a persisted source-current lifecycle overlays stale provider without shoe-
   for (const scenario of scenarios) {
     const dir = await mkdtemp(path.join(tmpdir(), `darven-reviewer-${scenario.name}-`))
     t.after(() => rm(dir, { recursive: true, force: true }))
-    const live = finalRound('BAG09', scenario.final.shoe, scenario.final.round, source, 101)
+    const live = finalRound('BAV06', scenario.final.shoe, scenario.final.round, source, 101)
     const snapshot = {
       sessionId: 'worker-api-primary-9', buildVersion: '105', source,
       connected: true, authenticated: true,
       tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
         tableId, name: tableId,
-        shoe: tableId === 'BAG09' ? scenario.provider.shoe : 100,
-        round: tableId === 'BAG09' ? scenario.provider.round : 1,
+        shoe: tableId === 'BAV06' ? scenario.provider.shoe : 100,
+        round: tableId === 'BAV06' ? scenario.provider.round : 1,
       })),
       shoeLifecycles: [{
-        tableId: 'BAG09', activeShoe: scenario.final.shoe, retiredShoes: [scenario.provider.shoe],
+        tableId: 'BAV06', activeShoe: scenario.final.shoe, retiredShoes: [scenario.provider.shoe],
         currentScreen: { ...scenario.final }, origin: 'final', source: live.source,
       }],
       rounds: [live],
@@ -108,7 +108,7 @@ test('a persisted source-current lifecycle overlays stale provider without shoe-
       },
     })
     assert.equal(await pusher.tick(), true)
-    const table = delivered.snapshot.tables.find((candidate) => candidate.tableId === 'BAG09')
+    const table = delivered.snapshot.tables.find((candidate) => candidate.tableId === 'BAV06')
     assert.deepEqual(
       { shoe: table.shoe, round: table.round }, scenario.final,
       `${scenario.name} must publish the source-current durable Final`,
@@ -132,10 +132,10 @@ test('durable hydration rejects non-adjacent and reverse-wrap shoes without sour
       connected: true, authenticated: true,
       tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
         tableId, name: tableId,
-        shoe: tableId === 'BAG09' ? scenario.provider.shoe : 100,
-        round: tableId === 'BAG09' ? scenario.provider.round : 1,
+        shoe: tableId === 'BAV06' ? scenario.provider.shoe : 100,
+        round: tableId === 'BAV06' ? scenario.provider.round : 1,
       })),
-      rounds: [finalRound('BAG09', scenario.final.shoe, scenario.final.round, source, 101)],
+      rounds: [finalRound('BAV06', scenario.final.shoe, scenario.final.round, source, 101)],
     }
     let delivered
     const pusher = createSnapshotPusher({
@@ -155,7 +155,7 @@ test('durable hydration rejects non-adjacent and reverse-wrap shoes without sour
       },
     })
     assert.equal(await pusher.tick(), true)
-    const table = delivered.snapshot.tables.find((candidate) => candidate.tableId === 'BAG09')
+    const table = delivered.snapshot.tables.find((candidate) => candidate.tableId === 'BAV06')
     assert.deepEqual(
       { shoe: table.shoe, round: table.round }, scenario.provider,
       `${scenario.name} must retain the provider screen`,
@@ -168,17 +168,17 @@ test('persisted lifecycle proof prevents an evicted retired wrap shoe from reviv
   t.after(() => rm(dir, { recursive: true, force: true }))
   const source = { mode: 'api', ownerId: 'api-primary', epoch: 9, fence: 'fence-9' }
   const historical = {
-    tableId: 'BAG09', shoe: 1, round: 1, winner: 'banker', sourceAction: 'summary', final: true,
+    tableId: 'BAV06', shoe: 1, round: 1, winner: 'banker', sourceAction: 'summary', final: true,
     rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], source: { ...source, sequence: 101 },
   }
   const snapshot = {
     sessionId: 'worker-api-primary-9', buildVersion: '105', source,
     tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
-      tableId, name: tableId, shoe: tableId === 'BAG09' ? 1 : 100,
-      round: tableId === 'BAG09' ? 70 : 1,
+      tableId, name: tableId, shoe: tableId === 'BAV06' ? 1 : 100,
+      round: tableId === 'BAV06' ? 70 : 1,
     })),
     shoeLifecycles: [{
-      tableId: 'BAG09', activeShoe: 999, retiredShoes: [],
+      tableId: 'BAV06', activeShoe: 999, retiredShoes: [],
       currentScreen: { shoe: 999, round: 70 }, origin: 'provider',
       source: { ...source, sequence: 200 },
     }],
@@ -202,7 +202,7 @@ test('persisted lifecycle proof prevents an evicted retired wrap shoe from reviv
   })
 
   assert.equal(await pusher.tick(), true)
-  const table = delivered.snapshot.tables.find((item) => item.tableId === 'BAG09')
+  const table = delivered.snapshot.tables.find((item) => item.tableId === 'BAV06')
   assert.deepEqual({ shoe: table.shoe, round: table.round }, { shoe: 999, round: 70 })
 })
 
@@ -215,20 +215,20 @@ test('latest durable Final chronology selects the current shoe across wrap witho
   const bag09Backlog = []
   let sourceSequence = 0
   for (const shoe of [...Array.from({ length: 9 }, (_, index) => 989 + index), 1, 2]) {
-    for (let round = 1; round <= 51; round += 1) bag09Backlog.push(finalRound('BAG09', shoe, round, source, ++sourceSequence))
+    for (let round = 1; round <= 51; round += 1) bag09Backlog.push(finalRound('BAV06', shoe, round, source, ++sourceSequence))
   }
-  for (let round = 1; round <= 50; round += 1) bag09Backlog.push(finalRound('BAG09', 3, round, source, ++sourceSequence))
+  for (let round = 1; round <= 50; round += 1) bag09Backlog.push(finalRound('BAV06', 3, round, source, ++sourceSequence))
   assert.equal(bag09Backlog.length, 611)
   const currentFinal = bag09Backlog.at(-1)
-  const delayedOldWrapFinal = finalRound('BAG09', 999, 70, {
+  const delayedOldWrapFinal = finalRound('BAV06', 999, 70, {
     ...source, ownerId: 'handoff-owner', epoch: 99, fence: 'handoff-fence',
   }, 100)
   const otherCurrentFinals = PRODUCTION_TABLE_IDS
-    .filter((tableId) => tableId !== 'BAG09')
+    .filter((tableId) => tableId !== 'BAV06')
     .map((tableId, index) => finalRound(tableId, 200 + index, index + 1, source, ++sourceSequence))
   const shoeLifecycles = [
     {
-      tableId: 'BAG09', activeShoe: 3,
+      tableId: 'BAV06', activeShoe: 3,
       retiredShoes: [...new Set([...bag09Backlog.map((round) => round.shoe).filter((shoe) => shoe !== 3), 999])],
       currentScreen: { shoe: 3, round: 50 }, origin: 'final', source: currentFinal.source,
     },
@@ -271,19 +271,19 @@ test('latest durable Final chronology selects the current shoe across wrap witho
   })
 
   assert.equal(await pusher.tick(), false)
-  assert.equal(pusher.snapshot().queueEntryCount, 10)
+  assert.equal(pusher.snapshot().queueEntryCount, 6)
   clock = 100_000
   assert.equal(await pusher.tick(), true)
-  assert.deepEqual(delivered[0].roundKeys, ['BAG09:3:50'])
-  const deliveredBag09 = delivered[0].snapshot.tables.find((table) => table.tableId === 'BAG09')
+  assert.deepEqual(delivered[0].roundKeys, ['BAV06:3:50'])
+  const deliveredBag09 = delivered[0].snapshot.tables.find((table) => table.tableId === 'BAV06')
   assert.deepEqual({ shoe: deliveredBag09.shoe, round: deliveredBag09.round }, { shoe: 3, round: 50 })
   const completedArchive = (await readdir(dir)).find((name) => name.startsWith('historical.jsonl.completed-') && name.endsWith('.jsonl.gz'))
   assert.ok(completedArchive, 'a completed historical batch must be compressed outside the active receipt log')
   const archive = gunzipSync(await readFile(path.join(dir, completedArchive))).toString('utf8').trim().split(/\r?\n/).map(JSON.parse)
   await assert.rejects(readFile(archivePath), { code: 'ENOENT' })
   assert.equal(archive.length, 611)
-  assert.equal(archive.some((record) => record.roundKey === 'BAG09:3:50'), false)
-  assert.equal(archive.some((record) => record.roundKey === 'BAG09:999:70'), true)
+  assert.equal(archive.some((record) => record.roundKey === 'BAV06:3:50'), false)
+  assert.equal(archive.some((record) => record.roundKey === 'BAV06:999:70'), true)
   assert.equal(archive.some((record) => record.reason === 'historical_shoe_backlog'), true)
   assert.equal(archive.some((record) => record.reason === 'superseded_round_backlog'), true)
   assert.deepEqual(archived.map((receipt) => receipt.roundKeys.length), [611])
@@ -295,8 +295,8 @@ test('a new live Final is delivered ahead of another idle table current-shoe bac
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
   const source = { mode: 'api', ownerId: 'api-primary', epoch: 9, fence: 'fence-9' }
-  const idle = finalRound('BAG09', 44, 20, source, 20)
-  const live = finalRound('BAG01', 91, 8, source, 21)
+  const idle = finalRound('BAV06', 44, 20, source, 20)
+  const live = finalRound('BAV01', 91, 8, source, 21)
   await writeFile(queuePath, JSON.stringify({ version: 3, entries: [
     queueEntry(idle, 10_001, source),
     queueEntry(live, 10_002, source),
@@ -306,8 +306,8 @@ test('a new live Final is delivered ahead of another idle table current-shoe bac
     sessionId: 'worker-api-primary-9', buildVersion: '105', source,
     tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
       tableId, name: tableId,
-      shoe: tableId === 'BAG09' ? 44 : (tableId === 'BAG01' ? 91 : 1),
-      round: tableId === 'BAG09' ? 20 : (tableId === 'BAG01' ? 8 : 1),
+      shoe: tableId === 'BAV06' ? 44 : (tableId === 'BAV01' ? 91 : 1),
+      round: tableId === 'BAV06' ? 20 : (tableId === 'BAV01' ? 8 : 1),
     })),
     rounds: [idle, live],
   }
@@ -329,7 +329,7 @@ test('a new live Final is delivered ahead of another idle table current-shoe bac
   })
 
   assert.equal(await pusher.tick(), true)
-  assert.deepEqual(delivered[0], ['BAG01:91:8'])
+  assert.deepEqual(delivered[0], ['BAV01:91:8'])
 })
 
 test('an empty failed heartbeat cannot stay ahead of a newly collected live Final', async (t) => {
@@ -340,14 +340,14 @@ test('an empty failed heartbeat cannot stay ahead of a newly collected live Fina
   let attempts = 0
   const delivered = []
   const source = { mode: 'api', ownerId: 'api-primary', epoch: 9, fence: 'fence-9' }
-  const live = finalRound('BAG01', 91, 8, source, 21)
+  const live = finalRound('BAV01', 91, 8, source, 21)
   const pusher = createSnapshotPusher({
     targetUrl: 'https://proxy.example/api/cloud-ingest/snapshot', key: 'worker-key',
     queuePath: path.join(dir, 'latest.json'), maxRoundsPerEnvelope: 1, maxDrainPerTick: 1,
     baseBackoffMs: 1, now: () => clock, isRoundDeliverable: () => true,
     getSnapshot: async () => ({
       sessionId: 'worker-api-primary-9', buildVersion: '105', source,
-      tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: tableId === 'BAG01' ? 91 : 1, round: tableId === 'BAG01' ? 8 : 1 })),
+      tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: tableId === 'BAV01' ? 91 : 1, round: tableId === 'BAV01' ? 8 : 1 })),
       rounds: includeLive ? [live] : [],
     }),
     fetchImpl: async (_url, options) => {
@@ -369,7 +369,7 @@ test('an empty failed heartbeat cannot stay ahead of a newly collected live Fina
   includeLive = true
   clock = 2_000
   assert.equal(await pusher.tick(), true)
-  assert.deepEqual(delivered[0], ['BAG01:91:8'])
+  assert.deepEqual(delivered[0], ['BAV01:91:8'])
   assert.equal(pusher.snapshot().queuedRoundKeyCount, 0)
 })
 
@@ -381,8 +381,8 @@ test('a lost ACK data envelope keeps its exact identity ahead of later live prio
   let attempts = 0
   const sent = []
   const source = { mode: 'api', ownerId: 'api-primary', epoch: 9, fence: 'fence-9' }
-  const attempted = finalRound('BAG09', 44, 20, source, 20)
-  const newer = finalRound('BAG01', 91, 8, source, 21)
+  const attempted = finalRound('BAV06', 44, 20, source, 20)
+  const newer = finalRound('BAV01', 91, 8, source, 21)
   const pusher = createSnapshotPusher({
     targetUrl: 'https://proxy.example/api/cloud-ingest/snapshot', key: 'worker-key',
     queuePath: path.join(dir, 'latest.json'), maxRoundsPerEnvelope: 1, maxDrainPerTick: 1,
@@ -390,8 +390,8 @@ test('a lost ACK data envelope keeps its exact identity ahead of later live prio
     getSnapshot: async () => ({
       sessionId: 'worker-api-primary-9', buildVersion: '105', source,
       tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
-        tableId, shoe: tableId === 'BAG09' ? 44 : (tableId === 'BAG01' ? 91 : 1),
-        round: tableId === 'BAG09' ? 20 : (tableId === 'BAG01' ? 8 : 1),
+        tableId, shoe: tableId === 'BAV06' ? 44 : (tableId === 'BAV01' ? 91 : 1),
+        round: tableId === 'BAV06' ? 20 : (tableId === 'BAV01' ? 8 : 1),
       })),
       rounds: includeNew ? [attempted, newer] : [attempted],
     }),
@@ -426,14 +426,14 @@ test('an attempted stale-fence head exact-not-found rebinds safely and releases 
   const queuePath = path.join(dir, 'latest.json')
   const oldSource = { mode: 'api', ownerId: 'api-primary', epoch: 1, fence: 'fence-1' }
   const newSource = { mode: 'api', ownerId: 'api-primary', epoch: 2, fence: 'fence-2' }
-  const attempted = finalRound('BAG01', 91, 8, oldSource, 10)
-  const later = finalRound('BAG02', 55, 4, newSource, 12)
+  const attempted = finalRound('BAV01', 91, 8, oldSource, 10)
+  const later = finalRound('BAV02', 55, 4, newSource, 12)
   const initial = createSnapshotPusher({
     targetUrl: 'https://proxy.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
     baseBackoffMs: 1, now: () => 1_000, isRoundDeliverable: () => true,
     getSnapshot: async () => ({
       sessionId: 'worker-api-primary-1', buildVersion: '105', source: oldSource,
-      tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: tableId === 'BAG01' ? 91 : 1, round: tableId === 'BAG01' ? 8 : 1 })),
+      tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: tableId === 'BAV01' ? 91 : 1, round: tableId === 'BAV01' ? 8 : 1 })),
       rounds: [attempted],
     }),
     fetchImpl: async () => { throw new Error('request failed before durable commit') },
@@ -449,12 +449,12 @@ test('an attempted stale-fence head exact-not-found rebinds safely and releases 
       sessionId: 'worker-api-primary-2', buildVersion: '105', source: newSource,
       tables: PRODUCTION_TABLE_IDS.map((tableId) => ({
         tableId,
-        shoe: tableId === 'BAG01' ? 91 : (tableId === 'BAG02' ? 55 : 1),
-        round: tableId === 'BAG01' ? 8 : (tableId === 'BAG02' ? 4 : 1),
+        shoe: tableId === 'BAV01' ? 91 : (tableId === 'BAV02' ? 55 : 1),
+        round: tableId === 'BAV01' ? 8 : (tableId === 'BAV02' ? 4 : 1),
       })),
       rounds: [attempted, later],
     }),
-    onRebindQueue: async ({ roundKeys }) => roundKeys.map((identity) => identity === 'BAG01:91:8'
+    onRebindQueue: async ({ roundKeys }) => roundKeys.map((identity) => identity === 'BAV01:91:8'
       ? {
           ...attempted,
           capturedSource: attempted.source,
@@ -496,8 +496,8 @@ test('an attempted stale-fence head exact-not-found rebinds safely and releases 
   ])
   assert.deepEqual(requests.map(({ envelope }) => envelope.source.epoch), [1, 1, 2, 2])
   assert.deepEqual(acknowledgements.map((receipt) => receipt.acceptedRoundKeys), [
-    ['BAG01:91:8'],
-    ['BAG02:55:4'],
+    ['BAV01:91:8'],
+    ['BAV02:55:4'],
   ])
   assert.equal(restarted.snapshot().queueEntryCount, 0)
 })
@@ -508,19 +508,19 @@ test('startup finalizes durable historical archive receipts locally without repl
   const queuePath = path.join(dir, 'latest.json')
   const archivePath = path.join(dir, 'historical.jsonl')
   await writeFile(archivePath, `${JSON.stringify({
-    version: 1, archiveId: 'vm:100:BAG01:90:8', archivedAt: 10_000,
-    reason: 'historical_shoe_backlog', roundKey: 'BAG01:90:8', currentShoe: '91',
+    version: 1, archiveId: 'vm:100:BAV01:90:8', archivedAt: 10_000,
+    reason: 'historical_shoe_backlog', roundKey: 'BAV01:90:8', currentShoe: '91',
     sessionId: 'vm', sequence: 100,
   })}\n`)
   const receipts = []
   const sentRoundKeys = []
-  const live = finalRound('BAG01', 91, 9, { mode: 'api', ownerId: 'api-primary', epoch: 1, fence: 'fence-1' }, 1)
+  const live = finalRound('BAV01', 91, 9, { mode: 'api', ownerId: 'api-primary', epoch: 1, fence: 'fence-1' }, 1)
   const pusher = createSnapshotPusher({
     targetUrl: 'https://proxy.example/api/cloud-ingest/snapshot', key: 'worker-key',
     queuePath, historicalArchivePath: archivePath, now: () => 20_000,
     getSnapshot: async () => ({
       sessionId: 'vm', buildVersion: '105',
-      tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: tableId === 'BAG01' ? 91 : 1, round: tableId === 'BAG01' ? 9 : 1 })),
+      tables: PRODUCTION_TABLE_IDS.map((tableId) => ({ tableId, shoe: tableId === 'BAV01' ? 91 : 1, round: tableId === 'BAV01' ? 9 : 1 })),
       rounds: [live],
     }),
     onArchived: async (receipt) => receipts.push(receipt),
@@ -532,9 +532,9 @@ test('startup finalizes durable historical archive receipts locally without repl
   })
 
   assert.equal(await pusher.tick(), true)
-  assert.deepEqual(receipts.map((receipt) => receipt.roundKeys), [['BAG01:90:8']])
-  assert.deepEqual(sentRoundKeys, ['BAG01:91:9'])
-  assert.equal(sentRoundKeys.includes('BAG01:90:8'), false)
+  assert.deepEqual(receipts.map((receipt) => receipt.roundKeys), [['BAV01:90:8']])
+  assert.deepEqual(sentRoundKeys, ['BAV01:91:9'])
+  assert.equal(sentRoundKeys.includes('BAV01:90:8'), false)
 })
 
 test('startup never replays an archive receipt while the same Final remains in the active queue', async (t) => {
@@ -543,17 +543,17 @@ test('startup never replays an archive receipt while the same Final remains in t
   const queuePath = path.join(dir, 'latest.json')
   const archivePath = path.join(dir, 'historical.jsonl')
   const round = {
-    tableId: 'BAG01', shoe: 90, round: 8, winner: 'banker', sourceAction: 'summary', final: true,
+    tableId: 'BAV01', shoe: 90, round: 8, winner: 'banker', sourceAction: 'summary', final: true,
     rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6],
   }
   await writeFile(queuePath, JSON.stringify({ version: 3, entries: [{
     protocolVersion: 'v105', sessionId: 'vm', timestamp: 10_000, captureTimestamp: 10_000,
-    sequence: 10_000, roundKeys: ['BAG01:90:8'],
+    sequence: 10_000, roundKeys: ['BAV01:90:8'],
     snapshot: { sessionId: 'vm', buildVersion: '105', tables: [], rounds: [round] },
   }] }))
   await writeFile(archivePath, `${JSON.stringify({
-    version: 1, archiveId: 'vm:10000:BAG01:90:8', archivedAt: 10_000,
-    reason: 'historical_shoe_backlog', roundKey: 'BAG01:90:8', currentShoe: '91',
+    version: 1, archiveId: 'vm:10000:BAV01:90:8', archivedAt: 10_000,
+    reason: 'historical_shoe_backlog', roundKey: 'BAV01:90:8', currentShoe: '91',
     sessionId: 'vm', sequence: 10_000, round,
   })}\n`)
   const receipts = []
@@ -576,7 +576,7 @@ test('an explicit Final trigger durably queues and delivers without waiting for 
   t.after(() => rm(dir, { recursive: true, force: true }))
   const sent = []
   const final = {
-    tableId: 'BAG01', shoe: 91, round: 1, winner: 'banker', sourceAction: 'summary', final: true,
+    tableId: 'BAV01', shoe: 91, round: 1, winner: 'banker', sourceAction: 'summary', final: true,
     rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], playerPoint: 4, bankerPoint: 6,
   }
   const pusher = createSnapshotPusher({
@@ -590,7 +590,7 @@ test('an explicit Final trigger durably queues and delivers without waiting for 
   })
 
   assert.equal(await pusher.trigger(), true)
-  assert.deepEqual(sent.map((entry) => entry.roundKeys), [['BAG01:91:1']])
+  assert.deepEqual(sent.map((entry) => entry.roundKeys), [['BAV01:91:1']])
 })
 
 test('a Final arriving during an active push is coalesced into a follow-up immediate drain', async (t) => {
@@ -623,11 +623,11 @@ test('a Final arriving during an active push is coalesced into a follow-up immed
   releaseFirst()
   await Promise.all([first, second])
 
-  assert.deepEqual(sent.map((entry) => entry.roundKeys), [['BAG01:91:1'], ['BAG01:91:2']])
+  assert.deepEqual(sent.map((entry) => entry.roundKeys), [['BAV01:91:1'], ['BAV01:91:2']])
 
   function finalRound(round) {
     return {
-      tableId: 'BAG01', shoe: 91, round, winner: 'banker', sourceAction: 'summary', final: true,
+      tableId: 'BAV01', shoe: 91, round, winner: 'banker', sourceAction: 'summary', final: true,
       rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], playerPoint: 4, bankerPoint: 6,
     }
   }
@@ -657,11 +657,11 @@ test('a Final signalled at the trigger-loop completion boundary cannot be lost',
   await pusher.trigger()
   await boundaryTrigger
 
-  assert.deepEqual(sent.map((entry) => entry.roundKeys), [['BAG01:91:1'], ['BAG01:91:2']])
+  assert.deepEqual(sent.map((entry) => entry.roundKeys), [['BAV01:91:1'], ['BAV01:91:2']])
 
   function finalRound(round) {
     return {
-      tableId: 'BAG01', shoe: 91, round, winner: 'banker', sourceAction: 'summary', final: true,
+      tableId: 'BAV01', shoe: 91, round, winner: 'banker', sourceAction: 'summary', final: true,
       rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], playerPoint: 4, bankerPoint: 6,
     }
   }
@@ -758,9 +758,9 @@ test('v104 migration restamps retained v098 and v102 snapshots so an empty head 
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-v100-build-migration-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
-  const key = 'BAG01:8:1'
+  const key = 'BAV01:8:1'
   const final = {
-    tableId: 'BAG01', shoe: 8, round: 1, winner: 'banker',
+    tableId: 'BAV01', shoe: 8, round: 1, winner: 'banker',
     rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
     sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
   }
@@ -808,16 +808,16 @@ test('pusher sanitizes tables and rounds before durable queue persistence', asyn
     queuePath: path.join(dir, 'latest.json'),
     getSnapshot: async () => ({
       sessionId: 'vm',
-      tables: [{ tableId: 'BAG11' }, { tableId: 'BAG3A' }, { tableId: 'BAG01' }],
-      rounds: [round('BAG01'), round('BAG11'), round('BAG3A')],
+      tables: [{ tableId: 'BAV11' }, { tableId: ' bav03a ' }, { tableId: 'BAV01' }],
+      rounds: [round('BAV01'), round('BAV11'), round(' bav03a ')],
     }),
     fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
   })
 
   assert.equal(await pusher.tick(), true)
-  assert.deepEqual(sent[0].snapshot.tables.map((table) => table.tableId), ['BAG01', 'BAG03A'])
-  assert.deepEqual(sent[0].snapshot.rounds.map((item) => item.tableId), ['BAG01', 'BAG03A'])
-  assert.deepEqual(sent[0].roundKeys, ['BAG01:8:1', 'BAG03A:8:1'])
+  assert.deepEqual(sent[0].snapshot.tables.map((table) => table.tableId), ['BAV01', 'BAV03A'])
+  assert.deepEqual(sent[0].snapshot.rounds.map((item) => item.tableId), ['BAV01', 'BAV03A'])
+  assert.deepEqual(sent[0].roundKeys, ['BAV01:8:1', 'BAV03A:8:1'])
 
   function round(tableId) {
     return { tableId, shoe: 8, round: 1, winner: 'banker' }
@@ -828,9 +828,9 @@ test('seeds v3 observed identities from retained verified-final v2 queue entries
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-final-cursor-migration-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
-  const key = 'BAG01:8:3'
+  const key = 'BAV01:8:3'
   const final = {
-    tableId: 'BAG01', shoe: 8, round: 3, winner: 'banker',
+    tableId: 'BAV01', shoe: 8, round: 3, winner: 'banker',
     rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
     sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
   }
@@ -863,14 +863,14 @@ test('migrates a provisional v2 queue head and observed-only cursor so the same-
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-final-migration-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
-  const key = 'BAG01:8:3'
+  const key = 'BAV01:8:3'
   const provisional = {
-    tableId: 'BAG01', shoe: 8, round: 3, winner: 'player',
+    tableId: 'BAV01', shoe: 8, round: 3, winner: 'player',
     rawResult: [31, 51, 25, 52, 0, 0, -1, -1, 5, 0],
     sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/show_poker',
   }
   const final = {
-    tableId: 'BAG01', shoe: 8, round: 3, winner: 'banker',
+    tableId: 'BAV01', shoe: 8, round: 3, winner: 'banker',
     rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
     sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
   }
@@ -910,10 +910,10 @@ test('pusher sanitizes legacy restored queue envelopes before replay', async (t)
     sequence: 1000,
     snapshot: {
       sessionId: 'vm',
-      tables: [{ tableId: 'BAG11' }, { tableId: 'BAG01' }],
+      tables: [{ tableId: 'BAV11' }, { tableId: 'BAV01' }],
       rounds: [
-        { tableId: 'BAG11', shoe: 8, round: 1, winner: 'banker' },
-        { tableId: 'BAG01', shoe: 8, round: 1, winner: 'player' },
+        { tableId: 'BAV11', shoe: 8, round: 1, winner: 'banker' },
+        { tableId: 'BAV01', shoe: 8, round: 1, winner: 'player' },
       ],
     },
   }))
@@ -926,7 +926,7 @@ test('pusher sanitizes legacy restored queue envelopes before replay', async (t)
       sent.push(body)
       if (body.sequence === 1000) return {
         status: 200,
-        json: async () => ({ accepted: true, sessionId: 'vm', sequence: 1000, acceptedRoundKeys: ['BAG11:8:1', 'BAG01:8:1'] }),
+        json: async () => ({ accepted: true, sessionId: 'vm', sequence: 1000, acceptedRoundKeys: ['BAV11:8:1', 'BAV01:8:1'] }),
       }
       return acceptedResponse(options)
     },
@@ -934,9 +934,9 @@ test('pusher sanitizes legacy restored queue envelopes before replay', async (t)
 
   assert.equal(await pusher.tick(), true)
   assert.ok(sent[0].sequence > 1000, 'sanitized legacy envelope must receive a fresh sequence')
-  assert.deepEqual(sent[0].snapshot.tables.map((table) => table.tableId), ['BAG01'])
-  assert.deepEqual(sent[0].snapshot.rounds.map((round) => round.tableId), ['BAG01'])
-  assert.deepEqual(sent[0].roundKeys, ['BAG01:8:1'])
+  assert.deepEqual(sent[0].snapshot.tables.map((table) => table.tableId), ['BAV01'])
+  assert.deepEqual(sent[0].snapshot.rounds.map((round) => round.tableId), ['BAV01'])
+  assert.deepEqual(sent[0].roundKeys, ['BAV01:8:1'])
 })
 
 test('pusher preserves and retries the exact unacknowledged envelope', async (t) => {
@@ -950,7 +950,7 @@ test('pusher preserves and retries the exact unacknowledged envelope', async (t)
   const pusher = createSnapshotPusher({
     targetUrl: 'https://example.invalid/api/cloud-ingest/snapshot',
     key: 'test-key', queuePath, now: () => clock,
-    getSnapshot: async () => ({ sessionId: 'vm', tables: [{ tableId: 'BAG01', round }], rounds: [] }),
+    getSnapshot: async () => ({ sessionId: 'vm', tables: [{ tableId: 'BAV01', round }], rounds: [] }),
     fetchImpl: async (_url, options) => {
       attempts += 1
       sent.push(JSON.parse(options.body))
@@ -984,7 +984,7 @@ test('pusher restores the queued envelope, keeps collecting, and only 2xx acknow
   const original = {
     timestamp: 1000,
     sequence: 1000,
-    snapshot: { sessionId: 'vm', buildVersion: '098', tables: [], rounds: [{ tableId: 'BAG01', shoe: 8, round: 9, winner: 'banker' }] },
+    snapshot: { sessionId: 'vm', buildVersion: '098', tables: [], rounds: [{ tableId: 'BAV01', shoe: 8, round: 9, winner: 'banker' }] },
   }
   await import('node:fs/promises').then(({ writeFile }) => writeFile(queuePath, JSON.stringify(original)))
   const statuses = [302, 204]
@@ -1005,7 +1005,7 @@ test('pusher restores the queued envelope, keeps collecting, and only 2xx acknow
   assert.equal(snapshotCalls, 1)
   assert.equal(sent[0].protocolVersion, 'v105')
   assert.equal(sent[0].sessionId, 'vm')
-  assert.deepEqual(sent[0].roundKeys, ['BAG01:8:9'])
+  assert.deepEqual(sent[0].roundKeys, ['BAV01:8:9'])
   assert.deepEqual(sent[0].snapshot, { ...original.snapshot, buildVersion: '105' })
   const queuedAfterRedirect = JSON.parse(await readFile(queuePath, 'utf8')).entries[0]
   assert.equal(queuedAfterRedirect.timestamp, 1000, 'transport retry time is not a durable capture identity')
@@ -1076,7 +1076,7 @@ test('pusher durably sends every previously unacknowledged retained round, then 
   assert.deepEqual(sent[2].snapshot.rounds.map((item) => item.round), [4], 'ack cursor survives restart')
 
   function round(number) {
-    return { tableId: 'BAG01', shoe: 8, round: number, winner: 'banker' }
+    return { tableId: 'BAV01', shoe: 8, round: number, winner: 'banker' }
   }
 })
 
@@ -1100,13 +1100,13 @@ test('pusher never uses the table shoe when completed rounds omit shoe', async (
   function snapshot(shoe) {
     return {
       sessionId: 'vm',
-      tables: [{ tableId: 'BAG01', shoe, round: 1 }],
-      rounds: [{ tableId: 'BAG01', shoe: null, round: 1, winner: 'banker' }],
+      tables: [{ tableId: 'BAV01', shoe, round: 1 }],
+      rounds: [{ tableId: 'BAV01', shoe: null, round: 1, winner: 'banker' }],
     }
   }
 })
 
-test('pusher does not borrow the canonical BAG01 table shoe for BAG1 rounds', async (t) => {
+test('pusher does not borrow the canonical BAV01 table shoe for BAV1 rounds', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const sent = []
@@ -1126,13 +1126,13 @@ test('pusher does not borrow the canonical BAG01 table shoe for BAG1 rounds', as
   function snapshot(shoe) {
     return {
       sessionId: 'vm',
-      tables: [{ tableId: 'BAG01', shoe, round: 1 }],
-      rounds: [{ tableId: 'BAG1', shoe: null, round: 1, winner: 'banker' }],
+      tables: [{ tableId: 'BAV01', shoe, round: 1 }],
+      rounds: [{ tableId: 'BAV1', shoe: null, round: 1, winner: 'banker' }],
     }
   }
 })
 
-test('pusher does not borrow the canonical BAG01A table shoe for BAG1A rounds', async (t) => {
+test('pusher does not borrow the canonical BAV01A table shoe for BAV1A rounds', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const sent = []
@@ -1151,8 +1151,8 @@ test('pusher does not borrow the canonical BAG01A table shoe for BAG1A rounds', 
   function snapshot(shoe) {
     return {
       sessionId: 'vm',
-      tables: [{ tableId: 'BAG01A', shoe, round: 1 }],
-      rounds: [{ tableId: 'BAG1A', shoe: null, round: 1, winner: 'banker' }],
+      tables: [{ tableId: 'BAV01A', shoe, round: 1 }],
+      rounds: [{ tableId: 'BAV1A', shoe: null, round: 1, winner: 'banker' }],
     }
   }
 })
@@ -1161,11 +1161,11 @@ test('pusher rejects all retained missing-shoe events after rollover', async (t)
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
-  const oldRound = { tableId: 'BAG01', shoe: null, round: 1, winner: 'banker', rawResult: [1, 2, 3] }
-  const newRound = { tableId: 'BAG01', shoe: null, round: 1, winner: 'player', rawResult: [4, 5, 6] }
+  const oldRound = { tableId: 'BAV01', shoe: null, round: 1, winner: 'banker', rawResult: [1, 2, 3] }
+  const newRound = { tableId: 'BAV01', shoe: null, round: 1, winner: 'player', rawResult: [4, 5, 6] }
   const snapshots = [
-    { sessionId: 'vm', tables: [{ tableId: 'BAG01', shoe: 8, round: 1 }], rounds: [oldRound] },
-    { sessionId: 'vm', tables: [{ tableId: 'BAG01', shoe: 9, round: 1 }], rounds: [oldRound, newRound] },
+    { sessionId: 'vm', tables: [{ tableId: 'BAV01', shoe: 8, round: 1 }], rounds: [oldRound] },
+    { sessionId: 'vm', tables: [{ tableId: 'BAV01', shoe: 9, round: 1 }], rounds: [oldRound, newRound] },
   ]
   const sent = []
   const create = () => createSnapshotPusher({
@@ -1200,8 +1200,8 @@ test('pusher rejects a missing-shoe round in a new capture session', async (t) =
   function snapshot(sessionId) {
     return {
       sessionId,
-      tables: [{ tableId: 'BAG01', shoe: sessionId === 'capture-1' ? 8 : 9, round: 1 }],
-      rounds: [{ tableId: 'BAG01', shoe: null, round: 1, winner: 'banker', rawResult: [1, 2, 3] }],
+      tables: [{ tableId: 'BAV01', shoe: sessionId === 'capture-1' ? 8 : 9, round: 1 }],
+      rounds: [{ tableId: 'BAV01', shoe: null, round: 1, winner: 'banker', rawResult: [1, 2, 3] }],
     }
   }
 })
@@ -1210,12 +1210,12 @@ test('pusher rejects an identical missing-shoe event after capture session and s
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const sent = []
-  const result = { tableId: 'BAG01', shoe: null, round: 1, winner: 'banker', rawResult: [1, 2, 3] }
+  const result = { tableId: 'BAV01', shoe: null, round: 1, winner: 'banker', rawResult: [1, 2, 3] }
   const oldEvent = { ...result, sourceEventId: 'capture-1:1' }
   const newEvent = { ...result, sourceEventId: 'capture-2:2' }
   const snapshots = [
-    { sessionId: 'capture-1', tables: [{ tableId: 'BAG01', shoe: 8, round: 1 }], rounds: [oldEvent] },
-    { sessionId: 'capture-2', tables: [{ tableId: 'BAG01', shoe: 9, round: 1 }], rounds: [oldEvent, newEvent] },
+    { sessionId: 'capture-1', tables: [{ tableId: 'BAV01', shoe: 8, round: 1 }], rounds: [oldEvent] },
+    { sessionId: 'capture-2', tables: [{ tableId: 'BAV01', shoe: 9, round: 1 }], rounds: [oldEvent, newEvent] },
   ]
   const queuePath = path.join(dir, 'latest.json')
   const create = () => createSnapshotPusher({
@@ -1235,11 +1235,11 @@ test('pusher rejects missing-shoe A-suffix rounds after rollover', async (t) => 
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const sent = []
-  const oldEvent = { tableId: 'BAG1A', shoe: null, round: 1, winner: 'banker', rawResult: [1, 2, 3], sourceEventId: 'capture-1:1' }
-  const newEvent = { tableId: 'BAG1A', shoe: null, round: 1, winner: 'player', rawResult: [4, 5, 6], sourceEventId: 'capture-2:2' }
+  const oldEvent = { tableId: 'BAV1A', shoe: null, round: 1, winner: 'banker', rawResult: [1, 2, 3], sourceEventId: 'capture-1:1' }
+  const newEvent = { tableId: 'BAV1A', shoe: null, round: 1, winner: 'player', rawResult: [4, 5, 6], sourceEventId: 'capture-2:2' }
   const snapshots = [
-    { sessionId: 'capture-1', tables: [{ tableId: 'BAG01A', shoe: 8, round: 1 }], rounds: [oldEvent] },
-    { sessionId: 'capture-2', tables: [{ tableId: 'BAG01A', shoe: 9, round: 1 }], rounds: [oldEvent, newEvent] },
+    { sessionId: 'capture-1', tables: [{ tableId: 'BAV01A', shoe: 8, round: 1 }], rounds: [oldEvent] },
+    { sessionId: 'capture-2', tables: [{ tableId: 'BAV01A', shoe: 9, round: 1 }], rounds: [oldEvent, newEvent] },
   ]
   const queuePath = path.join(dir, 'latest.json')
   const create = () => createSnapshotPusher({
@@ -1276,8 +1276,8 @@ test('pusher rejects a conflicting duplicate for the same table shoe and round k
   function snapshot(rawResult) {
     return {
       sessionId: 'capture-1',
-      tables: [{ tableId: 'BAG01', shoe: 8, round: 1 }],
-      rounds: [{ tableId: 'BAG01', shoe: null, round: 1, winner: 'banker', rawResult }],
+      tables: [{ tableId: 'BAV01', shoe: 8, round: 1 }],
+      rounds: [{ tableId: 'BAV01', shoe: null, round: 1, winner: 'banker', rawResult }],
     }
   }
 })
@@ -1302,8 +1302,8 @@ test('pusher does not bypass table shoe round dedupe when only the capture event
   function snapshot(sourceEventId) {
     return {
       sessionId: 'capture-1',
-      tables: [{ tableId: 'BAG01', shoe: 8, round: 1 }],
-      rounds: [{ tableId: 'BAG01', shoe: null, round: 1, winner: 'banker', rawResult: [1, 2, 3], sourceEventId }],
+      tables: [{ tableId: 'BAV01', shoe: 8, round: 1 }],
+      rounds: [{ tableId: 'BAV01', shoe: null, round: 1, winner: 'banker', rawResult: [1, 2, 3], sourceEventId }],
     }
   }
 })
@@ -1313,8 +1313,8 @@ test('pusher keeps the durable queue until session sequence and accepted round k
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
   const snapshots = [
-    { sessionId: 'vm', tables: [{ tableId: 'BAG01', shoe: 8, round: 1 }], rounds: [round(1)] },
-    { sessionId: 'vm', tables: [{ tableId: 'BAG01', shoe: 8, round: 2 }], rounds: [round(1), round(2)] },
+    { sessionId: 'vm', tables: [{ tableId: 'BAV01', shoe: 8, round: 1 }], rounds: [round(1)] },
+    { sessionId: 'vm', tables: [{ tableId: 'BAV01', shoe: 8, round: 2 }], rounds: [round(1), round(2)] },
   ]
   let attempt = 0
   const pusher = createSnapshotPusher({
@@ -1323,7 +1323,7 @@ test('pusher keeps the durable queue until session sequence and accepted round k
     fetchImpl: async (_url, options) => {
       attempt += 1
       const envelope = JSON.parse(options.body)
-      if (attempt === 2) return { status: 200, json: async () => ({ accepted: true, sessionId: envelope.sessionId, sequence: envelope.sequence, acceptedRoundKeys: ['BAG01:8:999'] }) }
+      if (attempt === 2) return { status: 200, json: async () => ({ accepted: true, sessionId: envelope.sessionId, sequence: envelope.sequence, acceptedRoundKeys: ['BAV01:8:999'] }) }
       return acceptedResponse(options)
     },
     baseBackoffMs: 0,
@@ -1331,12 +1331,12 @@ test('pusher keeps the durable queue until session sequence and accepted round k
 
   assert.equal(await pusher.tick(), true)
   assert.equal(await pusher.tick(), false)
-  assert.deepEqual(JSON.parse(await readFile(queuePath, 'utf8')).entries[0].roundKeys, ['BAG01:8:2'])
+  assert.deepEqual(JSON.parse(await readFile(queuePath, 'utf8')).entries[0].roundKeys, ['BAV01:8:2'])
   assert.equal(await pusher.tick(), true)
   await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
 
   function round(number) {
-    return { tableId: 'BAG01', shoe: 8, round: number, winner: 'banker', rawResult: [1, 2, 3, 4, -1, -1, -1, -1, 3, 7] }
+    return { tableId: 'BAV01', shoe: 8, round: number, winner: 'banker', rawResult: [1, 2, 3, 4, -1, -1, -1, -1, 3, 7] }
   }
 })
 
@@ -1368,8 +1368,8 @@ test('pusher fail-closes a completed round without its own shoe instead of borro
     queuePath: path.join(dir, 'latest.json'),
     getSnapshot: async () => ({
       sessionId: 'vm',
-      tables: [{ tableId: 'BAG01', shoe: 8, round: 1 }],
-      rounds: [{ tableId: 'BAG01', shoe: null, round: 1, winner: 'banker' }],
+      tables: [{ tableId: 'BAV01', shoe: 8, round: 1 }],
+      rounds: [{ tableId: 'BAV01', shoe: null, round: 1, winner: 'banker' }],
     }),
     fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
   })
@@ -1407,14 +1407,14 @@ test('durable FIFO keeps collecting new rounds while its unacknowledged head ret
   assert.equal(await pusher.tick(), false, 'round 2 remains at the FIFO head')
   assert.equal(await pusher.tick(), true, 'round 3 is queued while the exact round 2 head retries')
   assert.equal(sent[2].sequence, lostAcceptedSequence)
-  assert.deepEqual(sent[2].roundKeys, ['BAG01:8:2'])
+  assert.deepEqual(sent[2].roundKeys, ['BAV01:8:2'])
   assert.equal(await pusher.tick(), true, 'round 3 drains under its own sequence')
   assert.ok(sent[3].sequence > lostAcceptedSequence)
-  assert.deepEqual(sent[3].roundKeys, ['BAG01:8:3'])
+  assert.deepEqual(sent[3].roundKeys, ['BAV01:8:3'])
   await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
 
   function snapshot(numbers) {
-    return { sessionId: 'vm', tables: [], rounds: numbers.map((number) => ({ tableId: 'BAG01', shoe: 8, round: number, winner: 'banker' })) }
+    return { sessionId: 'vm', tables: [], rounds: numbers.map((number) => ({ tableId: 'BAV01', shoe: 8, round: number, winner: 'banker' })) }
   }
 })
 
@@ -1423,13 +1423,13 @@ test('a new round after a lost ACK stays behind the bit-stable sent sequence', a
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
   const rounds = [1, 2, 3].map((round) => ({
-    tableId: 'BAG01', shoe: 8, round, winner: 'banker',
+    tableId: 'BAV01', shoe: 8, round, winner: 'banker',
     rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
     sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
   }))
   const initialEntries = rounds.slice(0, 2).map((round, index) => ({
     protocolVersion: 'v105', sessionId: 'vm', timestamp: 1000 + index, captureTimestamp: 1000 + index,
-    sequence: 1000 + index, roundKeys: [`BAG01:8:${round.round}`],
+    sequence: 1000 + index, roundKeys: [`BAV01:8:${round.round}`],
     snapshot: { sessionId: 'vm', buildVersion: '105', tables: [], rounds: [round] },
   }))
   await writeFile(queuePath, JSON.stringify({ version: 3, entries: initialEntries }))
@@ -1457,14 +1457,14 @@ test('a new round after a lost ACK stays behind the bit-stable sent sequence', a
   assert.equal(await pusher.tick(), false)
   assert.equal(sent[0].sequence, 1000)
   assert.equal(sent[1].sequence, sent[0].sequence)
-  assert.deepEqual(sent[0].roundKeys, ['BAG01:8:1'])
+  assert.deepEqual(sent[0].roundKeys, ['BAV01:8:1'])
   const { timestamp: firstRequestAt, ...firstIdentity } = sent[0]
   const { timestamp: retryRequestAt, ...retryIdentity } = sent[1]
   assert.ok(retryRequestAt >= firstRequestAt)
   assert.deepEqual(retryIdentity, firstIdentity)
   const retained = JSON.parse(await readFile(queuePath, 'utf8')).entries
   assert.deepEqual(retained.map((entry) => entry.roundKeys), [
-    ['BAG01:8:1'], ['BAG01:8:2'], ['BAG01:8:3'],
+    ['BAV01:8:1'], ['BAV01:8:2'], ['BAV01:8:3'],
   ])
   assert.ok(retained[2].sequence > retained[1].sequence)
 })
@@ -1473,16 +1473,16 @@ test('restored FIFO head is not appended again when queue persisted before its o
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-push-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
-  const queuedRound = { tableId: 'BAG01', shoe: 8, round: 2, winner: 'banker' }
+  const queuedRound = { tableId: 'BAV01', shoe: 8, round: 2, winner: 'banker' }
   const queuedEnvelope = {
     protocolVersion: 'v098', sessionId: 'vm', timestamp: 1000, captureTimestamp: 1000,
-    sequence: 1000, roundKeys: ['BAG01:8:2'],
+    sequence: 1000, roundKeys: ['BAV01:8:2'],
     snapshot: { sessionId: 'vm', tables: [], rounds: [queuedRound] },
   }
   await writeFile(queuePath, JSON.stringify({ version: 2, entries: [queuedEnvelope] }))
   await writeFile(`${queuePath}.cursor.json`, JSON.stringify({
     version: 3, initialized: true,
-    observedRoundKeys: ['BAG01:8:1'], acknowledgedRoundKeys: [],
+    observedRoundKeys: ['BAV01:8:1'], acknowledgedRoundKeys: [],
   }))
   const sent = []
   const pusher = createSnapshotPusher({
@@ -1490,7 +1490,7 @@ test('restored FIFO head is not appended again when queue persisted before its o
     getSnapshot: async () => ({
       sessionId: 'vm', tables: [],
       rounds: [
-        { tableId: 'BAG01', shoe: 8, round: 1, winner: 'player' },
+        { tableId: 'BAV01', shoe: 8, round: 1, winner: 'player' },
         queuedRound,
       ],
     }),
@@ -1498,7 +1498,7 @@ test('restored FIFO head is not appended again when queue persisted before its o
   })
 
   assert.equal(await pusher.tick(), true)
-  assert.deepEqual(sent.map((envelope) => envelope.roundKeys), [['BAG01:8:2']])
+  assert.deepEqual(sent.map((envelope) => envelope.roundKeys), [['BAV01:8:2']])
   await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
 })
 
@@ -1507,7 +1507,7 @@ test('restored oversized FIFO head is split without losing keys or changing its 
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
   const rounds = Array.from({ length: 12 }, (_, index) => ({
-    tableId: 'BAG01', shoe: 8, round: index + 1, winner: 'banker',
+    tableId: 'BAV01', shoe: 8, round: index + 1, winner: 'banker',
   }))
   const roundKeys = rounds.map((round) => `${round.tableId}:${round.shoe}:${round.round}`)
   await writeFile(queuePath, JSON.stringify({
@@ -1547,14 +1547,14 @@ test('first observation becomes acknowledged only after the proxy explicitly acc
   const queuePath = path.join(dir, 'latest.json')
   const pusher = createSnapshotPusher({
     targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
-    getSnapshot: async () => ({ sessionId: 'vm', tables: [], rounds: [{ tableId: 'BAG01', shoe: 8, round: 1, winner: 'banker' }] }),
+    getSnapshot: async () => ({ sessionId: 'vm', tables: [], rounds: [{ tableId: 'BAV01', shoe: 8, round: 1, winner: 'banker' }] }),
     fetchImpl: async (_url, options) => acceptedResponse(options),
   })
 
   assert.equal(await pusher.tick(), true)
   const cursor = JSON.parse(await readFile(`${queuePath}.cursor.json`, 'utf8'))
-  assert.deepEqual(cursor.observedRoundKeys, ['BAG01:8:1'])
-  assert.deepEqual(cursor.acknowledgedRoundKeys, ['BAG01:8:1'])
+  assert.deepEqual(cursor.observedRoundKeys, ['BAV01:8:1'])
+  assert.deepEqual(cursor.acknowledgedRoundKeys, ['BAV01:8:1'])
 })
 
 test('acknowledged sequence high-water survives restart and clock rollback', async (t) => {
@@ -1633,7 +1633,7 @@ test('retained v2 v105 data queue is preserved and blocked for explicit cutover 
   const queuePath = path.join(dir, 'latest.json')
   const entry = {
     protocolVersion: 'v105', sessionId: 'vm', timestamp: 1000, captureTimestamp: 1000, sequence: 1000,
-    roundKeys: ['BAG01:8:1'], snapshot: { sessionId: 'vm', buildVersion: '105', tables: [], rounds: [{ tableId: 'BAG01', shoe: 8, round: 1 }] },
+    roundKeys: ['BAV01:8:1'], snapshot: { sessionId: 'vm', buildVersion: '105', tables: [], rounds: [{ tableId: 'BAV01', shoe: 8, round: 1 }] },
   }
   const original = JSON.stringify({ version: 2, entries: [entry] })
   await writeFile(queuePath, original)
@@ -1670,7 +1670,7 @@ test('pusher health exposes durable backlog and failed delivery then clears afte
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
   const final = {
-    tableId: 'BAG01', shoe: 8, round: 1, winner: 'banker',
+    tableId: 'BAV01', shoe: 8, round: 1, winner: 'banker',
     rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
     sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
   }
@@ -1716,7 +1716,7 @@ test('delivery preserves each FIFO sequence while draining multiple entries in o
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
   const rounds = [1, 2, 3].map((roundNo) => ({
-    tableId: `BAG0${roundNo}`, shoe: 8, round: roundNo, winner: 'banker',
+    tableId: `BAV0${roundNo}`, shoe: 8, round: roundNo, winner: 'banker',
     rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
     sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
   }))
@@ -1741,7 +1741,7 @@ test('delivery preserves each FIFO sequence while draining multiple entries in o
   assert.equal(await pusher.tick(), true)
   assert.deepEqual(sent.map((item) => item.sequence), [1000, 1001, 1002])
   assert.deepEqual(sent.map((item) => item.roundKeys), [
-    ['BAG01:8:1'], ['BAG02:8:2'], ['BAG03:8:3'],
+    ['BAV01:8:1'], ['BAV02:8:2'], ['BAV03:8:3'],
   ])
   assert.deepEqual(sent.map((item) => item.snapshot.rounds.length), [1, 1, 1])
   await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
@@ -1752,13 +1752,13 @@ test('delivery limit can drain multiple bounded FIFO entries without widening du
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
   const rounds = [1, 2, 3].map((round) => ({
-    tableId: 'BAG01', shoe: 8, round, winner: 'banker',
+    tableId: 'BAV01', shoe: 8, round, winner: 'banker',
     rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
     sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
   }))
   const entries = rounds.map((round, index) => ({
     protocolVersion: 'v105', sessionId: 'vm', timestamp: 1000 + index, captureTimestamp: 1000 + index,
-    sequence: 1000 + index, roundKeys: [`BAG01:8:${round.round}`],
+    sequence: 1000 + index, roundKeys: [`BAV01:8:${round.round}`],
     snapshot: { sessionId: 'vm', buildVersion: '105', tables: [], rounds: [round] },
   }))
   await writeFile(queuePath, JSON.stringify({ version: 3, entries }))
@@ -1776,12 +1776,12 @@ test('delivery limit can drain multiple bounded FIFO entries without widening du
   })
 
   assert.equal(await pusher.tick(), true)
-  assert.deepEqual(sent.slice(0, 2).map((item) => item.roundKeys), [['BAG01:8:1'], ['BAG01:8:2']])
+  assert.deepEqual(sent.slice(0, 2).map((item) => item.roundKeys), [['BAV01:8:1'], ['BAV01:8:2']])
   const queued = JSON.parse(await readFile(queuePath, 'utf8')).entries
   assert.equal(queued.length, 1)
-  assert.deepEqual(queued[0].roundKeys, ['BAG01:8:3'])
+  assert.deepEqual(queued[0].roundKeys, ['BAV01:8:3'])
   assert.equal(await pusher.tick(), true)
-  assert.deepEqual(sent.map((item) => item.roundKeys), [['BAG01:8:1'], ['BAG01:8:2'], ['BAG01:8:3']])
+  assert.deepEqual(sent.map((item) => item.roundKeys), [['BAV01:8:1'], ['BAV01:8:2'], ['BAV01:8:3']])
   await assert.rejects(readFile(queuePath), { code: 'ENOENT' })
 })
 
@@ -1790,7 +1790,7 @@ test('large durable queue is atomically compressed and restores without losing i
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'latest.json')
   const final = {
-    tableId: 'BAG01', shoe: 8, round: 1, winner: 'banker',
+    tableId: 'BAV01', shoe: 8, round: 1, winner: 'banker',
     rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6],
     sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary',
   }
@@ -1811,7 +1811,7 @@ test('large durable queue is atomically compressed and restores without losing i
     fetchImpl: async (_url, options) => { sent.push(JSON.parse(options.body)); return acceptedResponse(options) },
   })
   assert.equal(await restarted.tick(), true)
-  assert.deepEqual(sent[0].roundKeys, ['BAG01:8:1'])
+  assert.deepEqual(sent[0].roundKeys, ['BAV01:8:1'])
   await assert.rejects(readFile(queuePath), { code: 'ENOENT' })
 })
 
@@ -1829,7 +1829,7 @@ test('Reviewer P1 rollback producer quiesce aborts and settles the current tick,
       snapshotCalls += 1
       return {
         sessionId: 'memory-session', buildVersion: '105', tables: [],
-        rounds: [{ tableId: 'BAG01', shoe: 8, round: 1, winner: 'banker', rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6] }],
+        rounds: [{ tableId: 'BAV01', shoe: 8, round: 1, winner: 'banker', rawResult: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6] }],
       }
     },
     isRoundDeliverable: () => true,

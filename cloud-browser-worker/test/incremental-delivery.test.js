@@ -25,14 +25,14 @@ test('durable FIFO retains a failed head while collecting the next round', async
   })
   assert.equal(await pusher.tick(), true)
   assert.equal(await pusher.tick(), false)
-  assert.deepEqual(JSON.parse(await readFile(queuePath, 'utf8')).entries.flatMap((entry) => entry.roundKeys), ['BAG01:8:2'])
+  assert.deepEqual(JSON.parse(await readFile(queuePath, 'utf8')).entries.flatMap((entry) => entry.roundKeys), ['BAV01:8:2'])
   assert.equal(await pusher.tick(), true)
-  assert.deepEqual(sent[2].roundKeys, ['BAG01:8:2'])
-  assert.deepEqual(JSON.parse(await readFile(queuePath, 'utf8')).entries.flatMap((entry) => entry.roundKeys), ['BAG01:8:3'])
+  assert.deepEqual(sent[2].roundKeys, ['BAV01:8:2'])
+  assert.deepEqual(JSON.parse(await readFile(queuePath, 'utf8')).entries.flatMap((entry) => entry.roundKeys), ['BAV01:8:3'])
   assert.equal(await pusher.tick(), true)
-  assert.deepEqual(sent[3].roundKeys, ['BAG01:8:3'])
+  assert.deepEqual(sent[3].roundKeys, ['BAV01:8:3'])
   await assert.rejects(readFile(queuePath, 'utf8'), { code: 'ENOENT' })
-  function snapshot(rounds) { return { sessionId: 'vm', tables: [], rounds: rounds.map((round) => ({ tableId: 'BAG01', shoe: 8, round, winner: 'banker' })) } }
+  function snapshot(rounds) { return { sessionId: 'vm', tables: [], rounds: rounds.map((round) => ({ tableId: 'BAV01', shoe: 8, round, winner: 'banker' })) } }
 })
 
 test('backlog journals newly observed rounds before push and compacts them only after exact ACK', async (t) => {
@@ -47,7 +47,7 @@ test('backlog journals newly observed rounds before push and compacts them only 
   })
   assert.equal(await first.tick(), false)
   const attemptedCheckpoint = JSON.parse(await readFile(queuePath, 'utf8'))
-  assert.deepEqual(attemptedCheckpoint.entries[0].roundKeys, ['BAG01:8:1'])
+  assert.deepEqual(attemptedCheckpoint.entries[0].roundKeys, ['BAV01:8:1'])
   assert.equal(attemptedCheckpoint.entries[0].deliveryState, 'attempted')
   await assert.rejects(readFile(`${queuePath}.journal`), { code: 'ENOENT' })
 
@@ -62,11 +62,11 @@ test('backlog journals newly observed rounds before push and compacts them only 
     },
   })
   assert.equal(await restarted.tick(), true)
-  assert.deepEqual(sent[0].roundKeys, ['BAG01:8:1'])
-  assert.deepEqual(JSON.parse(await readFile(queuePath, 'utf8')).entries.flatMap((entry) => entry.roundKeys), ['BAG01:8:2'])
+  assert.deepEqual(sent[0].roundKeys, ['BAV01:8:1'])
+  assert.deepEqual(JSON.parse(await readFile(queuePath, 'utf8')).entries.flatMap((entry) => entry.roundKeys), ['BAV01:8:2'])
   await assert.rejects(readFile(`${queuePath}.journal`), { code: 'ENOENT' })
 
-  function snapshot(rounds) { return { sessionId: 'vm', tables: [], rounds: rounds.map((round) => ({ tableId: 'BAG01', shoe: 8, round, winner: 'banker' })) } }
+  function snapshot(rounds) { return { sessionId: 'vm', tables: [], rounds: rounds.map((round) => ({ tableId: 'BAV01', shoe: 8, round, winner: 'banker' })) } }
 })
 
 test('waits for real summary cards before observing queueing or ACKing a round identity', async (t) => {
@@ -91,11 +91,11 @@ test('waits for real summary cards before observing queueing or ACKing a round i
   assert.equal(await pusher.tick(), true)
   assert.equal(await pusher.tick(), true)
   assert.deepEqual(sent[0].roundKeys, [])
-  assert.deepEqual(sent[1].roundKeys, ['BAG01:8:1'])
+  assert.deepEqual(sent[1].roundKeys, ['BAV01:8:1'])
   assert.deepEqual(sent[1].snapshot.rounds[0].rawResult, real)
 
   function snapshot(rawResult, sourceAction) {
-    return { sessionId: 'vm', tables: [{ tableId: 'BAG01', shoe: 8, round: 1 }], rounds: [{ tableId: 'BAG01', shoe: 8, round: 1, winner: 'banker', rawResult, sourceAction }] }
+    return { sessionId: 'vm', tables: [{ tableId: 'BAV01', shoe: 8, round: 1 }], rounds: [{ tableId: 'BAV01', shoe: 8, round: 1, winner: 'banker', rawResult, sourceAction }] }
   }
 })
 
@@ -130,22 +130,22 @@ test('only final summary queues observes and ACKs an identity first seen as exac
 
   assert.equal(await pusher.tick(), false)
   const queued = JSON.parse(await readFile(queuePath, 'utf8')).entries[0]
-  assert.deepEqual(queued.roundKeys, ['BAG01:8:3'])
+  assert.deepEqual(queued.roundKeys, ['BAV01:8:3'])
   assert.match(queued.snapshot.rounds[0].sourceAction, /\/summary$/)
   assert.deepEqual(queued.snapshot.rounds[0].rawResult, finalCards)
   let cursor = JSON.parse(await readFile(cursorPath, 'utf8'))
-  assert.deepEqual(cursor.observedRoundKeys, ['BAG01:8:3'])
+  assert.deepEqual(cursor.observedRoundKeys, ['BAV01:8:3'])
   assert.deepEqual(cursor.acknowledgedRoundKeys, [])
 
   assert.equal(await pusher.tick(), true)
-  assert.deepEqual(sent[2].roundKeys, ['BAG01:8:3'])
+  assert.deepEqual(sent[2].roundKeys, ['BAV01:8:3'])
   cursor = JSON.parse(await readFile(cursorPath, 'utf8'))
-  assert.deepEqual(cursor.acknowledgedRoundKeys, ['BAG01:8:3'])
+  assert.deepEqual(cursor.acknowledgedRoundKeys, ['BAV01:8:3'])
 
   function payload(actionName, result) {
     return JSON.stringify({
       action: { name: `/api/v1/gametype/*/game/*/room/*/table/*/${actionName}` },
-      body: { table_id: 'BAG01', shoe: 8, round: 3, result },
+      body: { table_id: 'BAV01', shoe: 8, round: 3, result },
     })
   }
 })
@@ -154,7 +154,7 @@ test('retains every recognized MT card-result action in the durable round buffer
   for (const actionName of ['show_poker', 'summary', 'show_win', 'roundResult', 'round_result']) {
     const payload = JSON.stringify({
       action: { name: `/api/v1/gametype/*/game/*/room/*/table/*/${actionName}` },
-      body: { table_id: 'BAG07', shoe: 18707, round: 53, result: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6] },
+      body: { table_id: 'BAV05', shoe: 18707, round: 53, result: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6] },
     })
     assert.equal(isRoundPayload(payload), true, actionName)
   }
@@ -163,7 +163,7 @@ test('retains every recognized MT card-result action in the durable round buffer
 test('excludes card-shaped payloads without a recognized MT round action', () => {
   const payload = JSON.stringify({
     action: { name: '/api/v1/gametype/*/game/*/room/*/table/*/road_update' },
-    body: { table_id: 'BAG07', shoe: 18707, round: 53, result: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6] },
+    body: { table_id: 'BAV05', shoe: 18707, round: 53, result: [11, 25, 7, 19, -1, -1, -1, -1, 4, 6] },
   })
 
   assert.equal(isRoundPayload(payload), false)
@@ -175,8 +175,8 @@ test('preserves every unsent FIFO entry immutable while collecting new backlog',
   const queuePath = path.join(dir, 'queue.json')
   const snapshot = (rounds) => ({
     sessionId: 'vm',
-    tables: [{ tableId: 'BAG01', round: rounds.at(-1) }],
-    rounds: rounds.map((round) => ({ tableId: 'BAG01', shoe: 8, round, winner: 'banker' })),
+    tables: [{ tableId: 'BAV01', round: rounds.at(-1) }],
+    rounds: rounds.map((round) => ({ tableId: 'BAV01', shoe: 8, round, winner: 'banker' })),
   })
   const snapshots = [snapshot([1]), snapshot([1, 2]), snapshot([1, 2, 3])]
   let clock = 1000
@@ -194,9 +194,9 @@ test('preserves every unsent FIFO entry immutable while collecting new backlog',
   const queue = JSON.parse(await readFile(queuePath, 'utf8')).entries
   assert.equal(queue.length, 3)
   assert.deepEqual(queue.map((entry) => entry.roundKeys), [
-    ['BAG01:8:1'],
-    ['BAG01:8:2'],
-    ['BAG01:8:3'],
+    ['BAV01:8:1'],
+    ['BAV01:8:2'],
+    ['BAV01:8:3'],
   ])
   assert.deepEqual(queue.map((entry) => entry.snapshot.tables[0].round), [1, 2, 3])
   assert.ok(queue[0].sequence < queue[1].sequence)
@@ -208,7 +208,7 @@ test('new backlog is bounded to small FIFO envelopes', async (t) => {
   t.after(() => rm(dir, { recursive: true, force: true }))
   const queuePath = path.join(dir, 'queue.json')
   const rounds = Array.from({ length: 12 }, (_, index) => ({
-    tableId: 'BAG01', shoe: 8, round: index + 1, winner: 'banker',
+    tableId: 'BAV01', shoe: 8, round: index + 1, winner: 'banker',
   }))
   const pusher = createSnapshotPusher({
     targetUrl: 'https://proxy.example/ingest', key: 'worker-key', queuePath,
@@ -221,5 +221,5 @@ test('new backlog is bounded to small FIFO envelopes', async (t) => {
   assert.equal(await pusher.tick(), false)
   const queue = JSON.parse(await readFile(queuePath, 'utf8')).entries
   assert.deepEqual(queue.map((entry) => entry.roundKeys.length), [5, 5, 2])
-  assert.deepEqual(queue.flatMap((entry) => entry.roundKeys), rounds.map((round) => `BAG01:8:${round.round}`))
+  assert.deepEqual(queue.flatMap((entry) => entry.roundKeys), rounds.map((round) => `BAV01:8:${round.round}`))
 })

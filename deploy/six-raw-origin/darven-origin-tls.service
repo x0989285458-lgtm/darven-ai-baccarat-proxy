@@ -1,0 +1,16 @@
+[Unit]
+Description=Darven certificate-verified Origin HTTPS (transport only)
+Requires=docker.service
+After=docker.service network-online.target darven-public-proxy-edge.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+ExecStart=/usr/bin/docker run --rm --name darven-origin-tls --network host --memory 192m --cpus 0.5 --mount type=bind,src=/etc/darven/origin-tls/Caddyfile,dst=/etc/caddy/Caddyfile,readonly --mount type=bind,src=/var/lib/darven-origin-tls/data,dst=/data --mount type=bind,src=/var/lib/darven-origin-tls/config,dst=/config caddy@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+ExecStop=/usr/bin/docker stop -t 20 darven-origin-tls
+
+[Install]
+WantedBy=multi-user.target

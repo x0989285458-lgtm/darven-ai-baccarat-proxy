@@ -15,7 +15,7 @@ import {
   refreshMtSession,
 } from '../src/portal-session.js'
 
-const productionTables = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
+const productionTables = ['BAV01', 'BAV02', 'BAV03', 'BAV03A', 'BAV05', 'BAV06']
 const healthy = { connected: true, authenticated: true, tables: productionTables.map((tableId) => ({ tableId })) }
 const expired = { connected: true, authenticated: false, tables: [] }
 
@@ -329,7 +329,7 @@ test('same-page incident triggers after two expired snapshots, caps at two attem
   assert.doesNotMatch(JSON.stringify(controller.state()), new RegExp(secret))
 })
 
-test('a formal ten-table snapshot clears the incident and a successful refresh resets silently', async () => {
+test('a formal six-table snapshot clears the incident and a successful refresh resets silently', async () => {
   let calls = 0
   const controller = createPortalRefreshController({ enabled: true, refresh: async () => { calls += 1 } })
   await controller.observe(expired, 'page-1')
@@ -359,7 +359,7 @@ test('concurrent snapshots cannot start duplicate refresh attempts', async () =>
   assert.equal(calls, 1)
 })
 
-test('formal ten-table recovery stays reset when an older in-flight attempt later fails', async () => {
+test('formal six-table recovery stays reset when an older in-flight attempt later fails', async () => {
   let rejectRefresh
   const pending = new Promise((_, reject) => { rejectRefresh = reject })
   const controller = createPortalRefreshController({ enabled: true, refresh: async () => pending })

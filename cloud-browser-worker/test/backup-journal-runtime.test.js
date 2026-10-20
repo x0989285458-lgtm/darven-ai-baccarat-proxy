@@ -45,20 +45,20 @@ test('backup-journal role fingerprints the real token, writes header/finals, and
   const expectedFingerprint = crypto.createHash('sha256').update(token).digest('hex')
   assert.deepEqual(journal.header(), { sessionFingerprint: expectedFingerprint, ownerId: 'backup-owner' })
 
-  await handlers.onTables([{ table_id: 'BAG01', shoe: 10, round: 1 }])
+  await handlers.onTables([{ table_id: 'BAV01', shoe: 10, round: 1 }])
   await handlers.onFinal(finalEvent(1))
   await handlers.onFinal(finalEvent(3))
-  await handlers.onTables([{ table_id: 'BAG01', shoe: 10, round: 3 }])
-  await handlers.onTables([{ table_id: 'BAG01', shoe: 11, round: 1 }])
+  await handlers.onTables([{ table_id: 'BAV01', shoe: 10, round: 3 }])
+  await handlers.onTables([{ table_id: 'BAV01', shoe: 11, round: 1 }])
   let records = (await readFile(journalPath, 'utf8')).trim().split(/\r?\n/).map(JSON.parse)
   assert.equal(records.some((record) => record.type === 'shoe_closed'), false, 'round 2 gap forbids a shoe marker')
 
   await handlers.onFinal(finalEvent(2))
-  await handlers.onTables([{ table_id: 'BAG01', shoe: 11, round: 1 }])
+  await handlers.onTables([{ table_id: 'BAV01', shoe: 11, round: 1 }])
   records = (await readFile(journalPath, 'utf8')).trim().split(/\r?\n/).map(JSON.parse)
   const markers = records.filter((record) => record.type === 'shoe_closed')
   assert.equal(markers.length, 1)
-  assert.deepEqual({ tableId: markers[0].tableId, shoe: markers[0].shoe, finalRound: markers[0].finalRound }, { tableId: 'BAG01', shoe: 10, finalRound: 3 })
+  assert.deepEqual({ tableId: markers[0].tableId, shoe: markers[0].shoe, finalRound: markers[0].finalRound }, { tableId: 'BAV01', shoe: 10, finalRound: 3 })
   assert.equal(runtime.snapshot().tableCount, 1)
   assert.equal(runtime.snapshot().lastFinalAt, '2026-07-31T02:00:00.000Z')
   await runtime.stop()
@@ -66,7 +66,7 @@ test('backup-journal role fingerprints the real token, writes header/finals, and
 
 function finalEvent(round) {
   return {
-    tableId: 'BAG01', shoe: 10, round, winner: 'banker', sourceAction: 'summary', final: true,
+    tableId: 'BAV01', shoe: 10, round, winner: 'banker', sourceAction: 'summary', final: true,
     rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], playerPoint: 4, bankerPoint: 6,
   }
 }

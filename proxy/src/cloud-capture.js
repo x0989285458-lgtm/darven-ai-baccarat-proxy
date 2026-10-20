@@ -5,7 +5,7 @@ const DEFAULT_POLL_MS = 5000
 const DEFAULT_REQUEST_TIMEOUT_MS = 15000
 const DEFAULT_REQUEST_RETRIES = 2
 
-export const PRODUCTION_TABLE_IDS = Object.freeze(['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10'])
+export const PRODUCTION_TABLE_IDS = Object.freeze(['BAV01', 'BAV02', 'BAV03', 'BAV03A', 'BAV05', 'BAV06'])
 const PRODUCTION_TABLE_ORDER = new Map(PRODUCTION_TABLE_IDS.map((tableId, index) => [tableId, index]))
 const settlementTailsByState = new WeakMap()
 

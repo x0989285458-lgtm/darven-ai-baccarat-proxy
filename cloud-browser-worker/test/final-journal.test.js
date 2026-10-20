@@ -17,11 +17,11 @@ test('append-only journal recovers Final, durable ACK, and per-table cursor acro
   assert.equal((await journal.append(structuredClone(event))).status, 'duplicate')
   assert.equal(journal.pending().length, 1)
   await journal.ack(appended.identity, appended.hash)
-  assert.deepEqual(journal.cursor('BAG01'), { shoe: 91, round: 7, identity: 'BAG01:91:7', hash: appended.hash })
+  assert.deepEqual(journal.cursor('BAV01'), { shoe: 91, round: 7, identity: 'BAV01:91:7', hash: appended.hash })
   assert.equal(journal.pending().length, 0)
 
   const restored = await createFinalJournal({ journalPath, assertSource: () => true })
-  assert.deepEqual(restored.cursor('BAG01'), journal.cursor('BAG01'))
+  assert.deepEqual(restored.cursor('BAV01'), journal.cursor('BAV01'))
   assert.equal(restored.pending().length, 0)
   const records = (await readFile(journalPath, 'utf8')).trim().split('\n').map(JSON.parse)
   assert.deepEqual(records.map((record) => record.type), ['final', 'ack'])
@@ -36,18 +36,18 @@ test('append-only shoe lifecycle restores active, retired, screen, and source ch
   const source1 = { ...source999, sequence: 31 }
 
   await journal.transitionShoeLifecycle({
-    tableId: 'BAG09', activeShoe: 999, round: 70, origin: 'provider', source: source999,
+    tableId: 'BAV06', activeShoe: 999, round: 70, origin: 'provider', source: source999,
   })
   await journal.transitionShoeLifecycle({
-    tableId: 'BAG09', activeShoe: 1, round: 0, origin: 'provider', source: source1,
+    tableId: 'BAV06', activeShoe: 1, round: 0, origin: 'provider', source: source1,
   })
 
-  assert.deepEqual(journal.shoeLifecycle('BAG09'), {
-    tableId: 'BAG09', activeShoe: 1, retiredShoes: [999],
+  assert.deepEqual(journal.shoeLifecycle('BAV06'), {
+    tableId: 'BAV06', activeShoe: 1, retiredShoes: [999],
     currentScreen: { shoe: 1, round: 0 }, origin: 'provider', source: source1,
   })
   const restored = await createFinalJournal({ journalPath, assertSource: () => true })
-  assert.deepEqual(restored.shoeLifecycle('BAG09'), journal.shoeLifecycle('BAG09'))
+  assert.deepEqual(restored.shoeLifecycle('BAV06'), journal.shoeLifecycle('BAV06'))
   const records = (await readFile(journalPath, 'utf8')).trim().split('\n').map(JSON.parse)
   assert.deepEqual(records.map((record) => record.type), ['shoe_lifecycle', 'shoe_lifecycle'])
 })
@@ -60,16 +60,16 @@ test('one Final record atomically restores its accepted shoe lifecycle proof', a
   const event = {
     ...finalEvent({ round: 1, sequence: 40 }), shoe: 92, source,
     shoeLifecycle: {
-      tableId: 'BAG01', activeShoe: 92, retiredShoes: [],
+      tableId: 'BAV01', activeShoe: 92, retiredShoes: [],
       currentScreen: { shoe: 92, round: 1 }, origin: 'final', source,
     },
   }
   const journal = await createFinalJournal({ journalPath, assertSource: () => true })
 
   await journal.append(event)
-  assert.deepEqual(journal.shoeLifecycle('BAG01'), event.shoeLifecycle)
+  assert.deepEqual(journal.shoeLifecycle('BAV01'), event.shoeLifecycle)
   const restored = await createFinalJournal({ journalPath, assertSource: () => true })
-  assert.deepEqual(restored.shoeLifecycle('BAG01'), event.shoeLifecycle)
+  assert.deepEqual(restored.shoeLifecycle('BAV01'), event.shoeLifecycle)
   const records = (await readFile(journalPath, 'utf8')).trim().split('\n').map(JSON.parse)
   assert.deepEqual(records.map((record) => record.type), ['final'])
 })
@@ -81,14 +81,14 @@ test('cross-shoe Final lifecycle proof is rejected before append when provider t
   const journal = await createFinalJournal({ journalPath, assertSource: () => true })
   const providerSource = { mode: 'api', ownerId: 'api-primary', epoch: 4, fence: 'fence-4', sequence: 40 }
   await journal.transitionShoeLifecycle({
-    tableId: 'BAG01', activeShoe: 92, round: 70, origin: 'provider', source: providerSource,
+    tableId: 'BAV01', activeShoe: 92, round: 70, origin: 'provider', source: providerSource,
   })
   const before = await readFile(journalPath, 'utf8')
   const finalSource = { ...providerSource, sequence: 41 }
   const event = {
     ...finalEvent({ round: 1, sequence: 41 }), shoe: 93, source: finalSource,
     shoeLifecycle: {
-      tableId: 'BAG01', activeShoe: 93, retiredShoes: [92],
+      tableId: 'BAV01', activeShoe: 93, retiredShoes: [92],
       currentScreen: { shoe: 93, round: 1 }, origin: 'final', source: finalSource,
     },
   }
@@ -96,9 +96,9 @@ test('cross-shoe Final lifecycle proof is rejected before append when provider t
   await assert.rejects(journal.append(event), /final_shoe_lifecycle_transition_without_provider/)
   assert.equal(await readFile(journalPath, 'utf8'), before, 'rejected Final must append no record')
   assert.equal(journal.pending().length, 0)
-  assert.equal(journal.shoeLifecycle('BAG01').activeShoe, 92)
+  assert.equal(journal.shoeLifecycle('BAV01').activeShoe, 92)
   const restored = await createFinalJournal({ journalPath, assertSource: () => true })
-  assert.equal(restored.shoeLifecycle('BAG01').activeShoe, 92)
+  assert.equal(restored.shoeLifecycle('BAV01').activeShoe, 92)
 })
 
 test('batch ACK validates every Final before one durable append and restores all acknowledgements', async (t) => {
@@ -153,7 +153,7 @@ test('late ACK from an older shoe never regresses the last durable cursor', asyn
   const newer = await journal.append({ ...finalEvent({ round: 1, sequence: 20 }), shoe: 92 })
   await journal.ack(newer.identity, newer.hash)
   await journal.ack(older.identity, older.hash)
-  assert.deepEqual(journal.cursor('BAG01'), { shoe: 92, round: 1, identity: 'BAG01:92:1', hash: newer.hash })
+  assert.deepEqual(journal.cursor('BAV01'), { shoe: 92, round: 1, identity: 'BAV01:92:1', hash: newer.hash })
 })
 
 test('late ACK with an incomparable prior owner cannot regress append chronology', async (t) => {
@@ -172,7 +172,7 @@ test('late ACK with an incomparable prior owner cannot regress append chronology
   await journal.ack(newer.identity, newer.hash)
   await journal.ack(older.identity, older.hash)
 
-  assert.deepEqual(journal.cursor('BAG01'), { shoe: 92, round: 1, identity: 'BAG01:92:1', hash: newer.hash })
+  assert.deepEqual(journal.cursor('BAV01'), { shoe: 92, round: 1, identity: 'BAV01:92:1', hash: newer.hash })
 })
 
 test('a historical Final appended after a newer Final cannot regress the cursor', async (t) => {
@@ -183,7 +183,7 @@ test('a historical Final appended after a newer Final cannot regress the cursor'
   await journal.ack(newer.identity, newer.hash)
   const historical = await journal.append({ ...finalEvent({ round: 70, sequence: 19 }), shoe: 91 })
   await journal.ack(historical.identity, historical.hash)
-  assert.deepEqual(journal.cursor('BAG01'), { shoe: 92, round: 1, identity: 'BAG01:92:1', hash: newer.hash })
+  assert.deepEqual(journal.cursor('BAV01'), { shoe: 92, round: 1, identity: 'BAV01:92:1', hash: newer.hash })
 })
 
 test('a retired shoe cannot return through a delayed higher-sequence Final', async (t) => {
@@ -196,7 +196,7 @@ test('a retired shoe cannot return through a delayed higher-sequence Final', asy
   await journal.ack(newer.identity, newer.hash)
   const delayed = await journal.append({ ...finalEvent({ round: 71, sequence: 21 }), shoe: 91 })
   await journal.ack(delayed.identity, delayed.hash)
-  assert.deepEqual(journal.cursor('BAG01'), { shoe: 92, round: 1, identity: 'BAG01:92:1', hash: newer.hash })
+  assert.deepEqual(journal.cursor('BAV01'), { shoe: 92, round: 1, identity: 'BAV01:92:1', hash: newer.hash })
 })
 
 test('durable Final chronology advances cursor across numeric shoe wrap and survives restart', async (t) => {
@@ -204,31 +204,31 @@ test('durable Final chronology advances cursor across numeric shoe wrap and surv
   t.after(() => rm(dir, { recursive: true, force: true }))
   const journalPath = path.join(dir, 'finals.jsonl')
   const journal = await createFinalJournal({ journalPath, assertSource: () => true })
-  const beforeWrap = await journal.append({ ...finalEvent({ round: 70, sequence: 20 }), tableId: 'BAG09', shoe: 997 })
-  const afterWrap = await journal.append({ ...finalEvent({ round: 1, sequence: 21 }), tableId: 'BAG09', shoe: 1 })
+  const beforeWrap = await journal.append({ ...finalEvent({ round: 70, sequence: 20 }), tableId: 'BAV06', shoe: 997 })
+  const afterWrap = await journal.append({ ...finalEvent({ round: 1, sequence: 21 }), tableId: 'BAV06', shoe: 1 })
   await journal.ackMany([
     { identity: beforeWrap.identity, hash: beforeWrap.hash },
     { identity: afterWrap.identity, hash: afterWrap.hash },
   ])
-  assert.deepEqual(journal.cursor('BAG09'), { shoe: 1, round: 1, identity: 'BAG09:1:1', hash: afterWrap.hash })
+  assert.deepEqual(journal.cursor('BAV06'), { shoe: 1, round: 1, identity: 'BAV06:1:1', hash: afterWrap.hash })
 
   const restored = await createFinalJournal({ journalPath, assertSource: () => true })
-  assert.deepEqual(restored.cursor('BAG09'), journal.cursor('BAG09'))
+  assert.deepEqual(restored.cursor('BAV06'), journal.cursor('BAV06'))
 })
 
 test('pending rebind preserves Final chronology so a newer wrapped shoe advances the cursor', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'darven-final-rebind-order-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const journal = await createFinalJournal({ journalPath: path.join(dir, 'finals.jsonl'), assertSource: () => true })
-  const beforeWrap = await journal.append({ ...finalEvent({ round: 70, sequence: 20 }), tableId: 'BAG09', shoe: 997 })
+  const beforeWrap = await journal.append({ ...finalEvent({ round: 70, sequence: 20 }), tableId: 'BAV06', shoe: 997 })
   await journal.ack(beforeWrap.identity, beforeWrap.hash)
-  const afterWrap = await journal.append({ ...finalEvent({ round: 1, sequence: 21 }), tableId: 'BAG09', shoe: 1 })
+  const afterWrap = await journal.append({ ...finalEvent({ round: 1, sequence: 21 }), tableId: 'BAV06', shoe: 1 })
   const target = { mode: 'api', ownerId: 'api-primary', epoch: 3, fence: 'new-fence' }
   await journal.rebindPending(async () => ({ ...target, sequence: 1 }), target)
 
   await journal.ack(afterWrap.identity, afterWrap.hash)
-  assert.deepEqual(journal.cursor('BAG09'), {
-    shoe: 1, round: 1, identity: 'BAG09:1:1', hash: afterWrap.hash,
+  assert.deepEqual(journal.cursor('BAV06'), {
+    shoe: 1, round: 1, identity: 'BAV06:1:1', hash: afterWrap.hash,
   })
 })
 
@@ -238,11 +238,11 @@ test('snapshot ACK cursor bootstrap follows acknowledged chronology instead of n
   const journal = await createFinalJournal({ journalPath: path.join(dir, 'finals.jsonl'), assertSource: () => true })
   await journal.bootstrapFromSnapshotPusherCursor({
     version: 3, initialized: true, lastSequence: 22,
-    observedRoundKeys: ['BAG09:997:70', 'BAG09:1:1'],
-    acknowledgedRoundKeys: ['BAG09:997:70', 'BAG09:1:1'],
+    observedRoundKeys: ['BAV06:997:70', 'BAV06:1:1'],
+    acknowledgedRoundKeys: ['BAV06:997:70', 'BAV06:1:1'],
   })
-  assert.deepEqual(journal.cursor('BAG09'), {
-    shoe: 1, round: 1, identity: 'BAG09:1:1', origin: 'snapshot-pusher-exact-ack-cursor',
+  assert.deepEqual(journal.cursor('BAV06'), {
+    shoe: 1, round: 1, identity: 'BAV06:1:1', origin: 'snapshot-pusher-exact-ack-cursor',
   })
 })
 
@@ -252,15 +252,15 @@ test('snapshot ACK cursor bootstrap cannot be replaced by a delayed unknown-shoe
   const journal = await createFinalJournal({ journalPath: path.join(dir, 'finals.jsonl'), assertSource: () => true })
   await journal.bootstrapFromSnapshotPusherCursor({
     version: 3, initialized: true, lastSequence: 22,
-    observedRoundKeys: ['BAG01:92:1'],
-    acknowledgedRoundKeys: ['BAG01:92:1'],
+    observedRoundKeys: ['BAV01:92:1'],
+    acknowledgedRoundKeys: ['BAV01:92:1'],
   })
-  const delayed = await journal.append({ ...finalEvent({ round: 70, sequence: 20 }), tableId: 'BAG01', shoe: 91 })
+  const delayed = await journal.append({ ...finalEvent({ round: 70, sequence: 20 }), tableId: 'BAV01', shoe: 91 })
 
   await journal.ack(delayed.identity, delayed.hash)
 
-  assert.deepEqual(journal.cursor('BAG01'), {
-    shoe: 92, round: 1, identity: 'BAG01:92:1', origin: 'snapshot-pusher-exact-ack-cursor',
+  assert.deepEqual(journal.cursor('BAV01'), {
+    shoe: 92, round: 1, identity: 'BAV01:92:1', origin: 'snapshot-pusher-exact-ack-cursor',
   })
 })
 
@@ -270,15 +270,15 @@ test('snapshot ACK cursor bootstrap advances to a newly acknowledged round-one s
   const journal = await createFinalJournal({ journalPath: path.join(dir, 'finals.jsonl'), assertSource: () => true })
   await journal.bootstrapFromSnapshotPusherCursor({
     version: 3, initialized: true, lastSequence: 22,
-    observedRoundKeys: ['BAG01:92:70'],
-    acknowledgedRoundKeys: ['BAG01:92:70'],
+    observedRoundKeys: ['BAV01:92:70'],
+    acknowledgedRoundKeys: ['BAV01:92:70'],
   })
-  const nextShoe = await journal.append({ ...finalEvent({ round: 1, sequence: 23 }), tableId: 'BAG01', shoe: 93 })
+  const nextShoe = await journal.append({ ...finalEvent({ round: 1, sequence: 23 }), tableId: 'BAV01', shoe: 93 })
 
   await journal.ack(nextShoe.identity, nextShoe.hash)
 
-  assert.deepEqual(journal.cursor('BAG01'), {
-    shoe: 93, round: 1, identity: 'BAG01:93:1', hash: nextShoe.hash,
+  assert.deepEqual(journal.cursor('BAV01'), {
+    shoe: 93, round: 1, identity: 'BAV01:93:1', hash: nextShoe.hash,
   })
 })
 
@@ -306,13 +306,13 @@ test('append-only rebind survives restart without changing Final identity or pay
   assert.equal(restored.pending()[0].identity, original.identity)
   assert.equal(restored.pending()[0].hash, original.hash)
   assert.deepEqual(restored.pending()[0].event.source, newSource)
-  assert.deepEqual(restored.shoeLifecycle('BAG01'), original.event.shoeLifecycle)
+  assert.deepEqual(restored.shoeLifecycle('BAV01'), original.event.shoeLifecycle)
   assert.deepEqual((await readFile(journalPath, 'utf8')).trim().split('\n').map(JSON.parse).map((record) => record.type), ['final', 'rebind'])
 })
 
 function finalEvent({ round = 7, sequence = 11, fence = 'current-fence' } = {}) {
   return {
-    tableId: 'BAG01', shoe: 91, round, winner: 'banker', sourceAction: 'summary', final: true,
+    tableId: 'BAV01', shoe: 91, round, winner: 'banker', sourceAction: 'summary', final: true,
     rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], playerPoint: 4, bankerPoint: 6,
     source: { mode: 'api', ownerId: 'api-primary', epoch: 2, fence, sequence },
   }

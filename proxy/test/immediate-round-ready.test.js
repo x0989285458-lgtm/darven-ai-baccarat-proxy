@@ -4,7 +4,7 @@ import { createApp } from '../src/server.js'
 import { buildLivePrediction } from '../src/supabase-writer.js'
 
 const table = {
-  tableId: 'BAG01', shoe: 88, round: 20,
+  tableId: 'BAV01', shoe: 88, round: 20,
   bankerCount: 10, playerCount: 9, tieCount: 1,
   bankerPairCount: 2, playerPairCount: 1,
   beadPlateRaw: '0102', bigRoadRaw: '0102', bigEyeRaw: '12', smallRoadRaw: '21', cockroachRaw: '11',
@@ -350,7 +350,7 @@ test('simultaneous table prediction readiness keeps immediate broadcasts single-
     issuePrediction: async (candidate) => issued(candidate),
   }
   const app = createApp({ autoConnect: false, port: 0, requireVerifiedStrategy: true, memberAuthRequired: true, licenseAdminClient, supabaseClient })
-  const tableB = { ...table, tableId: 'BAG02' }
+  const tableB = { ...table, tableId: 'BAV02' }
   app.state.setTables([table, tableB])
   await app.start()
   const login = JSON.parse((await app.inject({ method: 'POST', url: '/api/online-license/member-login', body: JSON.stringify({ memberAccount: 'Member001', verificationPassword: 'VERIFY001' }) })).body)

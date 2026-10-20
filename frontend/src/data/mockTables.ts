@@ -12,7 +12,7 @@ const bigSamples = [
   '0202,0202,0202,#0101,#0202,0202,0202,#0101,0101,#0202,0202,0202',
 ]
 
-const mockTableIds = ['BAG01', 'BAG02', 'BAG03', 'BAG03A', 'BAG05', 'BAG06', 'BAG07', 'BAG08', 'BAG09', 'BAG10']
+const mockTableIds = ['BAV01', 'BAV02', 'BAV03', 'BAV03A', 'BAV05', 'BAV06']
 
 export const mockTables: LiveTable[] = mockTableIds.map((tableId, index) => {
   const tableNo = index + 1

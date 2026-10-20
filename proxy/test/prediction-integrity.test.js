@@ -251,13 +251,13 @@ test('admin main denominators exclude tie PUSH in SQL and fallback reports', asy
 
 test('v102 readers require complete current final columns and exclude compatibility and pending rows', async () => {
   const requests = []
-  const compatibility = { id: 'compatibility', table_id: 'BAG01', shoe_no: '88', round_no: 3, strategy_version: 'v105', predicted_result: 'banker', actual_result: 'banker', is_hit: true, settlement_final: null, side_hits: null, prediction_issued_at: '2026-07-16T00:59:00Z', prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true, side_hits: { tie: false } }, created_at: '2026-07-16T01:00:00Z' }
+  const compatibility = { id: 'compatibility', table_id: 'BAV01', shoe_no: '88', round_no: 3, strategy_version: 'v105', predicted_result: 'banker', actual_result: 'banker', is_hit: true, settlement_final: null, side_hits: null, prediction_issued_at: '2026-07-16T00:59:00Z', prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true, side_hits: { tie: false } }, created_at: '2026-07-16T01:00:00Z' }
   const modern = { ...compatibility, id: 'modern', round_no: 4, settlement_final: true, side_hits: { tie: true }, prediction_features: { prediction_timing: 'pre_result_context' }, created_at: '2026-07-16T01:01:00Z' }
   const pending = { ...modern, id: 'pending', round_no: 5, actual_result: null, is_hit: null, settlement_final: false }
   const client = createSupabaseIngestionClient({ url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false, fetchImpl: async (url) => { requests.push(new URL(url)); return response([modern, compatibility, pending]) } })
   assert.deepEqual((await client.getStablePredictionRows()).map((row) => row.id), ['modern'])
   assert.deepEqual((await client.getRecentPredictionRows()).map((row) => row.id), ['modern'])
-  assert.deepEqual((await client.getTableUiSettledPredictions({ tableId: 'BAG01', shoe: 88 })).map((row) => row.round), [4])
+  assert.deepEqual((await client.getTableUiSettledPredictions({ tableId: 'BAV01', shoe: 88 })).map((row) => row.round), [4])
   assert.equal(await client.countTodayPredictionRounds(), 1)
   for (const url of requests) {
     if (url.pathname.endsWith('/rpc/get_v105_recent_performance_rows')) {

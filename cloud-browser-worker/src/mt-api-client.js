@@ -1,5 +1,5 @@
 import { isExactTenRawResult, normalizeExactRealCardEvent } from '../../shared/real-card-validator.js'
-import { canonicalProductionTableId, PRODUCTION_TABLE_IDS } from './table-policy.js'
+import { canonicalProductionTableId, PRODUCTION_TABLE_IDS, LEGACY_TABLE_IDS } from './table-policy.js'
 
 const DEFAULT_GAME_URL = 'wss://a1.ofalive99.net/game/ws'
 const DEFAULT_CHAT_URL = 'wss://a2.ofalive99.net/chat/ws'
@@ -79,6 +79,7 @@ export function createMtApiClient({
       openTimers: { game: null, chat: null },
       authTimers: { game: null, chat: null },
       pendingTables: null,
+      catalogRooms: null,
       tablesRefreshRequestedAtMs: null,
       lastMessageAt: null,
       reconnectScheduled: false,
@@ -180,7 +181,13 @@ export function createMtApiClient({
     if (Array.isArray(payload?.msg?.tables)) {
       current.tablesRefreshRequestedAtMs = null
       const validated = validateExactTables(payload.msg.tables)
+      if (!validated) {
+        current.catalogRooms = null
+        throw new Error('mt_api_live_catalog_invalid')
+      }
       if (validated) {
+        current.catalogRooms = new Map(validated.map(table => [table.table_id, Number(table.room_id)]))
+        joinWhenReady(current)
         const workingChronology = cloneShoeChronology(shoeChronologyByTable)
         const merged = mergeExactTablesMonotonic(
           latestTables, validated, latestFinalScreenByTable, workingChronology,
@@ -201,7 +208,7 @@ export function createMtApiClient({
     const finalAction = finalActionName(action)
     if (!finalAction) return
     const final = normalizeFinalPayload(payload, finalAction)
-    if (!final) return
+    if (!final || current.catalogRooms?.get(final.tableId) !== final.roomId) return
     if (!exactJoinComplete(current)) return
     const shoeDecision = inspectFinalShoe(shoeChronologyByTable, final, latestTables)
     if (!shoeDecision.accept) return
@@ -244,7 +251,7 @@ export function createMtApiClient({
 
   function joinWhenReady(current) {
     if (!isCurrent(current) || (current.joinRequested.game && current.joinRequested.chat)
-      || !current.authenticated.game || !current.authenticated.chat) return
+      || !current.authenticated.game || !current.authenticated.chat || !current.catalogRooms) return
     refreshGenerationLease(current)
     if (!current.joinRequested.chat && send(current.chat, chatJoinPacket())) {
       current.joinRequested.chat = true
@@ -431,6 +438,7 @@ function bootstrapShoeChronology(values, latestScreens) {
   const chronology = new Map()
   for (const value of values) {
     const tableId = canonicalProductionTableId(value?.tableId)
+    if (LEGACY_TABLE_IDS.includes(tableId)) continue
     const active = Number(value?.activeShoe)
     const retired = Array.isArray(value?.retiredShoes) ? value.retiredShoes.map(Number) : null
     const shoe = Number(value?.currentScreen?.shoe)
@@ -466,7 +474,7 @@ function providerLifecycleTransitions(previous, current, tables) {
 export function multipleJoinPacket(tableIds = PRODUCTION_TABLE_IDS) {
   const exact = tableIds.map(canonicalProductionTableId)
   if (exact.length !== PRODUCTION_TABLE_IDS.length || exact.some((value, index) => value !== PRODUCTION_TABLE_IDS[index])) {
-    throw new Error('mt_api_exact_ten_tables_required')
+    throw new Error('mt_api_exact_six_live_tables_required')
   }
   return { method: 'GET', action: { name: '/api/v1/gametype/*/game/*/room/*/mulitple_join', data: { table_id: exact.join(',') } } }
 }
@@ -531,21 +539,31 @@ function joinActionKind(action) {
 }
 
 function exactJoinComplete(current) {
-  return current?.authenticated.game === true && current?.authenticated.chat === true
+  return Boolean(current?.catalogRooms) && current?.authenticated.game === true && current?.authenticated.chat === true
     && current?.joined.game === true && current?.joined.chat === true
 }
 
+// Catalog aliases are evidence, never capture identities. No suffix stripping.
+const LIVE_CATALOG = Object.freeze([
+  ['BAV01_LIVE', 'BAV01', '48'], ['BAV02_LIVE', 'BAV02', '49'],
+  ['BAV03_LIVE', 'BAV03', '50'], ['BAV03A_LIVE', 'BAV03A', '51'],
+  ['BAV05_LIVE', 'BAV05', '52'], ['BAV06_LIVE', 'BAV06', '57'],
+])
 function validateExactTables(tables) {
   if (!Array.isArray(tables)) return null
-  const byIdentity = new Map()
-  for (const table of tables) {
-    const identity = canonicalProductionTableId(table?.tableId ?? table?.table_id)
-    if (!PRODUCTION_TABLE_IDS.includes(identity)) continue
-    if (byIdentity.has(identity)) return null
-    byIdentity.set(identity, table)
+  const selected = []
+  for (const [catalogId, sourceId, roomId] of LIVE_CATALOG) {
+    const aliases = tables.filter(table => table?.table_id === catalogId)
+    const sources = tables.filter(table => table?.table_id === sourceId)
+    const mappings = tables.filter(table => table?.table_id_t === sourceId)
+    if (aliases.length !== 1 || sources.length !== 1 || mappings.length !== 1) return null
+    const alias = aliases[0], source = sources[0]
+    if (alias.table_id_t !== sourceId || Number(alias.hall) !== 9
+      || String(alias.room_id) !== roomId || String(source.room_id) !== roomId
+      || Number(source.hall) !== 3 || alias.table_type !== 'BAC' || source.table_type !== 'BAC') return null
+    selected.push(structuredClone(source))
   }
-  if (byIdentity.size !== PRODUCTION_TABLE_IDS.length) return null
-  return PRODUCTION_TABLE_IDS.map((tableId) => structuredClone(byIdentity.get(tableId)))
+  return selected
 }
 
 function mergeExactTablesMonotonic(

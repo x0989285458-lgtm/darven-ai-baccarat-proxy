@@ -201,7 +201,8 @@ test('prediction readiness pushes the advanced road and exact prediction before 
     },
   }
   const app = createApp({ autoConnect: false, port: 0, requireVerifiedStrategy: true, supabaseClient })
-  app.state.setTables([table])
+  const activeTable = { ...table, tableId: 'BAV01' }
+  app.state.setTables([activeTable])
   await app.start()
   const controller = new AbortController()
   const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal })).body.getReader()
@@ -210,7 +211,7 @@ test('prediction readiness pushes the advanced road and exact prediction before 
     await readSseEvent(reader)
     await new Promise((resolve) => setTimeout(resolve, 50))
     app.state.setTables([{
-      ...table,
+      ...activeTable,
       round: 21,
       bigRoadRaw: '0102#0202',
       sourceUpdatedAt: new Date(Date.now() + 1).toISOString(),

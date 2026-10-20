@@ -12,7 +12,7 @@ test('delivery binds owner epoch fence to envelope and only ACKs after exact fen
   const acknowledged = []
   const source = { mode: 'api', ownerId: 'api-primary', epoch: 5, fence: 'fence-5' }
   const round = {
-    tableId: 'BAG01', shoe: 100, round: 4, winner: 'banker', sourceAction: 'summary', final: true,
+    tableId: 'BAV01', shoe: 100, round: 4, winner: 'banker', sourceAction: 'summary', final: true,
     rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6],
     source: { ...source, sequence: 9 },
   }
@@ -37,7 +37,7 @@ test('delivery binds owner epoch fence to envelope and only ACKs after exact fen
 
   assert.equal(await pusher.tick(), true)
   assert.equal(attempts, 1)
-  assert.deepEqual(acknowledged, [{ sessionId: 'api-owner', sequence: 10_000, acceptedRoundKeys: ['BAG01:100:4'], source }])
+  assert.deepEqual(acknowledged, [{ sessionId: 'api-owner', sequence: 10_000, acceptedRoundKeys: ['BAV01:100:4'], source }])
 })
 
 test('epoch2 restart atomically rebinds every unattempted persisted queue round before delivery', async (t) => {
@@ -49,13 +49,13 @@ test('epoch2 restart atomically rebinds every unattempted persisted queue round 
   const epoch2 = { mode: 'api', ownerId: 'api-primary', epoch: 2, fence: 'fence-2' }
   const captured = { ...epoch1, sequence: 7 }
   const baseRound = {
-    tableId: 'BAG01', shoe: 100, round: 4, winner: 'banker', sourceAction: 'summary', final: true,
+    tableId: 'BAV01', shoe: 100, round: 4, winner: 'banker', sourceAction: 'summary', final: true,
     rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], source: captured,
   }
   await writeFile(queuePath, JSON.stringify({ version: 3, entries: [{
     protocolVersion: 'v105', sessionId: 'worker-api-primary-1', source: epoch1,
     timestamp: 10_000, captureTimestamp: 10_000, sequence: 10_000,
-    roundKeys: ['BAG01:100:4'],
+    roundKeys: ['BAV01:100:4'],
     snapshot: {
       sessionId: 'worker-api-primary-1', buildVersion: '105', source: epoch1,
       tables: [], rounds: [baseRound],
@@ -64,13 +64,13 @@ test('epoch2 restart atomically rebinds every unattempted persisted queue round 
 
   const reboundRound = { ...baseRound, capturedSource: captured, source: { ...epoch2, sequence: 101 } }
   let delivered = null
-  const currentTables = [{ tableId: 'BAG01', shoe: 100, round: 5 }]
+  const currentTables = [{ tableId: 'BAV01', shoe: 100, round: 5 }]
   const second = createSnapshotPusher({
     targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
     now: () => 20_000, isRoundDeliverable: () => true,
     getSnapshot: async () => ({ sessionId: 'worker-api-primary-2', buildVersion: '105', source: epoch2, connected: true, authenticated: true, tables: currentTables, rounds: [reboundRound] }),
     onRebindQueue: async ({ roundKeys }) => {
-      assert.deepEqual(roundKeys, ['BAG01:100:4'])
+      assert.deepEqual(roundKeys, ['BAV01:100:4'])
       return [reboundRound]
     },
     fetchImpl: async (_url, options) => {
@@ -114,7 +114,7 @@ async function assertRemoteAckCrashRecovery(t, crashPhase) {
   const journalPath = path.join(dir, 'finals.jsonl')
   const source = { mode: 'api', ownerId: 'api-primary', epoch: 5, fence: 'fence-5' }
   const round = {
-    tableId: 'BAG01', shoe: 100, round: 4, winner: 'banker', sourceAction: 'summary', final: true,
+    tableId: 'BAV01', shoe: 100, round: 4, winner: 'banker', sourceAction: 'summary', final: true,
     rawResult: [1, 2, 3, 4, 0, 0, 0, 0, 4, 6], source: { ...source, sequence: 9 },
   }
   const journal = await createFinalJournal({ journalPath, assertSource: () => true })
@@ -145,8 +145,8 @@ async function assertRemoteAckCrashRecovery(t, crashPhase) {
   assert.equal(await first.tick(), false)
   const checkpoint = JSON.parse(await readFile(queuePath, 'utf8'))
   assert.equal(checkpoint.entries[0].deliveryState, 'remote_ack_pending')
-  assert.deepEqual(checkpoint.entries[0].remoteAckReceipt.acceptedRoundKeys, ['BAG01:100:4'])
-  assert.equal(journal.cursor('BAG01')?.round ?? null, crashPhase === 'after_journal_ack' ? 4 : null)
+  assert.deepEqual(checkpoint.entries[0].remoteAckReceipt.acceptedRoundKeys, ['BAV01:100:4'])
+  assert.equal(journal.cursor('BAV01')?.round ?? null, crashPhase === 'after_journal_ack' ? 4 : null)
 
   const second = createSnapshotPusher({
     targetUrl: 'https://render.example/api/cloud-ingest/snapshot', key: 'worker-key', queuePath,
@@ -157,7 +157,7 @@ async function assertRemoteAckCrashRecovery(t, crashPhase) {
     fetchImpl: async () => { remotePushes += 1; throw new Error('recovery_must_not_repush') },
   })
   assert.equal(await second.tick(), true)
-  assert.equal(journal.cursor('BAG01').round, 4)
+  assert.equal(journal.cursor('BAV01').round, 4)
   assert.equal(remotePushes, 1)
   assert.equal(rebinds, 0)
   assert.equal(second.snapshot().stateInvalid, false)

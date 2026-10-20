@@ -6,15 +6,15 @@ test('parses cloud worker payload into normalized tables and status', () => {
   const payload = parseCloudCapturePayload({
     connected: true,
     authenticated: true,
-    tables: [{ tableId: 'BAG01', displayName: 'MT百家樂第1桌', tableType: 'BAC', round: 12 }],
-    rounds: [{ tableId: 'BAG01', shoe: 3, round: 12, winner: 'banker' }],
+    tables: [{ tableId: 'BAV01', displayName: 'MT百家樂第1桌', tableType: 'BAC', round: 12 }],
+    rounds: [{ tableId: 'BAV01', shoe: 3, round: 12, winner: 'banker' }],
   })
 
   assert.equal(payload.status.captureSource, 'cloud_browser')
   assert.equal(payload.status.connected, true)
   assert.equal(payload.status.authenticated, true)
   assert.equal(payload.status.tableCount, 1)
-  assert.equal(payload.tables[0].tableId, 'BAG01')
+  assert.equal(payload.tables[0].tableId, 'BAV01')
   assert.equal(payload.rounds[0].winner, 'banker')
 })
 
@@ -24,9 +24,9 @@ test('uses trusted proxy receive time for progress when a Final envelope arrives
     connected: true,
     authenticated: true,
     lastMessageAt: '2026-07-29T09:52:59.561Z',
-    tables: [{ tableId: 'BAG01', tableType: 'BAC', shoe: 8, round: 12 }],
+    tables: [{ tableId: 'BAV01', tableType: 'BAC', shoe: 8, round: 12 }],
     rounds: [{
-      tableId: 'BAG01', shoe: 8, round: 12, winner: 'banker',
+      tableId: 'BAV01', shoe: 8, round: 12, winner: 'banker',
       receivedAt: '2026-07-29T09:52:59.561Z',
     }],
   }, receivedAt)
@@ -41,8 +41,8 @@ test('stamps a trusted proxy receive time when MT tables omit sourceUpdatedAt', 
     connected: true,
     authenticated: true,
     tables: [
-      { tableId: 'BAG01', tableType: 'BAC', round: 12 },
-      { tableId: 'BAG02', tableType: 'BAC', round: 13, sourceUpdatedAt: '2026-07-14T10:29:59.000Z' },
+      { tableId: 'BAV01', tableType: 'BAC', round: 12 },
+      { tableId: 'BAV02', tableType: 'BAC', round: 13, sourceUpdatedAt: '2026-07-14T10:29:59.000Z' },
     ],
   }, receivedAt)
 
@@ -112,8 +112,8 @@ test('cloud capture tick fetches worker, updates state, and writes Supabase clou
           connected: true,
           authenticated: true,
           sessionId: 'cloud-session-1',
-          tables: [{ tableId: 'BAG01', displayName: 'MT百家樂第1桌', tableType: 'BAC', round: 12 }],
-          rounds: [{ tableId: 'BAG01', shoe: 3, round: 12, winner: 'player' }],
+          tables: [{ tableId: 'BAV01', displayName: 'MT百家樂第1桌', tableType: 'BAC', round: 12 }],
+          rounds: [{ tableId: 'BAV01', shoe: 3, round: 12, winner: 'player' }],
         }),
       }
     },
@@ -123,7 +123,7 @@ test('cloud capture tick fetches worker, updates state, and writes Supabase clou
 
   assert.equal(state.snapshot().status.captureSessionId, 'cloud-session-1')
   assert.equal(state.snapshot().status.tableCount, 1)
-  assert.equal(state.snapshot().tables[0].tableId, 'BAG01')
+  assert.equal(state.snapshot().tables[0].tableId, 'BAV01')
   assert.deepEqual(writes.map(([kind]) => kind), ['status', 'snapshot', 'round'])
   assert.equal(writes[2][1].round.winner, 'player')
 })
@@ -194,8 +194,8 @@ test('mixed stale table and round-only Final materializes the missing current sh
 test('snapshot poll time cannot make a stale shoe outrank a newer round-only Final', async () => {
   const parsed = parseCloudCapturePayload({
     buildVersion: '105',
-    tables: [{ tableId: 'BAG07', shoe: 20728, round: 59 }],
-    rounds: [{ tableId: 'BAG07', shoe: 20729, round: 1, receivedAt: '2026-09-01T03:09:00.000Z' }],
+    tables: [{ tableId: 'BAV03', shoe: 20728, round: 59 }],
+    rounds: [{ tableId: 'BAV03', shoe: 20729, round: 1, receivedAt: '2026-09-01T03:09:00.000Z' }],
   }, '2026-09-01T03:09:01.000Z')
   const result = await applyCloudCapturePayload({
     parsed,
@@ -205,7 +205,7 @@ test('snapshot poll time cannot make a stale shoe outrank a newer round-only Fin
     state: { async settleRoundEvent() { return { ok: true } } },
   })
   assert.deepEqual(result.tables.map(({ tableId, shoe, round }) => ({ tableId, shoe, round })), [
-    { tableId: 'BAG07', shoe: 20729, round: 1 },
+    { tableId: 'BAV03', shoe: 20729, round: 1 },
   ])
 })
 
@@ -556,7 +556,7 @@ test('cloud capture aborts a hung worker request instead of leaving stale state 
 
 test('cloud capture retries a transient worker snapshot failure and replaces stale tables with fresh data', async () => {
   const state = createFakeState()
-  state.setTables([{ tableId: 'BAG01', round: 35 }])
+  state.setTables([{ tableId: 'BAV01', round: 35 }])
   let attempts = 0
   const client = createCloudCaptureClient({
     url: 'https://cloud-worker.example/snapshot',
@@ -574,7 +574,7 @@ test('cloud capture retries a transient worker snapshot failure and replaces sta
           connected: true,
           authenticated: true,
           sessionId: 'worker-recovered',
-          tables: [{ tableId: 'BAG01', displayName: 'MT百家樂第1桌', tableType: 'BAC', round: 36 }],
+          tables: [{ tableId: 'BAV01', displayName: 'MT百家樂第1桌', tableType: 'BAC', round: 36 }],
         }),
       }
     },

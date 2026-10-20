@@ -309,9 +309,9 @@ test('a stale issuance acknowledgement reconciles the latest screen before it ca
     v104FormalRuntime: formalRuntime,
   })
 
-  app.state.setTables([{ tableId: 'BAG01', shoe: 88, round: 20, sourceUpdatedAt: '2026-07-29T20:00:00.000Z' }])
+  app.state.setTables([{ tableId: 'BAV01', shoe: 88, round: 20, sourceUpdatedAt: '2026-07-29T20:00:00.000Z' }])
   await oldIssueStarted
-  app.state.setTables([{ tableId: 'BAG01', shoe: 89, round: 2, sourceUpdatedAt: '2026-07-29T20:00:01.000Z' }])
+  app.state.setTables([{ tableId: 'BAV01', shoe: 89, round: 2, sourceUpdatedAt: '2026-07-29T20:00:01.000Z' }])
   releaseOldIssue()
   await app.waitForServiceWorkIdle()
 

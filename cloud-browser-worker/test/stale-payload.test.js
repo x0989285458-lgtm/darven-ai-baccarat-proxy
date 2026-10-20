@@ -2,11 +2,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { extractSnapshotFromPayloads } from '../src/snapshot.js'
 
-test('prefers newer higher-round body snapshot over stale rich road payload for same table', () => {
+test('prefers newer higher-round identified provider snapshot over stale rich road payload for same table', () => {
   const staleRichPayload = JSON.stringify({
     msg: {
       tables: [{
-        table_id: 'BAG01',
+        table_id: 'BAV01',
         table_name: '1',
         table_type: 'BAC',
         trend: {
@@ -23,7 +23,7 @@ test('prefers newer higher-round body snapshot over stale rich road payload for 
   })
   const currentBodyProbe = {
     payloads: [JSON.stringify({
-      bodyProbe: '百家樂\n1\n14182\n局數 36\n莊 13\n閒 20\n和 3',
+      tables: [{ tableId: 'BAV01', shoe: 14182, round: 36, bankerCount: 13, playerCount: 20, tieCount: 3 }],
     })],
   }
 
@@ -32,7 +32,7 @@ test('prefers newer higher-round body snapshot over stale rich road payload for 
     now: '2026-07-04T10:00:00.000Z',
   })
 
-  const table = snapshot.tables.find((item) => item.tableId === 'BAG01')
+  const table = snapshot.tables.find((item) => item.tableId === 'BAV01')
   assert.equal(table.round, 36)
   assert.equal(table.bankerCount, 13)
   assert.equal(table.playerCount, 20)
@@ -41,10 +41,10 @@ test('prefers newer higher-round body snapshot over stale rich road payload for 
   assert.equal(table.bigRoadRaw, '0901,,,,,#'.repeat(80), 'same-shoe summary must not erase the last complete big road')
 })
 
-test('prefers later current-page body snapshot when shoe rolls over and old road payload has richer roads', () => {
+test('prefers later current-page identified provider snapshot when shoe rolls over and old road payload has richer roads', () => {
   const stalePreviousShoePayload = JSON.stringify({
     tables: [{
-      tableId: 'BAG09',
+      tableId: 'BAV06',
       displayName: '9',
       tableType: 'BAC',
       shoe: 3309,
@@ -58,7 +58,7 @@ test('prefers later current-page body snapshot when shoe rolls over and old road
   })
   const currentNewShoeBodyProbe = {
     payloads: [JSON.stringify({
-      bodyProbe: '百家樂\n9\n3310\n局數 1\n莊 1\n閒 0\n和 0',
+      tables: [{ tableId: 'BAV06', shoe: 3310, round: 1, bankerCount: 1, playerCount: 0, tieCount: 0 }],
     })],
   }
 
@@ -67,10 +67,19 @@ test('prefers later current-page body snapshot when shoe rolls over and old road
     now: '2026-07-04T10:00:00.000Z',
   })
 
-  const table = snapshot.tables.find((item) => item.tableId === 'BAG09')
+  const table = snapshot.tables.find((item) => item.tableId === 'BAV06')
   assert.equal(table.shoe, 3310)
   assert.equal(table.round, 1)
   assert.equal(table.bankerCount, 1)
   assert.equal(table.beadPlateRaw, '', 'new shoe must not inherit the previous shoe bead plate')
   assert.equal(table.bigRoadRaw, '', 'new shoe must not inherit the previous shoe big road')
+})
+
+test('unidentified legacy browser text cannot advance an admitted raw table', () => {
+  const snapshot = extractSnapshotFromPayloads([
+    { tables: [{ tableId: 'BAV01', shoe: 14182, round: 35 }] },
+    { bodyProbe: '百家樂\n1\n14182\n局數 36\n莊 13\n閒 20\n和 3' },
+  ])
+  assert.deepEqual(snapshot.tables.map(({ tableId, shoe, round }) => ({ tableId, shoe, round })),
+    [{ tableId: 'BAV01', shoe: 14182, round: 35 }])
 })

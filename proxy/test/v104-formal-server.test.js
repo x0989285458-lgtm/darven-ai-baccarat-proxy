@@ -4,7 +4,7 @@ import { createApp } from '../src/server.js'
 import { buildV105FormalPrediction } from '../src/v105-formal-strategy.js'
 
 const table = {
-  tableId: 'BAG01', shoe: '88', round: 19,
+  tableId: 'BAV01', shoe: '88', round: 19,
   sourceUpdatedAt: '2026-07-21T01:00:00.000Z',
   bankerCount: 9, playerCount: 8, tieCount: 1,
   beadPlateRaw: '02#01#02#01#02', bigRoadRaw: 'B#P#B#P#B',
@@ -137,7 +137,7 @@ test('failed recent performance startup hydration retries on a later table updat
     await new Promise((resolve) => setTimeout(resolve, 10))
     assert.equal(issuanceCalls, 0)
     nowMs += 1001
-    app.state.setTables([{ ...table, tableId: 'BAG02', sourceUpdatedAt: new Date(nowMs).toISOString() }])
+    app.state.setTables([{ ...table, tableId: 'BAV02', sourceUpdatedAt: new Date(nowMs).toISOString() }])
     await new Promise((resolve) => setTimeout(resolve, 30))
     assert.equal(recentCalls, 2)
     assert.equal(issuanceCalls, 1)
@@ -321,10 +321,10 @@ test('cloud ingest withholds ACK until v104 Final settlement is durable and retu
   app.state.setTables([table])
   await new Promise((resolve) => setImmediate(resolve))
   await new Promise((resolve) => setImmediate(resolve))
-  const envelope = { protocolVersion: 'v105', timestamp: 1_000_000, sequence: 8, roundKeys: ['BAG01:88:20'], snapshot: {
+  const envelope = { protocolVersion: 'v105', timestamp: 1_000_000, sequence: 8, roundKeys: ['BAV01:88:20'], snapshot: {
     buildVersion: '105', sessionId: 'worker-session', connected: true, authenticated: true,
     tables: [{ ...table, round: 20 }],
-    rounds: [{ tableId: 'BAG01', shoe: 88, round: 20, winner: 'banker', rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9], sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary' }],
+    rounds: [{ tableId: 'BAV01', shoe: 88, round: 20, winner: 'banker', rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9], sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary' }],
   } }
   const responsePromise = app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': 'worker-key', 'x-forwarded-proto': 'https' }, body: JSON.stringify(envelope) })
   await started
@@ -350,7 +350,7 @@ test('server links a durable Final settlement back to the original v105 predicti
     async issuePrediction(candidate) { return { ...candidate, predictionId: 'formal-v105-20', issuedAt: '2026-07-21T01:00:01.000Z' } },
     async readIssuedPrediction() { return null },
     async persistRound() { return { prediction: {
-      prediction_id: 'formal-v105-20', table_id: 'BAG01', shoe_no: '88', round_no: 20,
+      prediction_id: 'formal-v105-20', table_id: 'BAV01', shoe_no: '88', round_no: 20,
       strategy_version: 'v105', predicted_result: 'banker', settlement_final: true,
     } } },
     async writeCloudCaptureStatus() {}, async writeCloudTableSnapshot() {}, async writeCloudRoundEvent() {},
@@ -360,10 +360,10 @@ test('server links a durable Final settlement back to the original v105 predicti
   app.state.setTables([table])
   await new Promise((resolve) => setImmediate(resolve))
   await new Promise((resolve) => setImmediate(resolve))
-  const envelope = { protocolVersion: 'v105', timestamp: 1_000_000, sequence: 9, roundKeys: ['BAG01:88:20'], snapshot: {
+  const envelope = { protocolVersion: 'v105', timestamp: 1_000_000, sequence: 9, roundKeys: ['BAV01:88:20'], snapshot: {
     buildVersion: '105', sessionId: 'worker-session', connected: true, authenticated: true,
     tables: [{ ...table, round: 20 }],
-    rounds: [{ tableId: 'BAG01', shoe: 88, round: 20, winner: 'banker', rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9], sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary' }],
+    rounds: [{ tableId: 'BAV01', shoe: 88, round: 20, winner: 'banker', rawResult: [1, 9, 2, 10, -1, -1, -1, -1, 1, 9], sourceAction: '/api/v1/gametype/*/game/*/room/*/table/*/summary' }],
   } }
   const response = await app.inject({ method: 'POST', url: '/api/cloud-ingest/snapshot', headers: { 'x-worker-key': 'worker-key', 'x-forwarded-proto': 'https' }, body: JSON.stringify(envelope) })
   assert.equal(response.statusCode, 200)
