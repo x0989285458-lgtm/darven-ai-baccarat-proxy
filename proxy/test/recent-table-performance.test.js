@@ -85,6 +85,7 @@ test('proxy warmup wires directional history and prior same-shoe streak into liv
   const supabaseClient = {
     configured: true,
     ensureInitialStrategy: async () => ({ ok: true }),
+    verifyActiveStrategyReadOnly: async () => ({ ok: true, activeStrategyVersion: 'v105' }),
     getRuntimeStatus: () => ({ ready: true, degraded: false, activeStrategyVersion: 'v105' }),
     getRecentPredictionRows: async () => rows,
     getV105FormalHistory: async () => rows.map((row, index) => ({

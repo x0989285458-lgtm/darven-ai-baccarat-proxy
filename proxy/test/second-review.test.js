@@ -279,6 +279,11 @@ test('production HTTPS fail-closed also covers the SSE branch', async () => {
     production: true,
     memberAuthRequired: false,
     ingestKey: 'configured',
+    supabaseClient: {
+      configured: true,
+      getRuntimeStatus: () => ({ ready: true, degraded: false, activeStrategyVersion: 'v105' }),
+      verifyActiveStrategyReadOnly: async () => ({ ok: true, activeStrategyVersion: 'v105' }),
+    },
     v104FormalRuntime: { start: async () => {} },
   })
   const controller = new AbortController()

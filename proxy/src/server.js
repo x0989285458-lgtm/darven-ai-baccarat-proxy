@@ -2784,48 +2784,91 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   }
 
   const listenHost = host ?? (deployConfig.deployMode === 'cloud' ? '0.0.0.0' : '127.0.0.1')
+  let applicationStopped = false
+  let startupPromise = null
+  function assertStartupNotStopped() {
+    if (applicationStopped) throw new Error('application stopped during startup')
+  }
 
   return {
     state,
     server,
     async start() {
-      tablesBroadcastStopping = false
-      latestPredictionRefreshStopping = false
-      const listeningServer = await new Promise((resolve) => server.listen(port, listenHost, () => resolve(server)))
-      if (requireVerifiedStrategy && supabaseClient?.configured === true) {
-        try {
-          if (resolvedCaptureOutboxConsumerEnabled && typeof supabaseClient.ensureInitialStrategy === 'function') {
-            await supabaseClient.ensureInitialStrategy()
-            await ensureRecentPerformanceReady()
-          } else if (!resolvedCaptureOutboxConsumerEnabled && typeof supabaseClient.verifyActiveStrategyReadOnly === 'function') {
-            await supabaseClient.verifyActiveStrategyReadOnly()
+      assertStartupNotStopped()
+      if (startupPromise) return startupPromise
+      // One admission attempt per App. Failed startup requires a fresh App;
+      // concurrent callers must not open duplicate listeners or producers.
+      startupPromise = Promise.resolve().then(async () => {
+        assertStartupNotStopped()
+        tablesBroadcastStopping = false
+        latestPredictionRefreshStopping = false
+        // Production admission is verification-only. Active promotion belongs to
+        // the separately authorized DB cutover, never application bootstrap.
+        if (production && requireVerifiedStrategy) {
+          try {
+            if (supabaseClient?.configured !== true || typeof supabaseClient.verifyActiveStrategyReadOnly !== 'function') {
+              throw new Error('active strategy read-only verification capability is required')
+            }
+            const verified = await supabaseClient.verifyActiveStrategyReadOnly()
+            assertStartupNotStopped()
+            if (verified?.ok !== true || verified.activeStrategyVersion !== ALL_MT_EQUAL_STRATEGY_VERSION || !isPredictionRuntimeReady()) {
+              throw new Error('active strategy read-only verification failed')
+            }
+            if (resolvedCaptureOutboxConsumerEnabled) await ensureRecentPerformanceReady()
+          } catch (error) {
+            recentPerformanceReady = false
+            outboxStopping = true
+            latestPredictionRefreshStopping = true
+            state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+            throw error
           }
-        } catch (error) {
-          recentPerformanceReady = false
-          state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
         }
-      }
-      if (resolvedCaptureOutboxConsumerEnabled && v104Formal && typeof v104Formal.start === 'function') {
-        try {
-          await v104Formal.start()
-        } catch (error) {
-          state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+        assertStartupNotStopped()
+        const listeningServer = await new Promise((resolve) => server.listen(port, listenHost, () => resolve(server)))
+        if (applicationStopped && server.listening) {
+          await new Promise((resolve) => server.close(() => resolve()))
         }
-      }
-      if (resolvedCaptureOutboxConsumerEnabled && shouldAutoConnect) {
-        if (captureSource === 'cloud_browser' && cloudBrowserUrl) cloudCaptureClient.start()
-        else if (captureUrl) chromeClient.start()
-        else mtClient.connect()
-      }
-      if (resolvedCaptureOutboxConsumerEnabled) {
-        ensureLatestPredictionRefreshTimer()
-        void drainCaptureOutbox().catch((error) => {
-          state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
-        })
-      }
-      return listeningServer
+        assertStartupNotStopped()
+        // Preserve the legacy bootstrap only for explicitly non-production apps.
+        if (!production && requireVerifiedStrategy && supabaseClient?.configured === true) {
+          try {
+            if (resolvedCaptureOutboxConsumerEnabled && typeof supabaseClient.ensureInitialStrategy === 'function') {
+              await supabaseClient.ensureInitialStrategy()
+              await ensureRecentPerformanceReady()
+            } else if (!resolvedCaptureOutboxConsumerEnabled && typeof supabaseClient.verifyActiveStrategyReadOnly === 'function') {
+              await supabaseClient.verifyActiveStrategyReadOnly()
+            }
+          } catch (error) {
+            recentPerformanceReady = false
+            state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+          }
+        }
+        assertStartupNotStopped()
+        if (resolvedCaptureOutboxConsumerEnabled && v104Formal && typeof v104Formal.start === 'function') {
+          try {
+            await v104Formal.start()
+          } catch (error) {
+            state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+          }
+        }
+        assertStartupNotStopped()
+        if (resolvedCaptureOutboxConsumerEnabled && shouldAutoConnect) {
+          if (captureSource === 'cloud_browser' && cloudBrowserUrl) cloudCaptureClient.start()
+          else if (captureUrl) chromeClient.start()
+          else mtClient.connect()
+        }
+        if (resolvedCaptureOutboxConsumerEnabled) {
+          ensureLatestPredictionRefreshTimer()
+          void drainCaptureOutbox().catch((error) => {
+            state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
+          })
+        }
+        return listeningServer
+      })
+      return startupPromise
     },
     async stop() {
+      applicationStopped = true
       tablesBroadcastStopping = true
       latestPredictionRefreshStopping = true
       if (latestPredictionRefreshTimer) {

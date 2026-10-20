@@ -108,6 +108,7 @@ test('failed recent performance startup hydration retries on a later table updat
     configured: true,
     getRuntimeStatus() { return { ready: true, degraded: false, activeStrategyVersion: 'v105' } },
     async ensureInitialStrategy() { return { ok: true, activeStrategyVersion: 'v105' } },
+    async verifyActiveStrategyReadOnly() { return { ok: true, activeStrategyVersion: 'v105' } },
     async getRecentPredictionRows() {
       recentCalls += 1
       if (recentCalls === 1) throw new Error('temporary recent history read failure')
@@ -155,6 +156,7 @@ test('same-screen snapshot retries formal issuance after the first durable write
     configured: true,
     getRuntimeStatus() { return { ready: true, degraded: false, activeStrategyVersion: 'v105' } },
     async ensureInitialStrategy() { return { ok: true, activeStrategyVersion: 'v105' } },
+    async verifyActiveStrategyReadOnly() { return { ok: true, activeStrategyVersion: 'v105' } },
     async getRecentPredictionRows() { return [] },
     async reconcilePredictionLifecycle() { reconcileCalls += 1 },
     async issuePrediction(candidate) {
@@ -208,6 +210,7 @@ test('regressed round and old-shoe snapshots never retry formal issuance', async
     configured: true,
     getRuntimeStatus() { return { ready: true, degraded: false, activeStrategyVersion: 'v105' } },
     async ensureInitialStrategy() { return { ok: true, activeStrategyVersion: 'v105' } },
+    async verifyActiveStrategyReadOnly() { return { ok: true, activeStrategyVersion: 'v105' } },
     async getRecentPredictionRows() { return [] },
     async reconcilePredictionLifecycle() {},
     async issuePrediction() {
@@ -257,6 +260,7 @@ test('delayed stale reconciliation cannot issue after a newer shoe becomes curre
     configured: true,
     getRuntimeStatus() { return { ready: true, degraded: false, activeStrategyVersion: 'v105' } },
     async ensureInitialStrategy() { return { ok: true, activeStrategyVersion: 'v105' } },
+    async verifyActiveStrategyReadOnly() { return { ok: true, activeStrategyVersion: 'v105' } },
     async getRecentPredictionRows() { return [] },
     async reconcilePredictionLifecycle({ currentShoe }) {
       if (String(currentShoe) === '88') { signalOldStarted(); await oldGate }

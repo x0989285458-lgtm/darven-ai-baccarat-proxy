@@ -1059,6 +1059,7 @@ test('latest prediction refresh advances while a claimed backlog batch is still 
     supabaseClient: {
       configured: true,
       getRuntimeStatus() { return { ready: true, degraded: false } },
+      async verifyActiveStrategyReadOnly() { return { ok: true, activeStrategyVersion: 'v105' } },
       async getLatestCloudTableSnapshot() {
         return { session_id: 'cloud-live-refresh', snapshot_at: snapshotAt(), capture_source: 'cloud_browser', tables: currentTables() }
       },

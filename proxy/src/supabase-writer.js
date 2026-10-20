@@ -3217,6 +3217,9 @@ export function createSupabaseIngestionClient({
         && row?.prediction_timing === 'pre_result_context' && Boolean(row?.prediction_issued_at))
     },
     async ensureInitialStrategy() {
+      // Required/formal callers may re-enter this legacy API; never grant it
+      // promotion authority. Only non-required local bootstrap may write Active.
+      if (requireVerifiedStrategy) return this.verifyActiveStrategyReadOnly()
       try {
         if (await verifyActiveStrategyFromDatabase()) {
           runtimeStatus = { ready: true, degraded: false, reason: null, activeStrategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION }
