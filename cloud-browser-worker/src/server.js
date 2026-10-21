@@ -6,6 +6,7 @@ import { isWorkerAdminAuthorized } from './admin-auth.js'
 import { annotateRoundPayload, extractSnapshotFromPayloads, isFinalRealCardRound, isRoundPayload, redactUrlSecrets } from './snapshot.js'
 import { createSnapshotPusher } from './snapshot-pusher.js'
 import { buildWorkerHealth, updateSourceProgressTracker } from './worker-health.js'
+import { PRODUCTION_TABLE_IDS } from './table-policy.js'
 import { BUILD_VERSION, captureSessionId, publicBuildInfo, validateProductionConfig } from './runtime-config.js'
 import { createFixedWindowRateLimiter } from './server-policy.js'
 import { createFileLeaseStore, createWorkerSourceOwner } from './worker-source-owner.js'
@@ -116,6 +117,7 @@ const server = http.createServer(async (req, res) => {
         loginUrl: MT_LOGIN_URL ? redactUrlSecrets(MT_LOGIN_URL) : null,
         sourceError: lastError,
         source: lastSnapshot,
+        expectedTableCount: PRODUCTION_TABLE_IDS.length,
         push: snapshotPusher.snapshot(),
       })
       return sendJson(res, health.ok ? 200 : 503, health)
