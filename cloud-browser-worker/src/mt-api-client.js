@@ -543,7 +543,8 @@ function exactJoinComplete(current) {
     && current?.joined.game === true && current?.joined.chat === true
 }
 
-// Catalog aliases are evidence, never capture identities. No suffix stripping.
+// Raw sources are mandatory capture identities. LIVE aliases are optional evidence;
+// present aliases must remain unambiguous and consistent. No suffix stripping.
 const LIVE_CATALOG = Object.freeze([
   ['BAV01_LIVE', 'BAV01', '48'], ['BAV02_LIVE', 'BAV02', '49'],
   ['BAV03_LIVE', 'BAV03', '50'], ['BAV03A_LIVE', 'BAV03A', '51'],
@@ -556,11 +557,14 @@ function validateExactTables(tables) {
     const aliases = tables.filter(table => table?.table_id === catalogId)
     const sources = tables.filter(table => table?.table_id === sourceId)
     const mappings = tables.filter(table => table?.table_id_t === sourceId)
-    if (aliases.length !== 1 || sources.length !== 1 || mappings.length !== 1) return null
-    const alias = aliases[0], source = sources[0]
-    if (alias.table_id_t !== sourceId || Number(alias.hall) !== 9
-      || String(alias.room_id) !== roomId || String(source.room_id) !== roomId
-      || Number(source.hall) !== 3 || alias.table_type !== 'BAC' || source.table_type !== 'BAC') return null
+    if (sources.length !== 1 || aliases.length > 1 || mappings.length !== aliases.length) return null
+    const source = sources[0]
+    if (String(source.room_id) !== roomId || Number(source.hall) !== 3 || source.table_type !== 'BAC') return null
+    if (aliases.length === 1) {
+      const alias = aliases[0]
+      if (mappings[0] !== alias || alias.table_id_t !== sourceId || Number(alias.hall) !== 9
+        || String(alias.room_id) !== roomId || alias.table_type !== 'BAC') return null
+    }
     selected.push(structuredClone(source))
   }
   return selected

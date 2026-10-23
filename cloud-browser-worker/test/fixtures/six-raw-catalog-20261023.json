@@ -1,0 +1,401 @@
+{
+  "tables": [
+    {
+      "table_id": "BAV01",
+      "room_id": "48",
+      "table_name": "B01",
+      "hall": 3,
+      "table_type": "BAC"
+    },
+    {
+      "table_id": "BAV02",
+      "room_id": "49",
+      "table_name": "B02",
+      "hall": 3,
+      "table_type": "BAC"
+    },
+    {
+      "table_id": "BAV03",
+      "room_id": "50",
+      "table_name": "B03",
+      "hall": 3,
+      "table_type": "BAC"
+    },
+    {
+      "table_id": "BAV03A",
+      "room_id": "51",
+      "table_name": "B03A",
+      "hall": 3,
+      "table_type": "BAC"
+    },
+    {
+      "table_id": "BAV05",
+      "room_id": "52",
+      "table_name": "B05",
+      "hall": 3,
+      "table_type": "BAC"
+    },
+    {
+      "table_id": "BAV06",
+      "room_id": "57",
+      "table_name": "B06",
+      "hall": 3,
+      "table_type": "BAC"
+    },
+    {
+      "table_id": "BAV07",
+      "room_id": "58",
+      "table_name": "B07",
+      "hall": 3,
+      "table_type": "BAC"
+    },
+    {
+      "table_id": "BAV08",
+      "room_id": "59",
+      "table_name": "B08",
+      "hall": 3,
+      "table_type": "BAC"
+    },
+    {
+      "table_id": "BAV01_LIVE",
+      "table_id_t": "BAV01",
+      "room_id": "48",
+      "table_name": "B01",
+      "hall": 9,
+      "table_type": "BAC"
+    },
+    {
+      "table_id": "BAV02_LIVE",
+      "table_id_t": "BAV02",
+      "room_id": "49",
+      "table_name": "B02",
+      "hall": 9,
+      "table_type": "BAC"
+    },
+    {
+      "table_id": "BAV03_LIVE",
+      "table_id_t": "BAV03",
+      "room_id": "50",
+      "table_name": "B03",
+      "hall": 9,
+      "table_type": "BAC"
+    }
+  ],
+  "events": [
+    {
+      "tableId": "BAV03A",
+      "roomId": 51,
+      "shoe": 1533,
+      "round": 40,
+      "receivedAt": "2026-10-23T10:37:30.238Z",
+      "valid": true,
+      "rawResult": [
+        40,
+        5,
+        2,
+        43,
+        0,
+        0,
+        -1,
+        -1,
+        3,
+        9
+      ],
+      "action": "/api/v1/gametype/*/game/*/room/*/table/*/summary"
+    },
+    {
+      "tableId": "BAV01",
+      "roomId": 48,
+      "shoe": 1527,
+      "round": 39,
+      "receivedAt": "2026-10-23T10:37:33.760Z",
+      "valid": true,
+      "rawResult": [
+        39,
+        13,
+        49,
+        37,
+        17,
+        23,
+        -1,
+        -1,
+        4,
+        0
+      ],
+      "action": "/api/v1/gametype/*/game/*/room/*/table/*/summary"
+    },
+    {
+      "tableId": "BAV02",
+      "roomId": 49,
+      "shoe": 1530,
+      "round": 7,
+      "receivedAt": "2026-10-23T10:37:37.307Z",
+      "valid": true,
+      "rawResult": [
+        23,
+        19,
+        25,
+        50,
+        31,
+        0,
+        -1,
+        -1,
+        5,
+        6
+      ],
+      "action": "/api/v1/gametype/*/game/*/room/*/table/*/summary"
+    },
+    {
+      "tableId": "BAV03",
+      "roomId": 50,
+      "shoe": 1524,
+      "round": 53,
+      "receivedAt": "2026-10-23T10:37:54.586Z",
+      "valid": true,
+      "rawResult": [
+        47,
+        27,
+        11,
+        12,
+        0,
+        0,
+        -1,
+        -1,
+        8,
+        1
+      ],
+      "action": "/api/v1/gametype/*/game/*/room/*/table/*/summary"
+    },
+    {
+      "tableId": "BAV05",
+      "roomId": 52,
+      "shoe": 1524,
+      "round": 8,
+      "receivedAt": "2026-10-23T10:37:57.389Z",
+      "valid": true,
+      "rawResult": [
+        17,
+        50,
+        51,
+        16,
+        32,
+        44,
+        -1,
+        -1,
+        0,
+        8
+      ],
+      "action": "/api/v1/gametype/*/game/*/room/*/table/*/summary"
+    },
+    {
+      "tableId": "BAV06",
+      "roomId": 57,
+      "shoe": 2371,
+      "round": 60,
+      "receivedAt": "2026-10-23T10:38:02.050Z",
+      "valid": true,
+      "rawResult": [
+        15,
+        11,
+        24,
+        31,
+        10,
+        0,
+        -1,
+        -1,
+        2,
+        5
+      ],
+      "action": "/api/v1/gametype/*/game/*/room/*/table/*/summary"
+    },
+    {
+      "tableId": "BAV03A",
+      "roomId": 51,
+      "shoe": 1533,
+      "round": 41,
+      "receivedAt": "2026-10-23T10:38:09.428Z",
+      "valid": true,
+      "rawResult": [
+        37,
+        23,
+        12,
+        16,
+        5,
+        44,
+        -1,
+        -1,
+        5,
+        8
+      ],
+      "action": "/api/v1/gametype/*/game/*/room/*/table/*/summary"
+    },
+    {
+      "tableId": "BAV01",
+      "roomId": 48,
+      "shoe": 1527,
+      "round": 40,
+      "receivedAt": "2026-10-23T10:38:11.860Z",
+      "valid": true,
+      "rawResult": [
+        45,
+        11,
+        12,
+        15,
+        0,
+        6,
+        -1,
+        -1,
+        6,
+        8
+      ],
+      "action": "/api/v1/gametype/*/game/*/room/*/table/*/summary"
+    },
+    {
+      "tableId": "BAV02",
+      "roomId": 49,
+      "shoe": 1530,
+      "round": 8,
+      "receivedAt": "2026-10-23T10:38:12.122Z",
+      "valid": true,
+      "rawResult": [
+        43,
+        8,
+        5,
+        35,
+        0,
+        0,
+        -1,
+        -1,
+        9,
+        7
+      ],
+      "action": "/api/v1/gametype/*/game/*/room/*/table/*/summary"
+    },
+    {
+      "tableId": "BAV03",
+      "roomId": 50,
+      "shoe": 1524,
+      "round": 54,
+      "receivedAt": "2026-10-23T10:38:29.645Z",
+      "valid": true,
+      "rawResult": [
+        8,
+        2,
+        37,
+        16,
+        0,
+        0,
+        -1,
+        -1,
+        8,
+        5
+      ],
+      "action": "/api/v1/gametype/*/game/*/room/*/table/*/summary"
+    },
+    {
+      "tableId": "BAV05",
+      "roomId": 52,
+      "shoe": 1524,
+      "round": 9,
+      "receivedAt": "2026-10-23T10:38:41.329Z",
+      "valid": true,
+      "rawResult": [
+        25,
+        28,
+        30,
+        49,
+        25,
+        38,
+        -1,
+        -1,
+        4,
+        2
+      ],
+      "action": "/api/v1/gametype/*/game/*/room/*/table/*/summary"
+    },
+    {
+      "tableId": "BAV06",
+      "roomId": 57,
+      "shoe": 2371,
+      "round": 61,
+      "receivedAt": "2026-10-23T10:38:41.886Z",
+      "valid": true,
+      "rawResult": [
+        48,
+        26,
+        11,
+        47,
+        0,
+        0,
+        -1,
+        -1,
+        9,
+        8
+      ],
+      "action": "/api/v1/gametype/*/game/*/room/*/table/*/summary"
+    },
+    {
+      "tableId": "BAV03A",
+      "roomId": 51,
+      "shoe": 1533,
+      "round": 42,
+      "receivedAt": "2026-10-23T10:38:43.402Z",
+      "valid": true,
+      "rawResult": [
+        21,
+        2,
+        43,
+        33,
+        0,
+        0,
+        -1,
+        -1,
+        2,
+        9
+      ],
+      "action": "/api/v1/gametype/*/game/*/room/*/table/*/summary"
+    },
+    {
+      "tableId": "BAV02",
+      "roomId": 49,
+      "shoe": 1530,
+      "round": 9,
+      "receivedAt": "2026-10-23T10:38:46.142Z",
+      "valid": true,
+      "rawResult": [
+        26,
+        45,
+        22,
+        6,
+        0,
+        0,
+        -1,
+        -1,
+        9,
+        2
+      ],
+      "action": "/api/v1/gametype/*/game/*/room/*/table/*/summary"
+    },
+    {
+      "tableId": "BAV01",
+      "roomId": 48,
+      "shoe": 1527,
+      "round": 41,
+      "receivedAt": "2026-10-23T10:38:51.766Z",
+      "valid": true,
+      "rawResult": [
+        2,
+        3,
+        42,
+        15,
+        3,
+        0,
+        -1,
+        -1,
+        8,
+        5
+      ],
+      "action": "/api/v1/gametype/*/game/*/room/*/table/*/summary"
+    }
+  ]
+}

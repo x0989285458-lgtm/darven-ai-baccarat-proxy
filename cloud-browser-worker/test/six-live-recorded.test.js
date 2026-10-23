@@ -27,7 +27,7 @@ test('recorded six raw summaries share catalog-verified join/table identities',a
  assert.equal(h.finals.length,count)
 })
 for(const [name,mutate] of [
- ['missing LIVE',a=>a.filter(x=>x.table_id!=='BAV01_LIVE')],
+ ['missing raw',a=>a.filter(x=>x.table_id!=='BAV01')],
  ['unknown mapping',a=>a.map(x=>x.table_id==='BAV01_LIVE'?{...x,table_id_t:'BAV99'}:x)],
  ['wrong room',a=>a.map(x=>x.table_id==='BAV01_LIVE'?{...x,room_id:'999'}:x)],
  ['duplicate mapping',a=>[...a,a.find(x=>x.table_id==='BAV01_LIVE')]],
@@ -40,7 +40,7 @@ test('catalog revocation blocks pending tables and Finals even after a late ACK'
  const h=await harness(t)
  await h.receive({msg:{tables:fixture.tables}})
  await h.receive(packet(fixture.events[0]));assert.equal(h.finals.length,0)
- await h.receive({msg:{tables:fixture.tables.filter(x=>x.table_id!=='BAV01_LIVE')}})
+ await h.receive({msg:{tables:fixture.tables.filter(x=>x.table_id!=='BAV01')}})
  await h.receive({action:'/api/v1/gametype/*/game/*/room/*/mulitple_join',err:0})
  await h.receive(packet(fixture.events[0]))
  assert.equal(h.client.snapshot().joined,false)
