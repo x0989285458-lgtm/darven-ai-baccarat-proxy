@@ -1348,6 +1348,178 @@ test('stop then restart while the first token read is pending keeps only the new
   client.stop()
 })
 
+// Screen projection from observed-catalog.json (2026-10-23); cards below remain
+// synthetic unit-test summaries, never recorded live results.
+function nestedCatalog() {
+  const screens = [[1532, 2, 1], [1534, 35, 34], [1529, 21, 20], [1538, 15, 14], [1528, 32, 31], [2375, 17, 16]]
+  return PRODUCTION_TABLE_IDS.map((table_id, index) => {
+    const [shoe, current, total] = screens[index]
+    return {
+      ...catalog.find(table => table.table_id === table_id),
+      game_name: `20261023_${shoe}_${current}`,
+      trend: { current_shoe: String(shoe), current_round: String(current), total_round: String(total) },
+    }
+  })
+}
+
+async function startCatalogHarness(tables, overrides = {}) {
+  const delivered = [], finals = [], errors = []
+  const harness = createHarness({ autoCatalog: false,
+    onTables: async value => delivered.push(value), onFinal: async value => finals.push(value),
+    onError: value => errors.push(value), ...overrides })
+  const client = createMtApiClient(harness.options)
+  await client.start()
+  harness.openAll()
+  harness.authenticateAll()
+  harness.receive('game', { msg: { tables } })
+  await harness.flush(3)
+  if (!errors.length) harness.acknowledgeJoins()
+  await harness.flush(3)
+  return { harness, client, delivered, finals, errors }
+}
+
+test('nested catalog normalizes completed screens for exactly six raw sources without fabricating Finals', async () => {
+  const tables = nestedCatalog()
+  const { client, delivered, finals, errors } = await startCatalogHarness(tables)
+  try {
+    assert.deepEqual(errors, [])
+    assert.deepEqual(delivered.at(-1).map(t => [t.table_id, t.shoe, t.round]),
+      tables.map(t => [t.table_id, Number(t.trend.current_shoe), Number(t.trend.total_round)]))
+    assert.deepEqual(finals, [])
+  } finally { client.stop() }
+})
+
+test('nested rollover retires old shoe, rejects stale catalog and admits only validated new-shoe summaries', async () => {
+  const tables = nestedCatalog()
+  const old = structuredClone(tables)
+  old[2] = { ...old[2], game_name: '20261023_1528_58',
+    trend: { current_shoe: '1528', current_round: '58', total_round: '57' } }
+  const { harness, client, delivered, finals } = await startCatalogHarness(old)
+  try {
+    harness.receive('game', summaryPacketFor('BAV03', 1528, 57))
+    harness.receive('game', { msg: { tables } })
+    await harness.flush(4)
+    assert.equal(delivered.at(-1)[2].shoe, 1529)
+    assert.equal(delivered.at(-1)[2].round, 20)
+    harness.receive('game', { msg: { tables: old } })
+    harness.receive('game', summaryPacketFor('BAV03', 1528, 58))
+    const provisional = summaryPacketFor('BAV03', 1529, 21)
+    provisional.action.name = provisional.action.name.replace('/summary', '/show_poker')
+    harness.receive('game', provisional)
+    const invalid = summaryPacketFor('BAV03', 1529, 21)
+    invalid.body.result = '0,0,0,0,0,0,-1,-1,0,0'
+    harness.receive('game', invalid)
+    await harness.flush(4)
+    assert.equal(finals.length, 1)
+    assert.equal(delivered.at(-1)[2].game_name, tables[2].game_name)
+    harness.receive('game', summaryPacketFor('BAV03', 1529, 21))
+    await harness.flush(4)
+    assert.deepEqual(finals.map(f => [f.shoe, f.round]), [[1528, 57], [1529, 21]])
+    assert.deepEqual(finals.at(-1).shoeLifecycle.retiredShoes, [1528])
+  } finally { client.stop() }
+})
+
+test('nested same-shoe metadata advances behind a Final screen but stale catalog cannot regress it', async () => {
+  const tables = nestedCatalog()
+  const { harness, client, delivered } = await startCatalogHarness(tables)
+  try {
+    harness.receive('game', summaryPacketFor('BAV03', 1529, 21))
+    const updated = structuredClone(tables)
+    updated[2].orderState = 2
+    harness.receive('game', { msg: { tables: updated } })
+    await harness.flush(4)
+    assert.equal(delivered.at(-1)[2].round, 21)
+    assert.equal(delivered.at(-1)[2].orderState, 2)
+    updated[2].game_name = '20261023_1529_22'
+    updated[2].trend = { current_shoe: '1529', current_round: '22', total_round: '21' }
+    harness.receive('game', { msg: { tables: updated } })
+    harness.receive('game', { msg: { tables } })
+    await harness.flush(4)
+    assert.equal(delivered.at(-1)[2].game_name, '20261023_1529_22')
+    assert.equal(delivered.at(-1)[2].round, 21)
+    const settledStale = structuredClone(tables)
+    settledStale[2].trend.total_round = '21'
+    harness.receive('game', { msg: { tables: settledStale } })
+    await harness.flush(3)
+    assert.equal(delivered.at(-1)[2].game_name, '20261023_1529_22')
+  } finally { client.stop() }
+})
+
+test('nested first shoe has zero completed rounds and does not infer a Final from pending round one', async () => {
+  const tables = nestedCatalog().map(t => ({ ...t, game_name: '20261023_1_1',
+    trend: { current_shoe: '1', current_round: '1', total_round: '0' } }))
+  const { harness, client, delivered, finals } = await startCatalogHarness(tables)
+  try {
+    assert.ok(delivered.at(-1).every(t => t.shoe === 1 && t.round === 0))
+    assert.deepEqual(finals, [])
+    harness.receive('game', summaryPacketFor('BAV03', 1, 1))
+    await harness.flush(3)
+    assert.equal(finals.length, 1)
+  } finally { client.stop() }
+})
+
+test('unknown-shoe rejection refreshes all rolled tables single-flight, retries on timeout, and never replays rejected Finals', async () => {
+  let nowMs = 1000
+  const tables = nestedCatalog()
+  const old = tables.map(t => ({ ...t, game_name: '20261023_100_58',
+    trend: { current_shoe: '100', current_round: '58', total_round: '57' } }))
+  const { harness, client, finals } = await startCatalogHarness(old, { now: () => nowMs })
+  const count = () => harness.sentActions('game').filter(a => a.endsWith('/tables')).length
+  try {
+    for (const t of tables) harness.receive('game', summaryPacketFor(t.table_id, Number(t.trend.current_shoe), Number(t.trend.current_round)))
+    await harness.flush(5)
+    assert.equal(count(), 2)
+    assert.deepEqual(finals, [])
+    harness.receive('game', { msg: { tables: old } })
+    harness.receive('game', summaryPacketFor('BAV03', 1529, 21))
+    await harness.flush(3)
+    assert.equal(count(), 2, 'fast stale responses must not permit a rejected-summary refresh flood')
+    nowMs += 10001
+    harness.receive('game', summaryPacketFor('BAV03', 1529, 21))
+    await harness.flush(3)
+    assert.equal(count(), 3)
+    harness.receive('game', { msg: { tables } })
+    await harness.flush(3)
+    assert.deepEqual(finals, [])
+    // Known retired shoes must not cause refresh traffic.
+    harness.receive('game', summaryPacketFor('BAV03', 100, 58))
+    await harness.flush(3)
+    assert.equal(count(), 3)
+    for (const t of tables) harness.receive('game', summaryPacketFor(t.table_id, Number(t.trend.current_shoe), Number(t.trend.current_round)))
+    await harness.flush(5)
+    assert.equal(finals.length, 6)
+    assert.equal(count(), 4)
+  } finally { client.stop() }
+})
+
+test('malformed or contradictory nested identities fail closed before catalog admission', async t => {
+  const cases = [
+    ...['current_shoe', 'current_round', 'total_round'].flatMap(field =>
+      [undefined, null, '', ' ', 'abc', '-1', -1, '1.5', '1e2', false, [], 9007199254740992]
+        .map(value => ({ name: `${field}=${JSON.stringify(value)}`, change: row => { row.trend[field] = value } }))),
+    { name: 'pending before completed', change: row => { row.trend.total_round = '22' } },
+    { name: 'ambiguous gap', change: row => { row.trend.total_round = '18' } },
+    { name: 'game shoe conflict', change: row => { row.game_name = '20261023_999_21' } },
+    { name: 'game round conflict', change: row => { row.game_name = '20261023_1529_22' } },
+    { name: 'malformed game identity', change: row => { row.game_name = 'broken' } },
+    { name: 'explicit shoe conflict', change: row => { row.shoe = 100; row.round = 20 } },
+    { name: 'explicit pending is not completed', change: row => { row.shoe = 1529; row.round = 21 } },
+    { name: 'empty nested screen', change: row => { row.trend = {} } },
+    { name: 'malformed trend type', change: row => { row.trend = 'invalid' } },
+  ]
+  for (const scenario of cases) await t.test(scenario.name, async () => {
+    const tables = nestedCatalog()
+    scenario.change(tables[2])
+    const { client, delivered, finals, errors } = await startCatalogHarness(tables)
+    try {
+      assert.ok(errors.includes('mt_api_live_catalog_invalid'))
+      assert.deepEqual(delivered, [])
+      assert.deepEqual(finals, [])
+      assert.equal(client.snapshot().joined, false)
+    } finally { client.stop() }
+  })
+})
+
 function createHarness({
   onFinal = async () => {}, onTables = async () => {}, onError = () => {}, refresh = async () => {},
   getSessionToken = async () => 'opaque-session-value', nextEventSource, now = Date.now,

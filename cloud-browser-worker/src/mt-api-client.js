@@ -81,6 +81,7 @@ export function createMtApiClient({
       pendingTables: null,
       catalogRooms: null,
       tablesRefreshRequestedAtMs: null,
+      unknownShoeRefreshRequestedAtMs: null,
       lastMessageAt: null,
       reconnectScheduled: false,
       reconnectAttempt: 0,
@@ -211,7 +212,16 @@ export function createMtApiClient({
     if (!final || current.catalogRooms?.get(final.tableId) !== final.roomId) return
     if (!exactJoinComplete(current)) return
     const shoeDecision = inspectFinalShoe(shoeChronologyByTable, final, latestTables)
-    if (!shoeDecision.accept) return
+    if (!shoeDecision.accept) {
+      // A rollover can affect every table before any Final is admitted. Ask for
+      // provider evidence, never adopt the rejected summary's shoe or replay it.
+      const timeMs = Number(now())
+      if (!shoeChronologyByTable.get(final.tableId)?.retired.includes(final.shoe)
+        && (current.unknownShoeRefreshRequestedAtMs == null
+          || timeMs - current.unknownShoeRefreshRequestedAtMs >= resolvedTablesRefreshTimeoutMs)
+        && requestTables(current)) current.unknownShoeRefreshRequestedAtMs = timeMs
+      return
+    }
     refreshGenerationLease(current)
     const source = await allocateEventSource(current)
     const acceptedChronology = cloneShoeChronology(shoeChronologyByTable)
@@ -565,9 +575,44 @@ function validateExactTables(tables) {
       if (mappings[0] !== alias || alias.table_id_t !== sourceId || Number(alias.hall) !== 9
         || String(alias.room_id) !== roomId || alias.table_type !== 'BAC') return null
     }
-    selected.push(structuredClone(source))
+    const normalized = normalizeCatalogScreen(source)
+    if (!normalized) return null
+    selected.push(normalized)
   }
   return selected
+}
+
+function catalogInteger(value, minimum = 0) {
+  if (typeof value !== 'number' && (typeof value !== 'string' || !/^\d+$/.test(value))) return null
+  const number = Number(value)
+  return Number.isSafeInteger(number) && number >= minimum ? number : null
+}
+
+function normalizeCatalogScreen(source) {
+  const table = structuredClone(source)
+  const trend = source.trend
+  if (trend != null && typeof trend !== 'object') return null
+  const hasNestedScreen = trend != null && !Array.isArray(trend)
+  const hasExplicitScreen = source.shoe != null || source.round != null
+  const explicitShoe = catalogInteger(source.shoe)
+  const explicitRound = catalogInteger(source.round)
+  if (hasExplicitScreen && (explicitShoe == null || explicitRound == null)) return null
+  if (!hasNestedScreen) {
+    // Legacy callers supply completed shoe/round directly (or no screen at
+    // all). game_name alone cannot establish a completed round.
+    return hasExplicitScreen ? { ...table, shoe: explicitShoe, round: explicitRound } : table
+  }
+  const shoe = catalogInteger(trend.current_shoe)
+  const current = catalogInteger(trend.current_round, 1)
+  const completed = catalogInteger(trend.total_round)
+  if (shoe == null || current == null || completed == null
+    || (current !== completed && current !== completed + 1)) return null
+  if (source.game_name != null) {
+    const identity = typeof source.game_name === 'string' && /^(\d{8})_(\d+)_(\d+)$/.exec(source.game_name)
+    if (!identity || catalogInteger(identity[2]) !== shoe || catalogInteger(identity[3], 1) !== current) return null
+  }
+  if (hasExplicitScreen && (explicitShoe !== shoe || explicitRound !== completed)) return null
+  return { ...table, shoe, round: completed }
 }
 
 function mergeExactTablesMonotonic(
@@ -583,6 +628,9 @@ function mergeExactTablesMonotonic(
     const incomingShoe = Number(incoming?.shoe)
     const previousRound = Number(previous?.round)
     const incomingRound = Number(incoming?.round)
+    // Preserve the whole current snapshot, not retired-shoe metadata patched
+    // with an active shoe/round below.
+    if (previous && shoeChronology.get(tableId)?.retired.includes(incomingShoe)) return structuredClone(previous)
     const previousHasScreen = previous?.shoe != null && previous?.shoe !== '' && previous?.round != null && previous?.round !== ''
       && Number.isSafeInteger(previousShoe) && Number.isSafeInteger(previousRound)
     const incomingHasScreen = incoming?.shoe != null && incoming?.shoe !== '' && incoming?.round != null && incoming?.round !== ''
@@ -590,7 +638,18 @@ function mergeExactTablesMonotonic(
     const missingIncomingScreen = previousHasScreen && !incomingHasScreen
     const staleSameShoeRound = previousHasScreen && incomingHasScreen && incomingShoe === previousShoe && incomingRound < previousRound
     const providerShoeTransition = previousHasScreen && incomingHasScreen && incomingShoe !== previousShoe
-    if (missingIncomingScreen || staleSameShoeRound) selected = previous
+    const incomingCurrent = catalogInteger(incoming?.trend?.current_round, 1)
+    const previousCurrent = catalogInteger(previous?.trend?.current_round, 1)
+    const incomingCompleted = catalogInteger(incoming?.trend?.total_round)
+    const previousCompleted = catalogInteger(previous?.trend?.total_round)
+    const staleNestedMetadata = incomingShoe === previousShoe
+      && ((incomingCurrent != null && previousCurrent != null && incomingCurrent < previousCurrent)
+        || (incomingCompleted != null && previousCompleted != null && incomingCompleted < previousCompleted))
+    const freshNestedMetadata = incomingShoe === previousShoe && incomingCurrent != null && incomingCompleted != null
+      && (previousCurrent == null || incomingCurrent >= previousCurrent)
+      && (previousCompleted == null || incomingCompleted >= previousCompleted)
+    if (missingIncomingScreen || staleNestedMetadata || (staleSameShoeRound && !freshNestedMetadata)) selected = previous
+    else if (staleSameShoeRound) selected = { ...incoming, round: previousRound }
     const finalScreen = finalScreens.get(tableId)
     const selectedShoe = Number(selected?.shoe)
     const selectedRound = Number(selected?.round)
