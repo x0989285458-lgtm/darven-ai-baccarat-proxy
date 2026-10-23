@@ -105,6 +105,7 @@ const proxyApiUrl = dravenApiBaseUrl
 const pollIntervalMs = Number(import.meta.env.VITE_DRAVEN_PROXY_POLL_MS ?? 5000)
 const streamStaleMs = Number(import.meta.env.VITE_DRAVEN_STREAM_STALE_MS ?? 15000)
 const liveTableMaxAgeMs = Number(import.meta.env.VITE_DRAVEN_TABLE_MAX_AGE_MS ?? 120000)
+const liveReadTimeoutMs = 5000
 const missingPredictionRefreshMs = 750
 const missingPredictionRefreshLimit = 20
 const CURRENT_STRATEGY_VERSION = frontendBuildMetadata.strategyVersion
@@ -131,6 +132,7 @@ export class LiveRoadClient {
   private reconnectTimer?: number
   private streamWatchdog?: number
   private pollPromise?: Promise<void>
+  private pollAbort?: AbortController
   private connectionGeneration = 0
   private lastTablesAt = 0
   private stopped = true
@@ -159,6 +161,8 @@ export class LiveRoadClient {
     this.stopped = true
     this.connectionGeneration += 1
     this.pollPromise = undefined
+    this.pollAbort?.abort()
+    this.pollAbort = undefined
     if (this.timer) window.clearTimeout(this.timer)
     if (this.streamWatchdog) window.clearInterval(this.streamWatchdog)
     if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer)
@@ -231,32 +235,36 @@ export class LiveRoadClient {
 
   private async pollOnce(generation: number) {
     if (this.stopped) return
+    const controller = new AbortController()
+    this.pollAbort = controller
     try {
-      const headers = this.options.memberSessionToken ? { Authorization: `Bearer ${this.options.memberSessionToken}` } : undefined
-      const statusPromise = this.options.memberSessionToken ? readProxyStatus(this.options.memberSessionToken) : Promise.resolve<Status | null>(null)
-      const [response, proxyStatus] = await Promise.all([
-        fetch(`${proxyApiUrl}/api/tables`, { cache: 'no-store', headers }),
-        statusPromise,
-      ])
-      if (this.stopped || generation !== this.connectionGeneration) return
-      if (response.status === 401) {
-        this.handleUnauthorized()
-        return
-      }
-      if (!response.ok) throw new Error(`proxy ${response.status}`)
-      const payload = await response.json()
-      if (this.stopped || generation !== this.connectionGeneration) return
-      const tables = normalizeProxyTables(Array.isArray(payload) ? payload : [])
-      this.lastTablesAt = Date.now()
-      if (proxyStatus && /stale|過期|建置版本不符/i.test(proxyStatus.message)) {
-        this.suppressAcceptedTables()
-        this.options.onStatus(proxyStatus)
-        return
-      }
-      if (this.publishTables(tables, `雲端資料已連線（${tables.length}桌）`)) return
-      const fallbackStatus = proxyStatus ?? await readProxyStatus()
-      if (this.stopped || generation !== this.connectionGeneration) return
-      this.options.onStatus(fallbackStatus)
+      await withLiveReadDeadline(controller, async () => {
+        const headers = this.options.memberSessionToken ? { Authorization: `Bearer ${this.options.memberSessionToken}` } : undefined
+        const statusPromise = this.options.memberSessionToken ? readProxyStatus(this.options.memberSessionToken, controller.signal) : Promise.resolve<Status | null>(null)
+        const [response, proxyStatus] = await Promise.all([
+          fetch(`${proxyApiUrl}/api/tables`, { cache: 'no-store', headers, signal: controller.signal }),
+          statusPromise,
+        ])
+        if (this.stopped || generation !== this.connectionGeneration || controller.signal.aborted) return
+        if (response.status === 401) {
+          this.handleUnauthorized()
+          return
+        }
+        if (!response.ok) throw new Error(`proxy ${response.status}`)
+        const payload = await response.json()
+        if (this.stopped || generation !== this.connectionGeneration || controller.signal.aborted) return
+        const tables = normalizeProxyTables(Array.isArray(payload) ? payload : [])
+        this.lastTablesAt = Date.now()
+        if (proxyStatus && /stale|過期|建置版本不符/i.test(proxyStatus.message)) {
+          this.suppressAcceptedTables()
+          this.options.onStatus(proxyStatus)
+          return
+        }
+        if (this.publishTables(tables, `雲端資料已連線（${tables.length}桌）`)) return
+        const fallbackStatus = proxyStatus ?? await readProxyStatus(undefined, controller.signal)
+        if (this.stopped || generation !== this.connectionGeneration || controller.signal.aborted) return
+        this.options.onStatus(fallbackStatus)
+      })
     } catch (error) {
       if (this.stopped || generation !== this.connectionGeneration) return
       if (error instanceof UnauthorizedStatusError) {
@@ -265,6 +273,8 @@ export class LiveRoadClient {
       }
       this.suppressAcceptedTables()
       this.options.onStatus({ state: 'error', message: '雲端代理暫時無法讀取資料' })
+    } finally {
+      if (this.pollAbort === controller) this.pollAbort = undefined
     }
   }
 
@@ -416,10 +426,26 @@ function hasAdvancedTableIdentity(previous: LiveTable, incoming: LiveTable) {
   return Number(incoming.trend.current_round) > Number(previous.trend.current_round)
 }
 
-async function readProxyStatus(memberSessionToken?: string): Promise<Status> {
+async function withLiveReadDeadline<T>(controller: AbortController, read: () => Promise<T>): Promise<T> {
+  let abort!: () => void
+  const cancelled = new Promise<never>((_, reject) => {
+    abort = () => reject(new Error('live read aborted'))
+    controller.signal.addEventListener('abort', abort, { once: true })
+  })
+  const timer = window.setTimeout(() => controller.abort(), liveReadTimeoutMs)
+  try {
+    return await Promise.race([read(), cancelled])
+  } finally {
+    window.clearTimeout(timer)
+    controller.signal.removeEventListener('abort', abort)
+    controller.abort()
+  }
+}
+
+async function readProxyStatus(memberSessionToken?: string, signal?: AbortSignal): Promise<Status> {
   try {
     const headers = memberSessionToken ? { Authorization: `Bearer ${memberSessionToken}` } : undefined
-    const response = await fetch(`${proxyApiUrl}/api/status`, { cache: 'no-store', headers })
+    const response = await fetch(`${proxyApiUrl}/api/status`, { cache: 'no-store', headers, signal })
     if (response.status === 401 && memberSessionToken) throw new UnauthorizedStatusError()
     if (!response.ok) return { state: 'error', message: `proxy狀態讀取失敗 (${response.status})` }
     const status = await response.json()
