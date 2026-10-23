@@ -237,8 +237,13 @@ function openAdminSession(token, key) {
   }
 }
 
-function acceptLifecycleScreenIdentity(guardsByTable, { tableId, shoe, visibleRound }) {
-  const identity = `${tableId}:${shoe}:${visibleRound}`
+function visibleScreenRound(round, roundBasis) {
+  return Number(round) + (roundBasis === 'completed' ? 1 : 0)
+}
+
+function acceptLifecycleScreenIdentity(guardsByTable, { tableId, shoe, visibleRound, roundBasis }) {
+  const completed = roundBasis === 'completed'
+  const identity = `${tableId}:${shoe}:${visibleRound}:${completed}`
   const guard = guardsByTable.get(tableId) ?? {
     latestShoe: null,
     latestRound: null,
@@ -250,7 +255,11 @@ function acceptLifecycleScreenIdentity(guardsByTable, { tableId, shoe, visibleRo
 
   if (guard.seenIdentities.has(identity)) return false
   if (guard.latestShoe === shoe) {
-    if (visibleRound <= guard.latestRound) return false
+    if (guard.roundBasis === 'completed' && !completed) return false
+    const candidateVisible = visibleScreenRound(visibleRound, roundBasis)
+    const latestVisible = visibleScreenRound(guard.latestRound, guard.roundBasis)
+    const basisUpgrade = completed && guard.roundBasis !== 'completed'
+    if (candidateVisible < latestVisible || (candidateVisible === latestVisible && !basisUpgrade)) return false
   } else if (guard.latestShoe != null) {
     if (guard.seenShoes.has(shoe)) return false
     const candidateNumericShoe = numericShoe(shoe)
@@ -268,6 +277,7 @@ function acceptLifecycleScreenIdentity(guardsByTable, { tableId, shoe, visibleRo
 
   guard.latestShoe = shoe
   guard.latestRound = visibleRound
+  guard.roundBasis = roundBasis
   rememberBounded(guard.seenIdentities, guard.identityOrder, identity, LIFECYCLE_IDENTITIES_PER_TABLE)
   rememberBounded(guard.seenShoes, guard.shoeOrder, shoe, LIFECYCLE_SHOES_PER_TABLE)
   guardsByTable.set(tableId, guard)
@@ -307,7 +317,10 @@ function isOlderTableScreen(candidate = {}, current = {}) {
   const candidateRound = Number(candidate?.round)
   const currentRound = Number(current?.round)
   if (!candidateShoe || !currentShoe || !Number.isSafeInteger(candidateRound) || !Number.isSafeInteger(currentRound)) return false
-  if (candidateShoe === currentShoe) return candidateRound < currentRound
+  if (candidateShoe === currentShoe) {
+    if (current.roundBasis === 'completed' && candidate.roundBasis !== 'completed') return true
+    return visibleScreenRound(candidateRound, candidate.roundBasis) < visibleScreenRound(currentRound, current.roundBasis)
+  }
   if (isProviderWrapPair(candidateShoe, currentShoe)) return true
   const candidateNumericShoe = numericShoe(candidateShoe)
   const currentNumericShoe = numericShoe(currentShoe)
@@ -396,7 +409,9 @@ export function resolveProductionConcurrency(env = process.env) {
   }
 }
 
-export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 45000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), outboxCoalesceMs = process.env.CAPTURE_OUTBOX_COALESCE_MS ?? 1000, captureOutboxBatchLimit = process.env.CAPTURE_OUTBOX_BATCH_LIMIT ?? 30, captureOutboxConsumerEnabled = process.env.CAPTURE_OUTBOX_CONSUMER_ENABLED ?? true, captureOutboxPollMs = process.env.CAPTURE_OUTBOX_POLL_MS ?? 0, latestPredictionRefreshMs = process.env.LATEST_PREDICTION_REFRESH_MS ?? 1000, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionSecret = process.env.MEMBER_SESSION_SECRET, adminSessionSecret = process.env.ADMIN_SESSION_SECRET || memberSessionSecret, adminSessionTtlMs: requestedAdminSessionTtlMs = Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionValidationTtlMs = Number(process.env.MEMBER_SESSION_VALIDATION_TTL_MS ?? 0), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), streamHeartbeatMs = Number(process.env.STREAM_HEARTBEAT_MS ?? 3000), livePredictionReadWaitMs = process.env.LIVE_PREDICTION_READ_WAIT_MS ?? 1000, serviceShutdownDeadlineMs = 5000, fatalHandler = null, fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v104FormalRuntime = null, pendingPredictionStore = null, dailyMemoryRollover = null, requireFencedIngest = process.env.REQUIRE_FENCED_INGEST === 'true', sourceFenceStore = null } = {}) {
+export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS ?? 'legacy', autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 45000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), outboxCoalesceMs = process.env.CAPTURE_OUTBOX_COALESCE_MS ?? 1000, captureOutboxBatchLimit = process.env.CAPTURE_OUTBOX_BATCH_LIMIT ?? 30, captureOutboxConsumerEnabled = process.env.CAPTURE_OUTBOX_CONSUMER_ENABLED ?? true, captureOutboxPollMs = process.env.CAPTURE_OUTBOX_POLL_MS ?? 0, latestPredictionRefreshMs = process.env.LATEST_PREDICTION_REFRESH_MS ?? 1000, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionSecret = process.env.MEMBER_SESSION_SECRET, adminSessionSecret = process.env.ADMIN_SESSION_SECRET || memberSessionSecret, adminSessionTtlMs: requestedAdminSessionTtlMs = Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionValidationTtlMs = Number(process.env.MEMBER_SESSION_VALIDATION_TTL_MS ?? 0), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), streamHeartbeatMs = Number(process.env.STREAM_HEARTBEAT_MS ?? 3000), livePredictionReadWaitMs = process.env.LIVE_PREDICTION_READ_WAIT_MS ?? 1000, serviceShutdownDeadlineMs = 5000, fatalHandler = null, fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v104FormalRuntime = null, pendingPredictionStore = null, dailyMemoryRollover = null, requireFencedIngest = process.env.REQUIRE_FENCED_INGEST === 'true', sourceFenceStore = null } = {}) {
+  if (!['legacy', 'completed'].includes(captureRoundBasis)) throw new Error('capture round basis must be legacy or completed')
+  const isAdmittedCaptureScreen = (table) => captureRoundBasis !== 'completed' || table?.roundBasis === 'completed'
   const ingestSourceFence = sourceFenceStore ?? createInMemoryIngestSourceFence()
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
@@ -565,6 +580,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       const changedScreenTables = []
       latestStreamScreenSignature = streamScreenSignature
       for (const table of tables) {
+        if (!isAdmittedCaptureScreen(table)) continue
         const observedTableId = canonicalProductionTableId(table?.tableId)
         const observedShoe = table?.shoe == null ? '' : String(table.shoe)
         const observedRound = Number(table?.round)
@@ -577,10 +593,11 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             tableId: observedTableId,
             shoe: observedShoe,
             visibleRound: observedRound,
+            roundBasis: table.roundBasis,
           })
           if (accepted) {
             screenProgressChanged = true
-            latestObservedScreenByTable.set(observedTableId, { shoe: observedShoe, visibleRound: observedRound })
+            latestObservedScreenByTable.set(observedTableId, { shoe: observedShoe, visibleRound: observedRound, roundBasis: table.roundBasis })
           }
         }
         if (!resolvedCaptureOutboxConsumerEnabled || tableUpdateWorkContext.getStore()?.suppressPredictionWork) continue
@@ -847,6 +864,9 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       if (beforeClaim) setCaptureOutboxPhase('fresh_screen')
       const freshSnapshot = await readLatestCloudSnapshot({ requireFresh: true })
       const freshTables = Array.isArray(freshSnapshot?.tables) ? freshSnapshot.tables : []
+      if (freshTables.some((table) => !isAdmittedCaptureScreen(table))) {
+        throw new Error('fresh completed round identity is required before latest prediction refresh')
+      }
       const freshTableIds = new Set(freshTables.map((table) => canonicalProductionTableId(table?.tableId)))
       const freshSnapshotTimestamp = freshSnapshot?.snapshot_at ?? freshSnapshot?.created_at ?? freshSnapshot?.updated_at
       const hasFreshSnapshotTimestamp = isFreshCloudTimestamp(freshSnapshotTimestamp, 120000)
@@ -917,7 +937,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       }
       const actionableFreshTables = effectiveFreshTables.filter((table) => {
         const tableId = canonicalProductionTableId(table?.tableId)
-        return Number(effectiveFreshRounds.get(tableId)) > 0
+        return visibleScreenRound(effectiveFreshRounds.get(tableId), table?.roundBasis) > 0
           && lastSuccessfulLatestPredictionSignatureByTable.get(tableId) !== freshPredictionSignaturesByTable.get(tableId)
       })
       if (actionableFreshTables.length === 0) {
@@ -1029,6 +1049,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
               await tableUpdateWorkContext.run(outboxUpdateContext, async () => {
                 const applied = await runLeasePhase('formal', () => (
                   applyCloudCapturePayload({
+                    completedRoundIdentity: captureRoundBasis === 'completed',
                     parsed, state, writer: supabaseClient, v100Formal,
                     persistAncillary: false,
                     publishSnapshot: false,
@@ -1423,7 +1444,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
                 })
               }
             } else {
-              captureResult = await applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Formal })
+              captureResult = await applyCloudCapturePayload({ parsed, state, writer: supabaseClient, v100Formal, completedRoundIdentity: captureRoundBasis === 'completed' })
               if (fencedSource) await ingestSourceFence.validateAndAdvance?.(fencedSource)
             }
           } catch (error) {
@@ -1956,6 +1977,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     if (!latest) return true
     return latest.shoe === String(table?.shoe ?? '')
       && latest.visibleRound === Number(table?.round)
+      && (latest.roundBasis === 'completed') === (table?.roundBasis === 'completed')
   }
 
   async function reconcileLatestObservedPredictionScreen(prediction) {
@@ -1966,11 +1988,12 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       source: 'ofalive99',
       tableId,
       currentShoe: latest.shoe,
-      currentVisibleRound: latest.visibleRound,
+      currentVisibleRound: visibleScreenRound(latest.visibleRound, latest.roundBasis),
     })
   }
 
   async function reconcileThenSavePendingPrediction(table, { failOnReconciliationError = false } = {}) {
+    if (!isAdmittedCaptureScreen(table)) return null
     let reconciliationError = null
     const tableId = canonicalProductionTableId(table?.tableId)
     const shoe = table?.shoe == null ? '' : String(table.shoe)
@@ -1980,11 +2003,12 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       && PRODUCTION_TABLE_IDS.includes(tableId)
       && Boolean(shoe)
       && Number.isSafeInteger(visibleRound)
-      && visibleRound > 0
+      && visibleScreenRound(visibleRound, table?.roundBasis) > 0
     if (canReconcile) {
       const guard = lifecycleGuardsByTable.get(tableId)
       const exactDuplicate = guard?.latestShoe === shoe && guard?.latestRound === visibleRound
-      const accepted = acceptLifecycleScreenIdentity(lifecycleGuardsByTable, { tableId, shoe, visibleRound })
+        && (guard?.roundBasis === 'completed') === (table?.roundBasis === 'completed')
+      const accepted = acceptLifecycleScreenIdentity(lifecycleGuardsByTable, { tableId, shoe, visibleRound, roundBasis: table?.roundBasis })
       if (!accepted && !exactDuplicate) return
       if (accepted || (failOnReconciliationError && exactDuplicate)) {
         try {
@@ -1992,7 +2016,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
             source: 'ofalive99',
             tableId,
             currentShoe: shoe,
-            currentVisibleRound: visibleRound,
+            currentVisibleRound: visibleScreenRound(visibleRound, table?.roundBasis),
           })
         } catch (error) {
           if (failOnReconciliationError) {
@@ -2088,8 +2112,8 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
       for (const [key, refresh] of missingPredictionRefreshes) {
         if (!Number.isFinite(refresh.nextAt) || refresh.nextAt > dueAt + 5) continue
         const stillCurrent = snapshotTables.some((candidate) => (
-          predictionTargetKey(candidate?.tableId, candidate?.shoe, candidate?.round) === key
-          && Number(candidate?.round) === Number(refresh.targetRound)
+          predictionTargetKey(candidate?.tableId, candidate?.shoe, predictionScreen(candidate)?.round) === key
+          && Number(predictionScreen(candidate)?.round) === Number(refresh.targetRound)
         ))
         if (!stillCurrent || dueAt >= refresh.expiresAt || refresh.attempt >= 4) {
           clearMissingPredictionRefresh(key)
@@ -2153,6 +2177,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   }
 
   function savePendingPrediction(table) {
+    if (!isAdmittedCaptureScreen(table)) return Promise.resolve(null)
     const currentRound = Number(table?.round)
     if (!table?.tableId || table?.shoe == null || !Number.isSafeInteger(currentRound)) return Promise.resolve(null)
     const expectedKey = predictionTargetKey(table.tableId, table.shoe, currentRound + 1)
@@ -2170,6 +2195,19 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
   async function savePendingPredictionImpl(table) {
     if (!isPredictionRuntimeReady()) return null
     if (!recentPerformanceReady && !await ensureRecentPerformanceReady()) return null
+    if (captureRoundBasis === 'completed') {
+      if (typeof v104Formal?.latestIssuance !== 'function') throw new Error('completed round issuance history is unavailable')
+      await v104Formal.start()
+      if (!isLatestObservedTableScreen(table)) return null
+      const targetRound = Number(table.round) + 1
+      const latest = v104Formal.latestIssuance(table.tableId)
+      if (latest && String(latest.targetShoe) === String(table.shoe) && Number(latest.targetRound) >= targetRound) {
+        if (Number(latest.targetRound) > targetRound) return null
+        const key = predictionTargetKey(table.tableId, table.shoe, targetRound)
+        const exact = await startIssuedPredictionRead(table, targetRound, key, isDurablePredictionIssuanceRequired())
+        return isLatestObservedTableScreen(table) ? exact : null
+      }
+    }
     const tablePerformance = recentTablePerformance.summary(table?.tableId, table?.shoe)
     const predictionInput = { ...table, ...tablePerformance }
     const formalPrediction = v104Formal
@@ -2356,9 +2394,15 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
     return poll
   }
 
+  function predictionScreen(table) {
+    return table?.roundBasis === 'completed'
+      ? { ...table, round: Number(table.round) + 1, roundBasis: 'visible' }
+      : table
+  }
+
   async function withLivePrediction(table, actionable = true, predictionWillBeBroadcast = false) {
-    if (!actionable || table?.tableId == null || table?.shoe == null || table?.round == null) {
-      return { ...table, buildVersion: BUILD_VERSION, prediction: null }
+    if (!actionable || !isAdmittedCaptureScreen(table) || table?.tableId == null || table?.shoe == null || table?.round == null) {
+      return { ...predictionScreen(table), buildVersion: BUILD_VERSION, prediction: null }
     }
 
     if (resolvedCaptureOutboxConsumerEnabled) {
@@ -2367,6 +2411,7 @@ export function createApp({ autoConnect, token = process.env.MT_TOKEN, port = Nu
         new Promise((resolve) => setTimeout(() => resolve(null), 25)),
       ])
     }
+    table = predictionScreen(table)
     const targetRound = Number(table.round)
     const key = predictionTargetKey(table.tableId, table.shoe, targetRound)
     const durableIssuanceRequired = isDurablePredictionIssuanceRequired()

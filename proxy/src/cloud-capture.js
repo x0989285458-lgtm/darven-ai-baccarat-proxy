@@ -149,7 +149,7 @@ async function runDurableStage(stage, operation) {
   }
 }
 
-function materializeRoundOnlyTables(tables = [], rounds = []) {
+function materializeRoundOnlyTables(tables = [], rounds = [], completedRoundIdentity = false) {
   if (rounds.length === 0) return { publishedTables: tables, settlementTables: tables }
   const tableOrder = []
   const recordsByTable = new Map()
@@ -187,19 +187,25 @@ function materializeRoundOnlyTables(tables = [], rounds = []) {
     const byIdentity = recordsFor(tableId)
     const identity = String(shoe)
     const current = byIdentity.get(identity)
+    const completedBasis = completedRoundIdentity || tables.some((table) => (
+      canonicalProductionTableId(table?.tableId) === tableId && table?.roundBasis === 'completed'
+    ))
+    const basis = completedBasis ? { roundBasis: 'completed' } : {}
     const exactTable = current && Number(current.table.round) === roundNo
-      ? { ...structuredClone(current.table), lastRound: structuredClone(round) }
+      ? { ...structuredClone(current.table), ...basis, lastRound: structuredClone(round) }
       : {
           tableId,
           displayName: round?.tableName ?? `MT百家樂${tableId}`,
           tableType: 'BAC',
           shoe,
           round: roundNo,
+          ...basis,
           sourceUpdatedAt: round?.receivedAt ?? round?.received_at ?? null,
           lastRound: structuredClone(round),
         }
     settlementTables.push(exactTable)
-    if (current && Number(current.table.round) >= roundNo) continue
+    if (current && (Number(current.table.round) > roundNo
+      || (Number(current.table.round) === roundNo && !completedBasis))) continue
     byIdentity.set(identity, { round, table: exactTable })
   }
   const compareChronology = (left, right) => {
@@ -242,14 +248,14 @@ function materializeRoundOnlyTables(tables = [], rounds = []) {
   }
 }
 
-export async function applyCloudCapturePayload({ parsed, state, writer, v100Formal = null, persistAncillary = true, publishSnapshot = true, onDurablePhase = null }) {
+export async function applyCloudCapturePayload({ parsed, state, writer, v100Formal = null, persistAncillary = true, publishSnapshot = true, onDurablePhase = null, completedRoundIdentity = false }) {
   const reportDurablePhase = (phase, diagnostic = {}) => {
     try {
       const reported = onDurablePhase?.({ phase, ...diagnostic })
       if (reported && typeof reported.then === 'function') void Promise.resolve(reported).catch(() => {})
     } catch {}
   }
-  const materialized = materializeRoundOnlyTables(parsed.tables, parsed.rounds)
+  const materialized = materializeRoundOnlyTables(parsed.tables, parsed.rounds, completedRoundIdentity)
   parsed = canonicalizeFormalRoundSources({ ...parsed, tables: materialized.publishedTables })
   const canonicalRoundByIdentity = new Map(parsed.rounds.map((round) => [JSON.stringify([
     String(round?.tableId ?? ''), String(round?.shoe ?? ''), Number(round?.round),
@@ -445,13 +451,33 @@ function selectProductionRounds(rounds = []) {
 
 function normalizeCloudTables(tables) {
   const normalized = normalizeMtTables(tables)
-  if (normalized.length || !Array.isArray(tables)) return normalized
+  if (normalized.length || !Array.isArray(tables)) {
+    const rawById = new Map((Array.isArray(tables) ? tables : [])
+      .map((table) => [canonicalProductionTableId(table?.table_id ?? table?.tableId), table]))
+    return normalized.map((table) => {
+      const raw = rawById.get(table.tableId)
+      // API Worker explicitly supplies completed rounds. Provider current_round
+      // is the betting/display round and must not replace completed round zero.
+      if (raw?.shoe == null && raw?.round == null) return table
+      const integer = (value) => (typeof value === 'number' || (typeof value === 'string' && /^\d+$/.test(value)))
+        && Number.isSafeInteger(Number(value)) && Number(value) >= 0
+      const shoe = Number(raw?.shoe)
+      const round = Number(raw?.round)
+      const current = Number(raw?.trend?.current_round)
+      const completed = Number(raw?.trend?.total_round)
+      if (![raw?.shoe, raw?.round, raw?.trend?.current_round, raw?.trend?.total_round].every(integer)
+        || current < 1 || (current !== completed && current !== completed + 1)
+        || round < completed || shoe !== Number(table.shoe)) throw new Error('invalid completed worker screen identity')
+      return { ...table, shoe, round, roundBasis: 'completed' }
+    })
+  }
   return tables.map((table, index) => ({
     tableId: table.tableId ?? table.table_id ?? String(index + 1),
     displayName: table.displayName ?? table.name ?? table.table_name ?? `MT百家樂第${index + 1}桌`,
     tableType: table.tableType ?? table.table_type ?? 'BAC',
     shoe: table.shoe ?? table.current_shoe ?? null,
     round: table.round ?? table.current_round ?? null,
+    ...(table.roundBasis === 'completed' ? { roundBasis: 'completed' } : {}),
     bankerCount: table.bankerCount ?? table.total_round_banker ?? 0,
     playerCount: table.playerCount ?? table.total_round_player ?? 0,
     tieCount: table.tieCount ?? table.total_round_tie ?? 0,
