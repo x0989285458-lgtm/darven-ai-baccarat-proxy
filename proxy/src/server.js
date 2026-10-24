@@ -2128,7 +2128,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
         return
       }
       missingPredictionRefreshPromise = Promise.all(due.map(({ key, refresh }) => (
-        startIssuedPredictionRead(refresh.table, refresh.targetRound, key, true, { bypassBackoff: true })
+        startIssuedPredictionRead(refresh.table, refresh.targetRound, key, true)
       )))
         .then((predictions) => {
           let anyExact = false
@@ -2270,20 +2270,19 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
     return issuance
   }
 
-  function rememberIssuedPredictionReadBackoff(key) {
-    issuedPredictionReadRetryAt.set(key, now() + 2000)
+  function rememberIssuedPredictionReadBackoff(key, delayMs = 2000) {
+    issuedPredictionReadRetryAt.set(key, Math.max(Number(issuedPredictionReadRetryAt.get(key) ?? 0), now() + delayMs))
     while (issuedPredictionReadRetryAt.size > 1000) {
       issuedPredictionReadRetryAt.delete(issuedPredictionReadRetryAt.keys().next().value)
     }
   }
 
   function startIssuedPredictionRead(table, targetRound, key, durableIssuanceRequired, {
-    bypassBackoff = false,
     deferMissingBackoff = false,
   } = {}) {
     if (readingIssuedPredictionPromises.has(key)) return readingIssuedPredictionPromises.get(key)
     const retryAt = Number(issuedPredictionReadRetryAt.get(key) ?? 0)
-    if (!bypassBackoff && retryAt > now()) return Promise.resolve(null)
+    if (retryAt > now()) return Promise.resolve(null)
     issuedPredictionReadRetryAt.delete(key)
     if (typeof supabaseClient?.readIssuedPrediction !== 'function') return Promise.resolve(null)
     let readOperation
@@ -2301,7 +2300,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       .then((candidate) => {
         if (readingIssuedPredictionPromises.get(key) !== read) return null
         if (candidate === null) {
-          if (!deferMissingBackoff) rememberIssuedPredictionReadBackoff(key)
+          if (!deferMissingBackoff) rememberIssuedPredictionReadBackoff(key, 250)
           return null
         }
         if (!isExactScreenPrediction(candidate, table, targetRound, durableIssuanceRequired)) {
@@ -2366,24 +2365,28 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       let readAttempt = 0
       while (true) {
         if (Date.now() >= deadlineAt || readAttempt >= 5) {
-          rememberIssuedPredictionReadBackoff(key)
+          rememberIssuedPredictionReadBackoff(key, 250)
           return null
         }
         readAttempt += 1
         const issuedPredictionRead = startIssuedPredictionRead(table, targetRound, key, durableIssuanceRequired, {
-          bypassBackoff: true,
           deferMissingBackoff: true,
         })
         const exact = await waitForPredictionReadUntil(issuedPredictionRead, deadlineAt)
         if (exact) return exact
+        // A deadline with an unresolved read is not evidence of a missing row.
+        if (readingIssuedPredictionPromises.has(key)) {
+          rememberIssuedPredictionReadBackoff(key)
+          return null
+        }
         if (Number(issuedPredictionReadRetryAt.get(key) ?? 0) > now()) return null
         if (readAttempt >= 5) {
-          rememberIssuedPredictionReadBackoff(key)
+          rememberIssuedPredictionReadBackoff(key, 250)
           return null
         }
         const remainingMs = deadlineAt - Date.now()
         if (remainingMs <= 0) {
-          rememberIssuedPredictionReadBackoff(key)
+          rememberIssuedPredictionReadBackoff(key, 250)
           return null
         }
         const retryDelayMs = Math.min(50 * (2 ** Math.min(readAttempt - 1, 4)), remainingMs)
