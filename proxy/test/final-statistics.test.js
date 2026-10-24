@@ -13,7 +13,7 @@ test('v102 today prediction count queries and accepts only v102 final settlement
   const oldRow = { id: 'v98-final', strategy_version: 'v98', settlement_final: true, prediction_features: { settlement_final: true } }
   const client = createSupabaseIngestionClient({
     url: 'https://example.supabase.co', serviceKey: 'test-service-key',
-    fetchImpl: async (url) => { requestedUrl = new URL(url); return response([v102Row, oldRow]) },
+    fetchImpl: async (url) => { requestedUrl = new URL(url); return { ...response([v102Row, oldRow]), headers: new Headers({ 'content-range': `0-0/${[v102Row, oldRow].filter((row) => row.strategy_version === 'v105' && row.settlement_final === true).length}` }) } },
   })
 
   assert.equal(await client.countTodayPredictionRounds(), 1)

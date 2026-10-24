@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import { PRODUCTION_TABLE_IDS } from './cloud-capture.js'
 import pg from 'pg'
 import { ALL_MT_EQUAL_STRATEGY_VERSION, resolveBackendReadConnectionString } from './supabase-writer.js'
 
@@ -357,31 +358,30 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null, auth
 
   async function getDailyAnalytics() {
     if (!configured) return { todayRoundCount: 0, tableStats: [], dailyReports: [] }
-    if (dailyAnalyticsCache && Date.now() - dailyAnalyticsCacheAt < dailyAnalyticsCacheMs) return dailyAnalyticsCache
+    const reportDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date())
+    if (dailyAnalyticsCache?.dailyReports?.[0]?.date === reportDay && Date.now() - dailyAnalyticsCacheAt < dailyAnalyticsCacheMs) return dailyAnalyticsCache
     if (dailyAnalyticsInFlight) return dailyAnalyticsInFlight
-    dailyAnalyticsInFlight = loadDailyAnalytics()
+    dailyAnalyticsInFlight = loadDailyAnalytics(reportDay)
     try {
       const result = await dailyAnalyticsInFlight
       dailyAnalyticsCache = result
       dailyAnalyticsCacheAt = Date.now()
       return result
-    } catch (error) {
-      if (dailyAnalyticsCache) return dailyAnalyticsCache
-      throw error
     } finally {
       dailyAnalyticsInFlight = null
     }
   }
 
-  async function loadDailyAnalytics() {
-    const todayCountPromise = db.query(`select count(distinct table_id || ':' || shoe_no || ':' || round_no)::int as rounds
-      from public.daily_prediction_results
-      where created_at >= ((timezone('Asia/Taipei', now())::date)::timestamp at time zone 'Asia/Taipei') and strategy_version = $1
-        and settlement_final is true`, [ALL_MT_EQUAL_STRATEGY_VERSION])
-    const tableRowsPromise = db.query(`with scoped as (
-        select table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, settlement_final, side_hits, prediction_features
+  async function loadDailyAnalytics(reportDay) {
+    // A single snapshot, but one bounded scalar-indexed table read at a time.
+    const tableSql = `with scoped as materialized (
+        select table_id, shoe_no, round_no, predicted_result, actual_result, is_hit, settlement_final, side_hits,
+          jsonb_build_object('side_actions', prediction_features->'side_actions',
+            'side_hits', CASE WHEN side_hits IS NULL THEN prediction_features->'side_hits' ELSE NULL END) AS prediction_features
         from public.daily_prediction_results
-        where created_at >= ((timezone('Asia/Taipei', now())::date)::timestamp at time zone 'Asia/Taipei') and strategy_version = $1
+        where created_at >= ($3::date::timestamp at time zone 'Asia/Taipei')
+          and created_at < (($3::date + 1)::timestamp at time zone 'Asia/Taipei')
+          and strategy_version = $1 and table_id = any($2::text[])
           and settlement_final is true
       ), validated as (
         select *,
@@ -457,12 +457,36 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null, auth
         from scoped s left join side on side.table_id=s.table_id
         group by s.table_id, side.side_actions, side.side_hits, side.tie_total, side.tie_hits,
           side.dragon_total, side.dragon_hits, side.pair_total, side.pair_hits, side.six_total, side.six_hits,
-          side.side_actions_available`, [ALL_MT_EQUAL_STRATEGY_VERSION])
-    const [todayCount, tableRows] = await Promise.all([todayCountPromise, tableRowsPromise])
+          side.side_actions_available`
+    const connection = await db.connect()
+    let failed = true
+    const tableRows = { rows: [] }
+    const deadline = Date.now() + 45_000
+    try {
+      await connection.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
+      // Explicit transaction-local limits also apply behind a transaction pooler.
+      await connection.query("SET LOCAL statement_timeout = '8500ms'")
+      await connection.query("SET LOCAL lock_timeout = '500ms'")
+      for (const tableId of PRODUCTION_TABLE_IDS) {
+        if (Date.now() >= deadline) throw new Error('analytics_read_deadline')
+        const result = await connection.query(tableSql, [ALL_MT_EQUAL_STRATEGY_VERSION, [tableId], reportDay])
+        tableRows.rows.push(...result.rows)
+      }
+      if (Date.now() >= deadline) throw new Error('analytics_read_deadline')
+      await connection.query('ROLLBACK')
+      failed = false
+    } finally {
+      if (failed) {
+        try { await connection.query('ROLLBACK') } catch {}
+      }
+      connection.release(failed)
+    }
+    if (new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date()) !== reportDay) throw new Error('analytics_day_changed')
+    const todayCount = { rows: [{ rounds: tableRows.rows.reduce((total, row) => total + Number(row.rounds ?? 0), 0) }] }
     const sum = (key) => tableRows.rows.reduce((total, row) => total + Number(row[key] ?? 0), 0)
     const sideActionsAvailable = tableRows.rows.length > 0 && tableRows.rows.every((row) => row.side_actions_available === true)
     const dailyReports = [{
-      date: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date()),
+      date: reportDay,
       rounds: Number(todayCount.rows[0]?.rounds ?? 0), side_actions_available: sideActionsAvailable,
       banker_hit_rate: pctText(sum('banker_hits'), sum('banker_total')),
       player_hit_rate: pctText(sum('player_hits'), sum('player_total')),
@@ -472,7 +496,7 @@ export function createLicenseAdminClient({ dbConnectionString, pool = null, auth
       six_hit_rate: sideActionsAvailable ? pctText(sum('six_hits'), sum('six_total')) : 'unavailable',
     }]
     const rowsByTable = new Map(tableRows.rows.map((row) => [row.table_id, row]))
-    const order = ['BAG01','BAG02','BAG03','BAG03A','BAG05','BAG06','BAG07','BAG08','BAG09','BAG10']
+    const order = PRODUCTION_TABLE_IDS
     return {
       todayRoundCount: Number(todayCount.rows[0]?.rounds ?? 0),
       tableStats: order.map((tableId) => {
@@ -641,7 +665,7 @@ function sideActionStats(rows, keys) {
 }
 function tableLabel(tableId) {
   const map = { BAG01:'1桌', BAG02:'2桌', BAG03:'3桌', BAG03A:'3A桌', BAG05:'5桌', BAG06:'6桌', BAG07:'7桌', BAG08:'8桌', BAG09:'9桌', BAG10:'10桌' }
-  return map[tableId] ?? String(tableId ?? '')
+  return map[String(tableId).replace(/^BAV/, 'BAG')] ?? String(tableId ?? '')
 }
 export function buildTableStats(rows) {
   const order = ['BAG01','BAG02','BAG03','BAG03A','BAG05','BAG06','BAG07','BAG08','BAG09','BAG10']

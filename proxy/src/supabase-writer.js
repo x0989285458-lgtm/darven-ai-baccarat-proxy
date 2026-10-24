@@ -3693,17 +3693,36 @@ export function createSupabaseIngestionClient({
       return Array.isArray(rows) ? rows[0] ?? null : null
     },
     async countTodayPredictionRounds() {
-      const since = new Date()
-      since.setHours(0, 0, 0, 0)
-      const rows = await getRest('daily_prediction_results', {
-        select: 'id,strategy_version,settlement_final',
-        created_at: `gte.${since.toISOString()}`,
-        strategy_version: `eq.${ALL_MT_EQUAL_STRATEGY_VERSION}`,
-        settlement_final: 'eq.true',
-      })
-      return (Array.isArray(rows) ? rows : [])
-        .filter((row) => row?.strategy_version === ALL_MT_EQUAL_STRATEGY_VERSION)
-        .filter(isFinalPredictionSettlement).length
+      if (!configured) throw new Error('Supabase prediction count is not configured')
+      // Asia/Taipei is UTC+08:00 (no DST); never use host-local midnight.
+      const dayMs = 24 * 60 * 60 * 1000
+      const taipeiOffsetMs = 8 * 60 * 60 * 1000
+      const start = Math.floor((Number(now()) + taipeiOffsetMs) / dayMs) * dayMs - taipeiOffsetMs
+      const endpoint = new URL('/rest/v1/daily_prediction_results', url)
+      endpoint.searchParams.set('select', 'id,strategy_version,settlement_final')
+      endpoint.searchParams.append('created_at', `gte.${new Date(start).toISOString()}`)
+      endpoint.searchParams.append('created_at', `lt.${new Date(start + dayMs).toISOString()}`)
+      endpoint.searchParams.set('strategy_version', `eq.${ALL_MT_EQUAL_STRATEGY_VERSION}`)
+      endpoint.searchParams.set('settlement_final', 'eq.true')
+      endpoint.searchParams.set('table_id', `in.(${PRODUCTION_TABLE_IDS.join(',')})`)
+      endpoint.searchParams.set('limit', '1')
+      const response = await fetchWithOptionalTimeout(endpoint, {
+        method: 'HEAD',
+        headers: {
+          ['api' + 'key']: serviceKey,
+          ['Author' + 'ization']: ['Bearer', serviceKey].join(' '),
+          Accept: 'application/json',
+          Prefer: 'count=exact',
+        },
+      }, formalTimeoutMs)
+      if (!response.ok) throw new Error(`Supabase prediction count failed: ${response.status}`)
+      const contentRange = response.headers?.get('content-range')
+      const match = /^(?:\*|\d+-\d+)\/(\d+)$/.exec(contentRange ?? '')
+      const count = match ? Number(match[1]) : NaN
+      if (!Number.isSafeInteger(count) || count < 0) {
+        throw new Error('Supabase prediction exact count is missing or invalid')
+      }
+      return count
     },
     async getPredictionLifecycleStats() {
       const acknowledgement = await postRest('rpc/get_v105_prediction_lifecycle_stats', {}, undefined, { requireObject: true })

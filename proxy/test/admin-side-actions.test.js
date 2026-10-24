@@ -9,9 +9,8 @@ test('admin requires complete boolean side_actions and side_hits before reportin
     async query(sql, params = []) {
       queries.push(String(sql))
       parameters.push(params)
-      if (queries.length === 1) return { rows: [{ rounds: 1 }] }
-      if (queries.length === 2) {
-        return { rows: [{ table_id: 'BAG01', rounds: 1, main_total: 1, main_hits: 1, side_actions: 0, side_hits: 0, side_actions_available: false }] }
+      if (queries.length === 1) {
+        return { rows: [{ table_id: 'BAV01', rounds: 1, main_total: 1, main_hits: 1, side_actions: 0, side_hits: 0, side_actions_available: false }] }
       }
       return { rows: [{
         date: '2026-07-12', rounds: 1,
@@ -22,10 +21,10 @@ test('admin requires complete boolean side_actions and side_hits before reportin
     },
   }
 
-  const analytics = await createLicenseAdminClient({ pool }).getDailyAnalytics()
+  const analytics = await createLicenseAdminClient({ pool: snapshotPool(pool) }).getDailyAnalytics()
 
   assert.deepEqual(analytics.tableStats[0], {
-    tableId: 'BAG01', tableName: '1桌', rounds: 1,
+    tableId: 'BAV01', tableName: '1桌', rounds: 1,
     mainHitRate: '100.0%', sideHitRate: 'unavailable', sideActionsAvailable: false,
   })
   assert.equal(analytics.dailyReports[0].side_actions_available, false)
@@ -39,16 +38,15 @@ test('admin requires complete boolean side_actions and side_hits before reportin
   }
   assert.doesNotMatch(sql, /jsonb_object_length/i)
   assert.doesNotMatch(sql, /jsonb_object_keys/i)
-  assert.deepEqual(analytics.tableStats.map((row) => row.tableId), ['BAG01','BAG02','BAG03','BAG03A','BAG05','BAG06','BAG07','BAG08','BAG09','BAG10'])
+  assert.deepEqual(analytics.tableStats.map((row) => row.tableId), ['BAV01','BAV02','BAV03','BAV03A','BAV05','BAV06'])
   assert.doesNotMatch(sql, /::date\s*-\s*6/i)
-  assert.equal((sql.match(/strategy_version\s*=\s*\$1/gi) ?? []).length, 2)
-  assert.equal((sql.match(/settlement_final\s+is\s+true/gi) ?? []).length, 2)
+  assert.equal((sql.match(/strategy_version\s*=\s*\$1/gi) ?? []).length, 6)
+  assert.equal((sql.match(/settlement_final\s+is\s+true/gi) ?? []).length, 6)
   assert.doesNotMatch(sql, /settlement_final\s+is\s+null/i)
   assert.doesNotMatch(sql, /prediction_features->>'settlement_final'/i)
-  assert.deepEqual(parameters, [
-    ['v105'],
-    ['v105'],
-  ])
+  assert.equal(parameters.length, 6)
+  assert.deepEqual(parameters[0].slice(0,2), ['v105', ['BAV01']])
+  assert.match(parameters[0][2], /^\d{4}-\d{2}-\d{2}$/)
 })
 
 test('admin analytics shares one in-flight load and reuses the successful cache', async () => {
@@ -58,16 +56,23 @@ test('admin analytics shares one in-flight load and reuses the successful cache'
       calls += 1
       await new Promise((resolve) => setTimeout(resolve, 5))
       const text = String(sql)
-      if (/select count\(distinct table_id/.test(text) && !/group by s\.table_id/.test(text)) return { rows: [{ rounds: 2 }] }
-      if (/group by s\.table_id/.test(text)) return { rows: [] }
+      if (/group by s\.table_id/.test(text)) return { rows: [{table_id:'BAV01',rounds:2}] }
       return { rows: [] }
     },
   }
-  const client = createLicenseAdminClient({ pool })
+  const client = createLicenseAdminClient({ pool: snapshotPool(pool) })
   const [first, second] = await Promise.all([client.getDailyAnalytics(), client.getDailyAnalytics()])
   assert.equal(first.todayRoundCount, 2)
   assert.deepEqual(second, first)
-  assert.equal(calls, 2)
+  assert.equal(calls, 6)
   await client.getDailyAnalytics()
-  assert.equal(calls, 2)
+  assert.equal(calls, 6)
 })
+
+function snapshotPool(pool) {
+  return {async connect(){return {async query(sql,params){
+    if(!params)return {rows:[]}
+    const value=await pool.query(sql,params)
+    return {rows:value.rows.filter(row=>params[1].includes(row.table_id))}
+  },release(){}}}}
+}

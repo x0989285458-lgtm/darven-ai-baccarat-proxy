@@ -1521,7 +1521,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
         const formalStatus = await licenseAdminClient.getCloudDataStatus?.()
         const cloudStatus = await readCloudSnapshotStatus()
         const [analytics, lifecycleStats] = await Promise.all([
-          licenseAdminClient.getDailyAnalytics?.().catch(() => null),
+          licenseAdminClient.getDailyAnalytics?.(),
           supabaseClient.getPredictionLifecycleStats?.().catch(() => null),
         ])
         const todayRoundCount = Number(analytics?.todayRoundCount ?? await readTodayRoundCount()) || 0
@@ -1529,7 +1529,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
         const message = appendTodayRoundMessage(formalStatus?.message ?? cloudStatus?.statusText, todayRoundCount)
         return jsonResponse(200, { ok: true, mtAutoLoginEnabled: false, ...formalStatus, message, todayRoundCount, tableStats: analytics?.tableStats ?? [], dailyReports: analytics?.dailyReports ?? [], ...(lifecycleStats ? { lifecycleStats } : {}), captureSource: cloudStatus?.captureSource ?? captureSource, deployMode: deployConfig.deployMode, tableCount, status: { ...snapshot.status, ...cloudStatus } }, frontendOrigin)
       } catch (error) {
-        return jsonResponse(200, { ok: true, mtAutoLoginEnabled: false, captureSource, deployMode: deployConfig.deployMode, tableCount: snapshot.tables.length, status: snapshot.status, error: error?.message ?? String(error) }, frontendOrigin)
+        return jsonResponse(503, { ok: false, mtAutoLoginEnabled: false, captureSource, deployMode: deployConfig.deployMode, tableCount: snapshot.tables.length, status: snapshot.status, error: 'analytics_unavailable' }, frontendOrigin)
       }
     }
     if (method === 'POST' && pathname === '/api/cloud-capture/tick') {
@@ -1821,12 +1821,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
 
   async function readTodayRoundCount() {
     if (!supabaseClient?.configured || typeof supabaseClient.countTodayPredictionRounds !== 'function') return 0
-    try {
-      return Number(await supabaseClient.countTodayPredictionRounds()) || 0
-    } catch (error) {
-      state.setStatus({ cloudReadStatus: 'error', cloudReadError: error?.message ?? String(error) })
-      return 0
-    }
+    return Number(await supabaseClient.countTodayPredictionRounds()) || 0
   }
 
   function appendTodayRoundMessage(message, count) {

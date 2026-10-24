@@ -187,7 +187,7 @@ test('stable report shares the approved main weights and side thresholds', () =>
 test('analytics trusts saved side actions, excludes ties from main rate, and gates dragon by main direction', async () => {
   const queries = []
   const pool = { async query(sql) { queries.push(String(sql)); return { rows: [] } } }
-  await createLicenseAdminClient({ pool }).getDailyAnalytics()
+  await createLicenseAdminClient({ pool: snapshotPool(pool) }).getDailyAnalytics()
 
   const sql = queries.join('\n')
   assert.match(sql, /prediction_features->'side_actions'/)
@@ -289,3 +289,11 @@ test('health and status expose one shared build version', async () => {
   assert.equal(health.version, 'v105')
   assert.equal(status.version, health.version)
 })
+
+function snapshotPool(pool) {
+  return {async connect(){return {async query(sql,params){
+    if(!params)return {rows:[]}
+    const value=await pool.query(sql,params)
+    return {rows:value.rows.filter(row=>params[1].includes(row.table_id))}
+  },release(){}}}}
+}

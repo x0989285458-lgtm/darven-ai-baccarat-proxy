@@ -232,11 +232,10 @@ test('admin main denominators exclude tie PUSH in SQL and fallback reports', asy
   ]
   const pool = { async query(sql) {
     queries.push(String(sql))
-    if (queries.length === 1) return { rows: [{ rounds: 5 }] }
-    if (queries.length === 2) return { rows: [{ table_id: 'BAG01', rounds: 5, main_total: 4, main_hits: 2, banker_total: 2, banker_hits: 1, player_total: 2, player_hits: 1, side_actions: 0, side_hits: 0, side_actions_available: false }] }
+    if (queries.length === 1) return { rows: [{ table_id: 'BAV01', rounds: 5, main_total: 4, main_hits: 2, banker_total: 2, banker_hits: 1, player_total: 2, player_hits: 1, side_actions: 0, side_hits: 0, side_actions_available: false }] }
     return { rows: [{ date: '2026-07-16', rounds: 5, banker_hit_rate: '50.0%', player_hit_rate: '50.0%', side_actions_available: false, tie_hit_rate: 'unavailable', dragon_hit_rate: 'unavailable', pair_hit_rate: 'unavailable', six_hit_rate: 'unavailable' }] }
   } }
-  const analytics = await createLicenseAdminClient({ pool }).getDailyAnalytics()
+  const analytics = await createLicenseAdminClient({ pool: snapshotPool(pool) }).getDailyAnalytics()
   assert.equal(analytics.tableStats[0].mainHitRate, '50.0%')
   assert.equal(analytics.dailyReports[0].banker_hit_rate, '50.0%')
   assert.equal(analytics.dailyReports[0].player_hit_rate, '50.0%')
@@ -254,7 +253,7 @@ test('v102 readers require complete current final columns and exclude compatibil
   const compatibility = { id: 'compatibility', table_id: 'BAV01', shoe_no: '88', round_no: 3, strategy_version: 'v105', predicted_result: 'banker', actual_result: 'banker', is_hit: true, settlement_final: null, side_hits: null, prediction_issued_at: '2026-07-16T00:59:00Z', prediction_features: { prediction_timing: 'pre_result_context', settlement_final: true, side_hits: { tie: false } }, created_at: '2026-07-16T01:00:00Z' }
   const modern = { ...compatibility, id: 'modern', round_no: 4, settlement_final: true, side_hits: { tie: true }, prediction_features: { prediction_timing: 'pre_result_context' }, created_at: '2026-07-16T01:01:00Z' }
   const pending = { ...modern, id: 'pending', round_no: 5, actual_result: null, is_hit: null, settlement_final: false }
-  const client = createSupabaseIngestionClient({ url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false, fetchImpl: async (url) => { requests.push(new URL(url)); return response([modern, compatibility, pending]) } })
+  const client = createSupabaseIngestionClient({ url: 'https://example.supabase.co', serviceKey: 'test-only', requireVerifiedStrategy: false, fetchImpl: async (url) => { requests.push(new URL(url)); return { ...response([modern, compatibility, pending]), headers: new Headers({ 'content-range': `0-0/${[modern, compatibility, pending].filter((row) => row.strategy_version === 'v105' && row.settlement_final === true).length}` }) } } })
   assert.deepEqual((await client.getStablePredictionRows()).map((row) => row.id), ['modern'])
   assert.deepEqual((await client.getRecentPredictionRows()).map((row) => row.id), ['modern'])
   assert.deepEqual((await client.getTableUiSettledPredictions({ tableId: 'BAV01', shoe: 88 })).map((row) => row.round), [4])
@@ -347,3 +346,11 @@ test('production settlement without predictionId fails closed instead of invokin
   await assert.rejects(client.persistRound(completed, table(), buildLivePrediction(table())), /prediction identity is required/)
   assert.equal(requests.some((url) => url.includes('persist_v098_settled_round')), false)
 })
+
+function snapshotPool(pool) {
+  return {async connect(){return {async query(sql,params){
+    if(!params)return {rows:[]}
+    const value=await pool.query(sql,params)
+    return {rows:value.rows.filter(row=>params[1].includes(row.table_id))}
+  },release(){}}}}
+}
