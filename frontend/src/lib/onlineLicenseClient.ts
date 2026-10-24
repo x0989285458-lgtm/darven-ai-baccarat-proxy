@@ -106,13 +106,36 @@ export async function getOnlineLicenseStatus(adminAccountOrFetch?: string | { ad
   }
 }
 
-export async function getCloudDataStatus(fetchImpl = fetch): Promise<{ ok?: boolean; mtAutoLoginEnabled?: boolean; message?: string; tableCount?: number; todayRoundCount?: number; tableStats?: Array<{ tableId: string; mainHitRate: string; sideHitRate: string }>; dailyReports?: Array<Record<string, any>> }> {
+export type CloudDataStatus = {
+  ok: boolean
+  state: 'ready' | 'error'
+  mtAutoLoginEnabled?: boolean
+  message?: string
+  tableCount?: number
+  todayRoundCount?: number
+  tableStats?: Array<{ tableId: string; mainHitRate: string; sideHitRate: string }>
+  dailyReports?: Array<Record<string, any>>
+}
+
+export async function getCloudDataStatus(fetchImpl = fetch, signal?: AbortSignal): Promise<CloudDataStatus> {
+  const controller = new AbortController()
+  const abort = () => controller.abort()
+  signal?.addEventListener('abort', abort, { once: true })
+  if (signal?.aborted) abort()
+  const timer = setTimeout(abort, 60000)
+  const failure: CloudDataStatus = { ok: false, state: 'error', mtAutoLoginEnabled: false, message: '雲端資料狀態讀取失敗' }
   try {
-    const response = await fetchImpl(`${proxyUrl}/api/cloud-data/status`, { cache: 'no-store' } as RequestInit)
-    if (!response.ok) return { ok: false, mtAutoLoginEnabled: false, message: '雲端資料狀態讀取失敗' }
-    return response.json()
+    if (controller.signal.aborted) return failure
+    const response = await fetchImpl(`${proxyUrl}/api/cloud-data/status`, { cache: 'no-store', signal: controller.signal })
+    if (!response.ok) return failure
+    const body = await response.json()
+    if (controller.signal.aborted || !body || body.ok !== true || typeof body.todayRoundCount !== 'number' || !Number.isSafeInteger(body.todayRoundCount) || body.todayRoundCount < 0) return failure
+    return { ...body, ok: true, state: 'ready' }
   } catch {
-    return { ok: false, mtAutoLoginEnabled: false, message: '雲端資料狀態讀取失敗' }
+    return failure
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', abort)
   }
 }
 

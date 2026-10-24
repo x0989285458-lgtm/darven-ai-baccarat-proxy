@@ -29,6 +29,9 @@ export function createSnapshotPusher({
   queueJournalThresholdEntries = 100,
   isRoundDeliverable = () => true,
   onAcknowledged = async () => {},
+  // Candidate-only dependency injection: no environment flag or production wiring.
+  deliveryReceiptJournal = null,
+  deliveryAudit = null,
   onArchived = async () => {},
   onRebindQueue = null,
   faultInjector = async () => {},
@@ -139,10 +142,10 @@ export function createSnapshotPusher({
             signal: controller.signal,
           }
           const response = await fetchImpl(targetUrl, request)
-          let acknowledgement = await readAcknowledgement(response, envelope)
+          let acknowledgement = await readAcknowledgement(response, envelope, Boolean(deliveryReceiptJournal))
           if (!acknowledgement && retryingAttemptedEnvelope && await isStaleFenceResponse(response)) {
             const reconciliation = await fetchImpl(`${String(targetUrl).replace(/\/$/, '')}/reconcile`, request)
-            acknowledgement = await readAcknowledgement(reconciliation, envelope)
+            acknowledgement = await readAcknowledgement(reconciliation, envelope, Boolean(deliveryReceiptJournal))
             if (!acknowledgement && await isReconciliationNotFoundResponse(reconciliation)) {
               await rebindQueuedTransport(snapshot, requestTimestamp, { notFoundEnvelope: envelope })
               failures = 0
@@ -153,12 +156,15 @@ export function createSnapshotPusher({
             }
           }
           if (!acknowledgement) throw new Error(`push failed with invalid acknowledgement (${response?.status ?? 'unknown'})`)
+          const ackReceivedAtMs = Number(now())
           const receipt = {
             sessionId: String(envelope.sessionId ?? ''),
             sequence: Number(envelope.sequence),
             acceptedRoundKeys: acknowledgement.acceptedRoundKeys,
             ...(envelope.source ? { source: structuredClone(envelope.source) } : {}),
-            acknowledgedAtMs: requestTimestamp,
+            acknowledgedAtMs: ackReceivedAtMs,
+            ackReceivedAtMs,
+            ...(acknowledgement.receiverNormalizedPayloadHash ? { receiverNormalizedPayloadHash: acknowledgement.receiverNormalizedPayloadHash } : {}),
           }
           queue[0] = { ...queue[0], deliveryState: 'remote_ack_pending', remoteAckReceipt: receipt }
           await saveQueue()
@@ -260,7 +266,17 @@ export function createSnapshotPusher({
 
   async function finalizeRemoteAcknowledgement(entry) {
     const receipt = normalizeRemoteAckReceipt(entry)
+    // Live-first audit is bounded synchronous admission, never a delivery barrier.
+    if (deliveryAudit) {
+      try { deliveryAudit.enqueue(receipt) } catch { deliveryAudit.markGap?.('admission_error') }
+    }
+    if (deliveryReceiptJournal) await deliveryReceiptJournal.append(structuredClone(receipt))
     const journalReceipt = {
+      // Preserve the predecessor callback shape for legacy ACKs without full metadata.
+      ...(receipt.receiverNormalizedPayloadHash && receipt.ackReceivedAtMs != null ? {
+        receiverNormalizedPayloadHash: receipt.receiverNormalizedPayloadHash,
+        ackReceivedAtMs: receipt.ackReceivedAtMs,
+      } : {}),
       sessionId: receipt.sessionId,
       sequence: receipt.sequence,
       acceptedRoundKeys: [...receipt.acceptedRoundKeys],
@@ -1004,6 +1020,7 @@ export function createSnapshotPusher({
       stopped,
       stateInvalid,
       legacyMutableQueueDetected,
+      deliveryAudit: deliveryAudit?.snapshot() ?? { enabled: false, auditComplete: false, scope: 'disabled' },
       queueEntryCount: queue.length,
       queuedRoundKeyCount: queue.reduce((total, entry) => total + (entry.roundKeys?.length ?? 0), 0),
       headSessionId: head?.sessionId == null ? null : String(head.sessionId),
@@ -1068,11 +1085,15 @@ function normalizeRoundForEnvelope(round = {}, key = '') {
   return { ...round, tableId: tableId || canonicalTableId(round.tableId) }
 }
 
-async function readAcknowledgement(response, envelope) {
+async function readAcknowledgement(response, envelope, requireReceipt = false) {
   const status = Number(response?.status)
   if (!Number.isInteger(status) || status < 200 || status >= 300 || typeof response?.json !== 'function') return null
   let body
   try { body = await response.json() } catch { return null }
+  if (Object.hasOwn(body ?? {}, 'receiverNormalizedPayloadHash') && (typeof body.receiverNormalizedPayloadHash !== 'string' || !/^[a-f0-9]{64}$/.test(body.receiverNormalizedPayloadHash))) return null
+  const exactReceiptIdentity = hasExactReceiptIdentity(body, envelope)
+  if (requireReceipt && (typeof body?.receiverNormalizedPayloadHash !== 'string'
+      || !/^[a-f0-9]{64}$/.test(body.receiverNormalizedPayloadHash) || !exactReceiptIdentity)) return null
   const expectedKeys = Array.isArray(envelope?.roundKeys) ? envelope.roundKeys.map(String) : []
   const acceptedKeys = Array.isArray(body?.acceptedRoundKeys) ? body.acceptedRoundKeys.map(String) : []
   if (body?.accepted !== true
@@ -1081,7 +1102,23 @@ async function readAcknowledgement(response, envelope) {
     || acceptedKeys.length !== expectedKeys.length
     || acceptedKeys.some((roundKeyValue, index) => roundKeyValue !== expectedKeys[index])) return null
   if (envelope?.source && JSON.stringify(normalizeSource(body?.source)) !== JSON.stringify(normalizeSource(envelope.source))) return null
-  return { acceptedRoundKeys: acceptedKeys }
+  // Legacy ACK coercion remains delivery-compatible, but is not exact wire evidence.
+  // Missing audit metadata is explicitly gap-latched by the isolated audit lane.
+  return { acceptedRoundKeys: acceptedKeys, receiverNormalizedPayloadHash: exactReceiptIdentity ? body.receiverNormalizedPayloadHash : undefined }
+}
+
+function hasExactReceiptIdentity(receipt, envelope) {
+  if (typeof receipt?.sessionId !== 'string' || receipt.sessionId !== envelope?.sessionId
+    || !Number.isSafeInteger(receipt?.sequence) || receipt.sequence !== envelope?.sequence
+    || !Array.isArray(receipt?.acceptedRoundKeys) || receipt.acceptedRoundKeys.some(k => typeof k !== 'string')) return false
+  if (envelope?.source) {
+    const source = receipt?.source
+    if (!source || typeof source !== 'object' || Array.isArray(source)
+      || typeof source.mode !== 'string' || typeof source.ownerId !== 'string'
+      || !Number.isSafeInteger(source.epoch) || typeof source.fence !== 'string'
+      || JSON.stringify(normalizeSource(source)) !== JSON.stringify(normalizeSource(envelope.source))) return false
+  } else if (receipt?.source != null) return false
+  return true
 }
 
 async function isStaleFenceResponse(response) {
@@ -1100,6 +1137,9 @@ async function isReconciliationNotFoundResponse(response) {
 
 function normalizeRemoteAckReceipt(envelope) {
   const receipt = envelope?.remoteAckReceipt
+  if (Object.hasOwn(receipt ?? {}, 'receiverNormalizedPayloadHash') && !hasExactReceiptIdentity(receipt, envelope)) {
+    throw new Error('remote_ack_pending_receipt_invalid')
+  }
   const expectedKeys = Array.isArray(envelope?.roundKeys) ? envelope.roundKeys.map(String) : []
   const acceptedRoundKeys = Array.isArray(receipt?.acceptedRoundKeys) ? receipt.acceptedRoundKeys.map(String) : []
   const acknowledgedAtMs = Number(receipt?.acknowledgedAtMs)
@@ -1108,8 +1148,12 @@ function normalizeRemoteAckReceipt(envelope) {
     || acceptedRoundKeys.length !== expectedKeys.length
     || acceptedRoundKeys.some((keyValue, index) => keyValue !== expectedKeys[index])
     || !Number.isSafeInteger(acknowledgedAtMs)) throw new Error('remote_ack_pending_receipt_invalid')
+  if (Object.hasOwn(receipt, 'receiverNormalizedPayloadHash') && (typeof receipt.receiverNormalizedPayloadHash !== 'string' || !/^[a-f0-9]{64}$/.test(receipt.receiverNormalizedPayloadHash))) throw new Error('remote_ack_pending_receipt_invalid')
+  if (Object.hasOwn(receipt, 'ackReceivedAtMs') && (!Number.isSafeInteger(receipt.ackReceivedAtMs) || receipt.ackReceivedAtMs < 0)) throw new Error('remote_ack_pending_receipt_invalid')
   const normalized = {
     sessionId: String(receipt.sessionId), sequence: Number(receipt.sequence), acceptedRoundKeys, acknowledgedAtMs,
+    ...(receipt.ackReceivedAtMs != null ? { ackReceivedAtMs: receipt.ackReceivedAtMs } : {}),
+    ...(receipt.receiverNormalizedPayloadHash != null ? { receiverNormalizedPayloadHash: receipt.receiverNormalizedPayloadHash } : {}),
   }
   if (envelope?.source) {
     const source = normalizeSource(receipt?.source)

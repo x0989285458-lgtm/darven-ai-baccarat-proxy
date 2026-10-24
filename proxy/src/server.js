@@ -1382,6 +1382,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
               return jsonResponse(200, {
                 ok: true, accepted: true, duplicate: true, sessionId,
                 sequence: envelope.sequence, acceptedRoundKeys: validatedRoundKeys,
+                ...(acknowledgement?.payload_hash ? { receiverNormalizedPayloadHash: acknowledgement.payload_hash } : {}),
                 ...(fencedSource ? { source: fencedSource } : {}),
               }, frontendOrigin)
             } catch (error) {
@@ -1401,6 +1402,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
           }
           let captureResult = null
           let duplicateCapture = false
+          let receiverNormalizedPayloadHash
           try {
             assertDurableIngestWriter(supabaseClient, parsed.rounds.length)
             if (production && typeof supabaseClient?.persistCaptureEnvelope !== 'function') {
@@ -1429,6 +1431,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
                 try { await ingestSourceFence.observeCommitted?.(fencedSource) } catch {}
               }
               duplicateCapture = rawAcknowledgement?.duplicate === true
+              receiverNormalizedPayloadHash = rawAcknowledgement?.payload_hash
               if (!duplicateCapture) {
                 state.setStatus({
                   ...parsed.status,
@@ -1465,6 +1468,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
             ok: true,
             accepted: true,
             duplicate: duplicateCapture,
+            ...(receiverNormalizedPayloadHash ? { receiverNormalizedPayloadHash } : {}),
             sessionId,
             sequence: envelope.sequence,
             acceptedRoundKeys: validatedRoundKeys,

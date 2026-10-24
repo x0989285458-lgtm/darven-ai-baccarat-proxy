@@ -591,24 +591,38 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const [memoryCenter, setMemoryCenter] = useState<OnlineMemoryCenter>({ state: 'connecting', items: [], reports: [], strategies: [] })
   const [strategyAnalysis, setStrategyAnalysis] = useState<OnlineStrategyAnalysis>({ state: 'connecting', strategyRows: [], weakTables: [], strongTables: [], watchTables: [], suggestions: [] })
   const [licenseStatus, setLicenseStatus] = useState<OnlineLicenseStatus>({ managers: [], agents: [], plans: [], licenses: [], agentRows: [], licenseRows: [] })
-  const [cloudDataStatus, setCloudDataStatus] = useState<{ mtAutoLoginEnabled?: boolean; message?: string; tableCount?: number; todayRoundCount?: number; tableStats?: Array<{ tableId: string; mainHitRate: string; sideHitRate: string }>; dailyReports?: Array<Record<string, any>> }>({ mtAutoLoginEnabled: false, message: '資料抓取待確認', todayRoundCount: 0, tableStats: [], dailyReports: [] })
+  const [cloudDataStatus, setCloudDataStatus] = useState<Awaited<ReturnType<typeof getCloudDataStatus>> | undefined>()
+  const [cloudRefreshState, setCloudRefreshState] = useState<'loading' | 'ready' | 'error'>('loading')
   useEffect(() => {
-    let cloudLoaded = false
     const loadReports = () => {
       getOnlineMemoryCenter().then(setMemoryCenter)
       getOnlineStrategyAnalysis().then(setStrategyAnalysis)
-      getCloudDataStatus().then((status) => {
-        setCloudDataStatus((previous) => status.todayRoundCount != null ? status : previous)
-        if (status.todayRoundCount != null) cloudLoaded = true
-      })
     }
     loadReports()
     const slowTimer = window.setInterval(loadReports, 300000)
-    const fastTimer = window.setInterval(() => {
-      if (cloudLoaded) { window.clearInterval(fastTimer); return }
-      loadReports()
-    }, 5000)
-    return () => { window.clearInterval(slowTimer); window.clearInterval(fastTimer) }
+    return () => window.clearInterval(slowTimer)
+  }, [])
+  useEffect(() => {
+    let stopped = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let failures = 0
+    const controller = new AbortController()
+    const refresh = async () => {
+      const status = await getCloudDataStatus(fetch, controller.signal)
+      if (stopped) return
+      if (status.state === 'ready') {
+        setCloudDataStatus(status)
+        setCloudRefreshState('ready')
+        failures = 0
+      } else {
+        setCloudRefreshState('error')
+        failures += 1
+      }
+      const delay = failures ? [5000, 10000, 20000, 30000][Math.min(failures - 1, 3)] : 300000
+      timer = setTimeout(refresh, delay)
+    }
+    void refresh()
+    return () => { stopped = true; clearTimeout(timer); controller.abort() }
   }, [])
   useEffect(() => {
     if (onlineCoreStatus.maintenanceMode && !isSuper) logoutAdmin()
@@ -805,9 +819,9 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     notify('維護模式已啟用')
     window.location.reload()
   }
-  const dailyReports = cloudDataStatus.dailyReports ?? []
+  const dailyReports = cloudDataStatus?.dailyReports ?? []
   const latestReport = dailyReports[0] ?? memoryCenter.reports[0]
-  const actualRounds = cloudDataStatus.todayRoundCount ?? latestReport?.rounds ?? totalRounds
+  const actualRounds = cloudDataStatus?.todayRoundCount
   const agents = useMemo(() => normalizeAgents(licenseStatus.configured === false ? initialAgents : licenseStatus.agentRows, displayManager), [licenseStatus.configured, licenseStatus.agentRows, displayManager])
   const visibleAgents = useMemo(() => filterCollapsedAgents(agents, collapsedAgents), [agents, collapsedAgents])
   const filteredAgents = useMemo(() => filterAgents(visibleAgents, agentSearch), [visibleAgents, agentSearch])
@@ -830,7 +844,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
 
     <section className="admin-summary-grid auth-summary v015-summary v044-summary-grid" aria-label="管理總覽" style={{ width: '100%', maxWidth: 'none' }}>
       <article className="admin-metric purple settings-metric"><span>線上設定管理</span>{isSuper ? <button onClick={enableMaintenanceMode}>啟用維護模式</button> : <strong>僅超級管理員</strong>}</article>
-      <AdminMetric title="數據抓取" value={`已抓 ${actualRounds} 局`} tone="cyan" />
+      <AdminMetric title="數據抓取" value={cloudRefreshState === 'loading' ? '讀取中' : cloudRefreshState === 'error' ? (actualRounds == null ? '更新暫停／尚無資料' : `更新暫停／上次${actualRounds}局`) : `已抓 ${actualRounds} 局`} tone="cyan" />
       <AdminMetric title="資料庫" value={formatConnectionMetric(supabaseStatus, '資料庫')} tone={supabaseStatus.state === 'error' ? 'yellow' : 'green'} />
       <AdminMetric title="記憶中心" value={formatConnectionMetric(onlineCoreStatus, '記憶中心')} tone={onlineCoreStatus.state === 'error' ? 'yellow' : 'cyan'} />
     </section>
@@ -903,7 +917,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
 
     <section className="admin-panel list-panel weak-panel" aria-label="弱桌分析">
       <h2>弱桌分析</h2>
-      <div className="weak-grid">{tableDisplayOrder.map((name, index) => <article className="weak-card" key={name}><strong>{name}桌</strong><span>主命中率 {cloudDataStatus.tableStats?.[index]?.mainHitRate ?? tableHitRate(strategyAnalysis, index, 'main')}</span><span>副命中率 {cloudDataStatus.tableStats?.[index]?.sideHitRate ?? tableHitRate(strategyAnalysis, index, 'side')}</span></article>)}</div>
+      <div className="weak-grid">{tableDisplayOrder.map((name, index) => <article className="weak-card" key={name}><strong>{name}桌</strong><span>主命中率 {cloudDataStatus?.tableStats?.[index]?.mainHitRate ?? tableHitRate(strategyAnalysis, index, 'main')}</span><span>副命中率 {cloudDataStatus?.tableStats?.[index]?.sideHitRate ?? tableHitRate(strategyAnalysis, index, 'side')}</span></article>)}</div>
     </section>
 
     <section className="admin-panel list-panel report-panel" aria-label="線上記憶與報表">
