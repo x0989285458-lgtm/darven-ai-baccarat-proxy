@@ -6,6 +6,11 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY proxy/src ./src
 COPY shared /app/shared
 
+ARG GIT_SHA
+ARG RELEASE_VERSION
+ENV GIT_SHA=${GIT_SHA}
+ENV RELEASE_VERSION=${RELEASE_VERSION}
+
 ENV NODE_ENV=production
 ENV CAPTURE_OUTBOX_CONSUMER_ENABLED=false
 ENV CAPTURE_OUTBOX_POLL_MS=0

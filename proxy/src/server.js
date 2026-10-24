@@ -18,6 +18,7 @@ import { chooseCaptureSource, describeCaptureStatus } from './capture-source.js'
 import { buildOperationalEvent, toStatusEvent } from './event-layer.js'
 import { createFormalDailyMemoryRollover } from './formal-daily-memory-rollover.js'
 import { BUILD_VERSION } from './build-version.js'
+import { readReleaseIdentity } from './release-identity.js'
 import { hasExactRealCardCodes, isExactTenRawResult, isVerifiedFinalRoundAction } from '../../shared/real-card-validator.js'
 import { createInMemoryIngestSourceFence, normalizeSource } from './ingest-source-fence.js'
 
@@ -1253,7 +1254,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
         ...cloudStatus,
       }
       const health = buildServiceHealth(nextStatus)
-      return jsonResponse(health.degraded ? 503 : 200, { ok: !health.degraded, service: SERVICE, version: VERSION, buildVersion: BUILD_VERSION, deployMode: deployConfig.deployMode, ...health }, frontendOrigin)
+      return jsonResponse(health.degraded ? 503 : 200, { ok: !health.degraded, service: SERVICE, version: VERSION, buildVersion: BUILD_VERSION, deployMode: deployConfig.deployMode, ...health, releaseIdentity: readReleaseIdentity() }, frontendOrigin)
     }
     if (pathname === '/api/status') {
       const cloudStatus = await readCloudSnapshotStatus()
