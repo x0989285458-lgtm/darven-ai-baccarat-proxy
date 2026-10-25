@@ -674,7 +674,12 @@ export function createSnapshotPusher({
     try {
       const queued = await readStateFile(queuePath, 'queue')
       if (queued) {
-        deliveryAudit?.markGap?.('restored_queue_denominator_unknown')
+        // Only the exact current empty checkpoint proves no recovered envelope.
+        // Inspect the raw shape before normalization can drop or migrate entries.
+        const emptyCheckpoint = queued.version === 3
+          && Array.isArray(queued.entries) && queued.entries.length === 0
+          && Object.keys(queued).length === 2
+        if (!emptyCheckpoint) deliveryAudit?.markGap?.('restored_queue_denominator_unknown')
         try {
           const entries = Array.isArray(queued.entries) ? queued.entries : [queued]
           if (entries.some(hasLegacyTableScope)) {
@@ -779,6 +784,7 @@ export function createSnapshotPusher({
         await saveQueue()
       }
     } catch (error) {
+      deliveryAudit?.markGap?.('restored_state_invalid')
       stateInvalid = true
       throw error
     }
@@ -833,6 +839,8 @@ export function createSnapshotPusher({
       throw error
     }
     try {
+      // An empty checkpoint cannot vouch for any bytes in the separate journal.
+      if (text.length > 0) deliveryAudit?.markGap?.('restored_journal_denominator_unknown')
       return text.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line))
     } catch (error) {
       await quarantineState(journalPath, 'queue journal', error)

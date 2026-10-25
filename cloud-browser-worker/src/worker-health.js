@@ -14,6 +14,8 @@ export function buildWorkerHealth({ service, version, buildInfo = {}, configured
   const normalizedPush = {
     ...(push.deliveryAudit ? { deliveryAudit: { ...push.deliveryAudit, auditComplete: false } } : {}),
     active: Boolean(push.active),
+    inFlight: Number.isSafeInteger(push.inFlight) && push.inFlight >= 0 ? push.inFlight : null,
+    archivedRoundKeyCount: Number.isSafeInteger(push.archivedRoundKeyCount) && push.archivedRoundKeyCount >= 0 ? push.archivedRoundKeyCount : null,
     stateInvalid: Boolean(push.stateInvalid),
     legacyMutableQueueDetected: Boolean(push.legacyMutableQueueDetected),
     queueEntryCount: finiteNonNegative(push.queueEntryCount),
