@@ -285,7 +285,7 @@ test('every public table and durable prediction carries buildVersion 098.23 and 
     issuePrediction: async (candidate) => ({ ...candidate, predictionId: `pid-${candidate.targetRound}`, issuedAt: new Date(NOW).toISOString() }),
     readIssuedPrediction: async () => exact,
   }, now: () => NOW })
-  app.state.setTables([{ tableId: 'BAG01', shoe: 88, round: 20, sourceUpdatedAt: new Date().toISOString() }])
+  app.state.setTables([{ tableId: 'BAG01', shoe: 88, round: 20, sourceUpdatedAt: new Date(NOW).toISOString() }])
 
   const tables = JSON.parse((await app.inject({ url: '/api/tables' })).body)
 

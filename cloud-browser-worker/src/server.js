@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises'
 import { isWorkerAdminAuthorized } from './admin-auth.js'
 import { annotateRoundPayload, extractSnapshotFromPayloads, isFinalRealCardRound, isRoundPayload, redactUrlSecrets } from './snapshot.js'
 import { createSnapshotPusher } from './snapshot-pusher.js'
+import { createDeliveryAuditFromEnv } from './delivery-audit.js'
 import { buildWorkerHealth, updateSourceProgressTracker } from './worker-health.js'
 import { PRODUCTION_TABLE_IDS } from './table-policy.js'
 import { BUILD_VERSION, captureSessionId, publicBuildInfo, validateProductionConfig } from './runtime-config.js'
@@ -84,7 +85,9 @@ const portalRefreshController = createPortalRefreshController({
   refresh: refreshExpiredMtSession,
 })
 
+const deliveryAudit = createDeliveryAuditFromEnv({ queuePath: PUSH_QUEUE_PATH })
 const snapshotPusher = createSnapshotPusher({
+  deliveryAudit: deliveryAudit,
   targetUrl: process.env.PUSH_TARGET_URL,
   key: process.env.INGEST_KEY,
   getSnapshot: getOwnedSnapshot,
@@ -615,6 +618,7 @@ let shutdownPromise = null
 async function shutdown() {
   if (shutdownPromise) return shutdownPromise
   shutdownPromise = (async () => {
+    try {
     if (apiStartupController) await apiStartupController.stop()
     await quiesceWorkerProducers({
       sourceRuntime,
@@ -627,6 +631,9 @@ async function shutdown() {
         if (browser) await browser.close().catch(() => {})
       },
     })
+    } finally {
+      await deliveryAudit?.close()
+    }
     server.close(() => process.exit(0))
   })()
   return shutdownPromise

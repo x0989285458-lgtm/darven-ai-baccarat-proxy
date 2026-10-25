@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import { createApp } from '../src/server.js'
 import { buildLivePrediction } from '../src/supabase-writer.js'
 
-const issuedAt = '2026-07-17T01:00:00.000Z'
+// Current-runtime freshness tests need a current issuance, not an expired July fixture.
+const issuedAt = new Date().toISOString()
 
 test('tables expose only a complete backend prediction for the exact screen round', async () => {
   const tableState = { tableId: 'BAG01', shoe: 88, round: 20, sourceUpdatedAt: issuedAt }

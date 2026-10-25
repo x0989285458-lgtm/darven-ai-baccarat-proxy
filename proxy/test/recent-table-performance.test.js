@@ -103,7 +103,7 @@ test('proxy warmup wires directional history and prior same-shoe streak into liv
   const app = createApp({ autoConnect: false, port: 0, production: true, memberAuthRequired: false, supabaseClient })
   await app.start()
   t.after(() => app.stop())
-  app.state.setTables([{ tableId: 'BAG01', shoe: 7, round: 40, bankerCount: 20, playerCount: 18, tieCount: 2, beadPlateRaw: '02010102' }])
+  app.state.setTables([{ sourceUpdatedAt: new Date().toISOString(), tableId: 'BAG01', shoe: 7, round: 40, bankerCount: 20, playerCount: 18, tieCount: 2, beadPlateRaw: '02010102' }])
   const response = await app.inject({ method: 'GET', url: '/api/tables', headers: { 'x-forwarded-proto': 'https' } })
   const prediction = JSON.parse(response.body)[0].prediction
   assert.equal(prediction.targetRound, 40)

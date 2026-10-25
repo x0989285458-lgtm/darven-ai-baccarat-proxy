@@ -32,7 +32,7 @@ test('ordinary completed13 to completed14 exposes durable target15 after the 250
     return durable.get(round) ?? null
   }, { now: () => clock })
   try {
-    app.state.setTables([table(13)])
+    app.state.setTables([{ ...table(13), sourceUpdatedAt: new Date(clock).toISOString() }])
     assert.equal((await getTables(app))[0].prediction.targetRound, 14)
     app.state.setTables([table(14)])
     const missing = await getTables(app)

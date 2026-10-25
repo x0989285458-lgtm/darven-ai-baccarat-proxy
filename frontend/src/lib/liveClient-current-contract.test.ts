@@ -64,8 +64,10 @@ describe('live frontend contract', () => {
   })
 
   it('accepts a real Proxy table payload only when targetRound is the exact visible current_round', async () => {
-    vi.useFakeTimers()
-    const exact = validTable().prediction!
+      vi.useFakeTimers()
+      // This historical fixture must run at its issuance clock, not months later.
+      vi.setSystemTime(new Date('2026-07-17T01:00:00.000Z'))
+      const exact = validTable().prediction!
     const app = createApp({
       autoConnect: false,
       memberAuthRequired: false,

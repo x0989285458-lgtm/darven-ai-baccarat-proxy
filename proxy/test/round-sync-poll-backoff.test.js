@@ -18,6 +18,9 @@ test('HTTP poll sleeping between misses must preserve a new SSE infrastructure b
  const controller=new AbortController();
  try{
   app.state.setTables([table]);await app.start();
+  // Readiness SSE no longer waits for a whole bounded read flight before its
+  // first non-actionable snapshot. Establish that flight via its HTTP owner.
+  await app.inject({url:'/api/tables'});
   const response=await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`,{signal:controller.signal});
   const reader=response.body.getReader();await reader.read();assert.equal(events.length,5);
   phase='overlapping-http-and-scheduled-sse';await sleep(300);

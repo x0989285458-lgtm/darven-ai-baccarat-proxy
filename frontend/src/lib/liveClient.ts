@@ -30,8 +30,11 @@ export type LiveTable = {
   orderState?: string | number | null
   sourceUpdatedAt?: string | null
   buildVersion?: string | null
-  prediction?: BackendPrediction
+  prediction?: BackendPrediction | null
+  predictionReadiness?: PredictionReadiness
 }
+
+export type PredictionReadiness = { state: 'pending' | 'ready' | 'unavailable'; tableId: string; shoe: string | number; round: number; observedAt?: number; expiresAt?: number }
 
 export type SidePredictionKey = 'tie' | 'superSix' | 'bankerPair' | 'playerPair' | 'bankerDragon' | 'playerDragon'
 export type BackendSidePredictions = Record<SidePredictionKey, number>
@@ -98,7 +101,8 @@ type ProxyTable = {
   orderState?: string | number | null
   sourceUpdatedAt?: string | null
   buildVersion?: string | null
-  prediction?: BackendPrediction
+  prediction?: BackendPrediction | null
+  predictionReadiness?: PredictionReadiness
 }
 
 const proxyApiUrl = dravenApiBaseUrl
@@ -128,6 +132,7 @@ export async function fetchTableUiHistory(tableId: string, memberSessionToken: s
 
 export class LiveRoadClient {
   private timer?: number
+  private readinessTimer?: number
   private streamAbort?: AbortController
   private reconnectTimer?: number
   private streamWatchdog?: number
@@ -138,9 +143,11 @@ export class LiveRoadClient {
   private stopped = true
   private authorizationLost = false
   private tablesSuppressed = false
+  private readonly retiredShoes = new Map<string, Set<string>>()
   private readonly sourceUpdatedAtByTable = new Map<string, number>()
   private readonly acceptedTableById = new Map<string, LiveTable>()
   private readonly missingPredictionRefreshAttempts = new Map<string, number>()
+  private readonly pendingWindows = new Map<string, { identity: string; observedAt: number; expiresAt: number }>()
 
   constructor(private readonly options: LiveClientOptions) {}
 
@@ -163,6 +170,8 @@ export class LiveRoadClient {
     this.pollPromise = undefined
     this.pollAbort?.abort()
     this.pollAbort = undefined
+    if (this.readinessTimer !== undefined) window.clearTimeout(this.readinessTimer)
+    this.readinessTimer = undefined
     if (this.timer) window.clearTimeout(this.timer)
     if (this.streamWatchdog) window.clearInterval(this.streamWatchdog)
     if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer)
@@ -255,7 +264,7 @@ export class LiveRoadClient {
         if (this.stopped || generation !== this.connectionGeneration || controller.signal.aborted) return
         const tables = normalizeProxyTables(Array.isArray(payload) ? payload : [])
         this.lastTablesAt = Date.now()
-        if (proxyStatus && /stale|過期|建置版本不符/i.test(proxyStatus.message)) {
+        if (proxyStatus && (proxyStatus.state === 'error' || /stale|過期|建置版本不符/i.test(proxyStatus.message))) {
           this.suppressAcceptedTables()
           this.options.onStatus(proxyStatus)
           return
@@ -279,11 +288,15 @@ export class LiveRoadClient {
   }
 
   private suppressAcceptedTables() {
+    if (this.readinessTimer !== undefined) window.clearTimeout(this.readinessTimer)
+    this.readinessTimer = undefined
     this.tablesSuppressed = true
     this.options.onTables([])
   }
 
   private clearAcceptedTables() {
+    if (this.readinessTimer !== undefined) window.clearTimeout(this.readinessTimer)
+    this.readinessTimer = undefined
     this.acceptedTableById.clear()
     this.sourceUpdatedAtByTable.clear()
     this.tablesSuppressed = false
@@ -309,17 +322,28 @@ export class LiveRoadClient {
       this.options.onStatus({ state: 'error', message: '桌況時間無效或資料過期，已停止出手' })
       return false
     }
-    for (const incoming of freshTables) {
+    for (let incoming of freshTables) {
       const tableId = String(incoming.table_id ?? incoming.id ?? '')
-      if (!tableId) continue
+      if (!tableId || this.retiredShoes.get(tableId)?.has(String(incoming.trend.current_shoe))) continue
       const timestamp = Date.parse(String(incoming.sourceUpdatedAt ?? ''))
       const previousTimestamp = this.sourceUpdatedAtByTable.get(tableId)
       const accepted = this.acceptedTableById.get(tableId)
+      if (accepted && String(accepted.trend.current_shoe) === String(incoming.trend.current_shoe)
+        && Number(incoming.trend.current_round) < Number(accepted.trend.current_round)) continue
+      if (isPredictionPending(incoming)) {
+        const identity = predictionRefreshIdentity(incoming)
+        const window = this.pendingWindows.get(tableId)
+        if (window?.identity === identity) {
+          incoming = { ...incoming, predictionReadiness: { ...incoming.predictionReadiness!, observedAt: window.observedAt, expiresAt: Math.min(window.expiresAt, incoming.predictionReadiness!.expiresAt!) } }
+        } else {
+          this.pendingWindows.set(tableId, { identity, observedAt: incoming.predictionReadiness!.observedAt!, expiresAt: incoming.predictionReadiness!.expiresAt! })
+        }
+      }
       if (previousTimestamp != null && timestamp < previousTimestamp) {
         const monotonicScreenAdvance = accepted && hasMonotonicAdvancedTableIdentity(accepted, incoming)
         if (monotonicScreenAdvance) {
           const advanced = { ...incoming, sourceUpdatedAt: accepted.sourceUpdatedAt }
-          this.acceptedTableById.set(tableId, advanced)
+          this.acceptTable(tableId, advanced)
           acceptedAny = true
           continue
         }
@@ -328,9 +352,9 @@ export class LiveRoadClient {
           && isSameTableIdentity(accepted, incoming)
           && getBackendPredictionIssue(incoming) === null
         if (!exactDurableEnrichment) continue
-        const enriched = { ...accepted, buildVersion: incoming.buildVersion, prediction: incoming.prediction }
+        const enriched = { ...accepted, buildVersion: incoming.buildVersion, prediction: incoming.prediction, predictionReadiness: incoming.predictionReadiness }
         if (JSON.stringify(accepted) !== JSON.stringify(enriched)) {
-          this.acceptedTableById.set(tableId, enriched)
+          this.acceptTable(tableId, enriched)
           acceptedAny = true
         }
         continue
@@ -341,12 +365,14 @@ export class LiveRoadClient {
           && isSameTableIdentity(accepted, incoming)
           && getBackendPredictionIssue(incoming) === null
         next = exactDurableEnrichment
-          ? { ...accepted, buildVersion: incoming.buildVersion, prediction: incoming.prediction }
-          : accepted
+          ? { ...accepted, buildVersion: incoming.buildVersion, prediction: incoming.prediction, predictionReadiness: incoming.predictionReadiness }
+          : isSameTableIdentity(accepted, incoming) && accepted.predictionReadiness?.state === 'pending' && !isPredictionPending(incoming)
+            ? incoming
+            : accepted
       }
       if (accepted && JSON.stringify(accepted) === JSON.stringify(next)) continue
       this.sourceUpdatedAtByTable.set(tableId, timestamp)
-      this.acceptedTableById.set(tableId, next)
+      this.acceptTable(tableId, next)
       acceptedAny = true
     }
     if (acceptedAny || this.tablesSuppressed) {
@@ -355,8 +381,40 @@ export class LiveRoadClient {
       if (visibleTables.length) this.tablesSuppressed = false
     }
     this.scheduleMissingPredictionRefresh()
+    this.scheduleReadinessExpiry()
     this.options.onStatus({ state: 'connected', message: liveMessage })
     return true
+  }
+
+  private acceptTable(tableId: string, table: LiveTable) {
+    const previous = this.acceptedTableById.get(tableId)
+    if (previous && String(previous.trend.current_shoe) !== String(table.trend.current_shoe)) {
+      const retired = this.retiredShoes.get(tableId) ?? new Set<string>()
+      retired.add(String(previous.trend.current_shoe))
+      this.retiredShoes.set(tableId, retired)
+    }
+    this.acceptedTableById.set(tableId, table)
+  }
+
+  private scheduleReadinessExpiry() {
+    if (this.readinessTimer !== undefined) window.clearTimeout(this.readinessTimer)
+    this.readinessTimer = undefined
+    if (this.stopped || this.tablesSuppressed) return
+    const pending = [...this.acceptedTableById.values()].filter((table) => isPredictionPending(table))
+    if (!pending.length) return
+    const deadline = Math.min(...pending.map((table) => table.predictionReadiness!.expiresAt!))
+    this.readinessTimer = window.setTimeout(() => {
+      this.readinessTimer = undefined
+      if (this.stopped || this.tablesSuppressed) return
+      for (const [id, table] of this.acceptedTableById) {
+        const readiness = table.predictionReadiness
+        if (readiness?.state === 'pending' && !isPredictionPending(table)) {
+          this.acceptTable(id, { ...table, predictionReadiness: { ...readiness, state: 'unavailable' } })
+        }
+      }
+      this.options.onTables([...this.acceptedTableById.values()])
+      this.scheduleReadinessExpiry()
+    }, Math.max(0, deadline - Date.now()))
   }
 
   private scheduleMissingPredictionRefresh() {
@@ -510,6 +568,23 @@ export function backendPredictionReasonsFromTable(table?: Pick<LiveTable, 'predi
     .map(({ influence: _influence, ...reason }) => reason)
 }
 
+export function isPredictionPending(table?: LiveTable | null, now = Date.now()): boolean {
+  const readiness = table?.predictionReadiness
+  if (!table || table.prediction != null || readiness?.state !== 'pending') return false
+  const { observedAt, expiresAt } = readiness
+  return readiness.tableId === String(table.table_id ?? table.id ?? '')
+    && ['string', 'number'].includes(typeof readiness.shoe)
+    && String(readiness.shoe) === String(table.trend.current_shoe ?? '')
+    && Number.isSafeInteger(readiness.round) && readiness.round > 0
+    && readiness.round === table.trend.current_round
+    && typeof observedAt === 'number' && Number.isFinite(observedAt)
+    && typeof expiresAt === 'number' && Number.isFinite(expiresAt)
+    && expiresAt > observedAt && expiresAt - observedAt <= 10000
+    && now >= observedAt && now < expiresAt
+    && table.buildVersion === CURRENT_BUILD_VERSION && !isLiveTableStale(table, now)
+    && Date.parse(String(table.sourceUpdatedAt)) <= now
+}
+
 export function getBackendPredictionIssue(table?: LiveTable | null, now = Date.now()): string | null {
   const prediction = table?.prediction
   if (!prediction || prediction.source !== 'backend') return '後端預測暫不可用'
@@ -594,6 +669,7 @@ function normalizeProxyTables(tables: ProxyTable[]): LiveTable[] {
       sourceUpdatedAt: table.sourceUpdatedAt ?? null,
       buildVersion: table.buildVersion ?? null,
       prediction: table.prediction,
+      predictionReadiness: table.predictionReadiness,
     }
   })
 }

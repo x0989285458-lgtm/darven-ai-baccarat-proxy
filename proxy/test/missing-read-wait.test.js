@@ -35,8 +35,11 @@ function scheduler(t, readIssuedPrediction, waitMs = 1000) {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 10000 })
   const source = readFileSync(new URL('../src/server.js', import.meta.url), 'utf8')
   const body = source.slice(source.indexOf('  function rememberIssuedPredictionReadBackoff('), source.indexOf('  function predictionScreen('))
+  const readinessLookup = source.slice(source.indexOf('  function currentReadinessForKey('), source.indexOf('  const issuanceRetryAt ='))
   return new Function('supabaseClient', `
     const issuedPredictionReadRetryAt = new Map(), readingIssuedPredictionPromises = new Map(), liveIssuedPredictionReadPromises = new Map(), pendingPredictions = new Map();
+    const predictionReadinessByTable = new Map();
+    ${readinessLookup}
     const now = Date.now, resolvedLivePredictionReadWaitMs = ${waitMs}, ALL_MT_EQUAL_STRATEGY_VERSION = 'v105';
     let applicationStopped = false;
     const state = {setStatus() {}}, deepFreeze = x => x, isPendingPredictionExpired = () => false;

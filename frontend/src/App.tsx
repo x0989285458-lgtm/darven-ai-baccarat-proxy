@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { backendPredictionReasonsFromTable, fetchTableUiHistory, getBackendPredictionIssue, LiveRoadClient, isLiveTableStale, TableUiHistoryError, type BackendSideActions, type BackendSidePredictions, type LiveTable, type SidePredictionKey, type TableUiHistory } from './lib/liveClient'
+import { backendPredictionReasonsFromTable, fetchTableUiHistory, getBackendPredictionIssue, isPredictionPending, LiveRoadClient, isLiveTableStale, TableUiHistoryError, type BackendSideActions, type BackendSidePredictions, type LiveTable, type SidePredictionKey, type TableUiHistory } from './lib/liveClient'
 import { type MainOutcome, type Prediction } from './lib/roadParser'
 import { buildDisplayedBigRoad } from './lib/realCardRoad'
 import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from './lib/supabaseClient'
@@ -149,6 +149,7 @@ export default function App() {
   const mainScorePercentages = useMemo(() => backendMainScorePercentagesFromTable(displaySelected), [displaySelected])
   const predictionIssue = useMemo(() => getBackendPredictionIssue(displaySelected), [displaySelected])
   const predictionsActionable = !predictionIssue && !staleNotice
+  const predictionPending = isPredictionPending(displaySelected) && !staleNotice && status.state === 'connected'
   const memberHeaderStatus = staleNotice
     ? { state: 'stale', message: staleNotice }
     : supabaseStatus.state === 'error'
@@ -341,7 +342,7 @@ export default function App() {
       </aside>
       <section className="content dashboard-main">
         <div className="dashboard-middle-grid">
-        <section className="prediction-card" aria-label="AI預測結果">
+        <section className="prediction-card" aria-label="AI預測結果" data-prediction-readiness={predictionsActionable ? 'ready' : predictionPending ? 'pending' : 'unavailable'} data-prediction-id={predictionsActionable ? displaySelected.prediction?.predictionId ?? '' : ''}>
           <div className="prediction-card-heading"><div><h2 className="prediction-title">MT 真人百家 第{tableNumber(displaySelected, visibleTables.indexOf(displaySelected))}桌</h2><p>第{selectedShoe || '—'}靴 · 第{displaySelected.trend.current_round ?? 0}局</p></div><span className="prediction-meta-chip">{memberTableDisplayId(displaySelected)}</span></div>
           <div className="stats-grid dashboard-stats-row" aria-label="統計資訊">
             <Stat title="閒總數" value={String(displaySelected.trend.total_round_player ?? 0)} tone="Player" />
@@ -374,7 +375,7 @@ export default function App() {
               </div>
             </details>
           : null}
-          {predictionIssue ? <strong className="status stale">{predictionIssue}，預測暫不可用，已停止出手</strong> : null}
+          {predictionPending ? <strong className="status">預測準備中、不可出手</strong> : predictionIssue ? <strong className="status stale">{predictionIssue}，預測暫不可用，已停止出手</strong> : null}
         </section>
         <section className="dashboard-history-panel" aria-label="近十局預測紀錄區">
           <PredictionHistoryTable history={tableUiHistory} />

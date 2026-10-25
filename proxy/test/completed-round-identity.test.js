@@ -77,8 +77,7 @@ test('read-only SSE refresh finds late first issuance using completed-screen ide
   const controller=new AbortController()
   const reader=(await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`,{signal:controller.signal})).body.getReader()
   let buffer=''
-  async function next(){
-    const until=Date.now()+3500
+  async function next(until=Date.now()+3500){
     while(!buffer.includes('\n\n')){
       let timer
       try {
@@ -92,7 +91,18 @@ test('read-only SSE refresh finds late first issuance using completed-screen ide
   try {
     const initial=await next();assert.equal(initial.tables[0].round,1);assert.equal(initial.tables[0].prediction,null)
     durable=true
-    const updated=await next();assert.equal(updated.tables[0].prediction?.predictionId,'first-durable')
+    const deadline=Date.now()+3500
+    let updated
+    do {
+      assert.ok(Date.now()<deadline,'bounded exact enrichment must arrive')
+      updated=await next(deadline)
+      if(!updated.tables)continue
+      const row=updated.tables[0]
+      assert.equal(row.round,1);assert.equal(String(row.shoe),'2380')
+      if(!row.prediction)assert.ok(['pending','unavailable'].includes(row.predictionReadiness?.state))
+    } while(!updated.tables?.[0]?.prediction)
+    assert.equal(updated.tables[0].prediction.predictionId,'first-durable')
+    assert.equal(updated.tables[0].predictionReadiness.state,'ready')
     assert.equal(app.state.snapshot().tables[0].round,0,'projection must not mutate internal completed identity')
   }finally{controller.abort();await app.stop()}
 })
@@ -125,7 +135,7 @@ test('completed-mode quarantines legacy visible snapshots until authoritative co
     assert.equal(visible.round,1)
     assert.equal(visible.prediction?.targetRound,1)
     assert.equal(issued.has(1),true)
-    app.state.setTables([{tableId:'BAV06',shoe:2380,round:1,roundBasis:'completed'}])
+    app.state.setTables([{tableId:'BAV06',shoe:2380,round:1,roundBasis:'completed',sourceUpdatedAt:new Date().toISOString()}])
     const [second]=JSON.parse((await app.inject({url:'/api/tables'})).body)
     assert.equal(second.prediction?.targetRound,2)
     assert.equal(issued.has(3),false)
@@ -151,7 +161,7 @@ for (const [scenario,previous] of [
       issuePrediction:async p=>{const q={...p,predictionId:'p'+p.targetRound,issuedAt:new Date().toISOString()};issued.set(p.targetRound,q);return q},
       readIssuedPrediction:async({round})=>issued.get(round)??null}})
     try {
-      app.state.setTables(result.tables)
+      app.state.setTables(result.tables.map(table => ({...table, sourceUpdatedAt:new Date().toISOString()})))
       const [screen]=JSON.parse((await app.inject({url:'/api/tables'})).body)
       assert.equal(screen.shoe,2380)
       assert.equal(screen.round,2)
@@ -205,7 +215,7 @@ test('existing future issuance blocks backward writes then reuses exact issuance
     assert.equal(first.prediction,null)
     assert.deepEqual(writes,[],'monotonic fence must act before the durable writer, not after it')
     assert.deepEqual(runtime.latestIssuance('BAV06'),before)
-    app.state.setTables([{tableId:'BAV06',shoe:2380,round:1,roundBasis:'completed'}])
+    app.state.setTables([{tableId:'BAV06',shoe:2380,round:1,roundBasis:'completed',sourceUpdatedAt:new Date().toISOString()}])
     const [second]=JSON.parse((await app.inject({url:'/api/tables'})).body)
     assert.equal(second.prediction?.predictionId,prior.predictionId)
     assert.equal(second.prediction?.targetRound,2)

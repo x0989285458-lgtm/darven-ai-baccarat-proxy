@@ -14,6 +14,24 @@ const table = {
 
 const sseBuffers = new WeakMap()
 
+// Current readiness protocol permits a non-actionable snapshot before exact DB
+// enrichment. Every intermediate frame must remain identity-safe, not be skipped.
+function assertReadinessFrame(event) {
+  if (event.event !== 'tables') return
+  for (const row of event.data.tables) {
+    const r = row.predictionReadiness
+    assert.equal(r?.tableId, row.tableId)
+    assert.equal(String(r?.shoe), String(row.shoe))
+    assert.equal(r?.round, row.round)
+    if (row.prediction) {
+      assert.equal(r.state, 'ready')
+      assert.equal(row.prediction.targetTableId, row.tableId)
+      assert.equal(String(row.prediction.targetShoe), String(row.shoe))
+      assert.equal(row.prediction.targetRound, row.round)
+    } else assert.ok(['pending', 'unavailable'].includes(r.state))
+  }
+}
+
 async function readSseEvent(reader, timeoutMs = 4500) {
   const decoder = new TextDecoder()
   let text = sseBuffers.get(reader) ?? ''
@@ -39,8 +57,9 @@ async function readSseEventUntil(reader, predicate, timeoutMs = 1500) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     const event = await readSseEvent(reader, Math.max(1, deadline - Date.now()))
+    assertReadinessFrame(event)
     if (predicate(event)) return event
-    if (event.event !== 'heartbeat') throw new Error(`unexpected SSE event while waiting for tables: ${event.event}`)
+    if (!['heartbeat', 'tables'].includes(event.event)) throw new Error(`unexpected SSE event while waiting for tables: ${event.event}`)
   }
   throw new Error('timed out waiting for matching SSE event')
 }
@@ -72,10 +91,10 @@ test('consumer-disabled public proxy pushes screen progress without waiting for 
   const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal })).body.getReader()
 
   try {
-    await readSseEvent(reader)
+    await readSseEventUntil(reader, event => event.event === 'tables' && event.data.tables[0].prediction?.targetRound === table.round)
     const startedAt = Date.now()
     app.state.setTables([{ ...table, round: table.round + 1, sourceUpdatedAt: new Date(Date.now() + 1).toISOString() }])
-    const next = await readSseEventUntil(reader, (event) => event.event === 'tables' && event.data.tables[0].round === table.round + 1, 750)
+    const next = await readSseEventUntil(reader, (event) => event.event === 'tables' && event.data.tables[0].round === table.round + 1 && event.data.tables[0].predictionReadiness.state === 'ready', 750)
     assert.equal(next.data.tables[0].prediction.targetRound, table.round + 1)
     assert.ok(Date.now() - startedAt < 750)
   } finally {
@@ -84,7 +103,7 @@ test('consumer-disabled public proxy pushes screen progress without waiting for 
   }
 })
 
-test('stale screen prefetch never broadcasts a newer screen before its exact prediction is durable', async () => {
+test('stale screen prefetch cannot enrich a newer pending screen with an old prediction', async () => {
   let releaseRound21
   const round21Read = new Promise((resolve) => { releaseRound21 = resolve })
   const supabaseClient = {
@@ -111,18 +130,26 @@ test('stale screen prefetch never broadcasts a newer screen before its exact pre
   const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal })).body.getReader()
 
   try {
-    await readSseEvent(reader)
+    await readSseEventUntil(reader, event => event.event === 'tables' && event.data.tables[0].prediction?.targetRound === 20)
     app.state.setTables([{ ...table, round: 21, sourceUpdatedAt: new Date(Date.now() + 1).toISOString() }])
     await new Promise((resolve) => setTimeout(resolve, 25))
     app.state.setTables([{ ...table, round: 22, sourceUpdatedAt: new Date(Date.now() + 2).toISOString() }])
     releaseRound21(issued(buildLivePrediction({ ...table, round: 20 })))
-    let event = null
-    try {
-      event = await readSseEvent(reader, 2800)
-    } catch (error) {
-      assert.match(error?.message ?? '', /timed out waiting for SSE event/)
+    const deadline = Date.now() + 2800
+    let sawCurrent = false
+    while (Date.now() < deadline) {
+      let event
+      try { event = await readSseEvent(reader, Math.max(1, deadline - Date.now())) }
+      catch (error) { assert.match(error?.message ?? '', /timed out waiting for SSE event/); break }
+      assertReadinessFrame(event)
+      if (event.event !== 'tables') continue
+      const row = event.data.tables[0]
+      assert.equal(row.prediction, null, 'neither held old prediction nor missing current prediction is actionable')
+      assert.ok(['pending', 'unavailable'].includes(row.predictionReadiness.state))
+      if (sawCurrent) assert.equal(row.round, 22, 'late old completion must not regress the screen')
+      if (row.round === 22) sawCurrent = true
     }
-    assert.equal(event, null, 'no SSE event may publish the newer screen before its exact durable prediction')
+    assert.equal(sawCurrent, true, 'current screen may advance but only without an old actionable prediction')
   } finally {
     releaseRound21(null)
     controller.abort()
@@ -410,7 +437,7 @@ test('duplicate same-screen updates wait for the heartbeat instead of triggering
   }
 })
 
-test('fast durable prediction read-back stays inside the current full broadcast', async () => {
+test('fast durable prediction read-back independently enriches the initial full snapshot', async () => {
   const issuedAt = new Date().toISOString()
   const exact = {
     ...buildLivePrediction({ ...table, round: 19 }),
@@ -434,9 +461,8 @@ test('fast durable prediction read-back stays inside the current full broadcast'
   const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal })).body.getReader()
 
   try {
-    const initial = await readSseEvent(reader)
-    assert.equal(initial.event, 'tables')
-    assert.equal(initial.data.tables[0].prediction.predictionId, 'fast-read-back-20')
+    const initial = await readSseEventUntil(reader, event => event.event === 'tables' && event.data.tables[0].prediction?.predictionId === 'fast-read-back-20', 500)
+    assert.equal(initial.data.tables[0].predictionReadiness.state, 'ready')
     const next = await readSseEvent(reader, 500)
     assert.equal(next.event, 'heartbeat')
   } finally {
@@ -445,7 +471,7 @@ test('fast durable prediction read-back stays inside the current full broadcast'
   }
 })
 
-test('bounded durable prediction read-back stays inside the initial full tables broadcast', async () => {
+test('bounded durable prediction read-back independently enriches the initial full snapshot', async () => {
   const issuedAt = new Date().toISOString()
   const exact = {
     ...buildLivePrediction({ ...table, round: 19 }),
@@ -469,9 +495,8 @@ test('bounded durable prediction read-back stays inside the initial full tables 
   const reader = (await fetch(`http://127.0.0.1:${app.server.address().port}/api/tables/stream`, { signal: controller.signal })).body.getReader()
 
   try {
-    const initial = await readSseEvent(reader)
-    assert.equal(initial.event, 'tables')
-    assert.equal(initial.data.tables[0].prediction.predictionId, 'slow-read-back-20')
+    const initial = await readSseEventUntil(reader, event => event.event === 'tables' && event.data.tables[0].prediction?.predictionId === 'slow-read-back-20', 500)
+    assert.equal(initial.data.tables[0].predictionReadiness.state, 'ready')
     const next = await readSseEvent(reader, 500)
     assert.equal(next.event, 'heartbeat')
   } finally {

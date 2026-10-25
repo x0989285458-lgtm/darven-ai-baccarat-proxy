@@ -484,6 +484,20 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
   let missingPredictionRefreshTimer = null
   let missingPredictionRefreshPromise = null
   const issuedPredictionReadRetryAt = new Map()
+  // At most one current identity per active table; replay never slides its window.
+  const predictionReadinessByTable = new Map()
+  function observeReadinessIdentity(table) {
+    const tableId = canonicalProductionTableId(table?.tableId)
+    if (applicationStopped || !PRODUCTION_TABLE_IDS.includes(tableId)) return
+    const screen = predictionScreen(table)
+    const key = predictionTargetKey(screen.tableId, screen.shoe, screen.round)
+    if (predictionReadinessByTable.get(tableId)?.key !== key) {
+      predictionReadinessByTable.set(tableId, { key, observedAt: undefined, missing: false })
+    }
+  }
+  function currentReadinessForKey(key) {
+    return [...predictionReadinessByTable.values()].find((entry) => entry.key === key)
+  }
   const issuanceRetryAt = new Map()
   const expiredPredictionKeys = new Set()
   const immediateBroadcastPredictionIds = new Set()
@@ -598,6 +612,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
           if (accepted) {
             screenProgressChanged = true
             latestObservedScreenByTable.set(observedTableId, { shoe: observedShoe, visibleRound: observedRound, roundBasis: table.roundBasis })
+            observeReadinessIdentity(table)
           }
         }
         if (!resolvedCaptureOutboxConsumerEnabled || tableUpdateWorkContext.getStore()?.suppressPredictionWork) continue
@@ -1382,6 +1397,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
               return jsonResponse(200, {
                 ok: true, accepted: true, duplicate: true, sessionId,
                 sequence: envelope.sequence, acceptedRoundKeys: validatedRoundKeys,
+                ...(acknowledgement?.payload_hash ? { receiverNormalizedPayloadHash: acknowledgement.payload_hash } : {}),
                 ...(fencedSource ? { source: fencedSource } : {}),
               }, frontendOrigin)
             } catch (error) {
@@ -1401,6 +1417,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
           }
           let captureResult = null
           let duplicateCapture = false
+          let receiverNormalizedPayloadHash
           try {
             assertDurableIngestWriter(supabaseClient, parsed.rounds.length)
             if (production && typeof supabaseClient?.persistCaptureEnvelope !== 'function') {
@@ -1428,6 +1445,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
               if (fencedSource) {
                 try { await ingestSourceFence.observeCommitted?.(fencedSource) } catch {}
               }
+              receiverNormalizedPayloadHash = rawAcknowledgement?.payload_hash
               duplicateCapture = rawAcknowledgement?.duplicate === true
               if (!duplicateCapture) {
                 state.setStatus({
@@ -1465,6 +1483,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
             ok: true,
             accepted: true,
             duplicate: duplicateCapture,
+            ...(receiverNormalizedPayloadHash ? { receiverNormalizedPayloadHash } : {}),
             sessionId,
             sequence: envelope.sequence,
             acceptedRoundKeys: validatedRoundKeys,
@@ -1888,7 +1907,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
         ? Promise.all(localTables.map((table) => {
             const receivedAtMs = tableReceivedAtMsById.get(canonicalProductionTableId(table?.tableId)) ?? tablesReceivedAtMs
             return withLivePrediction(table, now() - receivedAtMs <= actionablePredictionTtlMs, predictionWillBeBroadcast)
-          }))
+          })).then((tables) => revalidatePublishedTables(tables, localTables))
         : localTables
     }
     const cloudSnapshot = await readLatestCloudSnapshot({ requireFresh: true })
@@ -1912,7 +1931,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
     const cloudTables = cloudSnapshot?.tables ?? []
     if (localTables.length === 0) {
       return includePrediction
-        ? Promise.all(cloudTables.map((table) => withLivePrediction(table, true, predictionWillBeBroadcast)))
+        ? Promise.all(cloudTables.map((table) => withLivePrediction(table, true, predictionWillBeBroadcast))).then((tables) => revalidatePublishedTables(tables, localTables))
         : cloudTables
     }
     const cloudByTableId = new Map(cloudTables.map((table) => [canonicalProductionTableId(table?.tableId), table]))
@@ -1927,8 +1946,37 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
     }).filter(Boolean)
     for (const table of cloudByTableId.values()) selected.push({ table, actionable: true })
     return includePrediction
-      ? Promise.all(selected.map(({ table, actionable }) => withLivePrediction(table, actionable, predictionWillBeBroadcast)))
+      ? Promise.all(selected.map(({ table, actionable }) => withLivePrediction(table, actionable, predictionWillBeBroadcast))).then((tables) => revalidatePublishedTables(tables, localTables))
       : selected.map(({ table }) => table)
+  }
+
+  function revalidatePublishedTables(tables, beforeTables) {
+    const beforeById = new Map(beforeTables.map((table) => [canonicalProductionTableId(table.tableId), predictionScreen(table)]))
+    const currentById = new Map(state.snapshot().tables.map((table) => [canonicalProductionTableId(table.tableId), predictionScreen(table)]))
+    return tables.map((table) => {
+      const current = currentById.get(canonicalProductionTableId(table.tableId))
+      const before = beforeById.get(canonicalProductionTableId(table.tableId))
+      if (current
+        && (!before || predictionTargetKey(current.tableId, current.shoe, current.round) !== predictionTargetKey(before.tableId, before.shoe, before.round))
+        && predictionTargetKey(current.tableId, current.shoe, current.round) !== predictionTargetKey(table.tableId, table.shoe, table.round)) {
+        return { ...current, buildVersion: BUILD_VERSION, prediction: null,
+          predictionReadiness: { state: 'unavailable', tableId: String(current.tableId), shoe: current.shoe, round: Number(current.round) } }
+      }
+      const sameLocalIdentity = current && before
+        && predictionTargetKey(current.tableId, current.shoe, current.round) === predictionTargetKey(table.tableId, table.shoe, table.round)
+      const sourceChanged = sameLocalIdentity
+        && (current.sourceUpdatedAt !== before.sourceUpdatedAt || current.buildVersion !== before.buildVersion)
+      // Recheck after every sibling await, without replacing cloud fallback
+      // with unchanged stale local state.
+      if (isDurablePredictionIssuanceRequired()
+        && (!isCurrentPredictionSource(table)
+          || (sourceChanged && !isCurrentPredictionSource(current))
+          || (table.prediction && isPendingPredictionExpired(table.prediction)))) {
+        return { ...table, prediction: null,
+          predictionReadiness: { state: 'unavailable', tableId: String(table.tableId), shoe: table.shoe, round: Number(table.round) } }
+      }
+      return table
+    })
   }
 
   async function ensureRecentPerformanceReady() {
@@ -2122,23 +2170,23 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
         ensureMissingPredictionRefreshTimer()
         return
       }
-      missingPredictionRefreshPromise = Promise.all(due.map(({ key, refresh }) => (
-        startIssuedPredictionRead(refresh.table, refresh.targetRound, key, true)
-      )))
-        .then((predictions) => {
-          let anyExact = false
-          predictions.forEach((prediction, index) => {
-            const { key, refresh } = due[index]
-            if (isExactScreenPrediction(prediction, refresh.table, refresh.targetRound, true)) {
-              anyExact = true
-              clearMissingPredictionRefresh(key)
-              return
-            }
-            refresh.nextAt = Number.POSITIVE_INFINITY
-            scheduleMissingPredictionRefresh(refresh.table, refresh.targetRound, key)
-          })
-          if (anyExact) requestTablesBroadcast(true)
+      missingPredictionRefreshPromise = Promise.all(due.map(async ({ key, refresh }) => {
+        const prediction = await startIssuedPredictionRead(refresh.table, refresh.targetRound, key, true)
+        if (tablesBroadcastStopping) return
+        const stillCurrent = state.snapshot().tables.some((table) => {
+          const screen = predictionScreen(table)
+          return predictionTargetKey(screen.tableId, screen.shoe, screen.round) === key
         })
+        if (!stillCurrent) { clearMissingPredictionRefresh(key); return }
+        if (isExactScreenPrediction(prediction, refresh.table, refresh.targetRound, true)) {
+          clearMissingPredictionRefresh(key)
+          requestDurablePredictionBroadcast(prediction)
+          return
+        }
+        refresh.nextAt = Number.POSITIVE_INFINITY
+        scheduleMissingPredictionRefresh(refresh.table, refresh.targetRound, key)
+        requestTablesBroadcast(false)
+      }))
         .finally(() => {
           missingPredictionRefreshPromise = null
           ensureMissingPredictionRefreshTimer()
@@ -2266,6 +2314,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
   }
 
   function rememberIssuedPredictionReadBackoff(key, delayMs = 2000, reason = 'error') {
+    if (reason === 'error' && currentReadinessForKey(key)) currentReadinessForKey(key).missing = false
     const previous = issuedPredictionReadRetryAt.get(key)
     // An older missing completion must never relabel an active hard error.
     issuedPredictionReadRetryAt.set(key, {
@@ -2298,12 +2347,22 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
     }
     const read = readOperation
       .then((candidate) => {
-        if (readingIssuedPredictionPromises.get(key) !== read) return null
+        if (applicationStopped || readingIssuedPredictionPromises.get(key) !== read) return null
         if (candidate === null) {
+          const readiness = currentReadinessForKey(key)
+          if (readiness) {
+            readiness.missing = true
+            if (readiness.observedAt === undefined) readiness.observedAt = now()
+          }
           if (!deferMissingBackoff) rememberIssuedPredictionReadBackoff(key, 250, 'missing')
           return null
         }
         if (!isExactScreenPrediction(candidate, table, targetRound, durableIssuanceRequired)) {
+          rememberIssuedPredictionReadBackoff(key)
+          return null
+        }
+        if (isPendingPredictionExpired({ ...candidate, createdAtMs: candidate.createdAtMs ?? Date.parse(candidate.issuedAt) })) {
+          rememberExpiredPredictionKey(key)
           rememberIssuedPredictionReadBackoff(key)
           return null
         }
@@ -2412,10 +2471,15 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
   }
 
   async function withLivePrediction(table, actionable = true, predictionWillBeBroadcast = false) {
+    const sourceTable = table
+    const observedBefore = latestObservedScreenByTable.get(canonicalProductionTableId(table?.tableId))
     if (!actionable || !isAdmittedCaptureScreen(table) || table?.tableId == null || table?.shoe == null || table?.round == null) {
-      return { ...predictionScreen(table), buildVersion: BUILD_VERSION, prediction: null }
+      const screen = predictionScreen(table)
+      return { ...screen, buildVersion: BUILD_VERSION, prediction: null,
+        predictionReadiness: { state: 'unavailable', tableId: String(screen?.tableId ?? ''), shoe: screen?.shoe, round: Number(screen?.round) } }
     }
 
+    observeReadinessIdentity(table)
     if (resolvedCaptureOutboxConsumerEnabled) {
       await Promise.race([
         savePendingPrediction(table),
@@ -2433,7 +2497,17 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       exact = null
     }
     if (exact) clearMissingPredictionRefresh(key)
-    if (!exact && durableIssuanceRequired) {
+    if (!exact && durableIssuanceRequired && predictionWillBeBroadcast) {
+      // SSE is a full snapshot of independently resolved tables, not a join of
+      // their DB waits. Reuse the normal bounded reader; never poll per frame.
+      if (!applicationStopped && !liveIssuedPredictionReadPromises.has(key)
+        && Number(issuedPredictionReadRetryAt.get(key)?.retryAt ?? 0) <= now()) {
+        void withLivePrediction(sourceTable, actionable, false).then(() => {
+          if (!applicationStopped && isLatestObservedTableScreen(sourceTable)) requestTablesBroadcast(false)
+        }).catch(() => {})
+      }
+    }
+    if (!exact && durableIssuanceRequired && !predictionWillBeBroadcast) {
       exact = await readLiveIssuedPredictionWithinWait(table, targetRound, key, durableIssuanceRequired)
       // Suppress only when this exact read is part of the full payload currently
       // being built. Another request must still enqueue a force broadcast even if
@@ -2455,6 +2529,15 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       pendingPredictions.set(key, exact)
     }
     if (!isExactScreenPrediction(exact, table, targetRound, durableIssuanceRequired)) exact = null
+    // The awaited read belongs to its input screen, not necessarily the screen
+    // that is current when this response is published. Never send that old identity.
+    if (latestObservedScreenByTable.get(canonicalProductionTableId(table.tableId)) !== observedBefore
+      && !isLatestObservedTableScreen(sourceTable)) {
+      const latest = state.snapshot().tables.find((candidate) => canonicalProductionTableId(candidate?.tableId) === canonicalProductionTableId(table.tableId))
+      const current = predictionScreen(latest ?? sourceTable)
+      return { ...current, buildVersion: BUILD_VERSION, prediction: null,
+        predictionReadiness: { state: 'unavailable', tableId: String(current.tableId), shoe: current.shoe, round: Number(current.round) } }
+    }
     if (exact && !pendingPredictions.has(key)) {
       exact = deepFreeze(structuredClone({
         ...exact,
@@ -2462,7 +2545,33 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       }))
       pendingPredictions.set(key, exact)
     }
-    return { ...table, buildVersion: BUILD_VERSION, prediction: exact ? structuredClone(exact) : null }
+    const readiness = currentReadinessForKey(key)
+    const observedAt = readiness?.observedAt
+    const sourceIsCurrent = isCurrentPredictionSource(sourceTable)
+    // Durable publication trusts the source timestamp, never the local receipt
+    // clock or a reader mock. Keep legacy non-durable local prediction semantics.
+    if (durableIssuanceRequired && !sourceIsCurrent) exact = null
+    const pending = !applicationStopped && !exact && readiness?.missing === true
+      && sourceIsCurrent && PRODUCTION_TABLE_IDS.includes(canonicalProductionTableId(table.tableId))
+      && !expiredPredictionKeys.has(key)
+      && issuedPredictionReadRetryAt.get(key)?.reason !== 'error'
+      && Number.isFinite(observedAt) && now() >= observedAt && now() < observedAt + 10000
+    const predictionReadiness = {
+      state: exact ? 'ready' : pending ? 'pending' : 'unavailable',
+      tableId: String(table.tableId), shoe: table.shoe, round: targetRound,
+      ...(exact ? { observedAt: Number(exact.createdAtMs), expiresAt: Number(exact.createdAtMs) + actionablePredictionTtlMs }
+        : pending ? { observedAt, expiresAt: observedAt + 10000 } : {}),
+    }
+    return { ...table, buildVersion: BUILD_VERSION, prediction: exact ? structuredClone(exact) : null, predictionReadiness }
+  }
+
+  function isCurrentPredictionSource(source) {
+    const sourceAt = Date.parse(source?.sourceUpdatedAt ?? '')
+    const targetRound = Number(predictionScreen(source).round)
+    const age = now() - sourceAt
+    return Number.isSafeInteger(targetRound) && targetRound > 0
+      && Number.isFinite(sourceAt) && age >= 0 && age <= actionablePredictionTtlMs
+      && (source?.buildVersion == null || source.buildVersion === BUILD_VERSION)
   }
 
   function isDurablePredictionIssuanceRequired() {
@@ -2704,6 +2813,12 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       streamLastBroadcastVersion = versionAtStart
       const broadcastNowMs = now()
       streamNextPredictionExpiryAtMs = Number.POSITIVE_INFINITY
+      for (const table of tables) {
+        const readiness = table.predictionReadiness
+        if (readiness?.state === 'pending' && readiness.expiresAt > broadcastNowMs) {
+          streamNextPredictionExpiryAtMs = Math.min(streamNextPredictionExpiryAtMs, readiness.expiresAt)
+        }
+      }
       for (const prediction of pendingPredictions.values()) {
         const expiryAtMs = Number(prediction?.createdAtMs) + actionablePredictionTtlMs
         if (Number.isFinite(expiryAtMs) && expiryAtMs > broadcastNowMs) {
@@ -2942,6 +3057,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
         missingPredictionRefreshTimer = null
       }
       missingPredictionRefreshes.clear()
+      predictionReadinessByTable.clear()
       screenProgressRefreshTables.clear()
       outboxStopping = true
       if (outboxWakeTimer) {

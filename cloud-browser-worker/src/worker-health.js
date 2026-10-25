@@ -12,6 +12,7 @@ export function buildWorkerHealth({ service, version, buildInfo = {}, configured
     ...(sourceProgressAt == null ? {} : { sourceProgressAt: String(sourceProgressAt) }),
   }
   const normalizedPush = {
+    ...(push.deliveryAudit ? { deliveryAudit: { ...push.deliveryAudit, auditComplete: false } } : {}),
     active: Boolean(push.active),
     stateInvalid: Boolean(push.stateInvalid),
     legacyMutableQueueDetected: Boolean(push.legacyMutableQueueDetected),
