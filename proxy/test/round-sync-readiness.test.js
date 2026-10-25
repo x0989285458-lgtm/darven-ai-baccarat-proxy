@@ -54,7 +54,18 @@ test('ordinary completed13 to completed14 exposes durable target15 after the 250
 })
 
 
-test('six missing tables coalesce concurrent requests to at most five reads per target per flight', async () => {
+test('six missing tables coalesce concurrent requests to at most five reads per target per flight', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: Date.now() })
+  const drive = async (promise) => {
+    let settled = false
+    promise.finally(() => { settled = true }).catch(() => {})
+    for (let i = 0; i < 300 && !settled; i++) {
+      for (let j = 0; j < 30; j++) await Promise.resolve()
+      if (!settled) t.mock.timers.tick(10)
+    }
+    assert.equal(settled, true, 'bounded virtual scheduling must complete')
+    return promise
+  }
   let clock = Date.now()
   const counts = new Map()
   const ids = ['BAV01', 'BAV02', 'BAV03', 'BAV03A', 'BAV05', 'BAV06']
@@ -64,17 +75,17 @@ test('six missing tables coalesce concurrent requests to at most five reads per 
   }, { now: () => clock })
   try {
     app.state.setTables(ids.map((id) => table(14, id)))
-    const results = await Promise.all(Array.from({ length: 20 }, () => getTables(app)))
+    const results = await drive(Promise.all(Array.from({ length: 20 }, () => getTables(app))))
     for (const rows of results) {
       assert.equal(rows.length, 6)
       assert.ok(rows.every((row) => row.round === 15 && row.prediction === null))
     }
     for (const id of ids) assert.equal(counts.get(id), 5, id)
     clock += 249
-    await Promise.all(Array.from({ length: 20 }, () => getTables(app)))
+    await drive(Promise.all(Array.from({ length: 20 }, () => getTables(app))))
     for (const id of ids) assert.equal(counts.get(id), 5, 'cached miss must not amplify reads')
     clock += 1
-    await Promise.all(Array.from({ length: 20 }, () => getTables(app)))
+    await drive(Promise.all(Array.from({ length: 20 }, () => getTables(app))))
     for (const id of ids) assert.equal(counts.get(id), 10, 'only one new five-read flight')
   } finally { await app.stop() }
 })

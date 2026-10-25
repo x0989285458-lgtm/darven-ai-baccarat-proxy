@@ -2166,7 +2166,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       return
     }
     const exponentialDelayMs = Math.max(250, resolvedLivePredictionReadWaitMs) * (2 ** refresh.attempt)
-    const retryBackoffMs = Math.max(0, Number(issuedPredictionReadRetryAt.get(key) ?? 0) - now())
+    const retryBackoffMs = Math.max(0, Number(issuedPredictionReadRetryAt.get(key)?.retryAt ?? 0) - now())
     refresh.nextAt = now() + Math.min(4000, Math.max(exponentialDelayMs, retryBackoffMs + 10))
     ensureMissingPredictionRefreshTimer()
   }
@@ -2265,8 +2265,13 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
     return issuance
   }
 
-  function rememberIssuedPredictionReadBackoff(key, delayMs = 2000) {
-    issuedPredictionReadRetryAt.set(key, Math.max(Number(issuedPredictionReadRetryAt.get(key) ?? 0), now() + delayMs))
+  function rememberIssuedPredictionReadBackoff(key, delayMs = 2000, reason = 'error') {
+    const previous = issuedPredictionReadRetryAt.get(key)
+    // An older missing completion must never relabel an active hard error.
+    issuedPredictionReadRetryAt.set(key, {
+      retryAt: Math.max(Number(previous?.retryAt ?? 0), now() + delayMs),
+      reason: previous?.reason === 'error' && previous.retryAt > now() ? 'error' : reason,
+    })
     while (issuedPredictionReadRetryAt.size > 1000) {
       issuedPredictionReadRetryAt.delete(issuedPredictionReadRetryAt.keys().next().value)
     }
@@ -2276,7 +2281,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
     deferMissingBackoff = false,
   } = {}) {
     if (readingIssuedPredictionPromises.has(key)) return readingIssuedPredictionPromises.get(key)
-    const retryAt = Number(issuedPredictionReadRetryAt.get(key) ?? 0)
+    const retryAt = Number(issuedPredictionReadRetryAt.get(key)?.retryAt ?? 0)
     if (retryAt > now()) return Promise.resolve(null)
     issuedPredictionReadRetryAt.delete(key)
     if (typeof supabaseClient?.readIssuedPrediction !== 'function') return Promise.resolve(null)
@@ -2295,7 +2300,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       .then((candidate) => {
         if (readingIssuedPredictionPromises.get(key) !== read) return null
         if (candidate === null) {
-          if (!deferMissingBackoff) rememberIssuedPredictionReadBackoff(key, 250)
+          if (!deferMissingBackoff) rememberIssuedPredictionReadBackoff(key, 250, 'missing')
           return null
         }
         if (!isExactScreenPrediction(candidate, table, targetRound, durableIssuanceRequired)) {
@@ -2352,16 +2357,23 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
 
   function readLiveIssuedPredictionWithinWait(table, targetRound, key, durableIssuanceRequired) {
     if (liveIssuedPredictionReadPromises.has(key)) return liveIssuedPredictionReadPromises.get(key)
-    const retryAt = Number(issuedPredictionReadRetryAt.get(key) ?? 0)
-    if (retryAt > now()) return Promise.resolve(null)
-    issuedPredictionReadRetryAt.delete(key)
     const deadlineAt = Date.now() + resolvedLivePredictionReadWaitMs
     const poll = (async () => {
       let readAttempt = 0
       while (true) {
+        if (applicationStopped) return null
         if (Date.now() >= deadlineAt || readAttempt >= 5) {
-          rememberIssuedPredictionReadBackoff(key, 250)
+          // Waiting alone is not a fresh miss and must not slide the cache due time.
+          if (readAttempt > 0) rememberIssuedPredictionReadBackoff(key, 250, 'missing')
           return null
+        }
+        // Re-read after every await: SSE may have installed a hard backoff.
+        const backoff = issuedPredictionReadRetryAt.get(key)
+        const retryDelay = Number(backoff?.retryAt ?? 0) - now()
+        if (retryDelay > 0) {
+          if (backoff.reason !== 'missing') return null
+          await new Promise((resolve) => setTimeout(resolve, Math.min(retryDelay, deadlineAt - Date.now())))
+          continue
         }
         readAttempt += 1
         const issuedPredictionRead = startIssuedPredictionRead(table, targetRound, key, durableIssuanceRequired, {
@@ -2374,14 +2386,15 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
           rememberIssuedPredictionReadBackoff(key)
           return null
         }
-        if (Number(issuedPredictionReadRetryAt.get(key) ?? 0) > now()) return null
+        const backoffAfterRead = issuedPredictionReadRetryAt.get(key)
+        if (Number(backoffAfterRead?.retryAt ?? 0) > now() && backoffAfterRead.reason !== 'missing') return null
         if (readAttempt >= 5) {
-          rememberIssuedPredictionReadBackoff(key, 250)
+          rememberIssuedPredictionReadBackoff(key, 250, 'missing')
           return null
         }
         const remainingMs = deadlineAt - Date.now()
         if (remainingMs <= 0) {
-          rememberIssuedPredictionReadBackoff(key, 250)
+          rememberIssuedPredictionReadBackoff(key, 250, 'missing')
           return null
         }
         const retryDelayMs = Math.min(50 * (2 ** Math.min(readAttempt - 1, 4)), remainingMs)

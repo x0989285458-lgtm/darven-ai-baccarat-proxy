@@ -314,7 +314,7 @@ test('live prediction read wait rejects empty, fractional, or unbounded configur
   }
 })
 
-test('missing durable screen prediction is negatively cached to avoid repeated database reads', async () => {
+test('missing durable screen prediction waits for negative cache expiry before bounded retry', async () => {
   let readCalls = 0
   const app = createApp({
     autoConnect: false,
@@ -329,6 +329,11 @@ test('missing durable screen prediction is negatively cached to avoid repeated d
   assert.equal((await app.inject({ url: '/api/tables' })).statusCode, 200)
   const readsAfterFirstResponse = readCalls
   assert.ok(readsAfterFirstResponse > 1)
-  assert.equal((await app.inject({ url: '/api/tables' })).statusCode, 200)
-  assert.equal(readCalls, readsAfterFirstResponse)
+  const retry = app.inject({ url: '/api/tables' })
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  assert.equal(readCalls, readsAfterFirstResponse, 'short negative cache remains enforced before expiry')
+  assert.equal((await retry).statusCode, 200)
+  assert.ok(readCalls > readsAfterFirstResponse)
+  assert.ok(readCalls <= readsAfterFirstResponse + 5, 'retry retains the five-read bound')
+  await app.stop()
 })
