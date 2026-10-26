@@ -3613,6 +3613,7 @@ test('shutdown stops new wakeups and waits for in-flight work', async () => {
     v100FormalRuntime: { enabled: true, async processSnapshot() { await gate } },
   })
   const drain = app.drainCaptureOutbox()
+  await waitFor(() => claimed)
   const stopping = app.stop()
   const early = await Promise.race([stopping.then(() => true), delay(10).then(() => false)])
   assert.equal(early, false, 'shutdown returned before in-flight work settled')

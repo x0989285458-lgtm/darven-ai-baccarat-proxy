@@ -1,4 +1,5 @@
 import { createShoeTracker } from './card-shoe.js'
+import { withTrendBundle } from './trend-bundle.js'
 import { createRankLedger } from './rank-ledger.js'
 import { BUILD_VERSION } from './build-version.js'
 import { isVerifiedFinalRoundAction } from '../../shared/real-card-validator.js'
@@ -44,7 +45,7 @@ export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotR
       const inferredEvents = inferSnapshotRounds && Array.isArray(tables) ? inferRoundEventsFromSnapshots(previousTables, tables) : []
       const mergedTables = Array.isArray(tables) ? mergeExistingRoundData(tables, previousTables) : []
       pruneRealRoundHistory(realRoundHistoryByTable, mergedTables)
-      state.tables = mergedTables.map((table) => applyRealRoundRoadFallback(table, getContiguousRealRoundHistory(realRoundHistoryByTable, table.tableId)))
+      state.tables = mergedTables.map((table) => withTrendBundle(applyRealRoundRoadFallback(table, getContiguousRealRoundHistory(realRoundHistoryByTable, table.tableId))))
       state.status.tableCount = state.tables.length
       for (const item of inferredEvents) void emitRoundEvent(item.round, item.predictionTable)
       if (typeof onTablesUpdated === 'function') onTablesUpdated(structuredCloneSafe(state.tables))
@@ -117,6 +118,7 @@ export function createProxyState({ onRoundEvent, onTablesUpdated, inferSnapshotR
           ...(mountedCardShoe ? { v102RankLedger: mountedCardShoe } : {}),
         }, realRoundHistory))
       }
+      state.tables = state.tables.map(withTrendBundle)
       state.status.tableCount = state.tables.length
       return emitRoundEvent(lastRound, state.tables.find((item) => String(item.tableId) === tableId) ?? { tableId })
     },

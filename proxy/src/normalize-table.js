@@ -13,6 +13,7 @@ export function normalizeMtTable(raw, index = 0) {
   const tableName = raw?.table_name ?? raw?.name ?? `${index + 1}`
   return {
     tableId,
+    ...(raw?.trendBundle !== undefined ? { trendBundle: raw.trendBundle } : {}),
     displayName: `MT百家樂第${tableName}桌`,
     tableType: String(raw?.table_type ?? '').toUpperCase(),
     shoe: toNumberOrNull(trend.current_shoe),

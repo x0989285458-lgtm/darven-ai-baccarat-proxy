@@ -1,5 +1,6 @@
 import { isExactTenRawResult, normalizeExactRealCardEvent } from '../../shared/real-card-validator.js'
 import { canonicalProductionTableId, PRODUCTION_TABLE_IDS, LEGACY_TABLE_IDS } from './table-policy.js'
+import { projectMtFinalTrend, withMtTrendBundle } from './mt-final-trend.js'
 
 const DEFAULT_GAME_URL = 'wss://a1.ofalive99.net/game/ws'
 const DEFAULT_CHAT_URL = 'wss://a2.ofalive99.net/chat/ws'
@@ -683,7 +684,7 @@ function mergeExactTablesMonotonic(
       || selectedRound < finalRound)) {
       selected = { ...structuredClone(selected), shoe: finalScreen.shoe, round: finalScreen.round }
     }
-    return structuredClone(selected)
+    return withMtTrendBundle(structuredClone(selected))
   })
 }
 
@@ -731,7 +732,8 @@ function advanceExactTableFromFinal(tables, final, now) {
   const sourceUpdatedAt = new Date(Number(now())).toISOString()
   return tables.map((table) => canonicalProductionTableId(table?.tableId ?? table?.table_id) === finalTableId
     ? (isStrictlyNewerScreen(table, final)
-        ? { ...structuredClone(table), shoe: final.shoe, round: final.round, sourceUpdatedAt }
+        ? withMtTrendBundle({ ...structuredClone(table), shoe: final.shoe, round: final.round, sourceUpdatedAt,
+            trend: projectMtFinalTrend(table, final) ?? structuredClone(table.trend) })
         : structuredClone(table))
     : structuredClone(table))
 }

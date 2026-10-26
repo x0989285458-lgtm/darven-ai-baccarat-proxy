@@ -3584,6 +3584,36 @@ export function createSupabaseIngestionClient({
     async reconcileCaptureEnvelope(capture = {}) {
       return sendCaptureEnvelope(capture, { reconcile: true })
     },
+    async claimCaptureTableWork({ limit = 1 } = {}) {
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('table work limit must be 1..100')
+      if (priorityStrategyDb) {
+        const result = await priorityStrategyDb.query({ text: 'select * from public.claim_v105_capture_table_work_v1($1::integer)', values: [limit] })
+        if (!Array.isArray(result?.rows)) throw new Error('invalid table work claim')
+        return result.rows
+      }
+      return postRpcRows('claim_v105_capture_table_work_v1', { p_limit: limit }, { requestTimeoutMs: durableWriteTimeoutMs })
+    },
+    async completeCaptureTableWork({ id, claimToken, attempt } = {}) {
+      const ack = priorityStrategyDb
+        ? (await priorityStrategyDb.query({ text: 'select public.complete_v105_capture_table_work_v1($1::bigint,$2::uuid,$3::integer) as ack', values: [id, claimToken, attempt] }))?.rows?.[0]?.ack
+        : await postDurableRest('rpc/complete_v105_capture_table_work_v1', { p_id: id, p_claim_token: claimToken, p_attempt: attempt }, undefined, { requireObject: true, priority: true })
+      if (ack?.ok !== true || String(ack.id) !== String(id)) throw new Error('table work complete acknowledgement invalid')
+      return ack
+    },
+    async failCaptureTableWork({ id, claimToken, attempt, error } = {}) {
+      const ack = priorityStrategyDb
+        ? (await priorityStrategyDb.query({ text: 'select public.fail_v105_capture_table_work_v1($1::bigint,$2::uuid,$3::integer,$4::text) as ack', values: [id, claimToken, attempt, redactSecrets(error)] }))?.rows?.[0]?.ack
+        : await postDurableRest('rpc/fail_v105_capture_table_work_v1', { p_id: id, p_claim_token: claimToken, p_attempt: attempt, p_error: redactSecrets(error) }, undefined, { requireObject: true, priority: true })
+      if (ack?.ok !== true || String(ack.id) !== String(id)) throw new Error('table work fail acknowledgement invalid')
+      return ack
+    },
+    async getCaptureTableWorkHealth() {
+      const health = priorityStrategyDb
+        ? (await priorityStrategyDb.query({ text: 'select public.get_v105_capture_table_work_health_v1() as health', values: [] }))?.rows?.[0]?.health
+        : await postDurableRest('rpc/get_v105_capture_table_work_health_v1', {}, undefined, { requireObject: true, priority: true })
+      if (!health || typeof health !== 'object' || Array.isArray(health)) throw new Error('invalid table work health')
+      return health
+    },
     async claimCaptureOutbox({ limit = 10 } = {}) {
       const normalizedLimit = Math.max(1, Math.min(100, Number(limit) || 10))
       if (priorityStrategyDb && typeof priorityStrategyDb.query === 'function') {

@@ -1,7 +1,18 @@
 import { dravenApiBaseUrl } from './apiBase'
 import { frontendBuildMetadata } from './buildVersion'
+import { trendPendingNotice } from './trendPending'
+
+export type TrendBundle = {
+  schemaVersion: 1
+  tableId: string
+  shoe: string | null
+  completedRound: number | null
+  status: 'available' | 'pending'
+  reason: 'complete' | 'missing-or-invalid-bundle' | 'shoe-mismatch' | 'coverage-mismatch' | 'legacy-unverified' | 'invalid-contract'
+}
 
 export type LiveTable = {
+  trendBundle?: TrendBundle
   id: string | number
   table_id?: string | number
   name?: string
@@ -74,6 +85,7 @@ class UnauthorizedStatusError extends Error {}
 type LiveClientOptions = { memberSessionToken?: string; onTables: (tables: LiveTable[]) => void; onStatus: (status: Status) => void; onUnauthorized?: () => void }
 
 type ProxyTable = {
+  trendBundle?: TrendBundle
   tableId?: string
   displayName?: string
   tableType?: string
@@ -315,6 +327,15 @@ export class LiveRoadClient {
       const timestamp = Date.parse(String(incoming.sourceUpdatedAt ?? ''))
       const previousTimestamp = this.sourceUpdatedAtByTable.get(tableId)
       const accepted = this.acceptedTableById.get(tableId)
+      const exactTrendEnrichment = accepted && isSameTableIdentity(accepted, incoming)
+        && trendPendingNotice(accepted) !== '' && trendPendingNotice(incoming) === ''
+      if (previousTimestamp != null && timestamp <= previousTimestamp && exactTrendEnrichment) {
+        this.acceptedTableById.set(tableId, { ...accepted, trend: incoming.trend, trendBundle: incoming.trendBundle,
+          ...(getBackendPredictionIssue(accepted) !== null && getBackendPredictionIssue(incoming) === null
+            ? { buildVersion: incoming.buildVersion, prediction: incoming.prediction } : {}) })
+        acceptedAny = true
+        continue
+      }
       if (previousTimestamp != null && timestamp < previousTimestamp) {
         const monotonicScreenAdvance = accepted && hasMonotonicAdvancedTableIdentity(accepted, incoming)
         if (monotonicScreenAdvance) {
@@ -565,6 +586,7 @@ function normalizeProxyTables(tables: ProxyTable[]): LiveTable[] {
   return tables.map((table, index) => {
     const tableName = table.displayName?.match(/第(.+?)桌/)?.[1] ?? String(index + 1)
     return {
+      trendBundle: table.trendBundle,
       id: table.tableId ?? tableName ?? index + 1,
       table_id: table.tableId ?? tableName ?? index + 1,
       table_name: tableName,

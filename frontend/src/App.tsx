@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { backendPredictionReasonsFromTable, fetchTableUiHistory, getBackendPredictionIssue, LiveRoadClient, isLiveTableStale, TableUiHistoryError, type BackendSideActions, type BackendSidePredictions, type LiveTable, type SidePredictionKey, type TableUiHistory } from './lib/liveClient'
 import { type MainOutcome, type Prediction } from './lib/roadParser'
 import { buildDisplayedBigRoad } from './lib/realCardRoad'
+import { trendPendingNotice } from './lib/trendPending'
 import { checkSupabaseConnection, isSupabaseConfigured, supabaseConfig } from './lib/supabaseClient'
 import { checkOnlineCoreStatus, getOnlineMemoryCenter, getOnlineStrategyAnalysis, updateOnlineAppSetting, type OnlineCoreStatus, type OnlineMemoryCenter, type OnlineStrategyAnalysis } from './lib/onlineCoreClient'
 import { agentLogin, createOnlineAgent, createOnlineLicense, deleteOnlineAgents, deleteOnlineLicense, extendOnlineLicense, getCloudDataStatus, getOnlineLicenseStatus, memberLogin, setOnlineLicenseStatus, validateMemberSession, type OnlineLicenseStatus } from './lib/onlineLicenseClient'
@@ -131,6 +132,7 @@ export default function App() {
   const displaySelected = selected
   const selectedShoe = displaySelected?.trend.current_shoe
   const selectedRound = Number(displaySelected?.trend.current_round ?? 0)
+  const trendNotice = trendPendingNotice(displaySelected)
   const staleNotice = useMemo(() => {
     const staleTables = visibleTables.filter((table) => isLiveTableStale(table)).length
     if (staleTables > 0) return `資料過期：${staleTables}桌桌況資料可能不是即時`
@@ -344,9 +346,9 @@ export default function App() {
         <section className="prediction-card" aria-label="AI預測結果">
           <div className="prediction-card-heading"><div><h2 className="prediction-title">MT 真人百家 第{tableNumber(displaySelected, visibleTables.indexOf(displaySelected))}桌</h2><p>第{selectedShoe || '—'}靴 · 第{displaySelected.trend.current_round ?? 0}局</p></div><span className="prediction-meta-chip">{memberTableDisplayId(displaySelected)}</span></div>
           <div className="stats-grid dashboard-stats-row" aria-label="統計資訊">
-            <Stat title="閒總數" value={String(displaySelected.trend.total_round_player ?? 0)} tone="Player" />
-            <Stat title="和總數" value={String(displaySelected.trend.total_round_tie ?? 0)} tone="Tie" />
-            <Stat title="莊總數" value={String(displaySelected.trend.total_round_banker ?? 0)} tone="Banker" />
+            <Stat title={`閒總數${trendNotice}`} value={String(displaySelected.trend.total_round_player ?? 0)} tone="Player" />
+            <Stat title={`和總數${trendNotice}`} value={String(displaySelected.trend.total_round_tie ?? 0)} tone="Tie" />
+            <Stat title={`莊總數${trendNotice}`} value={String(displaySelected.trend.total_round_banker ?? 0)} tone="Banker" />
           </div>
           <div className="prediction-row side-prediction-row" aria-label="副項目預測機率">
             <PredictionMetric title="閒龍寶" value={bonusPredictions?.playerDragon ?? null} tone="Player" active={predictionsActionable && (sideActions?.playerDragon ?? false)} />
@@ -381,7 +383,7 @@ export default function App() {
         </section>
         </div>
         <div className="roads-grid single-road dashboard-road-region">
-          <RoadCard title="路單">
+          <RoadCard title={`路單${trendNotice}`}>
             <div className="big-road classic-road" aria-label="傳統大路">
               {bigRoad.map((cell) => <div style={{ gridColumn: cell.column + 1, gridRow: cell.row + 1 }} title={`${cell.outcome === 'banker' ? '莊' : '閒'} ${cell.point}點`} className={`big-cell ${cell.outcome === 'banker' ? 'Banker' : 'Player'} ${cell.hasTie ? 'tie-mark' : ''}`} key={`${selectedShoe}:${cell.column}:${cell.row}:${cell.code}`}><span>{cell.outcome === 'banker' ? '莊' : '閒'}</span></div>)}
             </div>

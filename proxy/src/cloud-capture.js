@@ -1,4 +1,5 @@
 import { normalizeMtTables } from './normalize-table.js'
+import { withTrendBundle } from './trend-bundle.js'
 import { buildOperationalEvent, toStatusEvent } from './event-layer.js'
 
 const DEFAULT_POLL_MS = 5000
@@ -21,7 +22,7 @@ function withFormalSettlementTail(state, task) {
 
 export function parseCloudCapturePayload(payload = {}, receivedAt = new Date().toISOString()) {
   const tables = selectProductionTables(normalizeCloudTables(payload.tables ?? payload.snapshot?.tables ?? []))
-    .map((table) => ({ ...table, sourceUpdatedAt: table.sourceUpdatedAt ?? receivedAt }))
+    .map((table) => withTrendBundle({ ...table, sourceUpdatedAt: table.sourceUpdatedAt ?? receivedAt }))
   const rawRounds = Array.isArray(payload.rounds) ? payload.rounds : payload.round ? [payload.round] : []
   const rounds = selectProductionRounds(rawRounds)
   const sessionId = payload.sessionId ?? payload.session_id ?? null
@@ -313,7 +314,7 @@ export async function applyCloudCapturePayload({ parsed, state, writer, v100Form
     if (Number.isFinite(latestRound) && Number(table?.round) < latestRound) delete ranked.v102RankLedger
     return ranked
   })
-  const formalTables = materializeRankedTables(parsed.tables)
+  const formalTables = materializeRankedTables(parsed.tables).map(withTrendBundle)
   const formalSettlementTables = materializeRankedTables(settlementInputTables)
   if (publishSnapshot) {
     state?.setStatus?.(parsed.status)
@@ -478,6 +479,7 @@ function normalizeCloudTables(tables) {
     shoe: table.shoe ?? table.current_shoe ?? null,
     round: table.round ?? table.current_round ?? null,
     ...(table.roundBasis === 'completed' ? { roundBasis: 'completed' } : {}),
+    trendBundle: table.trendBundle,
     bankerCount: table.bankerCount ?? table.total_round_banker ?? 0,
     playerCount: table.playerCount ?? table.total_round_player ?? 0,
     tieCount: table.tieCount ?? table.total_round_tie ?? 0,

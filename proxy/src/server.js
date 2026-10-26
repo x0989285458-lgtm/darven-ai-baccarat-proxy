@@ -4,6 +4,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { isDeepStrictEqual } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { createProxyState } from './state-store.js'
+import { normalizeTrendBundle } from './trend-bundle.js'
 import { createMtClient } from './mt-client.js'
 import { createChromeCaptureClient } from './chrome-capture.js'
 import { applyCloudCapturePayload, canonicalProductionTableId, createCloudCaptureClient, parseCloudCapturePayload, PRODUCTION_TABLE_IDS } from './cloud-capture.js'
@@ -335,6 +336,20 @@ function tableScreenIdentitySignature(tables = []) {
       tableId: canonicalProductionTableId(table?.tableId),
       shoe: table?.shoe == null ? '' : String(table.shoe),
       round: Number(table?.round),
+      roundBasis: table?.roundBasis,
+      trendBundle: table?.trendBundle,
+      bankerCount: table?.bankerCount,
+      playerCount: table?.playerCount,
+      tieCount: table?.tieCount,
+      bankerPairCount: table?.bankerPairCount,
+      playerPairCount: table?.playerPairCount,
+      beadPlateRaw: table?.beadPlateRaw,
+      bigRoadRaw: table?.bigRoadRaw,
+      bigEyeRaw: table?.bigEyeRaw,
+      smallRoadRaw: table?.smallRoadRaw,
+      cockroachRaw: table?.cockroachRaw,
+      nextBankerRaw: table?.nextBankerRaw,
+      nextPlayerRaw: table?.nextPlayerRaw,
     }))
     .filter((screen) => screen.tableId && screen.shoe && Number.isSafeInteger(screen.round))
     .sort((left, right) => left.tableId.localeCompare(right.tableId)))
@@ -351,6 +366,14 @@ function changedNonRegressedTableIds(currentTables = [], candidateTables = []) {
     .filter(Boolean))
 }
 
+function hasKnownIncompleteTrend(table) {
+  const bundle = normalizeTrendBundle(table)
+  // Historical producers had no watermark. Keep that legacy lane unverified,
+  // never promote it to complete; explicit coverage/identity failures are blocked.
+  return bundle.status !== 'available'
+    && !(bundle.reason === 'missing-or-invalid-bundle' && bundle.shoe === null && bundle.completedRound === null)
+}
+
 function mergeMonotonicTableScreens(currentTables = [], candidateTables = []) {
   const candidateByTable = new Map(candidateTables.map((table) => [canonicalProductionTableId(table?.tableId), table]))
   const merged = currentTables.map((current) => {
@@ -358,6 +381,13 @@ function mergeMonotonicTableScreens(currentTables = [], candidateTables = []) {
     const candidate = candidateByTable.get(tableId)
     candidateByTable.delete(tableId)
     if (!candidate || isOlderTableScreen(candidate, current)) return structuredClone(current)
+    // Preserve an entire verified bundle only for the exact completed identity.
+    // New shoe/round input must not borrow the previous identity's roads.
+    if (String(candidate.shoe) === String(current.shoe)
+      && Number(candidate.round) === Number(current.round)
+      && candidate.roundBasis === current.roundBasis
+      && normalizeTrendBundle(current).status === 'available'
+      && normalizeTrendBundle(candidate).status !== 'available') return structuredClone(current)
     return candidate
   })
   return [...merged, ...candidateByTable.values()]
@@ -409,8 +439,13 @@ export function resolveProductionConcurrency(env = process.env) {
   }
 }
 
-export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS ?? 'legacy', autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 45000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), outboxCoalesceMs = process.env.CAPTURE_OUTBOX_COALESCE_MS ?? 1000, captureOutboxBatchLimit = process.env.CAPTURE_OUTBOX_BATCH_LIMIT ?? 30, captureOutboxConsumerEnabled = process.env.CAPTURE_OUTBOX_CONSUMER_ENABLED ?? true, captureOutboxPollMs = process.env.CAPTURE_OUTBOX_POLL_MS ?? 0, latestPredictionRefreshMs = process.env.LATEST_PREDICTION_REFRESH_MS ?? 1000, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionSecret = process.env.MEMBER_SESSION_SECRET, adminSessionSecret = process.env.ADMIN_SESSION_SECRET || memberSessionSecret, adminSessionTtlMs: requestedAdminSessionTtlMs = Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionValidationTtlMs = Number(process.env.MEMBER_SESSION_VALIDATION_TTL_MS ?? 0), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), streamHeartbeatMs = Number(process.env.STREAM_HEARTBEAT_MS ?? 3000), livePredictionReadWaitMs = process.env.LIVE_PREDICTION_READ_WAIT_MS ?? 1000, serviceShutdownDeadlineMs = 5000, fatalHandler = null, fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v104FormalRuntime = null, pendingPredictionStore = null, dailyMemoryRollover = null, requireFencedIngest = process.env.REQUIRE_FENCED_INGEST === 'true', sourceFenceStore = null } = {}) {
+export function createApp({ captureOutboxMode = process.env.CAPTURE_OUTBOX_MODE ?? 'legacy', captureRoundBasis = process.env.CAPTURE_ROUND_BASIS ?? 'legacy', autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 45000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), outboxCoalesceMs = process.env.CAPTURE_OUTBOX_COALESCE_MS ?? 1000, captureOutboxBatchLimit = process.env.CAPTURE_OUTBOX_BATCH_LIMIT ?? 30, captureOutboxConsumerEnabled = process.env.CAPTURE_OUTBOX_CONSUMER_ENABLED ?? true, captureOutboxPollMs = process.env.CAPTURE_OUTBOX_POLL_MS ?? 0, latestPredictionRefreshMs = process.env.LATEST_PREDICTION_REFRESH_MS ?? 1000, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionSecret = process.env.MEMBER_SESSION_SECRET, adminSessionSecret = process.env.ADMIN_SESSION_SECRET || memberSessionSecret, adminSessionTtlMs: requestedAdminSessionTtlMs = Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionValidationTtlMs = Number(process.env.MEMBER_SESSION_VALIDATION_TTL_MS ?? 0), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), streamHeartbeatMs = Number(process.env.STREAM_HEARTBEAT_MS ?? 3000), livePredictionReadWaitMs = process.env.LIVE_PREDICTION_READ_WAIT_MS ?? 1000, serviceShutdownDeadlineMs = 5000, fatalHandler = null, fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v104FormalRuntime = null, pendingPredictionStore = null, dailyMemoryRollover = null, requireFencedIngest = process.env.REQUIRE_FENCED_INGEST === 'true', sourceFenceStore = null } = {}) {
   if (!['legacy', 'completed'].includes(captureRoundBasis)) throw new Error('capture round basis must be legacy or completed')
+  if (!['legacy', 'table-lanes-v1'].includes(captureOutboxMode)) throw new Error('invalid capture outbox mode')
+  const tableLanes = captureOutboxMode === 'table-lanes-v1'
+  if (tableLanes && ['claimCaptureTableWork', 'completeCaptureTableWork', 'failCaptureTableWork', 'getCaptureTableWorkHealth'].some(name => typeof supabaseClient?.[name] !== 'function')) throw new Error('table lanes writer contract required')
+  const claimOutbox = (options) => tableLanes ? supabaseClient.claimCaptureTableWork(options) : supabaseClient.claimCaptureOutbox(options)
+  const readOutboxHealth = () => tableLanes ? supabaseClient.getCaptureTableWorkHealth() : supabaseClient.getCaptureOutboxHealth()
   const isAdmittedCaptureScreen = (table) => captureRoundBasis !== 'completed' || table?.roundBasis === 'completed'
   const ingestSourceFence = sourceFenceStore ?? createInMemoryIngestSourceFence()
   const deployConfig = resolveDeployConfig({
@@ -608,7 +643,12 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
           state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
         })
       }
-      if (screenProgressChanged) requestTablesRefresh(changedScreenTables)
+      if (screenProgressChanged) {
+        requestTablesRefresh(changedScreenTables)
+        // Same-identity enrichment has no lifecycle advance to wake prefetch.
+        // Publish its actual road/coverage change without waiting for heartbeat.
+        if (changedScreenTables.length === 0) requestTablesBroadcast(false)
+      }
     },
     onRoundEvent: async (round, table) => {
       if (!resolvedCaptureOutboxConsumerEnabled) return
@@ -938,6 +978,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       const actionableFreshTables = effectiveFreshTables.filter((table) => {
         const tableId = canonicalProductionTableId(table?.tableId)
         return visibleScreenRound(effectiveFreshRounds.get(tableId), table?.roundBasis) > 0
+          && !hasKnownIncompleteTrend(table)
           && lastSuccessfulLatestPredictionSignatureByTable.get(tableId) !== freshPredictionSignaturesByTable.get(tableId)
       })
       if (actionableFreshTables.length === 0) {
@@ -963,7 +1004,13 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
           ? result.reason
           : new Error('latest actionable cloud tables require durable v105 predictions before latest prediction refresh')
       }
-      if (failedFreshPrediction) throw failedFreshPrediction
+      if (failedFreshPrediction) {
+        if (!tableLanes) throw failedFreshPrediction
+        // Table-local issuance failure must not gate unrelated child claims.
+        // Failed signatures stay retryable; each child's durable ACK checks remain mandatory.
+        state.setStatus({ persistenceStatus: 'error', persistenceError: failedFreshPrediction?.message ?? String(failedFreshPrediction) })
+        return { refreshed: false, partial: true }
+      }
       return { refreshed: true, predictions: freshPredictionResults.length }
     })().finally(() => {
       latestPredictionRefreshPromise = null
@@ -983,21 +1030,23 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
         : Math.min(deferredWakeDelayMs, normalizedDelayMs)
     }
     outboxDrainPromise = (async () => {
-      if (outboxStopping || captureOutboxFatal || typeof supabaseClient?.claimCaptureOutbox !== 'function') return { processed: 0, failed: 0 }
+      if (outboxStopping || captureOutboxFatal || (!tableLanes && typeof supabaseClient?.claimCaptureOutbox !== 'function')) return { processed: 0, failed: 0 }
       let processed = 0
       let failed = 0
       let shouldContinue = false
       let nextWakeDelayMs = null
       try {
         await refreshLatestDurablePredictions({ beforeClaim: true })
+        if (outboxStopping || captureOutboxFatal) return { processed: 0, failed: 0 }
         setCaptureOutboxPhase('claim')
-        const batchEnabled = typeof supabaseClient?.completeCaptureOutboxBatch === 'function'
+        const batchEnabled = !tableLanes && typeof supabaseClient?.completeCaptureOutboxBatch === 'function'
           && typeof supabaseClient?.failCaptureOutboxBatch === 'function'
-        const rows = await supabaseClient.claimCaptureOutbox({ limit: batchEnabled ? resolvedCaptureOutboxBatchLimit : 1 })
+        const rows = await claimOutbox({ limit: batchEnabled ? resolvedCaptureOutboxBatchLimit : 1 })
         outboxRetryCount = 0
         if (Array.isArray(rows) && rows.length > 0) {
           const claimedRows = batchEnabled ? rows : [rows[0]]
           const claims = claimedRows.map((row) => ({
+            ...(tableLanes ? { id: row.id } : {}),
             sessionId: String(row?.session_id ?? ''),
             sequence: Number(row?.sequence),
             claimToken: String(row?.claim_token ?? ''),
@@ -1031,14 +1080,15 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
               throw error
             }
           }
-          const completeClaims = () => (batchEnabled
+          const completeClaims = () => tableLanes ? supabaseClient.completeCaptureTableWork(claims[0]) : (batchEnabled
             ? supabaseClient.completeCaptureOutboxBatch({ claims })
             : supabaseClient.completeCaptureOutbox(claims[0]))
-          const failClaims = (error) => (batchEnabled
+          const failClaims = (error) => tableLanes ? supabaseClient.failCaptureTableWork({ ...claims[0], error }) : (batchEnabled
             ? supabaseClient.failCaptureOutboxBatch({ claims, error })
             : supabaseClient.failCaptureOutbox({ ...claims[0], error }))
           try {
             const parsed = mergeClaimedCaptureWork(claimedRows)
+            if (tableLanes && (parsed.rounds.some(round => round.tableId !== claimedRows[0].table_id) || parsed.tables.some(table => table.tableId !== claimedRows[0].table_id))) throw new Error('capture child crossed table boundary')
             if (parsed.rounds.length === 0) {
               await runLeasePhase('heartbeat_complete_ack', completeClaims)
               processed += claimedRows.length
@@ -1162,7 +1212,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
             state.setStatus({ persistenceStatus: 'error', persistenceError: error?.message ?? String(error) })
             setCaptureOutboxPhase('failure_ack', attempt)
             const failureAckKey = claims.map((claim) => (
-              `${claim.sessionId}\u0000${claim.sequence}\u0000${claim.claimToken}\u0000${claim.attempt}`
+              `${claim.id ?? ''}\u0000${claim.sessionId}\u0000${claim.sequence}\u0000${claim.claimToken}\u0000${claim.attempt}`
             )).join('\u0001')
             if (!attemptedFailureAcks.has(failureAckKey)) {
               attemptedFailureAcks.add(failureAckKey)
@@ -1185,10 +1235,10 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
         throw error
       }
       if (shouldContinue) deferWake(nextWakeDelayMs ?? 0)
-      if (typeof supabaseClient?.getCaptureOutboxHealth === 'function') {
+      if (tableLanes || typeof supabaseClient?.getCaptureOutboxHealth === 'function') {
         try {
           setCaptureOutboxPhase('health')
-          const captureOutbox = await supabaseClient.getCaptureOutboxHealth()
+          const captureOutbox = await readOutboxHealth()
           outboxHealthRetryCount = 0
           state.setStatus({ captureOutbox })
           const nextWakeAt = Date.parse(captureOutbox?.next_wakeup_at ?? '')
@@ -2172,6 +2222,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
   }
 
   function savePendingPrediction(table) {
+    if (hasKnownIncompleteTrend(table)) return Promise.resolve(null)
     if (!isAdmittedCaptureScreen(table)) return Promise.resolve(null)
     const currentRound = Number(table?.round)
     if (!table?.tableId || table?.shoe == null || !Number.isSafeInteger(currentRound)) return Promise.resolve(null)
