@@ -737,7 +737,9 @@ function inferDepth(role) {
 }
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10)
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date())
 }
 
 function validationAuditOutcome(license, ok) {
@@ -749,16 +751,22 @@ function validationAuditOutcome(license, ok) {
 }
 
 function dateOnly(value) {
-  if (!value) return null
-  return String(value).slice(0, 10)
+  if (value instanceof Date) {
+    if (!Number.isFinite(value.getTime())) return null
+    // pg's SQL date parser returns process-local midnight, not a UTC instant.
+    value = `${String(value.getFullYear()).padStart(4, '0')}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
+  }
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith('0000-')) return null
+  const parsed = new Date(`${value}T00:00:00Z`)
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value ? value : null
 }
 
 function formatRemain(expiresOn) {
-  if (!expiresOn) return '未設定'
-  const today = new Date()
-  const expiry = String(expiresOn).includes('T') ? new Date(expiresOn) : new Date(`${expiresOn}T00:00:00`)
-  const diff = Math.ceil((expiry.getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) / 86400000)
-  return diff > 0 ? `${diff}天` : '已到期'
+  const expiry = dateOnly(expiresOn)
+  if (!expiry) return '未設定'
+  // Compare calendar days, independent of the process timezone and DST.
+  const diff = (Date.parse(`${expiry}T00:00:00Z`) - Date.parse(`${todayIso()}T00:00:00Z`)) / 86400000
+  return diff > 0 ? `${diff}天` : diff === 0 ? '今日到期' : '已到期'
 }
 
 function httpError(statusCode, message) {
