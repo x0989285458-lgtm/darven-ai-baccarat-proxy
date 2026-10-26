@@ -3518,6 +3518,15 @@ body,
   grid-template-columns: 32px minmax(0, .8fr) minmax(0, 1.2fr) minmax(0, .9fr) minmax(0, .8fr) !important;
   min-width: 0;
 }
+/* Keep long account/code text inside its own grid cell, not over selection. */
+.admin-v015-shell .code-row > span,
+.admin-v015-shell .code-row > b,
+.admin-v015-shell .code-row > em {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .admin-v015-shell .code-list-head { min-height: 40px; background: #0c263b; color: #75cdf5; font-weight: 800; }
 
 .admin-v015-shell .weak-grid {
