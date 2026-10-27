@@ -1,4 +1,5 @@
 import http from 'node:http'
+import { createDiagnosticSink } from './capture-diagnostics.js'
 import { chromium } from 'playwright'
 import { WebSocket } from 'ws'
 import { readFile } from 'node:fs/promises'
@@ -48,6 +49,7 @@ const MT_SOURCE_MODE = process.env.MT_SOURCE_MODE ?? 'api'
 const MT_CAPTURE_ROLE = process.env.MT_CAPTURE_ROLE ?? 'canonical'
 const SOURCE_OWNER_PATH = process.env.SOURCE_OWNER_PATH ?? './data/source-owner.json'
 const FINAL_JOURNAL_PATH = process.env.FINAL_JOURNAL_PATH ?? './data/final-events.jsonl'
+const captureDiagnostics = createDiagnosticSink({ path: `${FINAL_JOURNAL_PATH}.diagnostics.json` })
 const MT_BACKUP_FINAL_JOURNAL_PATH = process.env.MT_BACKUP_FINAL_JOURNAL_PATH ?? ''
 const MT_BACKUP_SESSION_TOKEN_FILE = process.env.MT_BACKUP_SESSION_TOKEN_FILE ?? ''
 const PUSH_QUEUE_PATH = process.env.PUSH_QUEUE_PATH ?? './data/latest-snapshot.json'
@@ -316,7 +318,8 @@ async function ensureSourceRuntime() {
       allowGapDelivery: process.env.MT_ALLOW_GAP_DELIVERY === 'true',
       freshBaselineWarmupMs: Number(process.env.MT_FRESH_BASELINE_WARMUP_MS ?? 15_000),
       signalFinalReady: () => snapshotPusher.trigger(),
-      createApiClient: ({ onFinal, onTables, initialShoeLifecycles, onShoeLifecycleTransition }) => createMtApiClient({
+      onDiagnostic: captureDiagnostics.record,
+      createApiClient: ({ onFinal, onTables, initialShoeLifecycles, onShoeLifecycleTransition, onDiagnostic }) => createMtApiClient({
         sourceOwner: owner,
         sessionManager,
         createSocket: (url, options) => new WebSocket(url, { headers: options?.headers }),
@@ -324,6 +327,7 @@ async function ensureSourceRuntime() {
         onTables,
         initialShoeLifecycles,
         onShoeLifecycleTransition,
+        onDiagnostic,
         onError: (message) => { lastError = redactUrlSecrets(message) },
       }),
     })
@@ -627,6 +631,7 @@ async function shutdown() {
         if (browser) await browser.close().catch(() => {})
       },
     })
+    captureDiagnostics.stop()
     server.close(() => process.exit(0))
   })()
   return shutdownPromise

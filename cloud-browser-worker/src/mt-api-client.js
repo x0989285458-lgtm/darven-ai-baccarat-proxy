@@ -1,3 +1,4 @@
+import { emitDiagnostic } from './capture-diagnostics.js'
 import { isExactTenRawResult, normalizeExactRealCardEvent } from '../../shared/real-card-validator.js'
 import { canonicalProductionTableId, PRODUCTION_TABLE_IDS, LEGACY_TABLE_IDS } from './table-policy.js'
 
@@ -14,6 +15,7 @@ export function createMtApiClient({
   onShoeLifecycleTransition = null,
   initialShoeLifecycles = [],
   onError = () => {},
+  onDiagnostic = () => {},
   gameUrl = DEFAULT_GAME_URL,
   chatUrl = DEFAULT_CHAT_URL,
   reconnectDelayMs = 3_000,
@@ -94,6 +96,11 @@ export function createMtApiClient({
     attach(current, 'chat')
   }
 
+  function diagnostic(event, current, role, extra = {}) {
+    emitDiagnostic(onDiagnostic, { event, generation: current?.id ?? generation, role,
+      state: stopped ? 'stopped' : current && isCurrent(current) ? (current.closing ? 'closing' : 'current') : 'stale', ...extra })
+  }
+
   function attach(current, kind) {
     const socket = current[kind]
     const timeout = Math.max(0, Number(connectTimeoutMs) || 0)
@@ -101,12 +108,14 @@ export function createMtApiClient({
       current.openTimers[kind] = setTimeoutFn(() => {
         current.openTimers[kind] = null
         if (!isCurrent(current) || current.opened[kind]) return
+        diagnostic('socket_open_timeout', current, kind)
         handleError(new Error(`mt_socket_open_timeout:${kind}`))
         scheduleReconnect(current)
       }, timeout)
       current.openTimers[kind]?.unref?.()
     }
     socket.on('open', () => {
+      diagnostic('socket_open', current, kind)
       if (!isCurrent(current)) return
       clearTimeoutFn(current.openTimers[kind])
       current.openTimers[kind] = null
@@ -117,6 +126,7 @@ export function createMtApiClient({
         current.authTimers[kind] = setTimeoutFn(() => {
           current.authTimers[kind] = null
           if (!isCurrent(current) || current.authenticated[kind]) return
+          diagnostic('auth_timeout', current, kind)
           const reason = `mt_authenticate_timeout:${kind}`
           handleError(new Error(reason))
           void refreshGeneration(current, { reason })
@@ -128,13 +138,15 @@ export function createMtApiClient({
       current.messageChain = current.messageChain
         .then(() => handleMessage(current, kind, raw))
         .catch((error) => {
+          diagnostic('message_failed', current, kind)
           try { handleError(error) } catch {}
           scheduleReconnect(current)
         })
       void current.messageChain
     })
-    socket.on('error', handleError)
-    socket.on('close', () => {
+    socket.on('error', (error) => { diagnostic('socket_error', current, kind); handleError(error) })
+    socket.on('close', (code) => {
+      diagnostic('socket_close', current, kind, [1000,1001,1002,1003,1005,1006,1007,1008,1009,1010,1011,1012,1013,1014,1015].includes(code) ? { code } : {})
       current.opened[kind] = false
       current.authenticated[kind] = false
       current.joined[kind] = false
@@ -150,9 +162,11 @@ export function createMtApiClient({
     const action = actionName(payload)
     if (isAuthenticateAction(kind, action)) {
       if (Number(payload.err) !== 0) {
+        diagnostic('auth_rejected', current, kind)
         await refreshGeneration(current, { reason: `authenticate_err_${Number(payload.err)}` })
         return
       }
+      diagnostic('auth_ok', current, kind)
       current.authenticated[kind] = true
       clearTimeoutFn(current.authTimers[kind])
       current.authTimers[kind] = null
@@ -164,14 +178,17 @@ export function createMtApiClient({
     const joinKind = joinActionKind(action)
     if (joinKind) {
       if (joinKind !== kind || !current.authenticated[kind] || !current.joinRequested[kind]) {
+        diagnostic('join_protocol_rejected', current, kind)
         handleError(new Error(`mt_join_ack_protocol_violation:${joinKind}`))
         scheduleReconnect(current)
         return
       }
       if (Number(payload.err) !== 0) {
+        diagnostic('join_rejected', current, kind)
         scheduleReconnect(current)
         return
       }
+      diagnostic('join_ok', current, kind)
       current.joined[joinKind] = true
       if (current.joined.game && current.joined.chat) {
         reconnecting = false
@@ -183,6 +200,7 @@ export function createMtApiClient({
       current.tablesRefreshRequestedAtMs = null
       const validated = validateExactTables(payload.msg.tables)
       if (!validated) {
+        diagnostic('catalog_rejected', current, kind)
         current.catalogRooms = null
         throw new Error('mt_api_live_catalog_invalid')
       }
@@ -209,10 +227,13 @@ export function createMtApiClient({
     const finalAction = finalActionName(action)
     if (!finalAction) return
     const final = normalizeFinalPayload(payload, finalAction)
-    if (!final || current.catalogRooms?.get(final.tableId) !== final.roomId) return
-    if (!exactJoinComplete(current)) return
+    if (!final) { diagnostic('final_reject_invalid', current, kind); return }
+    const finalIdentity = { tableId: final.tableId, shoe: final.shoe, round: final.round }
+    if (current.catalogRooms?.get(final.tableId) !== final.roomId) { diagnostic('final_reject_room', current, kind, finalIdentity); return }
+    if (!exactJoinComplete(current)) { diagnostic('final_reject_join', current, kind, finalIdentity); return }
     const shoeDecision = inspectFinalShoe(shoeChronologyByTable, final, latestTables)
     if (!shoeDecision.accept) {
+      diagnostic(shoeChronologyByTable.get(final.tableId)?.retired.includes(final.shoe) ? 'final_reject_retired_shoe' : 'final_reject_shoe', current, kind, finalIdentity)
       // A rollover can affect every table before any Final is admitted. Ask for
       // provider evidence, never adopt the rejected summary's shoe or replay it.
       const timeMs = Number(now())
@@ -232,7 +253,13 @@ export function createMtApiClient({
       tableId: final.tableId, activeShoe: lifecycle.active, retiredShoes: [...lifecycle.retired],
       currentScreen: { shoe: final.shoe, round: final.round }, origin: 'final', source,
     }
-    await onFinal({ ...final, source, shoeLifecycle })
+    try {
+      await onFinal({ ...final, source, shoeLifecycle })
+      diagnostic('final_delivered', current, kind, finalIdentity)
+    } catch (error) {
+      diagnostic('final_callback_failed', current, kind, finalIdentity)
+      throw error
+    }
     shoeChronologyByTable = acceptedChronology
     const previousFinalScreen = latestFinalScreenByTable.get(final.tableId)
     if (isStrictlyNewerScreen(previousFinalScreen, final)) {
@@ -313,6 +340,7 @@ export function createMtApiClient({
 
   function scheduleReconnect(current) {
     if (stopped || !isCurrent(current) || current.reconnectScheduled) return
+    diagnostic('reconnect_scheduled', current)
     current.reconnectScheduled = true
     reconnecting = true
     clearIntervalFn(heartbeatTimer)
@@ -342,6 +370,7 @@ export function createMtApiClient({
   function refreshGeneration(current, reason) {
     if (!isCurrent(current)) return refreshPromise ?? Promise.resolve()
     if (refreshPromise) return refreshPromise
+    diagnostic('refresh_start', current)
     clearTimeoutFn(reconnectTimer)
     clearIntervalFn(heartbeatTimer)
     reconnectTimer = null
@@ -362,10 +391,12 @@ export function createMtApiClient({
         if (stopped || refreshCycle !== cycle) return
         await connectGeneration()
         if (stopped || refreshCycle !== cycle) return
+        diagnostic('refresh_ok', sockets)
         refreshCycle = null
         reconnecting = false
       } catch (error) {
         handleError(error)
+        diagnostic('refresh_failed', sockets)
         scheduleRefreshRetry(cycle)
       } finally {
         refreshPromise = null
@@ -381,6 +412,7 @@ export function createMtApiClient({
     const baseDelay = Math.max(0, Number(reconnectDelayMs) || 0)
     const maxDelay = Math.max(baseDelay, Number(reconnectMaxDelayMs) || baseDelay)
     const delay = Math.min(maxDelay, baseDelay * (2 ** Math.min(cycle.retryAttempt, 30)))
+    diagnostic('refresh_retry', sockets, undefined, { delayMs: delay })
     cycle.retryAttempt += 1
     reconnectTimer = setTimeoutFn(async () => {
       reconnectTimer = null
@@ -392,6 +424,7 @@ export function createMtApiClient({
 
   function stop() {
     stopped = true
+    diagnostic('stop', sockets)
     lifecycleEpoch += 1
     refreshCycle = null
     clearTimeoutFn(reconnectTimer)
@@ -404,6 +437,7 @@ export function createMtApiClient({
   }
 
   function closeGeneration(current) {
+    if (current) current.closing = true
     if (current?.openTimers) {
       clearTimeoutFn(current.openTimers.game)
       clearTimeoutFn(current.openTimers.chat)

@@ -1,0 +1,61 @@
+name: Build reviewed worker observability artifact
+
+on:
+  push:
+    branches: ['release/capture-observability-20261027']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-observability-artifact-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Bind reviewed source bytes (no test execution)
+        run: sha256sum -c release/worker-observability-20261027.sha256
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        id: image
+        with:
+          context: .
+          file: cloud-browser-worker/Dockerfile.observability
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/x0989285458-lgtm/darven-cloud-browser-worker:v105-worker-observability.20261027.1
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=v105-worker-observability.20261027.1
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          provenance: mode=max
+          sbom: false
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be
+        with:
+          subject-name: ghcr.io/x0989285458-lgtm/darven-cloud-browser-worker
+          subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: true
+      - name: Save immutable build receipt
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          mkdir -p receipt
+          jq -n --arg image "ghcr.io/x0989285458-lgtm/darven-cloud-browser-worker@$DIGEST" --arg commit "$GITHUB_SHA" --arg run "$GITHUB_RUN_ID" '{image:$image,commit:$commit,run:$run,scope:"worker-observability-only",testsRerun:false,deployed:false}' > receipt/image.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: worker-observability-${{ github.sha }}
+          path: receipt/image.json

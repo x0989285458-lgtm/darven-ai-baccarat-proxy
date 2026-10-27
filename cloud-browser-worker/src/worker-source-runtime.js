@@ -1,3 +1,4 @@
+import { emitDiagnostic } from './capture-diagnostics.js'
 import { canonicalProductionTableId, PRODUCTION_TABLE_IDS, sortProductionTables } from './table-policy.js'
 import { updateSourceProgressTracker } from './worker-health.js'
 
@@ -17,6 +18,7 @@ export function createWorkerSourceRuntime({
   freshBaselineWarmupMs = 0,
   clockMs = Date.now,
   signalFinalReady = () => {},
+  onDiagnostic = () => {},
 } = {}) {
   if (!sourceOwner || !journal || !gapDetector || !replayProvider || typeof createApiClient !== 'function') {
     throw new Error('worker_source_runtime_dependencies_required')
@@ -103,7 +105,7 @@ export function createWorkerSourceRuntime({
       const lifecycleOptions = typeof journal.transitionShoeLifecycle === 'function'
         ? { onShoeLifecycleTransition: (value) => journal.transitionShoeLifecycle(value) }
         : {}
-      apiClient = createApiClient({ onFinal, onTables, initialShoeLifecycles, ...lifecycleOptions })
+      apiClient = createApiClient({ onFinal, onTables, initialShoeLifecycles, onDiagnostic, ...lifecycleOptions })
       await apiClient.start()
       await leaseRenewTail
       if (leaseRenewalError) throw leaseRenewalError
@@ -147,11 +149,13 @@ export function createWorkerSourceRuntime({
       const source = event?.source
       if (!source || source.mode !== currentLease?.mode || source.ownerId !== currentLease?.ownerId
         || Number(source.epoch) !== Number(currentLease?.epoch) || source.fence !== currentLease?.fence) throw new Error('stale_source_fence')
+      emitDiagnostic(onDiagnostic, { event: 'final_skip_ack', tableId, shoe: event?.shoe, round: event?.round })
       return
     }
     if (freshBaselineTables.has(tableId) && Number(freshBaselineWarmupMs) > 0) {
       if (freshBaselineReadyAt == null) freshBaselineReadyAt = Number(clockMs()) + Math.max(0, Number(freshBaselineWarmupMs) || 0)
       if (Number(clockMs()) < freshBaselineReadyAt) {
+      emitDiagnostic(onDiagnostic, { event: 'final_skip_warmup', tableId, shoe: event?.shoe, round: event?.round })
       sourceProgressTracker = updateSourceProgressTracker(sourceProgressTracker, {
         snapshotAt: now(), tables, rounds: [event],
       })
@@ -160,6 +164,7 @@ export function createWorkerSourceRuntime({
     }
     const continuityGap = freshBaselineTables.has(tableId) ? null : detectLiveFinalGap(event)
     if (continuityGap) {
+      emitDiagnostic(onDiagnostic, { event: 'final_gap', tableId, shoe: event?.shoe, round: event?.round })
       if (allowGapDelivery) {
         rememberBypassedGap(continuityGap)
         gaps = []
@@ -170,6 +175,7 @@ export function createWorkerSourceRuntime({
         try {
           await resolveGaps()
         } catch (error) {
+          emitDiagnostic(onDiagnostic, { event: 'final_gap_failed', tableId, shoe: event?.shoe, round: event?.round })
           if (leaseTimer) clearIntervalFn(leaseTimer)
           leaseTimer = null
           apiClient?.stop?.()
@@ -179,6 +185,7 @@ export function createWorkerSourceRuntime({
         const cursor = journal.cursor(canonicalProductionTableId(event?.tableId ?? event?.table_id))
         if (cursor?.origin === 'snapshot-pusher-exact-ack-cursor'
           && (Number(event?.shoe) !== Number(cursor.shoe) || Number(event?.round) !== Number(cursor.round) + 1)) {
+          emitDiagnostic(onDiagnostic, { event: 'final_reject_cursor', tableId, shoe: event?.shoe, round: event?.round })
           lastReplayGate = 'bootstrap_cursor_ack_required'
           if (leaseTimer) clearIntervalFn(leaseTimer)
           leaseTimer = null
@@ -188,7 +195,13 @@ export function createWorkerSourceRuntime({
         }
       }
     }
-    await journal.append(event)
+    try {
+      await journal.append(event)
+      emitDiagnostic(onDiagnostic, { event: 'journal_append_ok', tableId, shoe: event?.shoe, round: event?.round })
+    } catch (error) {
+      emitDiagnostic(onDiagnostic, { event: 'journal_append_failed', tableId, shoe: event?.shoe, round: event?.round })
+      throw error
+    }
     sourceProgressTracker = updateSourceProgressTracker(sourceProgressTracker, {
       snapshotAt: now(), tables, rounds: [event],
     })
