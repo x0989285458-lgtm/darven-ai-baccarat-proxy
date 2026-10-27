@@ -100,7 +100,13 @@ export async function getOnlineLicenseStatus(adminAccountOrFetch?: string | { ad
       await new Promise((resolve) => setTimeout(resolve, 750))
       response = await request()
     }
-    if (!response.ok) return { ...emptyStatus(), state: [401, 403].includes(response.status) ? 'invalid' : 'error' }
+    if (!response.ok) {
+      // The deployed status route also wraps data-query failures as 401.
+      // Only its explicit session-invalid contract may clear a valid session.
+      const failure = await response.json().catch(() => null)
+      const invalid = response.status === 401 && failure?.error === 'admin session is required'
+      return { ...emptyStatus(), state: invalid ? 'invalid' : 'error' }
+    }
     const body = await response.json()
     if (!body || body.error || (typeof body.configured !== 'boolean' && !['managers', 'agents', 'plans', 'licenses'].every((key) => Array.isArray(body[key])))) return emptyStatus()
     return { ...mapStatus(body), state: 'ready' }
