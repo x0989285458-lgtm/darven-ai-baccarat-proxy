@@ -3,6 +3,8 @@ import { dravenApiBaseUrl } from './apiBase'
 const proxyUrl = dravenApiBaseUrl
 
 export type OnlineLicenseStatus = {
+  state?: 'ready' | 'error' | 'invalid'
+  error?: string
   configured?: boolean
   managers: Array<{ username: string; role?: string; is_active?: boolean }>
   agents: Array<{ code: string; name?: string; role?: string; parent_code?: string; permission?: string; is_active?: boolean }>
@@ -98,19 +100,21 @@ export async function getOnlineLicenseStatus(adminAccountOrFetch?: string | { ad
       await new Promise((resolve) => setTimeout(resolve, 750))
       response = await request()
     }
-    if (!response.ok) return emptyStatus()
+    if (!response.ok) return { ...emptyStatus(), state: [401, 403].includes(response.status) ? 'invalid' : 'error' }
     const body = await response.json()
-    return mapStatus(body)
+    if (!body || body.error || (typeof body.configured !== 'boolean' && !['managers', 'agents', 'plans', 'licenses'].every((key) => Array.isArray(body[key])))) return emptyStatus()
+    return { ...mapStatus(body), state: 'ready' }
   } catch {
     return emptyStatus()
   }
 }
 
-export async function getCloudDataStatus(fetchImpl = fetch): Promise<{ ok?: boolean; mtAutoLoginEnabled?: boolean; message?: string; tableCount?: number; todayRoundCount?: number; tableStats?: Array<{ tableId: string; mainHitRate: string; sideHitRate: string }>; dailyReports?: Array<Record<string, any>> }> {
+export async function getCloudDataStatus(fetchImpl = fetch, signal?: AbortSignal): Promise<{ ok?: boolean; mtAutoLoginEnabled?: boolean; message?: string; tableCount?: number; todayRoundCount?: number; tableStats?: Array<{ tableId: string; mainHitRate: string; sideHitRate: string }>; dailyReports?: Array<Record<string, any>> }> {
   try {
-    const response = await fetchImpl(`${proxyUrl}/api/cloud-data/status`, { cache: 'no-store' } as RequestInit)
+    const response = await fetchImpl(`${proxyUrl}/api/cloud-data/status`, { cache: 'no-store', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000) } as RequestInit)
     if (!response.ok) return { ok: false, mtAutoLoginEnabled: false, message: '雲端資料狀態讀取失敗' }
-    return response.json()
+    const body = await response.json()
+    return body && body.ok === true ? body : { ok: false, message: '雲端資料狀態讀取失敗' }
   } catch {
     return { ok: false, mtAutoLoginEnabled: false, message: '雲端資料狀態讀取失敗' }
   }
@@ -126,11 +130,16 @@ async function postJson(path: string, payload: unknown, fetchImpl: typeof fetch,
       body: JSON.stringify(payload),
       signal: controller.signal,
     })
-    const body = typeof response.json === 'function' ? await response.json().catch(() => ({})) : {}
-    if (!response.ok) {
-      const error = new Error(body.error ?? '線上授權 API 失敗') as Error & { status?: number }
-      error.status = response.status
+    let body: any
+    try { body = await response.json() } catch {
+      throw Object.assign(new Error('寫入結果未確認，請先重新讀取資料；勿重複送出'), { status: response.status, unknown: true })
+    }
+    if (!response.ok || body?.ok !== true) {
+      const error = Object.assign(new Error(body?.error ?? '寫入結果未確認，請先重新讀取資料'), { status: response.status, unknown: response.ok })
       throw error
+    }
+    if (path === '/api/online-license/licenses' && typeof body.row?.code !== 'string') {
+      throw Object.assign(new Error('寫入結果未確認，請先重新讀取資料'), { status: response.status, unknown: true })
     }
     return body
   } catch (error) {
@@ -142,7 +151,7 @@ async function postJson(path: string, payload: unknown, fetchImpl: typeof fetch,
 }
 
 function emptyStatus(): OnlineLicenseStatus {
-  return { configured: false, managers: [], agents: [], plans: [], licenses: [], agentRows: [], licenseRows: [] }
+  return { state: 'error', error: '授權資料讀取失敗，舊資料已過期', managers: [], agents: [], plans: [], licenses: [], agentRows: [], licenseRows: [] }
 }
 
 function mapStatus(body: any): OnlineLicenseStatus {

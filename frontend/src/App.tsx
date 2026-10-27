@@ -222,10 +222,17 @@ export default function App() {
     if (path === '/admin' && !adminLoggedIn) return
     let active = true
     const adminSessionToken = path === '/admin' ? window.sessionStorage.getItem('darven-admin-session-token') ?? undefined : undefined
-    checkSupabaseConnection(adminSessionToken).then((result) => {
-      if (!active) return
-      setSupabaseStatus({ state: result.ok ? 'connected' : 'error', message: result.message })
-    })
+    let healthBusy = false
+    const loadHealth = async () => {
+      if (healthBusy) return
+      healthBusy = true
+      try {
+        const result = await checkSupabaseConnection(adminSessionToken)
+        if (active) setSupabaseStatus({ state: result.ok ? 'connected' : 'error', message: result.message })
+      } finally { healthBusy = false }
+    }
+    void loadHealth()
+    const healthTimer = window.setInterval(loadHealth, 15000)
     const loadCoreStatus = () => checkOnlineCoreStatus().then((result) => {
       if (!active) return
       setOnlineCoreStatus(result)
@@ -233,7 +240,7 @@ export default function App() {
     })
     loadCoreStatus()
     const timer = window.setInterval(loadCoreStatus, 15000)
-    return () => { active = false; window.clearInterval(timer) }
+    return () => { active = false; window.clearInterval(timer); window.clearInterval(healthTimer) }
   }, [path, memberLoggedIn, adminLoggedIn])
 
   const start = () => {
@@ -543,34 +550,6 @@ function AdminLoginApp() {
 type AgentRow = { account: string; level: string; permission: string; parent?: string; depth?: number }
 type CodeRow = { member: string; code: string; status: string; remain: string; agentCode?: string; expiresOn?: string; suspendedAt?: string }
 
-const initialAgents: AgentRow[] = [
-  { account: 'dv1788', level: '超級管理員', permission: '最高權限 / 可看全部', depth: 0 },
-  { account: 'Admin001', level: '管理員', permission: '可開代理 / 可建碼', parent: 'dv1788', depth: 1 },
-  { account: 'Agent001', level: '代理', permission: '可開觀察者 / 可建碼', parent: 'Admin001', depth: 2 },
-  { account: 'Agent002', level: '代理', permission: '可建碼', parent: 'Admin001', depth: 2 },
-  { account: 'View001', level: '觀察者', permission: '僅可登入確認', parent: 'Agent001', depth: 3 },
-  { account: 'DV1688', level: '管理員', permission: '可開代理 / 可建碼', parent: 'dv1788', depth: 1 },
-  { account: 'A1024', level: '代理', permission: '可建碼', parent: 'DV1688', depth: 2 },
-  { account: 'B7788', level: '觀察者', permission: '僅可登入確認', parent: 'A1024', depth: 3 },
-  { account: 'M8888', level: '管理員', permission: '可開代理 / 可建碼', parent: 'dv1788', depth: 1 },
-  { account: 'Test009', level: '代理', permission: '可建碼', parent: 'M8888', depth: 2 },
-  { account: 'C2026', level: '觀察者', permission: '僅可登入確認', parent: 'Test009', depth: 3 },
-  { account: 'Agent010', level: '代理', permission: '可建碼', parent: 'M8888', depth: 2 },
-]
-
-const initialCodes: CodeRow[] = [
-  { member: 'User001', code: 'Agent001_001', status: '啟用中', remain: '30天' },
-  { member: 'User002', code: 'Agent001_002', status: '啟用中', remain: '28天' },
-  { member: 'User003', code: 'Agent002_001', status: '暫停中', remain: '12天' },
-  { member: 'User004', code: 'DV1688_008', status: '啟用中', remain: '10天' },
-  { member: 'User005', code: 'A1024_003', status: '啟用中', remain: '9天' },
-  { member: 'User006', code: 'Test009_001', status: '啟用中', remain: '7天' },
-  { member: 'User007', code: 'B7788_004', status: '暫停中', remain: '6天' },
-  { member: 'User008', code: 'M8888_010', status: '啟用中', remain: '5天' },
-  { member: 'User009', code: 'C2026_002', status: '啟用中', remain: '3天' },
-  { member: 'User010', code: 'Agent010_001', status: '啟用中', remain: '1天' },
-]
-
 function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTable[]; supabaseStatus: { state: string; message: string }; onlineCoreStatus: OnlineCoreStatus }) {
   const totalRounds = tables.reduce((sum, table) => sum + Number(table.trend.current_round ?? 0), 0)
   const loginAgent = window.sessionStorage.getItem('darven-admin-account')?.trim() || SUPER_ADMIN
@@ -579,9 +558,11 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const isSuper = loginRoleName === 'super' || loginAgent.toLowerCase() === SUPER_ADMIN
   const [memberAccount, setMemberAccount] = useState('')
   const [planDays, setPlanDays] = useState('30')
-  const [latestMember, setLatestMember] = useState('User001')
-  const [latestCode, setLatestCode] = useState('DV1788_001')
-  const [codes, setCodes] = useState<CodeRow[]>(() => pruneExpiredCodes(initialCodes))
+  const [latestMember, setLatestMember] = useState('')
+  const [latestCode, setLatestCode] = useState('')
+  const [codes, setCodes] = useState<CodeRow[]>([])
+  const [licenseError, setLicenseError] = useState('')
+  const licenseFlight = useRef<Promise<OnlineLicenseStatus> | null>(null)
   const [selectedCodeMembers, setSelectedCodeMembers] = useState<string[]>([])
   const [selectedAgents, setSelectedAgents] = useState<string[]>([])
   const [agentSearch, setAgentSearch] = useState('')
@@ -591,52 +572,51 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const [newAgentRole, setNewAgentRole] = useState<'viewer' | 'agent' | 'manager'>('agent')
   const [newAgentParent, setNewAgentParent] = useState('')
   const [agentActionBusy, setAgentActionBusy] = useState(false)
+  const [extensionDays, setExtensionDays] = useState<Record<string, number>>({})
   const [codeActionBusy, setCodeActionBusy] = useState(false)
   const [createAuthorizationBusy, setCreateAuthorizationBusy] = useState(false)
   const createAuthorizationBusyRef = useRef(false)
+  const [maintenanceMode, setMaintenanceMode] = useState(Boolean(onlineCoreStatus.maintenanceMode))
+  const [maintenanceBusy, setMaintenanceBusy] = useState(false)
+  const maintenanceFlight = useRef(false)
+  const [maintenanceError, setMaintenanceError] = useState('')
+  useEffect(() => { if (!maintenanceFlight.current && onlineCoreStatus.state === 'connected') setMaintenanceMode(Boolean(onlineCoreStatus.maintenanceMode)) }, [onlineCoreStatus])
   const [toast, setToast] = useState('')
   const [memoryCenter, setMemoryCenter] = useState<OnlineMemoryCenter>({ state: 'connecting', items: [], reports: [], strategies: [] })
   const [strategyAnalysis, setStrategyAnalysis] = useState<OnlineStrategyAnalysis>({ state: 'connecting', strategyRows: [], weakTables: [], strongTables: [], watchTables: [], suggestions: [] })
   const [licenseStatus, setLicenseStatus] = useState<OnlineLicenseStatus>({ managers: [], agents: [], plans: [], licenses: [], agentRows: [], licenseRows: [] })
-  const [cloudDataStatus, setCloudDataStatus] = useState<{ mtAutoLoginEnabled?: boolean; message?: string; tableCount?: number; todayRoundCount?: number; tableStats?: Array<{ tableId: string; mainHitRate: string; sideHitRate: string }>; dailyReports?: Array<Record<string, any>> }>({ mtAutoLoginEnabled: false, message: '資料抓取待確認', todayRoundCount: 0, tableStats: [], dailyReports: [] })
+  const [cloudDataStatus, setCloudDataStatus] = useState<{ mtAutoLoginEnabled?: boolean; message?: string; tableCount?: number; todayRoundCount?: number; tableStats?: Array<{ tableId: string; mainHitRate: string; sideHitRate: string }>; dailyReports?: Array<Record<string, any>> }>({ mtAutoLoginEnabled: false, message: '資料抓取待確認', tableStats: [], dailyReports: [] })
+  const [reportState, setReportState] = useState<'loading' | 'ready' | 'stale'>('loading')
   useEffect(() => {
-    let cloudLoaded = false
-    const loadReports = () => {
-      getOnlineMemoryCenter().then(setMemoryCenter)
-      getOnlineStrategyAnalysis().then(setStrategyAnalysis)
-      getCloudDataStatus().then((status) => {
-        setCloudDataStatus((previous) => status.todayRoundCount != null ? status : previous)
-        if (status.todayRoundCount != null) cloudLoaded = true
-      })
+    let active = true
+    let retries = 0
+    let timer: ReturnType<typeof setTimeout>
+    const controller = new AbortController()
+    const loadReports = async () => {
+      const status = await getCloudDataStatus(fetch, controller.signal)
+      if (!active) return
+      const valid = status.ok === true && Number.isFinite(status.todayRoundCount)
+      if (valid) { setCloudDataStatus(status); setReportState('ready'); retries = 0 }
+      else { setReportState('stale'); retries += 1 }
+      timer = setTimeout(loadReports, !valid && retries <= 2 ? [5000, 15000][retries - 1] : 300000)
     }
-    loadReports()
-    const slowTimer = window.setInterval(loadReports, 300000)
-    const fastTimer = window.setInterval(() => {
-      if (cloudLoaded) { window.clearInterval(fastTimer); return }
-      loadReports()
-    }, 5000)
-    return () => { window.clearInterval(slowTimer); window.clearInterval(fastTimer) }
+    void loadReports()
+    return () => { active = false; controller.abort(); clearTimeout(timer) }
   }, [])
   useEffect(() => {
     if (onlineCoreStatus.maintenanceMode && !isSuper) logoutAdmin()
   }, [onlineCoreStatus.maintenanceMode, isSuper])
-  useEffect(() => { getOnlineLicenseStatus({ adminAccount: displayManager, adminSessionToken }).then((status) => {
-    setLicenseStatus(status)
-    if (status.licenseRows.length) {
-      const rows = pruneExpiredCodes(status.licenseRows as CodeRow[])
-      setCodes(rows)
-      if (rows.length) {
-        setLatestCode(rows[0].code)
-        setLatestMember(rows[0].member)
-      }
-    } else if (status.configured === false) {
-      setCodes(pruneExpiredCodes(initialCodes))
-    } else {
-      setCodes([])
-      setLatestCode('')
-      setLatestMember('')
+  useEffect(() => {
+    let active = true
+    let retries = 0
+    let timer: ReturnType<typeof setTimeout>
+    const load = async () => {
+      try { await refreshLicenses(); retries = 0 } catch { retries += 1 }
+      if (active) timer = setTimeout(load, retries > 0 && retries <= 2 ? 5000 : 60000)
     }
-  }) }, [])
+    void load()
+    return () => { active = false; clearTimeout(timer) }
+  }, [])
   const localToday = new Date()
   const localStartDate = new Date(localToday.getFullYear(), localToday.getMonth(), localToday.getDate())
   const startDate = formatLocalDate(localStartDate)
@@ -658,13 +638,13 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     try {
       const nextCode = buildLicenseCode(displayManager, displayMember, serialNo)
       const result = await createOnlineLicense({ memberAccount: displayMember, code: nextCode, agentCode: displayManager, durationDays: clampedPlanDays, adminSessionToken })
-      setLatestMember(displayMember)
-      setLatestCode(result.row?.code ?? nextCode)
-      const nextRows = await getOnlineLicenseStatus({ adminAccount: displayManager, adminSessionToken })
-      setLicenseStatus(nextRows)
-      if (nextRows.licenseRows.length) setCodes(pruneExpiredCodes(nextRows.licenseRows as CodeRow[]))
-      else setCodes((rows) => pruneExpiredCodes([{ member: displayMember, code: result.row?.code ?? nextCode, status: '啟用中', remain: `${result.durationDays ?? clampedPlanDays}天` }, ...rows]))
+      const nextRows = await refreshLicenses()
+      const confirmed = nextRows.licenseRows.find((row) => row.code === result.row.code && row.member === displayMember)
+      if (!confirmed) throw new Error('建立結果未確認，已重新讀取；勿重複送出')
+      setLatestMember(confirmed.member)
+      setLatestCode(confirmed.code)
     } catch (error: any) {
+      await refreshLicenses().catch(() => {})
       notify(error?.message || '建立授權失敗')
     } finally {
       createAuthorizationBusyRef.current = false
@@ -672,10 +652,21 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     }
   }
   const refreshLicenses = async () => {
-    const nextRows = await getOnlineLicenseStatus({ adminAccount: displayManager, adminSessionToken })
-    setLicenseStatus(nextRows)
-    if (nextRows.licenseRows.length) setCodes(pruneExpiredCodes(nextRows.licenseRows as CodeRow[]))
-    return nextRows
+    if (licenseFlight.current) return licenseFlight.current
+    const request = (async () => {
+      const nextRows = await getOnlineLicenseStatus({ adminAccount: displayManager, adminSessionToken })
+      if (nextRows.state !== 'ready') {
+        setLicenseError(nextRows.state === 'invalid' ? '管理 Session 無效，請重新登入' : '授權資料讀取失敗，舊資料已過期')
+        if (nextRows.state === 'invalid') logoutAdmin()
+        throw new Error('授權資料讀取失敗，請重新讀取')
+      }
+      setLicenseError('')
+      setLicenseStatus(nextRows)
+      setCodes(pruneExpiredCodes(nextRows.licenseRows as CodeRow[]))
+      return nextRows
+    })()
+    licenseFlight.current = request
+    try { return await request } finally { licenseFlight.current = null }
   }
   const toggleCode = (member: string) => setSelectedCodeMembers((current) => current.includes(member) ? current.filter((item) => item !== member) : [...current, member])
   const toggleAgent = (account: string) => setSelectedAgents((current) => current.includes(account) ? current.filter((item) => item !== account) : [...current, account])
@@ -700,6 +691,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       await refreshLicenses()
       notify('已刪除選取驗證碼')
     } catch (error: any) {
+      await refreshLicenses().catch(() => {})
       notify(error?.message || '刪除驗證碼失敗')
     } finally {
       setCodeActionBusy(false)
@@ -715,6 +707,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       await refreshLicenses()
       notify('已暫停選取驗證碼')
     } catch (error: any) {
+      await refreshLicenses().catch(() => {})
       notify(error?.message || '暫停驗證碼失敗')
     } finally {
       setCodeActionBusy(false)
@@ -730,6 +723,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       await refreshLicenses()
       notify('已開啟選取驗證碼')
     } catch (error: any) {
+      await refreshLicenses().catch(() => {})
       notify(error?.message || '開啟驗證碼失敗')
     } finally {
       setCodeActionBusy(false)
@@ -741,10 +735,11 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     if (!rows.length) return notify('請先勾選驗證碼')
     setCodeActionBusy(true)
     try {
-      await Promise.all(rows.map((row) => extendOnlineLicense({ code: row.code, days: clampedPlanDays, adminSessionToken })))
+      await Promise.all(rows.map((row) => extendOnlineLicense({ code: row.code, days: extensionDays[row.code] ?? 30, adminSessionToken })))
       await refreshLicenses()
-      notify(`已延長選取驗證碼 ${clampedPlanDays} 天`)
+      notify('已依各列天數延長選取驗證碼')
     } catch (error: any) {
+      await refreshLicenses().catch(() => {})
       notify(error?.message || '延長驗證碼失敗')
     } finally {
       setCodeActionBusy(false)
@@ -768,6 +763,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       await refreshLicenses()
       notify(`代理帳號已建立：${code}`)
     } catch (error: any) {
+      await refreshLicenses().catch(() => {})
       notify(error?.message || '建立代理失敗')
     } finally {
       setAgentActionBusy(false)
@@ -786,6 +782,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       await refreshLicenses()
       notify('代理角色已調整')
     } catch (error: any) {
+      await refreshLicenses().catch(() => {})
       notify(error?.message || '調整等級失敗')
     } finally {
       setAgentActionBusy(false)
@@ -801,21 +798,39 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       await refreshLicenses()
       notify('已刪除選取帳號；若選取管理員，其附屬下級也已刪除')
     } catch (error: any) {
+      await refreshLicenses().catch(() => {})
       notify(error?.message || '刪除代理失敗')
     } finally {
       setAgentActionBusy(false)
     }
   }
   const enableMaintenanceMode = async () => {
-    if (!isSuper) return notify('只有超級管理員可以啟用維護模式')
-    await updateOnlineAppSetting({ scope: 'frontend', key: 'ui_defaults', value: { maintenanceMode: true, enabledAt: new Date().toISOString() }, isPublic: true, adminSessionToken })
-    notify('維護模式已啟用')
-    window.location.reload()
+    if (!isSuper || maintenanceFlight.current) return
+    maintenanceFlight.current = true
+    setMaintenanceBusy(true)
+    setMaintenanceError('')
+    const desired = !maintenanceMode
+    try {
+      const current = await checkOnlineCoreStatus()
+      if (current.state !== 'connected') throw new Error('無法讀取現有設定，未送出維護更新')
+      const defaults = current.settings?.frontend?.ui_defaults
+      if (defaults == null || typeof defaults !== 'object' || Array.isArray(defaults)) throw new Error('現有設定格式錯誤，未送出更新')
+      const result = await updateOnlineAppSetting({ scope: 'frontend', key: 'ui_defaults', value: { ...defaults, maintenanceMode: desired, enabledAt: desired ? new Date().toISOString() : defaults?.enabledAt }, isPublic: true, adminSessionToken })
+      if (result?.ok !== true || result?.result?.ok !== true) throw new Error('維護寫入結果未確認')
+      const verified = await checkOnlineCoreStatus()
+      if (verified.state !== 'connected' || verified.maintenanceMode !== desired) throw new Error('維護設定讀回未確認，勿重複送出')
+      setMaintenanceMode(desired)
+      notify(desired ? '維護模式已啟用' : '維護模式已停用')
+    } catch (error: any) {
+      const current = await checkOnlineCoreStatus()
+      if (current.state === 'connected') setMaintenanceMode(Boolean(current.maintenanceMode))
+      setMaintenanceError(error?.message || '維護更新結果未確認，請先重新讀取')
+    } finally { maintenanceFlight.current = false; setMaintenanceBusy(false) }
   }
   const dailyReports = cloudDataStatus.dailyReports ?? []
-  const latestReport = dailyReports[0] ?? memoryCenter.reports[0]
-  const actualRounds = cloudDataStatus.todayRoundCount ?? latestReport?.rounds ?? totalRounds
-  const agents = useMemo(() => normalizeAgents(licenseStatus.configured === false ? initialAgents : licenseStatus.agentRows, displayManager), [licenseStatus.configured, licenseStatus.agentRows, displayManager])
+  const latestReport = dailyReports[0]
+  const actualRounds = cloudDataStatus.todayRoundCount
+  const agents = useMemo(() => normalizeAgents(licenseStatus.agentRows, displayManager), [licenseStatus.configured, licenseStatus.agentRows, displayManager])
   const visibleAgents = useMemo(() => filterCollapsedAgents(agents, collapsedAgents), [agents, collapsedAgents])
   const filteredAgents = useMemo(() => filterAgents(visibleAgents, agentSearch), [visibleAgents, agentSearch])
   const filteredCodes = useMemo(() => filterCodes(codes, codeSearch), [codes, codeSearch])
@@ -826,6 +841,8 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
 
   return <main className="admin-shell admin-v015-shell" data-ui-theme="navy-gold" style={{ width: '100%', maxWidth: 'none' }}>
     {toast ? <div className="toast">{toast}</div> : null}
+    {maintenanceError ? <p role="alert">{maintenanceError}</p> : null}
+    {licenseError ? <div role="alert">{licenseError}<button onClick={() => { void refreshLicenses().catch(() => {}) }}>重新讀取授權</button></div> : null}
     <header className="admin-hero clean-hero v015-hero" style={{ width: '100%', maxWidth: 'none' }}>
       <div className="admin-title-block">
         <span className="eyebrow">管理控制中心</span>
@@ -836,8 +853,8 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     </header>
 
     <section className="admin-summary-grid auth-summary v015-summary v044-summary-grid" aria-label="管理總覽" style={{ width: '100%', maxWidth: 'none' }}>
-      <article className="admin-metric purple settings-metric"><span>線上設定管理</span>{isSuper ? <button onClick={enableMaintenanceMode}>啟用維護模式</button> : <strong>僅超級管理員</strong>}</article>
-      <AdminMetric title="數據抓取" value={`已抓 ${actualRounds} 局`} tone="cyan" />
+      <article className="admin-metric purple settings-metric"><span>線上設定管理</span>{isSuper ? <button disabled={maintenanceBusy} onClick={enableMaintenanceMode}>{maintenanceBusy ? '更新中…' : maintenanceMode ? '停用維護模式' : '啟用維護模式'}</button> : <strong>僅超級管理員</strong>}</article>
+      <AdminMetric title="數據抓取" value={actualRounds == null ? '尚未讀取' : `已抓 ${actualRounds} 局`} tone="cyan" />
       <AdminMetric title="資料庫" value={formatConnectionMetric(supabaseStatus, '資料庫')} tone={supabaseStatus.state === 'error' ? 'yellow' : 'green'} />
       <AdminMetric title="記憶中心" value={formatConnectionMetric(onlineCoreStatus, '記憶中心')} tone={onlineCoreStatus.state === 'error' ? 'yellow' : 'cyan'} />
     </section>
@@ -902,7 +919,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
           {filteredCodes.map((row) => <div className="list-row code-row" key={row.code}>
             <input aria-label={`勾選 ${row.code}`} type="checkbox" checked={selectedCodeMembers.includes(row.code)} onChange={() => toggleCode(row.code)} />
             <span>{row.member}</span><b>{row.code}</b><em>{row.status}｜{row.remain}</em>
-            <input placeholder="延長1-30天" />
+            <input placeholder="延長1-30天" aria-label={`延長天數 ${row.code}`} type="number" min="1" max="30" value={extensionDays[row.code] ?? 30} onChange={(event) => setExtensionDays((current) => ({ ...current, [row.code]: clampPlanDays(event.target.value) }))} />
           </div>)}
         </div>
       </section>
@@ -910,11 +927,15 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
 
     <section className="admin-panel list-panel weak-panel" aria-label="弱桌分析">
       <h2>弱桌分析</h2>
-      <div className="weak-grid">{tableDisplayOrder.map((name, index) => <article className="weak-card" key={name}><strong>{name}桌</strong><span>主命中率 {cloudDataStatus.tableStats?.[index]?.mainHitRate ?? tableHitRate(strategyAnalysis, index, 'main')}</span><span>副命中率 {cloudDataStatus.tableStats?.[index]?.sideHitRate ?? tableHitRate(strategyAnalysis, index, 'side')}</span></article>)}</div>
+      <div className="weak-grid">{tableDisplayOrder.map((name) => {
+        const stat = cloudDataStatus.tableStats?.find((row) => row.tableId === `BAV${name.padStart(2, '0')}`.replace('BAV3A', 'BAV03A'))
+        return <article className="weak-card" key={name}><strong>{name}桌</strong><span>主命中率 {stat?.mainHitRate ?? '無資料'}</span><span>副命中率 {stat?.sideHitRate ?? '無資料'}</span></article>
+      })}</div>
     </section>
 
     <section className="admin-panel list-panel report-panel" aria-label="線上記憶與報表">
       <h2>線上記憶與報表</h2>
+      {reportState !== 'ready' ? <p role="status">{reportState === 'loading' ? '報表尚未讀取' : '報表讀取失敗，保留資料已過期'}</p> : null}
       <div className="report-wide-row report-head"><span>日期</span><span>當日總局數</span><span>莊命中率</span><span>閒命中率</span><span>和命中率</span><span>龍寶命中率</span><span>對子命中率</span><span>超六命中率</span></div>
       {(dailyReports.length ? dailyReports : [latestReport]).filter(Boolean).map((report: any) => <div className="report-wide-row" key={report.date ?? report.created_at ?? 'latest'}><span>{report.date ?? new Date().toLocaleDateString('zh-TW')}</span><b>{report.rounds ?? actualRounds}局</b><span>{categoryHitRate(report, 'banker')}</span><span>{categoryHitRate(report, 'player')}</span><span>{categoryHitRate(report, 'tie')}</span><span>{categoryHitRate(report, 'dragon')}</span><span>{categoryHitRate(report, 'pair')}</span><span>{categoryHitRate(report, 'six')}</span></div>)}
     </section>
@@ -988,8 +1009,6 @@ function defaultChildRole(parentLevel: string): 'viewer' | 'agent' | 'manager' {
 function categoryHitRate(report: any, key: string) {
   const direct = report?.[`${key}_hit_rate`] ?? report?.[`${key}HitRate`] ?? report?.raw_summary?.[`${key}_hit_rate`] ?? report?.metadata?.[`${key}_hit_rate`]
   if (direct != null) return formatPercentValue(direct)
-  if (key === 'banker' || key === 'player') return report?.main_hit_rate != null ? formatPercentValue(report.main_hit_rate) : '-'
-  if (['dragon','pair','six','tie'].includes(key)) return formatSideHitRate(report)
   return '-'
 }
 
