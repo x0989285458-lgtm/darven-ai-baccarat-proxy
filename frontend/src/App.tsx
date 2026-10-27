@@ -653,10 +653,11 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const createAuthorization = async () => {
     if (!canManageCodes) return notify('此角色不能建立驗證碼')
     if (createAuthorizationBusyRef.current) return
+    const nextCode = buildLicenseCode(displayManager, displayMember, serialNo)
+    if (!admitManagementWrite('code', [nextCode])) return
     createAuthorizationBusyRef.current = true
     setCreateAuthorizationBusy(true)
     try {
-      const nextCode = buildLicenseCode(displayManager, displayMember, serialNo)
       const result = await createOnlineLicense({ memberAccount: displayMember, code: nextCode, agentCode: displayManager, durationDays: clampedPlanDays, adminSessionToken })
       const nextRows = await refreshLicenses()
       const confirmed = nextRows.licenseRows.find((row) => row.code === result.row.code && row.member === displayMember)
@@ -707,9 +708,17 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     window.location.assign('/admin-login')
   }
   const selectedCodeRows = () => codes.filter((row) => selectedCodeMembers.includes(row.code))
+  const admitManagementWrite = (kind: 'code' | 'agent', ids: string[]) => {
+    if (batchFlight.current) return false
+    const conflict = batchFences.has('*') || ids.some((id) => [...batchFences].some((pending) => {
+      const identity = `${kind}:${id}`
+      return pending === identity || (kind === 'agent' && (pending.startsWith(`${identity}-`) || identity.startsWith(`${pending}-`)))
+    }))
+    if (conflict) notify('選取項目仍有結果未知的寫入，須先人工核對；禁止重複送出')
+    return !conflict
+  }
   const runSelectedBatch = async (kind: 'code' | 'agent', jobs: Array<{ id: string; write: () => Promise<unknown> }>, successMessage: string) => {
-    if (batchFlight.current) return
-    if (batchFences.has('*') || jobs.some((job) => batchFences.has(`${kind}:${job.id}`))) return notify('選取項目仍有結果未知的寫入，須先人工核對；禁止重複送出')
+    if (!admitManagementWrite(kind, jobs.map((job) => job.id))) return
     const setBusy = kind === 'code' ? setCodeActionBusy : setAgentActionBusy
     batchFlight.current = true
     setBusy(true)
@@ -772,6 +781,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     if (!roleOptions.includes(newAgentRole)) return notify('下級等級不能高於或平級於上級')
     const parentCode = newAgentParent || displayManager
     const code = buildChildAgentAccount(parentCode, rawCode)
+    if (!admitManagementWrite('agent', [code])) return
     setAgentActionBusy(true)
     try {
       const result = await createOnlineAgent({ code, name: code, role: newAgentRole, parentCode, adminSessionToken, permission: rolePermission(newAgentRole) })
@@ -802,6 +812,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const deleteSelectedAgents = async () => {
     if (!canManageAgents) return notify('此角色不能刪除代理')
     if (!selectedAgents.length) return notify('請先勾選代理')
+    if (!admitManagementWrite('agent', selectedAgents)) return
     setAgentActionBusy(true)
     try {
       await deleteOnlineAgents({ codes: selectedAgents, adminSessionToken })

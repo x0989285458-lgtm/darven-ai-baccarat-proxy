@@ -43,6 +43,22 @@ function mountAdmin(extra?: (url:string, init?:RequestInit) => Response | Promis
   return response({connected:true,items:[],reports:[],strategies:[],strategyRows:[]})
  });vi.stubGlobal('fetch',send);return {send,...render(<App />)}
 }
+it.each(['create', 'delete'] as const)('D04 fences same-agent %s outside the old batch entry', async (operation) => {
+ sessionStorage.setItem('darven-admin-batch-pending:dv1788', JSON.stringify(['agent:dv1788-one']))
+ const {send}=mountAdmin(url=>url.includes('/online-license/status') ? response({configured:true,licenseRows:[],agentRows:[{account:'dv1788-one',level:'代理',permission:'可建碼',parent:'dv1788',depth:1}]}) : undefined)
+ await screen.findByLabelText('勾選 dv1788-one')
+ if(operation==='create') {
+  fireEvent.change(screen.getByPlaceholderText('輸入代理帳號尾碼'),{target:{value:'one'}})
+  fireEvent.click(screen.getByText('新增帳號'))
+ } else {
+  fireEvent.click(screen.getByLabelText('勾選 dv1788-one'))
+  fireEvent.click(screen.getByText('刪除選取帳號'))
+ }
+ await act(async()=>{})
+ expect(send.mock.calls.filter(([,init])=>init?.method==='POST')).toHaveLength(0)
+ expect(screen.getByText(/仍有結果未知的寫入/)).toBeInTheDocument()
+})
+
 it('D01 UI never falls back to demo data and retries failed status', async () => {
  vi.useFakeTimers(); let fail=true
  mountAdmin((url) => url.includes('/online-license/status') && fail ? Promise.reject(Error('offline')) : undefined)
