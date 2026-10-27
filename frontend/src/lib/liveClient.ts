@@ -135,6 +135,17 @@ export class LiveRoadClient {
   private pollAbort?: AbortController
   private connectionGeneration = 0
   private lastTablesAt = 0
+  private lastStreamAt = 0
+  private lastRecoveryAt = -Infinity
+  private readonly recoverConnection = () => {
+    if (this.stopped || this.authorizationLost || Date.now() - this.lastRecoveryAt < 1000) return
+    this.lastRecoveryAt = Date.now()
+    void this.connectStream()
+    void this.poll()
+  }
+  private readonly recoverVisibleConnection = () => {
+    if (document.visibilityState === 'visible') this.recoverConnection()
+  }
   private stopped = true
   private authorizationLost = false
   private tablesSuppressed = false
@@ -149,16 +160,24 @@ export class LiveRoadClient {
     this.stopped = false
     this.authorizationLost = false
     this.lastTablesAt = Date.now()
+    window.addEventListener('online', this.recoverConnection)
+    window.addEventListener('pageshow', this.recoverConnection)
+    document.addEventListener('visibilitychange', this.recoverVisibleConnection)
     this.options.onStatus({ state: 'connecting', message: '正在建立即時同步…' })
     void this.connectStream()
     this.streamWatchdog = window.setInterval(() => {
       if (this.stopped) return
+      if (Date.now() - this.lastStreamAt >= streamStaleMs) void this.connectStream()
       if (!this.lastTablesAt || Date.now() - this.lastTablesAt >= streamStaleMs) void this.poll()
     }, pollIntervalMs)
   }
 
   disconnect(notify = true) {
     this.stopped = true
+    window.removeEventListener('online', this.recoverConnection)
+    window.removeEventListener('pageshow', this.recoverConnection)
+    document.removeEventListener('visibilitychange', this.recoverVisibleConnection)
+    this.lastRecoveryAt = -Infinity
     this.connectionGeneration += 1
     this.pollPromise = undefined
     this.pollAbort?.abort()
@@ -177,19 +196,31 @@ export class LiveRoadClient {
   }
 
   private async connectStream() {
+    if (this.stopped || this.authorizationLost) return
+    if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = undefined
     this.streamAbort?.abort()
     const controller = new AbortController()
     this.streamAbort = controller
+    this.lastStreamAt = Date.now()
+    const generation = this.connectionGeneration
+    const isCurrent = () => !this.stopped && !controller.signal.aborted
+      && generation === this.connectionGeneration && this.streamAbort === controller
     try {
       const headers = this.options.memberSessionToken ? { Authorization: `Bearer ${this.options.memberSessionToken}` } : undefined
       const response = await fetch(`${proxyApiUrl}/api/tables/stream`, { cache: 'no-store', headers, signal: controller.signal })
+      if (!isCurrent()) {
+        void response.body?.cancel().catch(() => {})
+        return
+      }
       if (response.status === 401) {
         this.handleUnauthorized()
         return
       }
       if (!response.ok || !response.body) throw new Error(`stream ${response.status}`)
       await consumeSseStream(response.body, (event, data) => {
-        if (this.stopped) return
+        if (!isCurrent()) return
+        this.lastStreamAt = Date.now()
         if (event === 'unauthorized') {
           this.handleUnauthorized()
           this.streamAbort?.abort()
@@ -205,11 +236,11 @@ export class LiveRoadClient {
         const tables = normalizeProxyTables(Array.isArray(payload?.tables) ? payload.tables : [])
         this.publishTables(tables, `SSE ${tables.length}`)
       })
-      if (!this.stopped) this.scheduleStreamReconnect()
+      if (isCurrent()) this.scheduleStreamReconnect()
     } catch {
-      if (this.stopped || controller.signal.aborted) return
+      if (!isCurrent()) return
       await this.poll()
-      this.scheduleStreamReconnect()
+      if (isCurrent()) this.scheduleStreamReconnect()
     }
   }
 
@@ -388,10 +419,11 @@ export class LiveRoadClient {
   }
 
   private handleUnauthorized() {
-    this.clearAcceptedTables()
-    this.options.onStatus({ state: 'error', message: '會員 Session 已失效，請重新登入' })
     if (this.authorizationLost) return
     this.authorizationLost = true
+    this.disconnect(false)
+    this.clearAcceptedTables()
+    this.options.onStatus({ state: 'error', message: '會員 Session 已失效，請重新登入' })
     this.options.onUnauthorized?.()
   }
 }
