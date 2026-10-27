@@ -550,6 +550,17 @@ function AdminLoginApp() {
 type AgentRow = { account: string; level: string; permission: string; parent?: string; depth?: number }
 type CodeRow = { member: string; code: string; status: string; remain: string; agentCode?: string; expiresOn?: string; suspendedAt?: string }
 
+const ADMIN_BATCH_DEADLINE_MS = 10000
+
+async function waitForAdminResult<T>(work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([work, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(Object.assign(new Error('結果未知，勿重複送出'), { unknown: true })), ADMIN_BATCH_DEADLINE_MS)
+    })])
+  } finally { clearTimeout(timer) }
+}
+
 function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTable[]; supabaseStatus: { state: string; message: string }; onlineCoreStatus: OnlineCoreStatus }) {
   const totalRounds = tables.reduce((sum, table) => sum + Number(table.trend.current_round ?? 0), 0)
   const loginAgent = window.sessionStorage.getItem('darven-admin-account')?.trim() || SUPER_ADMIN
@@ -563,6 +574,15 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const [codes, setCodes] = useState<CodeRow[]>([])
   const [licenseError, setLicenseError] = useState('')
   const licenseFlight = useRef<Promise<OnlineLicenseStatus> | null>(null)
+  const licenseGeneration = useRef(0)
+  const batchFlight = useRef(false)
+  const batchFenceKey = `darven-admin-batch-pending:${loginAgent}`
+  const [batchFences] = useState<Set<string>>(() => {
+    try {
+      const saved: unknown = JSON.parse(window.sessionStorage.getItem(batchFenceKey) ?? '[]')
+      return Array.isArray(saved) && saved.every((id) => typeof id === 'string') ? new Set(saved) : new Set(['*'])
+    } catch { return new Set(['*']) }
+  })
   const [selectedCodeMembers, setSelectedCodeMembers] = useState<string[]>([])
   const [selectedAgents, setSelectedAgents] = useState<string[]>([])
   const [agentSearch, setAgentSearch] = useState('')
@@ -651,10 +671,17 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       setCreateAuthorizationBusy(false)
     }
   }
-  const refreshLicenses = async () => {
-    if (licenseFlight.current) return licenseFlight.current
+  const refreshLicenses = async (fresh = false) => {
+    if (!fresh && licenseFlight.current) return licenseFlight.current
+    // A post-write read cannot join an older snapshot, nor let it overwrite us.
+    const generation = ++licenseGeneration.current
     const request = (async () => {
-      const nextRows = await getOnlineLicenseStatus({ adminAccount: displayManager, adminSessionToken })
+      let nextRows: OnlineLicenseStatus
+      try { nextRows = await waitForAdminResult(getOnlineLicenseStatus({ adminAccount: displayManager, adminSessionToken })) } catch (error) {
+        if (generation === licenseGeneration.current) setLicenseError('授權資料讀取失敗，舊資料已過期')
+        throw error
+      }
+      if (generation !== licenseGeneration.current) throw new Error('授權資料讀取已被較新請求取代')
       if (nextRows.state !== 'ready') {
         setLicenseError(nextRows.state === 'invalid' ? '管理 Session 無效，請重新登入' : '授權資料讀取失敗，舊資料已過期')
         if (nextRows.state === 'invalid') logoutAdmin()
@@ -666,7 +693,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       return nextRows
     })()
     licenseFlight.current = request
-    try { return await request } finally { licenseFlight.current = null }
+    try { return await request } finally { if (licenseFlight.current === request) licenseFlight.current = null }
   }
   const toggleCode = (member: string) => setSelectedCodeMembers((current) => current.includes(member) ? current.filter((item) => item !== member) : [...current, member])
   const toggleAgent = (account: string) => setSelectedAgents((current) => current.includes(account) ? current.filter((item) => item !== account) : [...current, account])
@@ -680,71 +707,62 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     window.location.assign('/admin-login')
   }
   const selectedCodeRows = () => codes.filter((row) => selectedCodeMembers.includes(row.code))
-  const deleteSelectedCodes = async () => {
+  const runSelectedBatch = async (kind: 'code' | 'agent', jobs: Array<{ id: string; write: () => Promise<unknown> }>, successMessage: string) => {
+    if (batchFlight.current) return
+    if (batchFences.has('*') || jobs.some((job) => batchFences.has(`${kind}:${job.id}`))) return notify('選取項目仍有結果未知的寫入，須先人工核對；禁止重複送出')
+    const setBusy = kind === 'code' ? setCodeActionBusy : setAgentActionBusy
+    batchFlight.current = true
+    setBusy(true)
+    try {
+      // Persist before dispatch: reloading this tab must not replay an unknown write.
+      jobs.forEach((job) => batchFences.add(`${kind}:${job.id}`))
+      try { window.sessionStorage.setItem(batchFenceKey, JSON.stringify([...batchFences])) } catch {
+        notify('無法保存寫入防重送狀態，未送出批次')
+        return
+      }
+      // Drain all bounded outcomes, not merely the first rejection. A deadline is
+      // unknown completion, never proof that the server stopped writing.
+      const results = await Promise.allSettled(jobs.map((job) => waitForAdminResult(Promise.resolve().then(job.write))))
+      const failed: string[] = []
+      const unknown: string[] = []
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') return
+        const error = result.reason
+        const rejected = error?.unknown === false && error.status >= 400 && error.status < 500 && error.status !== 408
+        ;(rejected ? failed : unknown).push(jobs[index].id)
+      })
+      let readback = true
+      try { await refreshLicenses(true) } catch { readback = false }
+      if (readback) {
+        jobs.filter((job) => !unknown.includes(job.id)).forEach((job) => batchFences.delete(`${kind}:${job.id}`))
+        try { window.sessionStorage.setItem(batchFenceKey, JSON.stringify([...batchFences])) } catch {
+          batchFences.add('*')
+          readback = false
+        }
+      }
+      if (!failed.length && !unknown.length && readback) notify(successMessage)
+      else {
+        const describe = (ids: string[]) => `${ids.length} 筆${ids.length ? `（${ids.join('、')}）` : ''}`
+        notify(`已回覆成功 ${results.length - failed.length - unknown.length} 筆；失敗 ${describe(failed)}；結果未知 ${describe(unknown)}；${readback ? '已重新讀取' : '讀回失敗'}，勿整批重送；未知結果須先人工核對，勿重複送出`)
+      }
+    } finally {
+      // Partial batches must not leave successful extensions selected for replay.
+      if (kind === 'code') setSelectedCodeMembers([])
+      else setSelectedAgents([])
+      batchFlight.current = false
+      setBusy(false)
+    }
+  }
+  const runCodeBatch = async (write: (row: CodeRow) => Promise<unknown>, successMessage: string) => {
     if (!canManageCodes) return notify('此角色不能管理驗證碼')
     const rows = selectedCodeRows()
     if (!rows.length) return notify('請先勾選驗證碼')
-    setCodeActionBusy(true)
-    try {
-      await Promise.all(rows.map((row) => deleteOnlineLicense({ code: row.code, adminSessionToken })))
-      setSelectedCodeMembers([])
-      await refreshLicenses()
-      notify('已刪除選取驗證碼')
-    } catch (error: any) {
-      await refreshLicenses().catch(() => {})
-      notify(error?.message || '刪除驗證碼失敗')
-    } finally {
-      setCodeActionBusy(false)
-    }
+    await runSelectedBatch('code', rows.map((row) => ({ id: row.code, write: () => write(row) })), successMessage)
   }
-  const suspendSelectedCodes = async () => {
-    if (!canManageCodes) return notify('此角色不能管理驗證碼')
-    const rows = selectedCodeRows()
-    if (!rows.length) return notify('請先勾選驗證碼')
-    setCodeActionBusy(true)
-    try {
-      await Promise.all(rows.map((row) => setOnlineLicenseStatus({ code: row.code, status: 'suspended', adminSessionToken })))
-      await refreshLicenses()
-      notify('已暫停選取驗證碼')
-    } catch (error: any) {
-      await refreshLicenses().catch(() => {})
-      notify(error?.message || '暫停驗證碼失敗')
-    } finally {
-      setCodeActionBusy(false)
-    }
-  }
-  const activateSelectedCodes = async () => {
-    if (!canManageCodes) return notify('此角色不能管理驗證碼')
-    const rows = selectedCodeRows()
-    if (!rows.length) return notify('請先勾選驗證碼')
-    setCodeActionBusy(true)
-    try {
-      await Promise.all(rows.map((row) => setOnlineLicenseStatus({ code: row.code, status: 'active', adminSessionToken })))
-      await refreshLicenses()
-      notify('已開啟選取驗證碼')
-    } catch (error: any) {
-      await refreshLicenses().catch(() => {})
-      notify(error?.message || '開啟驗證碼失敗')
-    } finally {
-      setCodeActionBusy(false)
-    }
-  }
-  const extendSelectedCodes = async () => {
-    if (!canManageCodes) return notify('此角色不能管理驗證碼')
-    const rows = selectedCodeRows()
-    if (!rows.length) return notify('請先勾選驗證碼')
-    setCodeActionBusy(true)
-    try {
-      await Promise.all(rows.map((row) => extendOnlineLicense({ code: row.code, days: extensionDays[row.code] ?? 30, adminSessionToken })))
-      await refreshLicenses()
-      notify('已依各列天數延長選取驗證碼')
-    } catch (error: any) {
-      await refreshLicenses().catch(() => {})
-      notify(error?.message || '延長驗證碼失敗')
-    } finally {
-      setCodeActionBusy(false)
-    }
-  }
+  const deleteSelectedCodes = () => runCodeBatch((row) => deleteOnlineLicense({ code: row.code, adminSessionToken }), '已刪除選取驗證碼')
+  const suspendSelectedCodes = () => runCodeBatch((row) => setOnlineLicenseStatus({ code: row.code, status: 'suspended', adminSessionToken }), '已暫停選取驗證碼')
+  const activateSelectedCodes = () => runCodeBatch((row) => setOnlineLicenseStatus({ code: row.code, status: 'active', adminSessionToken }), '已開啟選取驗證碼')
+  const extendSelectedCodes = () => runCodeBatch((row) => extendOnlineLicense({ code: row.code, days: extensionDays[row.code] ?? 30, adminSessionToken }), '已依各列天數延長選取驗證碼')
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2600) }
   const copyText = async (text: string, message: string) => { await navigator.clipboard?.writeText(text); notify(message) }
   const createAgentFromForm = async () => {
@@ -773,20 +791,13 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     if (!canManageAgents) return notify('此角色不能調整等級')
     if (!selectedAgents.length) return notify('請先勾選代理')
     if (!roleOptions.includes(newAgentRole)) return notify('下級等級不能高於或平級於上級')
-    setAgentActionBusy(true)
-    try {
-      await Promise.all(selectedAgents.map((code) => {
+    await runSelectedBatch('agent', selectedAgents.map((code) => ({
+      id: code,
+      write: () => {
         const current = agents.find((agent) => agent.account === code)
         return createOnlineAgent({ code, name: code, role: newAgentRole, parentCode: current?.parent ?? displayManager, adminSessionToken, permission: rolePermission(newAgentRole) })
-      }))
-      await refreshLicenses()
-      notify('代理角色已調整')
-    } catch (error: any) {
-      await refreshLicenses().catch(() => {})
-      notify(error?.message || '調整等級失敗')
-    } finally {
-      setAgentActionBusy(false)
-    }
+      },
+    })), '代理角色已調整')
   }
   const deleteSelectedAgents = async () => {
     if (!canManageAgents) return notify('此角色不能刪除代理')
