@@ -290,6 +290,13 @@ export default function App() {
           clearMemberSession()
           client.current?.disconnect(false)
           setMemberSessionState('invalid')
+          return
+        }
+        const retryable = error instanceof TypeError || error instanceof SyntaxError
+          || (error instanceof TableUiHistoryError
+            && (error.status === 408 || error.status === 429 || (error.status >= 500 && error.status < 600)))
+        if (retryable && attempt < HISTORY_RETRY_DELAYS_MS.length) {
+          retryTimer = window.setTimeout(() => void load(attempt + 1), HISTORY_RETRY_DELAYS_MS[attempt])
         }
       }
     }
