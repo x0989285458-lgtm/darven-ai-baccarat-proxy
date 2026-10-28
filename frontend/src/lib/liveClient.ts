@@ -133,6 +133,10 @@ export class LiveRoadClient {
   private streamWatchdog?: number
   private pollPromise?: Promise<void>
   private pollAbort?: AbortController
+  private predictionPollPromise?: Promise<void>
+  private predictionPollAbort?: AbortController
+  private tablesReadPromise?: Promise<LiveTable[]>
+  private tablesReadAbort?: AbortController
   private connectionGeneration = 0
   private lastTablesAt = 0
   private lastStreamAt = 0
@@ -182,6 +186,12 @@ export class LiveRoadClient {
     this.pollPromise = undefined
     this.pollAbort?.abort()
     this.pollAbort = undefined
+    this.predictionPollPromise = undefined
+    this.predictionPollAbort?.abort()
+    this.predictionPollAbort = undefined
+    this.tablesReadPromise = undefined
+    this.tablesReadAbort?.abort()
+    this.tablesReadAbort = undefined
     if (this.timer) window.clearTimeout(this.timer)
     if (this.streamWatchdog) window.clearInterval(this.streamWatchdog)
     if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer)
@@ -252,46 +262,58 @@ export class LiveRoadClient {
     }, 2000)
   }
 
-  private poll() {
+  private poll(tablesOnly = false) {
     if (this.stopped) return Promise.resolve()
-    if (this.pollPromise) return this.pollPromise
+    const key = tablesOnly ? 'predictionPollPromise' : 'pollPromise'
+    if (this[key]) return this[key]
     const generation = this.connectionGeneration
-    const active = this.pollOnce(generation)
-    this.pollPromise = active
+    const active = this.pollOnce(generation, tablesOnly)
+    this[key] = active
     void active.finally(() => {
-      if (this.pollPromise === active) this.pollPromise = undefined
+      if (this[key] === active) this[key] = undefined
     })
     return active
   }
 
-  private async pollOnce(generation: number) {
+  private readTables() {
+    if (this.tablesReadPromise) return this.tablesReadPromise
+    const controller = new AbortController()
+    this.tablesReadAbort = controller
+    const active = withLiveReadDeadline(controller, async () => {
+      const headers = this.options.memberSessionToken ? { Authorization: `Bearer ${this.options.memberSessionToken}` } : undefined
+      const response = await fetch(`${proxyApiUrl}/api/tables`, { cache: 'no-store', headers, signal: controller.signal })
+      if (response.status === 401) throw new UnauthorizedStatusError()
+      if (!response.ok) throw new Error(`proxy ${response.status}`)
+      const payload = await response.json()
+      return normalizeProxyTables(Array.isArray(payload) ? payload : [])
+    })
+    this.tablesReadPromise = active
+    const release = () => {
+      if (this.tablesReadPromise === active) this.tablesReadPromise = undefined
+      if (this.tablesReadAbort === controller) this.tablesReadAbort = undefined
+    }
+    void active.then(release, release)
+    return active
+  }
+
+  private async pollOnce(generation: number, tablesOnly: boolean) {
     if (this.stopped) return
     const controller = new AbortController()
-    this.pollAbort = controller
+    const abortKey = tablesOnly ? 'predictionPollAbort' : 'pollAbort'
+    this[abortKey] = controller
     try {
       await withLiveReadDeadline(controller, async () => {
-        const headers = this.options.memberSessionToken ? { Authorization: `Bearer ${this.options.memberSessionToken}` } : undefined
-        const statusPromise = this.options.memberSessionToken ? readProxyStatus(this.options.memberSessionToken, controller.signal) : Promise.resolve<Status | null>(null)
-        const [response, proxyStatus] = await Promise.all([
-          fetch(`${proxyApiUrl}/api/tables`, { cache: 'no-store', headers, signal: controller.signal }),
-          statusPromise,
-        ])
+        const statusPromise = !tablesOnly && this.options.memberSessionToken
+          ? readProxyStatus(this.options.memberSessionToken, controller.signal) : Promise.resolve<Status | null>(null)
+        const [tables, proxyStatus] = await Promise.all([this.readTables(), statusPromise])
         if (this.stopped || generation !== this.connectionGeneration || controller.signal.aborted) return
-        if (response.status === 401) {
-          this.handleUnauthorized()
-          return
-        }
-        if (!response.ok) throw new Error(`proxy ${response.status}`)
-        const payload = await response.json()
-        if (this.stopped || generation !== this.connectionGeneration || controller.signal.aborted) return
-        const tables = normalizeProxyTables(Array.isArray(payload) ? payload : [])
         this.lastTablesAt = Date.now()
         if (proxyStatus && /stale|過期|建置版本不符/i.test(proxyStatus.message)) {
           this.suppressAcceptedTables()
           this.options.onStatus(proxyStatus)
           return
         }
-        if (this.publishTables(tables, `雲端資料已連線（${tables.length}桌）`)) return
+        if (this.publishTables(tables, `雲端資料已連線（${tables.length}桌）`) || tablesOnly) return
         const fallbackStatus = proxyStatus ?? await readProxyStatus(undefined, controller.signal)
         if (this.stopped || generation !== this.connectionGeneration || controller.signal.aborted) return
         this.options.onStatus(fallbackStatus)
@@ -305,7 +327,7 @@ export class LiveRoadClient {
       this.suppressAcceptedTables()
       this.options.onStatus({ state: 'error', message: '雲端代理暫時無法讀取資料' })
     } finally {
-      if (this.pollAbort === controller) this.pollAbort = undefined
+      if (this[abortKey] === controller) this[abortKey] = undefined
     }
   }
 
@@ -367,6 +389,11 @@ export class LiveRoadClient {
         continue
       }
       let next = incoming
+      if (accepted && isSameTableIdentity(accepted, incoming)
+        && incoming.prediction == null && incoming.buildVersion === accepted.buildVersion
+        && getBackendPredictionIssue(accepted) === null) {
+        next = { ...incoming, prediction: accepted.prediction }
+      }
       if (accepted && previousTimestamp === timestamp && !hasAdvancedTableIdentity(accepted, incoming)) {
         const exactDurableEnrichment = getBackendPredictionIssue(accepted) !== null
           && isSameTableIdentity(accepted, incoming)
@@ -414,8 +441,9 @@ export class LiveRoadClient {
         const key = predictionRefreshIdentity(table)
         this.missingPredictionRefreshAttempts.set(key, (this.missingPredictionRefreshAttempts.get(key) ?? 0) + 1)
       }
-      void this.poll()
-    }, missingPredictionRefreshMs)
+      void this.poll(true)
+    }, retryable.some((table) => !this.missingPredictionRefreshAttempts.has(predictionRefreshIdentity(table)))
+      ? 0 : missingPredictionRefreshMs)
   }
 
   private handleUnauthorized() {

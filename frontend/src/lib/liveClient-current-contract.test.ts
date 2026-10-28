@@ -209,9 +209,9 @@ describe('live frontend contract', () => {
     const client = new LiveRoadClient({ memberSessionToken: 'opaque-member-token', onTables: (tables) => received.push(tables), onStatus: vi.fn() })
 
     client.connect()
-    await vi.advanceTimersByTimeAsync(749)
-    expect(tableReads).toBe(0)
-    await vi.advanceTimersByTimeAsync(2)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(tableReads).toBe(1)
+    await vi.advanceTimersByTimeAsync(750)
     client.disconnect(false)
 
     expect(tableReads).toBe(1)
