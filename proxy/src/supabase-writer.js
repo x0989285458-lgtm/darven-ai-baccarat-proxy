@@ -2137,13 +2137,13 @@ export function createSupabaseIngestionClient({
     }
   }
 
-  async function fetchWithOptionalTimeout(endpoint, init, requestTimeoutMs = 0) {
-    if (!(requestTimeoutMs > 0)) return fetchImpl(endpoint, init)
+  async function fetchWithOptionalTimeout(endpoint, init, requestTimeoutMs = 0, consumeResponse = response => response) {
+    if (!(requestTimeoutMs > 0)) return consumeResponse(await fetchImpl(endpoint, init))
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), requestTimeoutMs)
     timer.unref?.()
     try {
-      return await fetchImpl(endpoint, { ...init, signal: controller.signal })
+      return await consumeResponse(await fetchImpl(endpoint, { ...init, signal: controller.signal }))
     } finally {
       clearTimeout(timer)
     }
@@ -2221,6 +2221,10 @@ export function createSupabaseIngestionClient({
         return []
       }
       const directRpc = {
+        'rpc/publish_v105_table_publication': {
+          text: 'select public.publish_v105_table_publication($1::text, $2::text, $3::integer, $4::uuid) as publish_v105_table_publication',
+          values: [body?.p_table_id, body?.p_shoe_no, body?.p_target_round, body?.p_prediction_id],
+        },
         'rpc/settle_v105_prediction': {
           text: 'select public.settle_v105_prediction($1::jsonb, $2::jsonb) as settle_v105_prediction',
           values: [body?.p_roadmap, body?.p_settlement],
@@ -2437,10 +2441,14 @@ export function createSupabaseIngestionClient({
     throw lastError
   }
 
-  async function getRest(path, query = {}, { requestTimeoutMs = 0 } = {}) {
+  async function getRest(path, query = {}, { requestTimeoutMs = 0, includeBodyInTimeout = false } = {}) {
     if (!configured) return null
     const endpoint = new URL(`/rest/v1/${path}`, url)
     for (const [key, value] of Object.entries(query)) endpoint.searchParams.set(key, value)
+    const consumeResponse = async response => {
+      if (!response.ok) throw new Error(`Supabase ${path} read failed: ${response.status} ${await response.text()}`)
+      return response.json()
+    }
     const response = await fetchWithOptionalTimeout(endpoint, {
       method: 'GET',
       headers: {
@@ -2448,9 +2456,8 @@ export function createSupabaseIngestionClient({
         ['Author' + 'ization']: ['Bearer', serviceKey].join(' '),
         Accept: 'application/json',
       },
-    }, requestTimeoutMs)
-    if (!response.ok) throw new Error(`Supabase ${path} read failed: ${response.status} ${await response.text()}`)
-    return response.json()
+    }, requestTimeoutMs, includeBodyInTimeout ? consumeResponse : undefined)
+    return includeBodyInTimeout ? response : consumeResponse(response)
   }
 
   async function sendCaptureEnvelope({
@@ -2518,6 +2525,30 @@ export function createSupabaseIngestionClient({
 
   return {
     configured,
+    async publishV105TablePublication({ tableId, shoe, round, predictionId } = {}) {
+      if (typeof tableId !== 'string' || !tableId || typeof shoe !== 'string' || !shoe
+        || !Number.isSafeInteger(round) || round < 1
+        || typeof predictionId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(predictionId)) {
+        throw new Error('invalid atomic publication identity')
+      }
+      const acknowledgement = await enqueueFormalLifecycleWrite(tableId, () => postDurableRest('rpc/publish_v105_table_publication', {
+        p_table_id: tableId, p_shoe_no: shoe, p_target_round: round, p_prediction_id: predictionId,
+      }, undefined, { requireObject: true, priority: true }))
+      if (!['published', 'duplicate', 'superseded'].includes(acknowledgement?.disposition)
+        || acknowledgement.table_id !== tableId || acknowledgement.shoe_no !== shoe || acknowledgement.target_round !== round
+        || (acknowledgement.disposition !== 'superseded' && (acknowledgement.prediction_id !== predictionId
+          || !Number.isSafeInteger(acknowledgement.publication_revision) || acknowledgement.publication_revision < 1))) {
+        throw new Error('atomic publication acknowledgement failed')
+      }
+      return acknowledgement
+    },
+    async readV105TablePublications() {
+      const bundles = strategyDb && typeof strategyDb.query === 'function'
+        ? (await strategyDb.query({ text: 'select public.read_v105_table_publications() as publications', values: [] }))?.rows?.[0]?.publications
+        : await getRest('rpc/read_v105_table_publications', {}, { requestTimeoutMs: formalTimeoutMs, includeBodyInTimeout: true })
+      if (!Array.isArray(bundles)) throw new Error('invalid atomic publication snapshot')
+      return bundles
+    },
     async applyV100RankLedgerEvent(event = {}) {
       const normalized = normalizeExactRealCardEvent(event)
       const source = String(event.source ?? SOURCE)

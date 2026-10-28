@@ -4,6 +4,8 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { isDeepStrictEqual } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { createProxyState } from './state-store.js'
+import { createPublicationReader } from './publication-reader.js'
+import { createPublicationNotifier } from './publication-notifier.js'
 import { createMtClient } from './mt-client.js'
 import { createChromeCaptureClient } from './chrome-capture.js'
 import { applyCloudCapturePayload, canonicalProductionTableId, createCloudCaptureClient, parseCloudCapturePayload, PRODUCTION_TABLE_IDS } from './cloud-capture.js'
@@ -409,7 +411,7 @@ export function resolveProductionConcurrency(env = process.env) {
   }
 }
 
-export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS ?? 'legacy', autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 45000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), outboxCoalesceMs = process.env.CAPTURE_OUTBOX_COALESCE_MS ?? 1000, captureOutboxBatchLimit = process.env.CAPTURE_OUTBOX_BATCH_LIMIT ?? 30, captureOutboxConsumerEnabled = process.env.CAPTURE_OUTBOX_CONSUMER_ENABLED ?? true, captureOutboxPollMs = process.env.CAPTURE_OUTBOX_POLL_MS ?? 0, latestPredictionRefreshMs = process.env.LATEST_PREDICTION_REFRESH_MS ?? 1000, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionSecret = process.env.MEMBER_SESSION_SECRET, adminSessionSecret = process.env.ADMIN_SESSION_SECRET || memberSessionSecret, adminSessionTtlMs: requestedAdminSessionTtlMs = Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionValidationTtlMs = Number(process.env.MEMBER_SESSION_VALIDATION_TTL_MS ?? 0), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), streamHeartbeatMs = Number(process.env.STREAM_HEARTBEAT_MS ?? 3000), livePredictionReadWaitMs = process.env.LIVE_PREDICTION_READ_WAIT_MS ?? 1000, serviceShutdownDeadlineMs = 5000, fatalHandler = null, fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v104FormalRuntime = null, pendingPredictionStore = null, dailyMemoryRollover = null, requireFencedIngest = process.env.REQUIRE_FENCED_INGEST === 'true', sourceFenceStore = null } = {}) {
+export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS ?? 'legacy', autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 45000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), outboxCoalesceMs = process.env.CAPTURE_OUTBOX_COALESCE_MS ?? 1000, captureOutboxBatchLimit = process.env.CAPTURE_OUTBOX_BATCH_LIMIT ?? 30, captureOutboxConsumerEnabled = process.env.CAPTURE_OUTBOX_CONSUMER_ENABLED ?? true, captureOutboxPollMs = process.env.CAPTURE_OUTBOX_POLL_MS ?? 0, latestPredictionRefreshMs = process.env.LATEST_PREDICTION_REFRESH_MS ?? 1000, liveAtomicPublicationsEnabled = process.env.LIVE_ATOMIC_PUBLICATIONS_ENABLED ?? false, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionSecret = process.env.MEMBER_SESSION_SECRET, adminSessionSecret = process.env.ADMIN_SESSION_SECRET || memberSessionSecret, adminSessionTtlMs: requestedAdminSessionTtlMs = Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionValidationTtlMs = Number(process.env.MEMBER_SESSION_VALIDATION_TTL_MS ?? 0), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), streamHeartbeatMs = Number(process.env.STREAM_HEARTBEAT_MS ?? 3000), livePredictionReadWaitMs = process.env.LIVE_PREDICTION_READ_WAIT_MS ?? 1000, serviceShutdownDeadlineMs = 5000, fatalHandler = null, fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v104FormalRuntime = null, pendingPredictionStore = null, dailyMemoryRollover = null, requireFencedIngest = process.env.REQUIRE_FENCED_INGEST === 'true', sourceFenceStore = null } = {}) {
   if (!['legacy', 'completed'].includes(captureRoundBasis)) throw new Error('capture round basis must be legacy or completed')
   const isAdmittedCaptureScreen = (table) => captureRoundBasis !== 'completed' || table?.roundBasis === 'completed'
   const ingestSourceFence = sourceFenceStore ?? createInMemoryIngestSourceFence()
@@ -454,12 +456,24 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
     throw new Error('live prediction read wait must be a safe integer from 25 through 5000 milliseconds')
   }
   const strictRealCardRounds = process.env.REQUIRE_REAL_CARD_ROUNDS !== 'false'
+  const atomicPublications = String(liveAtomicPublicationsEnabled) === 'true'
+  const publicationNotifier = atomicPublications && resolvedCaptureOutboxConsumerEnabled && process.env.LIVE_PUBLICATION_NOTIFY_URL
+    ? createPublicationNotifier({ url: process.env.LIVE_PUBLICATION_NOTIFY_URL, token: controlToken, tableIds: PRODUCTION_TABLE_IDS, fetchImpl })
+    : null
+  const publicationReader = atomicPublications ? createPublicationReader({
+    waitMs: resolvedLivePredictionReadWaitMs,
+    load: () => {
+      if (typeof supabaseClient?.readV105TablePublications !== 'function') throw new Error('publication reader unavailable')
+      return supabaseClient.readV105TablePublications()
+    },
+  }) : null
   const adminSessions = new Map()
   const adminSessionKey = deriveAdminSessionKey(adminSessionSecret)
   const legacyIngestSequences = new Map()
   const ingestSessionLocks = new Map()
   let outboxDrainPromise = null
   let latestPredictionRefreshPromise = null
+  const partialTableRefreshErrors = new WeakSet()
   let latestPredictionRefreshTimer = null
   let latestPredictionRefreshStopping = false
   const lastSuccessfulLatestPredictionSignatureByTable = new Map()
@@ -475,6 +489,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
   let outboxHealthRetryCount = 0
   const attemptedFailureAcks = new Set()
   const pendingPredictions = pendingPredictionStore instanceof Map ? pendingPredictionStore : new Map()
+  const historicalPredictionConfirmations = new WeakSet()
 
   const preparingPredictionPromises = new Map()
   const issuingPredictionPromises = new Map()
@@ -854,6 +869,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
   }
 
   function refreshLatestDurablePredictions({ beforeClaim = false } = {}) {
+    if (!resolvedCaptureOutboxConsumerEnabled) return Promise.resolve({ refreshed: false, disabled: true })
     if (latestPredictionRefreshStopping || outboxStopping) return Promise.resolve({ refreshed: false, stopped: true })
     if (latestPredictionRefreshPromise) return latestPredictionRefreshPromise
     latestPredictionRefreshPromise = (async () => {
@@ -945,7 +961,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       }
       if (beforeClaim) setCaptureOutboxPhase('fresh_prediction')
       const freshPredictionResults = await Promise.allSettled(actionableFreshTables.map((table) => (
-        reconcileThenResolveLatestOutboxPrediction(table)
+        reconcileThenResolveLatestOutboxPrediction(table, { allowHistorical: beforeClaim })
       )))
       let failedFreshPrediction = null
       for (let index = 0; index < freshPredictionResults.length; index += 1) {
@@ -956,6 +972,9 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
           && result.value.strategyVersion === ALL_MT_EQUAL_STRATEGY_VERSION
           && isLatestObservedPredictionTarget(result.value)
         if (valid) {
+          // Historical durability allows Final backlog to drain, but is not a
+          // successful live publication and must not advance the timer cursor.
+          if (historicalPredictionConfirmations.has(result.value)) continue
           lastSuccessfulLatestPredictionSignatureByTable.set(tableId, freshPredictionSignaturesByTable.get(tableId))
           continue
         }
@@ -963,7 +982,11 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
           ? result.reason
           : new Error('latest actionable cloud tables require durable v105 predictions before latest prediction refresh')
       }
-      if (failedFreshPrediction) throw failedFreshPrediction
+      if (failedFreshPrediction) {
+        const failure = new Error(failedFreshPrediction?.message ?? 'table prediction publication refresh incomplete', { cause: failedFreshPrediction })
+        partialTableRefreshErrors.add(failure)
+        throw failure
+      }
       return { refreshed: true, predictions: freshPredictionResults.length }
     })().finally(() => {
       latestPredictionRefreshPromise = null
@@ -989,7 +1012,14 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       let shouldContinue = false
       let nextWakeDelayMs = null
       try {
-        await refreshLatestDurablePredictions({ beforeClaim: true })
+        try {
+          await refreshLatestDurablePredictions({ beforeClaim: true })
+        } catch (error) {
+          // Only product-branded per-table work failure is non-global. The
+          // claimed Final still owns settlement, exact issuance and publication
+          // before ACK. Source/transport/admission failures remain fail-closed.
+          if (!atomicPublications || !partialTableRefreshErrors.has(error)) throw error
+        }
         setCaptureOutboxPhase('claim')
         const batchEnabled = typeof supabaseClient?.completeCaptureOutboxBatch === 'function'
           && typeof supabaseClient?.failCaptureOutboxBatch === 'function'
@@ -1141,7 +1171,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
                 })
               const nextPredictions = await runLeasePhase('formal_prediction', async () => {
                 const predictionResults = await Promise.allSettled(predictionTables.map((table) => (
-                  reconcileThenResolveLatestOutboxPrediction(table)
+                  reconcileThenResolveLatestOutboxPrediction(table, { allowHistorical: true })
                 )))
                 const failedPrediction = predictionResults.find((result) => result.status === 'rejected')
                 if (failedPrediction) throw failedPrediction.reason
@@ -1226,6 +1256,16 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
   }
 
   async function handle(method, url, rawBody = '', headers = {}) {
+    try {
+      return await handleRequest(method, url, rawBody, headers)
+    } catch (error) {
+      const pathname = new URL(url, 'http://127.0.0.1').pathname
+      if (!publicationReader || !['/api/tables', '/api/snapshot', '/api/status', '/health'].includes(pathname)) throw error
+      return jsonResponse(503, { ok: false, error: 'atomic publication unavailable' }, resolveFrontendCorsOrigin(configuredFrontendOrigin, headers.origin))
+    }
+  }
+
+  async function handleRequest(method, url, rawBody = '', headers = {}) {
     const requestUrl = new URL(url, 'http://127.0.0.1')
     const frontendOrigin = resolveFrontendCorsOrigin(configuredFrontendOrigin, headers.origin)
     const pathname = requestUrl.pathname
@@ -1246,6 +1286,23 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       }
     }
 
+    if (pathname === '/internal/publication-ready') {
+      if (method !== 'POST') return jsonResponse(405, { ok: false, error: 'Method Not Allowed' }, frontendOrigin)
+      // Unlike legacy local control routes, this hint always requires a token.
+      if (!controlToken) return jsonResponse(503, { ok: false, error: 'control token is not configured' }, frontendOrigin)
+      if (!safeEqual(headers['x-control-token'] ?? extractBearerToken(headers.authorization), controlToken)) return jsonResponse(401, { ok: false, error: 'control token is required' }, frontendOrigin)
+      const allowedOrigin = String(controlAllowedOrigin || '').trim()
+      if (allowedOrigin && allowedOrigin !== '*' && headers.origin && headers.origin !== allowedOrigin) return jsonResponse(403, { ok: false, error: 'control origin is not allowed' }, frontendOrigin)
+      try {
+        const payload = parseJsonBody(rawBody)
+        if (!payload || Array.isArray(payload) || typeof payload !== 'object' || Object.keys(payload).length) throw new Error('wake only')
+      } catch { return jsonResponse(400, { ok: false, error: 'empty wake-only object required' }, frontendOrigin) }
+      if (!publicationReader || applicationStopped) return jsonResponse(503, { ok: false, error: 'publication reader unavailable' }, frontendOrigin)
+      publicationReader.notify()
+      publicationHintPending = true
+      requestTablesBroadcast(true)
+      return jsonResponse(202, { ok: true }, frontendOrigin)
+    }
     if (pathname === '/health') {
       const cloudStatus = await readCloudSnapshotStatus()
       const nextStatus = {
@@ -1874,6 +1931,30 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
   }
 
   async function readBestTables(options = {}) {
+    if (publicationReader && options.includePrediction !== false) {
+      const rows = await publicationReader.read()
+      if (rows.length !== PRODUCTION_TABLE_IDS.length) throw new Error('incomplete publication snapshot')
+      const seen = new Set()
+      return rows.map((bundle) => {
+        const tableId = bundle?.table?.tableId
+        if (!PRODUCTION_TABLE_IDS.includes(tableId) || seen.has(tableId)) throw new Error('invalid publication snapshot identity')
+        seen.add(tableId)
+        const table = withPublishedPrediction(bundle)
+        if (table.publication?.state === 'ready' && table.prediction) return table
+        // A known unavailable table is a revocation, not a publishable screen.
+        // Keep the inventory/causal fence, but never expose new round/road data
+        // without its exact durable prediction or retain the previous screen.
+        return {
+          tableId,
+          ...(table.displayName != null ? { displayName: table.displayName } : {}),
+          ...(table.tableType != null ? { tableType: table.tableType } : {}),
+          buildVersion: table.buildVersion,
+          sourceUpdatedAt: table.sourceUpdatedAt,
+          screenUnavailable: true,
+          publication: { ...table.publication, state: 'unavailable', readyIdentity: null },
+        }
+      })
+    }
     const publicationCandidates = new WeakSet()
     const tables = await readBestTablesSnapshot({ ...options, publicationCandidates })
     if (options.includePrediction === false || applicationStopped) return tables
@@ -2043,7 +2124,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       const latestObserved = latestObservedScreenByTable.get(tableId)
       if (latestObserved?.shoe !== shoe || latestObserved?.visibleRound !== visibleRound) return
     }
-    const preparedPrediction = await savePendingPrediction(table)
+    const preparedPrediction = await publishDurablePrediction(await savePendingPrediction(table))
     if (reconciliationError) {
       state.setStatus({ persistenceStatus: 'error', persistenceError: reconciliationError?.message ?? String(reconciliationError) })
       return preparedPrediction
@@ -2059,10 +2140,36 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
     if (!table?.tableId || table?.shoe == null || !Number.isSafeInteger(currentRound)) return null
     const targetRound = currentRound + 1
     const key = predictionTargetKey(table.tableId, table.shoe, targetRound)
-    return startIssuedPredictionRead(table, targetRound, key, isDurablePredictionIssuanceRequired())
+    return publishDurablePrediction(await startIssuedPredictionRead(table, targetRound, key, isDurablePredictionIssuanceRequired()))
   }
 
-  async function reconcileThenResolveLatestOutboxPrediction(table) {
+  async function publishDurablePrediction(prediction) {
+    if (String(liveAtomicPublicationsEnabled) !== 'true' || !resolvedCaptureOutboxConsumerEnabled || !prediction) return prediction
+    if (latestPredictionRefreshStopping || outboxStopping || !isLatestObservedPredictionTarget(prediction)) return null
+    if (!prediction.predictionId || !prediction.issuedAt || prediction.strategyVersion !== ALL_MT_EQUAL_STRATEGY_VERSION) {
+      throw new Error('atomic publication requires exact durable v105 issuance')
+    }
+    if (typeof supabaseClient?.publishV105TablePublication !== 'function') throw new Error('atomic publication writer unavailable')
+    const receipt = await supabaseClient.publishV105TablePublication({
+      tableId: prediction.targetTableId,
+      shoe: String(prediction.targetShoe),
+      round: prediction.targetRound,
+      predictionId: prediction.predictionId,
+    })
+    // Superseded is not success: leave the timer cursor unset for fresh-screen recovery.
+    if (!['published', 'duplicate'].includes(receipt?.disposition)
+      || receipt.table_id !== prediction.targetTableId || receipt.shoe_no !== String(prediction.targetShoe)
+      || receipt.target_round !== prediction.targetRound || receipt.prediction_id !== prediction.predictionId
+      || !Number.isSafeInteger(receipt.publication_revision) || receipt.publication_revision < 1) {
+      throw new Error('atomic publication acknowledgement failed or superseded')
+    }
+    if (latestPredictionRefreshStopping || outboxStopping || !isLatestObservedPredictionTarget(prediction)) return null
+    publicationReader?.notify()
+    publicationNotifier?.notify(receipt) // enqueue only; never await transport on the Final ACK path
+    return prediction
+  }
+
+  async function reconcileThenResolveLatestOutboxPrediction(table, { allowHistorical = false } = {}) {
     let candidateTable = table
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const tableId = canonicalProductionTableId(candidateTable?.tableId)
@@ -2077,6 +2184,28 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
         ))
         if (!latestTable) return null
         candidateTable = latestTable
+      }
+      if (atomicPublications && captureRoundBasis === 'completed') {
+        await v104Formal?.start?.()
+        if (outboxStopping || latestPredictionRefreshStopping) return null
+        const targetRound = Number(candidateTable?.round) + 1
+        const latestIssued = v104Formal?.latestIssuance?.(tableId)
+        if (latestIssued?.strategyVersion === ALL_MT_EQUAL_STRATEGY_VERSION
+          && latestIssued.predictionId && latestIssued.targetTableId === tableId
+          && String(latestIssued.targetShoe) === String(candidateTable.shoe)
+          && Number(latestIssued.targetRound) > targetRound) {
+          if (!allowHistorical) throw new Error('atomic publication superseded historical target')
+          // Hydrated high-water identifies obsolete work; only an exact durable
+          // read confirms it. Do not reconcile, issue, cache or publish history.
+          if (typeof supabaseClient?.readIssuedPrediction !== 'function') throw new Error('historical exact issuance unavailable')
+          const exact = await supabaseClient.readIssuedPrediction({ tableId, shoe: candidateTable.shoe, round: targetRound, strategyVersion: ALL_MT_EQUAL_STRATEGY_VERSION })
+          if (!isExactScreenPrediction(exact, candidateTable, targetRound, true)
+            || !Number.isFinite(Date.parse(exact.issuedAt))) throw new Error('historical exact issuance unavailable')
+          if (outboxStopping || latestPredictionRefreshStopping) return null
+          if (!isLatestObservedTableScreen(candidateTable)) continue
+          historicalPredictionConfirmations.add(exact)
+          return exact
+        }
       }
       const prediction = await reconcileThenResolveOutboxPrediction(candidateTable)
       if (prediction && isLatestObservedPredictionTarget(prediction)) return prediction
@@ -2465,6 +2594,31 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       : table
   }
 
+  function withPublishedPrediction({ table, prediction, publication }) {
+    const screen = predictionScreen(table)
+    const matches = identity => identity?.tableId === screen.tableId
+      && identity.shoe === String(screen.shoe) && identity.round === screen.round
+    const fresh = value => {
+      const at = typeof value === 'string' ? Date.parse(value) : NaN
+      return Number.isFinite(at) && at <= now() && now() - at < actionablePredictionTtlMs
+    }
+    // Use immutable source/issuance clocks, never cache receipt time or a supplied
+    // createdAtMs. No cache enrichment or GET-triggered issuance in this lane.
+    const ready = publication?.state === 'ready'
+      && Number.isSafeInteger(publication.revision) && publication.revision > 0
+      && isAdmittedCaptureScreen(table) && matches(publication.rawIdentity) && matches(publication.readyIdentity)
+      && publication.readyIdentity.predictionId === prediction?.predictionId
+      && fresh(publication.sourceCapturedAt) && fresh(table.sourceUpdatedAt)
+      && Date.parse(publication.sourceCapturedAt) === Date.parse(table.sourceUpdatedAt)
+      && fresh(publication.publishedAt) && fresh(prediction?.issuedAt)
+      && isExactScreenPrediction(prediction, screen, screen.round, true)
+    return {
+      ...screen, buildVersion: BUILD_VERSION,
+      prediction: ready ? structuredClone(prediction) : null,
+      publication: ready ? publication : { ...publication, state: publication?.state === 'pending' ? 'pending' : 'unavailable', reason: publication?.state === 'pending' ? 'publication_pending' : 'publication_invalid_or_expired' },
+    }
+  }
+
   async function withLivePrediction(table, actionable = true, predictionWillBeBroadcast = false, publicationCandidates = null) {
     if (!actionable || !isAdmittedCaptureScreen(table) || table?.tableId == null || table?.shoe == null || table?.round == null) {
       return { ...predictionScreen(table), buildVersion: BUILD_VERSION, prediction: null }
@@ -2528,7 +2682,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
 
   function isExactScreenPrediction(prediction, table, targetRound, durableRequired) {
     return Boolean(prediction)
-      && isValidPendingPrediction(prediction)
+      && (atomicPublications && durableRequired ? isValidImmutablePublicationPrediction(prediction) : isValidPendingPrediction(prediction))
       && (!durableRequired || (Boolean(prediction.predictionId) && Boolean(prediction.issuedAt)))
       && prediction.strategyVersion === ALL_MT_EQUAL_STRATEGY_VERSION
       && predictionTargetKey(prediction.targetTableId, prediction.targetShoe, prediction.targetRound)
@@ -2593,6 +2747,10 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
 
 
   async function readCloudSnapshotStatus() {
+    if (publicationReader) {
+      const tables = await readBestTables()
+      return { tableCount: tables.length, publicationReadyCount: tables.filter(table => table.prediction).length }
+    }
     const localSnapshot = state.snapshot()
     const localProgressAt = localSnapshot.status?.lastRoundAt
       ?? localSnapshot.status?.lastMessageAt
@@ -2727,6 +2885,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
   let streamTablesVersion = 0
   let streamLastBroadcastVersion = 0
   let streamNextPredictionExpiryAtMs = Number.POSITIVE_INFINITY
+  let publicationHintPending = false
 
   function writeSse(res, event, payload) {
     if (res.destroyed || res.writableEnded) return
@@ -2754,6 +2913,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       if (!authorizedClients.length) return
       const versionAtStart = streamTablesVersion
       const tables = await readBestTables({ predictionWillBeBroadcast: true })
+      if (tablesBroadcastStopping) return
       const signature = JSON.stringify(tables)
       const payload = { tables, updatedAt: new Date().toISOString(), tableCount: tables.length }
       streamLastTableCount = tables.length
@@ -2769,6 +2929,10 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       if (force || signature !== streamLastSignature) {
         streamLastSignature = signature
         for (const client of authorizedClients) writeSse(client.res, 'tables', payload)
+        if (publicationHintPending) {
+          publicationHintPending = false
+          for (const client of authorizedClients) writeSse(client.res, 'round-ready', { updatedAt: payload.updatedAt, tableCount: tables.length })
+        }
       } else {
         const heartbeat = { updatedAt: new Date().toISOString(), tableCount: tables.length }
         for (const client of authorizedClients) writeSse(client.res, 'heartbeat', heartbeat)
@@ -2800,6 +2964,11 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
   requestTablesRefresh = (changedTables = []) => {
     streamTablesVersion += 1
     if (!streamClients.size || tablesBroadcastStopping) return
+    if (publicationReader) {
+      publicationReader.notify()
+      requestTablesBroadcast(false)
+      return
+    }
     // The writer/consumer process already force-broadcasts completed durable
     // issuance from its readiness callback. This prefetch lane is only needed
     // by the read-only public proxy, where that in-process callback cannot run.
@@ -2852,6 +3021,11 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
     if (streamTimer) return
     streamTimer = setInterval(() => {
       if (tablesBroadcastPromise || streamHeartbeatPromise) return
+      if (publicationReader) {
+        publicationReader.notify()
+        requestTablesBroadcast(false)
+        return
+      }
       if (streamTablesVersion !== streamLastBroadcastVersion || now() >= streamNextPredictionExpiryAtMs) {
         requestTablesBroadcast(false)
         return
@@ -2981,6 +3155,8 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
     },
     async stop() {
       applicationStopped = true
+      publicationReader?.stop()
+      publicationNotifier?.stop()
       tablesBroadcastStopping = true
       latestPredictionRefreshStopping = true
       if (latestPredictionRefreshTimer) {
@@ -3107,6 +3283,14 @@ function isValidPendingPrediction(prediction = {}) {
   if (!SIDE_PREDICTION_KEYS.every((key) => Number.isFinite(prediction.sidePredictions[key]))) return false
   if (!SIDE_PREDICTION_KEYS.every((key) => typeof prediction.sideActions[key] === 'boolean')) return false
   return true
+}
+
+function isValidImmutablePublicationPrediction(prediction) {
+  return isValidPendingPrediction(prediction)
+    && ['banker', 'player'].includes(prediction.predictedResult)
+    && prediction.predictionTiming === 'pre_result_context'
+    && typeof prediction.predictionId === 'string' && prediction.predictionId.trim().length > 0
+    && typeof prediction.issuedAt === 'string' && Number.isFinite(Date.parse(prediction.issuedAt))
 }
 
 function hasExactKeys(value, expectedKeys) {

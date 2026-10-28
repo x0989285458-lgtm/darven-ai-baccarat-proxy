@@ -22,7 +22,8 @@ export async function checkSupabaseConnection(adminSessionToken?: string, fetchI
       backendResponse = await request()
     }
     if (backendResponse.ok) {
-      const backendStatus = await backendResponse.json().catch(() => ({}))
+      const backendStatus = await backendResponse.json()
+      if (backendStatus?.configured !== true) return { ok: false, message: '授權後端未連線' }
       if (backendStatus.error) return { ok: false, message: `授權後端連線失敗：${backendStatus.error}` }
       if (!adminSessionToken && (backendStatus.configured !== true || backendStatus.connected !== true)) return { ok: false, message: '授權後端未連線' }
       return { ok: true, message: '授權後端已連線' }

@@ -31,6 +31,8 @@ export type LiveTable = {
   sourceUpdatedAt?: string | null
   buildVersion?: string | null
   prediction?: BackendPrediction
+  publication?: unknown
+  screenUnavailable?: boolean
 }
 
 export type SidePredictionKey = 'tie' | 'superSix' | 'bankerPair' | 'playerPair' | 'bankerDragon' | 'playerDragon'
@@ -99,6 +101,8 @@ type ProxyTable = {
   sourceUpdatedAt?: string | null
   buildVersion?: string | null
   prediction?: BackendPrediction
+  publication?: unknown
+  screenUnavailable?: boolean
 }
 
 const proxyApiUrl = dravenApiBaseUrl
@@ -133,13 +137,31 @@ export class LiveRoadClient {
   private streamWatchdog?: number
   private pollPromise?: Promise<void>
   private pollAbort?: AbortController
+  private predictionPollPromise?: Promise<void>
+  private predictionPollAbort?: AbortController
+  private tablesReadPromise?: Promise<LiveTable[]>
+  private tablesReadAbort?: AbortController
   private connectionGeneration = 0
   private lastTablesAt = 0
+  private lastStreamAt = 0
+  private lastRecoveryAt = -Infinity
+  private readonly recoverConnection = () => {
+    if (this.stopped || this.authorizationLost || Date.now() - this.lastRecoveryAt < 1000) return
+    this.lastRecoveryAt = Date.now()
+    void this.connectStream()
+    void this.poll()
+  }
+  private readonly recoverVisibleConnection = () => {
+    if (document.visibilityState === 'visible') this.recoverConnection()
+  }
   private stopped = true
   private authorizationLost = false
   private tablesSuppressed = false
   private readonly sourceUpdatedAtByTable = new Map<string, number>()
   private readonly acceptedTableById = new Map<string, LiveTable>()
+  private readonly publicationFenceByTable = new Map<string, { revision: number; capturedAt: number; revoked: boolean; observation: PublicationObservation | null; sticky: boolean; prediction?: string }>()
+  private readonly observationByTable = new Map<string, PublicationObservation>()
+  private readonly invalidObservationDomain = new Set<string>()
   private readonly missingPredictionRefreshAttempts = new Map<string, number>()
 
   constructor(private readonly options: LiveClientOptions) {}
@@ -149,20 +171,34 @@ export class LiveRoadClient {
     this.stopped = false
     this.authorizationLost = false
     this.lastTablesAt = Date.now()
+    window.addEventListener('online', this.recoverConnection)
+    window.addEventListener('pageshow', this.recoverConnection)
+    document.addEventListener('visibilitychange', this.recoverVisibleConnection)
     this.options.onStatus({ state: 'connecting', message: '正在建立即時同步…' })
     void this.connectStream()
     this.streamWatchdog = window.setInterval(() => {
       if (this.stopped) return
+      if (Date.now() - this.lastStreamAt >= streamStaleMs) void this.connectStream()
       if (!this.lastTablesAt || Date.now() - this.lastTablesAt >= streamStaleMs) void this.poll()
     }, pollIntervalMs)
   }
 
   disconnect(notify = true) {
     this.stopped = true
+    window.removeEventListener('online', this.recoverConnection)
+    window.removeEventListener('pageshow', this.recoverConnection)
+    document.removeEventListener('visibilitychange', this.recoverVisibleConnection)
+    this.lastRecoveryAt = -Infinity
     this.connectionGeneration += 1
     this.pollPromise = undefined
     this.pollAbort?.abort()
     this.pollAbort = undefined
+    this.predictionPollPromise = undefined
+    this.predictionPollAbort?.abort()
+    this.predictionPollAbort = undefined
+    this.tablesReadPromise = undefined
+    this.tablesReadAbort?.abort()
+    this.tablesReadAbort = undefined
     if (this.timer) window.clearTimeout(this.timer)
     if (this.streamWatchdog) window.clearInterval(this.streamWatchdog)
     if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer)
@@ -177,19 +213,31 @@ export class LiveRoadClient {
   }
 
   private async connectStream() {
+    if (this.stopped || this.authorizationLost) return
+    if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = undefined
     this.streamAbort?.abort()
     const controller = new AbortController()
     this.streamAbort = controller
+    this.lastStreamAt = Date.now()
+    const generation = this.connectionGeneration
+    const isCurrent = () => !this.stopped && !controller.signal.aborted
+      && generation === this.connectionGeneration && this.streamAbort === controller
     try {
       const headers = this.options.memberSessionToken ? { Authorization: `Bearer ${this.options.memberSessionToken}` } : undefined
       const response = await fetch(`${proxyApiUrl}/api/tables/stream`, { cache: 'no-store', headers, signal: controller.signal })
+      if (!isCurrent()) {
+        void response.body?.cancel().catch(() => {})
+        return
+      }
       if (response.status === 401) {
         this.handleUnauthorized()
         return
       }
       if (!response.ok || !response.body) throw new Error(`stream ${response.status}`)
       await consumeSseStream(response.body, (event, data) => {
-        if (this.stopped) return
+        if (!isCurrent()) return
+        this.lastStreamAt = Date.now()
         if (event === 'unauthorized') {
           this.handleUnauthorized()
           this.streamAbort?.abort()
@@ -199,17 +247,22 @@ export class LiveRoadClient {
           void this.poll()
           return
         }
+        if (event === 'error') {
+          this.suppressAcceptedTables()
+          this.options.onStatus({ state: 'error', message: '桌況同步中' })
+          return
+        }
         if (event !== 'tables') return
         this.lastTablesAt = Date.now()
         const payload = JSON.parse(data)
         const tables = normalizeProxyTables(Array.isArray(payload?.tables) ? payload.tables : [])
         this.publishTables(tables, `SSE ${tables.length}`)
       })
-      if (!this.stopped) this.scheduleStreamReconnect()
+      if (isCurrent()) this.scheduleStreamReconnect()
     } catch {
-      if (this.stopped || controller.signal.aborted) return
+      if (!isCurrent()) return
       await this.poll()
-      this.scheduleStreamReconnect()
+      if (isCurrent()) this.scheduleStreamReconnect()
     }
   }
 
@@ -221,46 +274,58 @@ export class LiveRoadClient {
     }, 2000)
   }
 
-  private poll() {
+  private poll(tablesOnly = false) {
     if (this.stopped) return Promise.resolve()
-    if (this.pollPromise) return this.pollPromise
+    const key = tablesOnly ? 'predictionPollPromise' : 'pollPromise'
+    if (this[key]) return this[key]
     const generation = this.connectionGeneration
-    const active = this.pollOnce(generation)
-    this.pollPromise = active
+    const active = this.pollOnce(generation, tablesOnly)
+    this[key] = active
     void active.finally(() => {
-      if (this.pollPromise === active) this.pollPromise = undefined
+      if (this[key] === active) this[key] = undefined
     })
     return active
   }
 
-  private async pollOnce(generation: number) {
+  private readTables() {
+    if (this.tablesReadPromise) return this.tablesReadPromise
+    const controller = new AbortController()
+    this.tablesReadAbort = controller
+    const active = withLiveReadDeadline(controller, async () => {
+      const headers = this.options.memberSessionToken ? { Authorization: `Bearer ${this.options.memberSessionToken}` } : undefined
+      const response = await fetch(`${proxyApiUrl}/api/tables`, { cache: 'no-store', headers, signal: controller.signal })
+      if (response.status === 401) throw new UnauthorizedStatusError()
+      if (!response.ok) throw new Error(`proxy ${response.status}`)
+      const payload = await response.json()
+      return normalizeProxyTables(Array.isArray(payload) ? payload : [])
+    })
+    this.tablesReadPromise = active
+    const release = () => {
+      if (this.tablesReadPromise === active) this.tablesReadPromise = undefined
+      if (this.tablesReadAbort === controller) this.tablesReadAbort = undefined
+    }
+    void active.then(release, release)
+    return active
+  }
+
+  private async pollOnce(generation: number, tablesOnly: boolean) {
     if (this.stopped) return
     const controller = new AbortController()
-    this.pollAbort = controller
+    const abortKey = tablesOnly ? 'predictionPollAbort' : 'pollAbort'
+    this[abortKey] = controller
     try {
       await withLiveReadDeadline(controller, async () => {
-        const headers = this.options.memberSessionToken ? { Authorization: `Bearer ${this.options.memberSessionToken}` } : undefined
-        const statusPromise = this.options.memberSessionToken ? readProxyStatus(this.options.memberSessionToken, controller.signal) : Promise.resolve<Status | null>(null)
-        const [response, proxyStatus] = await Promise.all([
-          fetch(`${proxyApiUrl}/api/tables`, { cache: 'no-store', headers, signal: controller.signal }),
-          statusPromise,
-        ])
+        const statusPromise = !tablesOnly && this.options.memberSessionToken
+          ? readProxyStatus(this.options.memberSessionToken, controller.signal) : Promise.resolve<Status | null>(null)
+        const [tables, proxyStatus] = await Promise.all([this.readTables(), statusPromise])
         if (this.stopped || generation !== this.connectionGeneration || controller.signal.aborted) return
-        if (response.status === 401) {
-          this.handleUnauthorized()
-          return
-        }
-        if (!response.ok) throw new Error(`proxy ${response.status}`)
-        const payload = await response.json()
-        if (this.stopped || generation !== this.connectionGeneration || controller.signal.aborted) return
-        const tables = normalizeProxyTables(Array.isArray(payload) ? payload : [])
         this.lastTablesAt = Date.now()
         if (proxyStatus && /stale|過期|建置版本不符/i.test(proxyStatus.message)) {
           this.suppressAcceptedTables()
           this.options.onStatus(proxyStatus)
           return
         }
-        if (this.publishTables(tables, `雲端資料已連線（${tables.length}桌）`)) return
+        if (this.publishTables(tables, `雲端資料已連線（${tables.length}桌）`) || tablesOnly) return
         const fallbackStatus = proxyStatus ?? await readProxyStatus(undefined, controller.signal)
         if (this.stopped || generation !== this.connectionGeneration || controller.signal.aborted) return
         this.options.onStatus(fallbackStatus)
@@ -274,7 +339,7 @@ export class LiveRoadClient {
       this.suppressAcceptedTables()
       this.options.onStatus({ state: 'error', message: '雲端代理暫時無法讀取資料' })
     } finally {
-      if (this.pollAbort === controller) this.pollAbort = undefined
+      if (this[abortKey] === controller) this[abortKey] = undefined
     }
   }
 
@@ -285,12 +350,29 @@ export class LiveRoadClient {
 
   private clearAcceptedTables() {
     this.acceptedTableById.clear()
+    this.publicationFenceByTable.clear()
+    this.observationByTable.clear()
+    this.invalidObservationDomain.clear()
     this.sourceUpdatedAtByTable.clear()
     this.tablesSuppressed = false
     this.options.onTables([])
   }
 
   private publishTables(tables: LiveTable[], liveMessage: string) {
+    // Compare visibility sets from the *active* SQL snapshot, not statement
+    // start order. Wall time breaks ties only for equal snapshot visibility.
+    tables = tables.filter(table => {
+      const id = String(table.table_id ?? table.id ?? '')
+      const observation = publicationObservation(table.publication)
+      const previous = this.observationByTable.get(id)
+      const order = observation && previous ? compareObservations(observation, previous) : undefined
+      if (order === null) this.invalidObservationDomain.add(id)
+      if (!this.invalidObservationDomain.has(id)) {
+        if (order === -1 || (order === 0 && observation!.micros < previous!.micros)) return false
+        if (observation != null) this.observationByTable.set(id, observation)
+      }
+      return true
+    })
     const incomingTableIds = new Set(tables.map((table) => String(table.table_id ?? table.id ?? '')).filter(Boolean))
     let acceptedAny = false
     for (const [tableId, accepted] of this.acceptedTableById) {
@@ -301,8 +383,25 @@ export class LiveRoadClient {
     const freshTables = tables.filter((table) => !isLiveTableStale(table))
     for (const stale of tables.filter((table) => isLiveTableStale(table))) {
       const tableId = String(stale.table_id ?? stale.id ?? '')
-      if (!tableId || !this.acceptedTableById.delete(tableId)) continue
-      acceptedAny = true
+      const revision = (stale.publication as TablePublication | null)?.revision
+      const fence = this.publicationFenceByTable.get(tableId)
+      if (fence && typeof revision === 'number' && Number.isSafeInteger(revision) && revision < fence.revision && !this.invalidObservationDomain.has(tableId)) continue
+      if (fence || Object.hasOwn(stale, 'publication')) {
+        const capturedAt = Date.parse(String((stale.publication as TablePublication | null)?.sourceCapturedAt ?? ''))
+        this.publicationFenceByTable.set(tableId, {
+          revision: Math.max(fence?.revision ?? -1, typeof revision === 'number' && Number.isSafeInteger(revision) ? revision : -1),
+          capturedAt: Math.max(fence?.capturedAt ?? -Infinity, Number.isFinite(capturedAt) ? capturedAt : -Infinity),
+          revoked: true,
+          observation: publicationObservation(stale.publication),
+          sticky: fence?.sticky === true || publicationObservation(stale.publication) == null,
+          prediction: fence?.prediction,
+        })
+      }
+      if (!tableId) continue
+      if (stale.screenUnavailable) {
+        this.acceptedTableById.set(tableId, unavailableTable(stale))
+        acceptedAny = true
+      } else if (this.acceptedTableById.delete(tableId)) acceptedAny = true
     }
     if (!freshTables.length) {
       if (acceptedAny || !this.acceptedTableById.size) this.options.onTables([...this.acceptedTableById.values()])
@@ -315,6 +414,52 @@ export class LiveRoadClient {
       const timestamp = Date.parse(String(incoming.sourceUpdatedAt ?? ''))
       const previousTimestamp = this.sourceUpdatedAtByTable.get(tableId)
       const accepted = this.acceptedTableById.get(tableId)
+      // Publication snapshots are atomic, including same-screen revocation.
+      const fence = this.publicationFenceByTable.get(tableId)
+      if (Object.hasOwn(incoming, 'publication') || fence) {
+        const publication = incoming.publication as TablePublication | null | undefined
+        const revision = typeof publication?.revision === 'number' && Number.isSafeInteger(publication.revision)
+          && publication.revision >= 0 ? publication.revision : null
+        if (fence && revision != null && revision < fence.revision && !this.invalidObservationDomain.has(tableId)) continue
+        const capturedAt = typeof publication?.sourceCapturedAt === 'string' ? Date.parse(publication.sourceCapturedAt) : NaN
+        const regressed = !!fence && (!Number.isFinite(capturedAt) || capturedAt < fence.capturedAt)
+        const observation = publicationObservation(publication)
+        const sameRevision = !!fence && (revision == null || revision === fence.revision)
+        const prediction = JSON.stringify(incoming.prediction)
+        const immutableConflict = sameRevision && !!fence?.prediction && incoming.prediction != null
+          && prediction !== fence.prediction
+        const identityConflict = sameRevision && !!accepted && !isSameTableIdentity(accepted, incoming)
+        const sticky = (sameRevision && fence?.sticky === true) || observation == null || immutableConflict || identityConflict
+        const observationOrder = observation && fence?.observation ? compareObservations(observation, fence.observation) : null
+        // With identical visibility, only TTL evaluation can change readiness;
+        // a strictly later DB statement time may clear a future-source gate.
+        const observedRecovery = observation != null && fence?.observation != null
+          && (observationOrder === 1 || (observationOrder === 0 && observation.micros > fence.observation.micros))
+          && !sticky && !!accepted && isSameTableIdentity(accepted, incoming)
+        const revoked = getBackendPredictionIssue(incoming) !== null || !Object.hasOwn(incoming, 'publication')
+          || immutableConflict || this.invalidObservationDomain.has(tableId)
+          || (observation == null && this.observationByTable.has(tableId))
+          || regressed || !!(fence?.revoked && (revision == null || revision === fence.revision) && !observedRecovery)
+        let next: LiveTable = { ...incoming, publication: incoming.publication, sourceUpdatedAt: previousTimestamp != null && timestamp < previousTimestamp
+          ? new Date(previousTimestamp).toISOString() : incoming.sourceUpdatedAt }
+        // A regressed capture cannot refresh a ready screen. Keep the prior
+        // capture only as a revoked display, never as new freshness evidence.
+        if (regressed && accepted) next = { ...accepted, publication: { ...(accepted.publication as TablePublication), state: 'unavailable', revision } }
+        else if (revoked && getBackendPredictionIssue(next) === null) next = { ...next, publication: { ...publication, state: 'unavailable' } }
+        if (revoked) next = unavailableTable(next)
+        this.publicationFenceByTable.set(tableId, {
+          revision: Math.max(fence?.revision ?? -1, revision ?? -1),
+          capturedAt: Math.max(fence?.capturedAt ?? -Infinity, Number.isFinite(capturedAt) ? capturedAt : -Infinity),
+          revoked,
+          observation,
+          sticky,
+          prediction: sameRevision ? fence?.prediction ?? (!revoked ? prediction : undefined) : !revoked ? prediction : undefined,
+        })
+        this.sourceUpdatedAtByTable.set(tableId, Math.max(previousTimestamp ?? timestamp, timestamp))
+        this.acceptedTableById.set(tableId, next)
+        acceptedAny = true
+        continue
+      }
       if (previousTimestamp != null && timestamp < previousTimestamp) {
         const monotonicScreenAdvance = accepted && hasMonotonicAdvancedTableIdentity(accepted, incoming)
         if (monotonicScreenAdvance) {
@@ -336,6 +481,11 @@ export class LiveRoadClient {
         continue
       }
       let next = incoming
+      if (accepted && isSameTableIdentity(accepted, incoming)
+        && incoming.prediction == null && incoming.buildVersion === accepted.buildVersion
+        && getBackendPredictionIssue(accepted) === null) {
+        next = { ...incoming, prediction: accepted.prediction }
+      }
       if (accepted && previousTimestamp === timestamp && !hasAdvancedTableIdentity(accepted, incoming)) {
         const exactDurableEnrichment = getBackendPredictionIssue(accepted) !== null
           && isSameTableIdentity(accepted, incoming)
@@ -383,15 +533,17 @@ export class LiveRoadClient {
         const key = predictionRefreshIdentity(table)
         this.missingPredictionRefreshAttempts.set(key, (this.missingPredictionRefreshAttempts.get(key) ?? 0) + 1)
       }
-      void this.poll()
-    }, missingPredictionRefreshMs)
+      void this.poll(true)
+    }, retryable.some((table) => !this.missingPredictionRefreshAttempts.has(predictionRefreshIdentity(table)))
+      ? 0 : missingPredictionRefreshMs)
   }
 
   private handleUnauthorized() {
-    this.clearAcceptedTables()
-    this.options.onStatus({ state: 'error', message: '會員 Session 已失效，請重新登入' })
     if (this.authorizationLost) return
     this.authorizationLost = true
+    this.disconnect(false)
+    this.clearAcceptedTables()
+    this.options.onStatus({ state: 'error', message: '會員 Session 已失效，請重新登入' })
     this.options.onUnauthorized?.()
   }
 }
@@ -413,10 +565,38 @@ function hasMonotonicAdvancedTableIdentity(previous: LiveTable, incoming: LiveTa
     && incomingShoe > previousShoe
 }
 
+// Revocation metadata is comparison authority only, never a visible screen.
+function comparisonIdentity(table: LiveTable): PublicationIdentity | null {
+  if (!table.screenUnavailable) return {
+    tableId: table.table_id ?? table.id, shoe: table.trend.current_shoe ?? '', round: Number(table.trend.current_round),
+  }
+  const p = table.publication as TablePublication | null
+  const raw = p?.rawIdentity
+  if (!p || publicationObservation(p) == null || table.buildVersion !== CURRENT_BUILD_VERSION
+    || typeof p.sourceCapturedAt !== 'string'
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(p.sourceCapturedAt)
+    || !Number.isFinite(Date.parse(p.sourceCapturedAt))
+    || !raw || !['string', 'number'].includes(typeof raw.tableId)
+    || String(raw.tableId) !== String(table.table_id ?? table.id)
+    || !['string', 'number'].includes(typeof raw.shoe) || !String(raw.shoe).trim()
+    || (typeof raw.shoe === 'number' && !Number.isFinite(raw.shoe))
+    || !Number.isSafeInteger(raw.round) || raw.round < 1) return null
+  return raw
+}
+
 function isSameTableIdentity(previous: LiveTable, incoming: LiveTable) {
-  return String(incoming.table_id ?? incoming.id ?? '') === String(previous.table_id ?? previous.id ?? '')
-    && String(incoming.trend.current_shoe ?? '') === String(previous.trend.current_shoe ?? '')
-    && Number(incoming.trend.current_round) === Number(previous.trend.current_round)
+  const a = comparisonIdentity(previous), b = comparisonIdentity(incoming)
+  return a != null && b != null && String(a.tableId) === String(b.tableId)
+    && String(a.shoe) === String(b.shoe) && a.round === b.round
+}
+
+function unavailableTable(table: LiveTable): LiveTable {
+  return {
+    id: table.id, table_id: table.table_id, name: table.name, table_name: table.table_name,
+    table_type: table.table_type, buildVersion: table.buildVersion, sourceUpdatedAt: table.sourceUpdatedAt,
+    screenUnavailable: true, trend: { bead_plate2: '', big2: '' },
+    ...(Object.hasOwn(table, 'publication') ? { publication: table.publication } : {}),
+  }
 }
 
 function hasAdvancedTableIdentity(previous: LiveTable, incoming: LiveTable) {
@@ -511,6 +691,8 @@ export function backendPredictionReasonsFromTable(table?: Pick<LiveTable, 'predi
 }
 
 export function getBackendPredictionIssue(table?: LiveTable | null, now = Date.now()): string | null {
+  if (table?.screenUnavailable) return '後端預測暫不可用'
+  if (table && Object.hasOwn(table, 'publication') && !isReadyPublication(table, now)) return '後端預測暫不可用'
   const prediction = table?.prediction
   if (!prediction || prediction.source !== 'backend') return '後端預測暫不可用'
   if (prediction.strategyVersion !== CURRENT_STRATEGY_VERSION) return '策略版本不符'
@@ -527,6 +709,73 @@ export function getBackendPredictionIssue(table?: LiveTable | null, now = Date.n
   if (!hasExactKeys(prediction.sidePredictions, sidePredictionKeys) || !sidePredictionKeys.every((key) => Number.isFinite(Number(prediction.sidePredictions?.[key])))) return '副預測六項不完整'
   if (!hasExactKeys(prediction.sideActions, sidePredictionKeys) || !sidePredictionKeys.every((key) => typeof prediction.sideActions?.[key] === 'boolean')) return '副預測六項 action 不完整'
   return null
+}
+
+type PublicationIdentity = { tableId: string | number; shoe: string | number; round: number }
+export type TablePublication = {
+  observedAtMicros?: string
+  observation?: { epoch: string; snapshot: string } | null
+  state: 'ready' | 'pending' | 'unavailable'
+  revision: number | null
+  publishedAt: string | null
+  sourceCapturedAt: string
+  rawIdentity: PublicationIdentity
+  readyIdentity: (PublicationIdentity & { predictionId: string }) | null
+}
+
+type PublicationObservation = { epoch: string; xmax: bigint; xip: Set<bigint>; micros: bigint }
+function publicationObservation(publication: unknown): PublicationObservation | null {
+  const p = publication as TablePublication | null
+  const stamp = p?.observedAtMicros, value = p?.observation
+  if (typeof stamp !== 'string' || !/^[1-9][0-9]{0,19}$/.test(stamp)
+    || !value || typeof value.epoch !== 'string' || !/^[a-f0-9]{64}$/.test(value.epoch)
+    || typeof value.snapshot !== 'string' || value.snapshot.length > 65536) return null
+  const parts = value.snapshot.split(':')
+  if (parts.length !== 3) return null
+  const entries = parts[2] === '' ? [] : parts[2].split(',')
+  if (entries.length > 2048) return null
+  const uint64 = (s: string) => /^[1-9][0-9]{0,19}$/.test(s) && BigInt(s) <= 18446744073709551615n
+  if (![parts[0], parts[1], ...entries].every(uint64)) return null
+  const xmin = BigInt(parts[0]), xmax = BigInt(parts[1]), xip = entries.map(BigInt)
+  if (xmin < 3n || xmax < xmin || xip.some((x,i) => x < xmin || x >= xmax || (i > 0 && x <= xip[i-1]))) return null
+  return { epoch:value.epoch, xmax, xip:new Set(xip), micros:BigInt(stamp) }
+}
+
+// V(s) = {x | x < xmax and x not in xip}. Inclusion is a causal
+// partial order, not xid allocation order; a larger xmax alone is insufficient.
+function compareObservations(a: PublicationObservation, b: PublicationObservation): -1 | 0 | 1 | null {
+  if (a.epoch !== b.epoch) return null
+  const includes = (later: PublicationObservation, earlier: PublicationObservation) => {
+    // A smaller xmax can still describe the same visible set if the entire
+    // additional interval in the other snapshot consists of in-progress XIDs.
+    const coveredTail = later.xmax >= earlier.xmax || BigInt([...earlier.xip].filter(x => x >= later.xmax).length) === earlier.xmax - later.xmax
+    return coveredTail && [...later.xip].every(x => x >= earlier.xmax || earlier.xip.has(x))
+  }
+  const ab = includes(a,b), ba = includes(b,a)
+  return ab && ba ? 0 : ab ? 1 : ba ? -1 : null
+}
+
+function isReadyPublication(table: LiveTable, now: number) {
+  const p = table.publication as TablePublication | null
+  const iso = (value: unknown) => typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+    && Number.isFinite(Date.parse(value))
+  if (!p || p.state !== 'ready' || !Number.isSafeInteger(p.revision) || Number(p.revision) < 0
+    || ((Object.hasOwn(p, 'observedAtMicros') || Object.hasOwn(p, 'observation')) && publicationObservation(p) == null)
+    || !iso(p.publishedAt) || !iso(p.sourceCapturedAt)
+    || isLiveTableStale({ sourceUpdatedAt: p.sourceCapturedAt }, now)) return false
+  const matches = (identity: PublicationIdentity | null) => identity != null
+    && ['string', 'number'].includes(typeof identity.tableId)
+    && ['string', 'number'].includes(typeof identity.shoe)
+    && String(identity.tableId).trim().length > 0 && String(identity.shoe).trim().length > 0
+    && (typeof identity.tableId !== 'number' || Number.isFinite(identity.tableId))
+    && (typeof identity.shoe !== 'number' || Number.isFinite(identity.shoe))
+    && String(identity.tableId) === String(table.table_id ?? table.id)
+    && String(identity.shoe) === String(table.trend.current_shoe)
+    && Number.isSafeInteger(identity.round) && identity.round === table.trend.current_round
+  return matches(p.rawIdentity) && matches(p.readyIdentity)
+    && typeof p.readyIdentity?.predictionId === 'string' && !!p.readyIdentity.predictionId.trim()
+    && p.readyIdentity.predictionId === table.prediction?.predictionId
 }
 
 function hasExactKeys(value: unknown, keys: string[]) {
@@ -564,7 +813,7 @@ async function consumeSseStream(stream: ReadableStream<Uint8Array>, onEvent: (ev
 function normalizeProxyTables(tables: ProxyTable[]): LiveTable[] {
   return tables.map((table, index) => {
     const tableName = table.displayName?.match(/第(.+?)桌/)?.[1] ?? String(index + 1)
-    return {
+    const normalized: LiveTable = {
       id: table.tableId ?? tableName ?? index + 1,
       table_id: table.tableId ?? tableName ?? index + 1,
       table_name: tableName,
@@ -594,6 +843,8 @@ function normalizeProxyTables(tables: ProxyTable[]): LiveTable[] {
       sourceUpdatedAt: table.sourceUpdatedAt ?? null,
       buildVersion: table.buildVersion ?? null,
       prediction: table.prediction,
+      ...(Object.hasOwn(table, 'publication') ? { publication: table.publication } : {}),
     }
+    return table.screenUnavailable === true ? unavailableTable(normalized) : normalized
   })
 }

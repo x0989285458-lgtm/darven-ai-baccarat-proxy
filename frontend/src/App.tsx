@@ -222,10 +222,17 @@ export default function App() {
     if (path === '/admin' && !adminLoggedIn) return
     let active = true
     const adminSessionToken = path === '/admin' ? window.sessionStorage.getItem('darven-admin-session-token') ?? undefined : undefined
-    checkSupabaseConnection(adminSessionToken).then((result) => {
-      if (!active) return
-      setSupabaseStatus({ state: result.ok ? 'connected' : 'error', message: result.message })
-    })
+    let healthBusy = false
+    const loadHealth = async () => {
+      if (healthBusy) return
+      healthBusy = true
+      try {
+        const result = await checkSupabaseConnection(adminSessionToken)
+        if (active) setSupabaseStatus({ state: result.ok ? 'connected' : 'error', message: result.message })
+      } finally { healthBusy = false }
+    }
+    void loadHealth()
+    const healthTimer = window.setInterval(loadHealth, 15000)
     const loadCoreStatus = () => checkOnlineCoreStatus().then((result) => {
       if (!active) return
       setOnlineCoreStatus(result)
@@ -233,7 +240,7 @@ export default function App() {
     })
     loadCoreStatus()
     const timer = window.setInterval(loadCoreStatus, 15000)
-    return () => { active = false; window.clearInterval(timer) }
+    return () => { active = false; window.clearInterval(timer); window.clearInterval(healthTimer) }
   }, [path, memberLoggedIn, adminLoggedIn])
 
   const start = () => {
@@ -290,6 +297,13 @@ export default function App() {
           clearMemberSession()
           client.current?.disconnect(false)
           setMemberSessionState('invalid')
+          return
+        }
+        const retryable = error instanceof TypeError || error instanceof SyntaxError
+          || (error instanceof TableUiHistoryError
+            && (error.status === 408 || error.status === 429 || (error.status >= 500 && error.status < 600)))
+        if (retryable && attempt < HISTORY_RETRY_DELAYS_MS.length) {
+          retryTimer = window.setTimeout(() => void load(attempt + 1), HISTORY_RETRY_DELAYS_MS[attempt])
         }
       }
     }
@@ -332,14 +346,17 @@ export default function App() {
           {visibleTables.map((table, index) => {
             const tableId = canonicalMemberTableId(table)
             const displayNumber = tableNumber(table, index)
-            return <button className={`table-item ${tableId === selectedCanonicalId ? 'active' : ''}`} data-table-id={tableId} aria-label={`MT百家樂第${displayNumber}桌 第${table.trend.current_round ?? 0}局`} key={tableId} onClick={() => { setTableUiHistory(null); setSelectedTableId(tableId) }}>
+            return <button className={`table-item ${tableId === selectedCanonicalId ? 'active' : ''}`} data-table-id={tableId} aria-label={`MT百家樂第${displayNumber}桌 ${table.screenUnavailable ? '桌況同步中' : `第${table.trend.current_round ?? 0}局`}`} key={tableId} onClick={() => { setTableUiHistory(null); setSelectedTableId(tableId) }}>
               <span className="table-casino-icon" aria-hidden="true"><i /></span>
-              <span className="table-item-label"><strong>MT 真人百家 第{displayNumber}桌</strong><small>第{table.trend.current_shoe ?? '—'}靴 · 第{table.trend.current_round ?? 0}局</small><small>{memberTableDisplayId(table)}</small></span>
+              <span className="table-item-label"><strong>MT 真人百家 第{displayNumber}桌</strong><small>{table.screenUnavailable ? '桌況同步中' : <>第{table.trend.current_shoe ?? '—'}靴 · 第{table.trend.current_round ?? 0}局</>}</small><small>{memberTableDisplayId(table)}</small></span>
             </button>
           })}
         </nav>
       </aside>
       <section className="content dashboard-main">
+        {displaySelected.screenUnavailable ? <section className="prediction-card" aria-label="桌況同步中">
+          <div className="prediction-card-heading"><div><h2 className="prediction-title">MT 真人百家 第{tableNumber(displaySelected, visibleTables.indexOf(displaySelected))}桌</h2><p>桌況同步中</p></div><span className="prediction-meta-chip">{memberTableDisplayId(displaySelected)}</span></div>
+        </section> : <>
         <div className="dashboard-middle-grid">
         <section className="prediction-card" aria-label="AI預測結果">
           <div className="prediction-card-heading"><div><h2 className="prediction-title">MT 真人百家 第{tableNumber(displaySelected, visibleTables.indexOf(displaySelected))}桌</h2><p>第{selectedShoe || '—'}靴 · 第{displaySelected.trend.current_round ?? 0}局</p></div><span className="prediction-meta-chip">{memberTableDisplayId(displaySelected)}</span></div>
@@ -387,6 +404,7 @@ export default function App() {
             </div>
           </RoadCard>
         </div>
+        </>}
       </section>
     </div>
   </main>
@@ -536,33 +554,16 @@ function AdminLoginApp() {
 type AgentRow = { account: string; level: string; permission: string; parent?: string; depth?: number }
 type CodeRow = { member: string; code: string; status: string; remain: string; agentCode?: string; expiresOn?: string; suspendedAt?: string }
 
-const initialAgents: AgentRow[] = [
-  { account: 'dv1788', level: '超級管理員', permission: '最高權限 / 可看全部', depth: 0 },
-  { account: 'Admin001', level: '管理員', permission: '可開代理 / 可建碼', parent: 'dv1788', depth: 1 },
-  { account: 'Agent001', level: '代理', permission: '可開觀察者 / 可建碼', parent: 'Admin001', depth: 2 },
-  { account: 'Agent002', level: '代理', permission: '可建碼', parent: 'Admin001', depth: 2 },
-  { account: 'View001', level: '觀察者', permission: '僅可登入確認', parent: 'Agent001', depth: 3 },
-  { account: 'DV1688', level: '管理員', permission: '可開代理 / 可建碼', parent: 'dv1788', depth: 1 },
-  { account: 'A1024', level: '代理', permission: '可建碼', parent: 'DV1688', depth: 2 },
-  { account: 'B7788', level: '觀察者', permission: '僅可登入確認', parent: 'A1024', depth: 3 },
-  { account: 'M8888', level: '管理員', permission: '可開代理 / 可建碼', parent: 'dv1788', depth: 1 },
-  { account: 'Test009', level: '代理', permission: '可建碼', parent: 'M8888', depth: 2 },
-  { account: 'C2026', level: '觀察者', permission: '僅可登入確認', parent: 'Test009', depth: 3 },
-  { account: 'Agent010', level: '代理', permission: '可建碼', parent: 'M8888', depth: 2 },
-]
+const ADMIN_BATCH_DEADLINE_MS = 10000
 
-const initialCodes: CodeRow[] = [
-  { member: 'User001', code: 'Agent001_001', status: '啟用中', remain: '30天' },
-  { member: 'User002', code: 'Agent001_002', status: '啟用中', remain: '28天' },
-  { member: 'User003', code: 'Agent002_001', status: '暫停中', remain: '12天' },
-  { member: 'User004', code: 'DV1688_008', status: '啟用中', remain: '10天' },
-  { member: 'User005', code: 'A1024_003', status: '啟用中', remain: '9天' },
-  { member: 'User006', code: 'Test009_001', status: '啟用中', remain: '7天' },
-  { member: 'User007', code: 'B7788_004', status: '暫停中', remain: '6天' },
-  { member: 'User008', code: 'M8888_010', status: '啟用中', remain: '5天' },
-  { member: 'User009', code: 'C2026_002', status: '啟用中', remain: '3天' },
-  { member: 'User010', code: 'Agent010_001', status: '啟用中', remain: '1天' },
-]
+async function waitForAdminResult<T>(work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([work, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(Object.assign(new Error('結果未知，勿重複送出'), { unknown: true })), ADMIN_BATCH_DEADLINE_MS)
+    })])
+  } finally { clearTimeout(timer) }
+}
 
 function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTable[]; supabaseStatus: { state: string; message: string }; onlineCoreStatus: OnlineCoreStatus }) {
   const totalRounds = tables.reduce((sum, table) => sum + Number(table.trend.current_round ?? 0), 0)
@@ -572,9 +573,20 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const isSuper = loginRoleName === 'super' || loginAgent.toLowerCase() === SUPER_ADMIN
   const [memberAccount, setMemberAccount] = useState('')
   const [planDays, setPlanDays] = useState('30')
-  const [latestMember, setLatestMember] = useState('User001')
-  const [latestCode, setLatestCode] = useState('DV1788_001')
-  const [codes, setCodes] = useState<CodeRow[]>(() => pruneExpiredCodes(initialCodes))
+  const [latestMember, setLatestMember] = useState('')
+  const [latestCode, setLatestCode] = useState('')
+  const [codes, setCodes] = useState<CodeRow[]>([])
+  const [licenseError, setLicenseError] = useState('')
+  const licenseFlight = useRef<Promise<OnlineLicenseStatus> | null>(null)
+  const licenseGeneration = useRef(0)
+  const batchFlight = useRef(false)
+  const batchFenceKey = `darven-admin-batch-pending:${loginAgent}`
+  const [batchFences] = useState<Set<string>>(() => {
+    try {
+      const saved: unknown = JSON.parse(window.sessionStorage.getItem(batchFenceKey) ?? '[]')
+      return Array.isArray(saved) && saved.every((id) => typeof id === 'string') ? new Set(saved) : new Set(['*'])
+    } catch { return new Set(['*']) }
+  })
   const [selectedCodeMembers, setSelectedCodeMembers] = useState<string[]>([])
   const [selectedAgents, setSelectedAgents] = useState<string[]>([])
   const [agentSearch, setAgentSearch] = useState('')
@@ -584,52 +596,51 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const [newAgentRole, setNewAgentRole] = useState<'viewer' | 'agent' | 'manager'>('agent')
   const [newAgentParent, setNewAgentParent] = useState('')
   const [agentActionBusy, setAgentActionBusy] = useState(false)
+  const [extensionDays, setExtensionDays] = useState<Record<string, number>>({})
   const [codeActionBusy, setCodeActionBusy] = useState(false)
   const [createAuthorizationBusy, setCreateAuthorizationBusy] = useState(false)
   const createAuthorizationBusyRef = useRef(false)
+  const [maintenanceMode, setMaintenanceMode] = useState(Boolean(onlineCoreStatus.maintenanceMode))
+  const [maintenanceBusy, setMaintenanceBusy] = useState(false)
+  const maintenanceFlight = useRef(false)
+  const [maintenanceError, setMaintenanceError] = useState('')
+  useEffect(() => { if (!maintenanceFlight.current && onlineCoreStatus.state === 'connected') setMaintenanceMode(Boolean(onlineCoreStatus.maintenanceMode)) }, [onlineCoreStatus])
   const [toast, setToast] = useState('')
   const [memoryCenter, setMemoryCenter] = useState<OnlineMemoryCenter>({ state: 'connecting', items: [], reports: [], strategies: [] })
   const [strategyAnalysis, setStrategyAnalysis] = useState<OnlineStrategyAnalysis>({ state: 'connecting', strategyRows: [], weakTables: [], strongTables: [], watchTables: [], suggestions: [] })
   const [licenseStatus, setLicenseStatus] = useState<OnlineLicenseStatus>({ managers: [], agents: [], plans: [], licenses: [], agentRows: [], licenseRows: [] })
-  const [cloudDataStatus, setCloudDataStatus] = useState<{ mtAutoLoginEnabled?: boolean; message?: string; tableCount?: number; todayRoundCount?: number; tableStats?: Array<{ tableId: string; mainHitRate: string; sideHitRate: string }>; dailyReports?: Array<Record<string, any>> }>({ mtAutoLoginEnabled: false, message: '資料抓取待確認', todayRoundCount: 0, tableStats: [], dailyReports: [] })
+  const [cloudDataStatus, setCloudDataStatus] = useState<{ mtAutoLoginEnabled?: boolean; message?: string; tableCount?: number; todayRoundCount?: number; tableStats?: Array<{ tableId: string; mainHitRate: string; sideHitRate: string }>; dailyReports?: Array<Record<string, any>> }>({ mtAutoLoginEnabled: false, message: '資料抓取待確認', tableStats: [], dailyReports: [] })
+  const [reportState, setReportState] = useState<'loading' | 'ready' | 'stale'>('loading')
   useEffect(() => {
-    let cloudLoaded = false
-    const loadReports = () => {
-      getOnlineMemoryCenter().then(setMemoryCenter)
-      getOnlineStrategyAnalysis().then(setStrategyAnalysis)
-      getCloudDataStatus().then((status) => {
-        setCloudDataStatus((previous) => status.todayRoundCount != null ? status : previous)
-        if (status.todayRoundCount != null) cloudLoaded = true
-      })
+    let active = true
+    let retries = 0
+    let timer: ReturnType<typeof setTimeout>
+    const controller = new AbortController()
+    const loadReports = async () => {
+      const status = await getCloudDataStatus(fetch, controller.signal)
+      if (!active) return
+      const valid = status.ok === true && Number.isFinite(status.todayRoundCount)
+      if (valid) { setCloudDataStatus(status); setReportState('ready'); retries = 0 }
+      else { setReportState('stale'); retries += 1 }
+      timer = setTimeout(loadReports, !valid && retries <= 2 ? [5000, 15000][retries - 1] : 300000)
     }
-    loadReports()
-    const slowTimer = window.setInterval(loadReports, 300000)
-    const fastTimer = window.setInterval(() => {
-      if (cloudLoaded) { window.clearInterval(fastTimer); return }
-      loadReports()
-    }, 5000)
-    return () => { window.clearInterval(slowTimer); window.clearInterval(fastTimer) }
+    void loadReports()
+    return () => { active = false; controller.abort(); clearTimeout(timer) }
   }, [])
   useEffect(() => {
     if (onlineCoreStatus.maintenanceMode && !isSuper) logoutAdmin()
   }, [onlineCoreStatus.maintenanceMode, isSuper])
-  useEffect(() => { getOnlineLicenseStatus({ adminAccount: displayManager, adminSessionToken }).then((status) => {
-    setLicenseStatus(status)
-    if (status.licenseRows.length) {
-      const rows = pruneExpiredCodes(status.licenseRows as CodeRow[])
-      setCodes(rows)
-      if (rows.length) {
-        setLatestCode(rows[0].code)
-        setLatestMember(rows[0].member)
-      }
-    } else if (status.configured === false) {
-      setCodes(pruneExpiredCodes(initialCodes))
-    } else {
-      setCodes([])
-      setLatestCode('')
-      setLatestMember('')
+  useEffect(() => {
+    let active = true
+    let retries = 0
+    let timer: ReturnType<typeof setTimeout>
+    const load = async () => {
+      try { await refreshLicenses(); retries = 0 } catch { retries += 1 }
+      if (active) timer = setTimeout(load, retries > 0 && retries <= 2 ? 5000 : 60000)
     }
-  }) }, [])
+    void load()
+    return () => { active = false; clearTimeout(timer) }
+  }, [])
   const localToday = new Date()
   const localStartDate = new Date(localToday.getFullYear(), localToday.getMonth(), localToday.getDate())
   const startDate = formatLocalDate(localStartDate)
@@ -646,29 +657,48 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
   const createAuthorization = async () => {
     if (!canManageCodes) return notify('此角色不能建立驗證碼')
     if (createAuthorizationBusyRef.current) return
+    const nextCode = buildLicenseCode(displayManager, displayMember, serialNo)
+    if (!admitManagementWrite('code', [nextCode])) return
     createAuthorizationBusyRef.current = true
     setCreateAuthorizationBusy(true)
     try {
-      const nextCode = buildLicenseCode(displayManager, displayMember, serialNo)
       const result = await createOnlineLicense({ memberAccount: displayMember, code: nextCode, agentCode: displayManager, durationDays: clampedPlanDays, adminSessionToken })
-      setLatestMember(displayMember)
-      setLatestCode(result.row?.code ?? nextCode)
-      const nextRows = await getOnlineLicenseStatus({ adminAccount: displayManager, adminSessionToken })
-      setLicenseStatus(nextRows)
-      if (nextRows.licenseRows.length) setCodes(pruneExpiredCodes(nextRows.licenseRows as CodeRow[]))
-      else setCodes((rows) => pruneExpiredCodes([{ member: displayMember, code: result.row?.code ?? nextCode, status: '啟用中', remain: `${result.durationDays ?? clampedPlanDays}天` }, ...rows]))
+      const nextRows = await refreshLicenses()
+      const confirmed = nextRows.licenseRows.find((row) => row.code === result.row.code && row.member === displayMember)
+      if (!confirmed) throw new Error('建立結果未確認，已重新讀取；勿重複送出')
+      setLatestMember(confirmed.member)
+      setLatestCode(confirmed.code)
     } catch (error: any) {
+      await refreshLicenses().catch(() => {})
       notify(error?.message || '建立授權失敗')
     } finally {
       createAuthorizationBusyRef.current = false
       setCreateAuthorizationBusy(false)
     }
   }
-  const refreshLicenses = async () => {
-    const nextRows = await getOnlineLicenseStatus({ adminAccount: displayManager, adminSessionToken })
-    setLicenseStatus(nextRows)
-    if (nextRows.licenseRows.length) setCodes(pruneExpiredCodes(nextRows.licenseRows as CodeRow[]))
-    return nextRows
+  const refreshLicenses = async (fresh = false) => {
+    if (!fresh && licenseFlight.current) return licenseFlight.current
+    // A post-write read cannot join an older snapshot, nor let it overwrite us.
+    const generation = ++licenseGeneration.current
+    const request = (async () => {
+      let nextRows: OnlineLicenseStatus
+      try { nextRows = await waitForAdminResult(getOnlineLicenseStatus({ adminAccount: displayManager, adminSessionToken })) } catch (error) {
+        if (generation === licenseGeneration.current) setLicenseError('授權資料讀取失敗，舊資料已過期')
+        throw error
+      }
+      if (generation !== licenseGeneration.current) throw new Error('授權資料讀取已被較新請求取代')
+      if (nextRows.state !== 'ready') {
+        setLicenseError(nextRows.state === 'invalid' ? '管理 Session 無效，請重新登入' : '授權資料讀取失敗，舊資料已過期')
+        if (nextRows.state === 'invalid') logoutAdmin()
+        throw new Error('授權資料讀取失敗，請重新讀取')
+      }
+      setLicenseError('')
+      setLicenseStatus(nextRows)
+      setCodes(pruneExpiredCodes(nextRows.licenseRows as CodeRow[]))
+      return nextRows
+    })()
+    licenseFlight.current = request
+    try { return await request } finally { if (licenseFlight.current === request) licenseFlight.current = null }
   }
   const toggleCode = (member: string) => setSelectedCodeMembers((current) => current.includes(member) ? current.filter((item) => item !== member) : [...current, member])
   const toggleAgent = (account: string) => setSelectedAgents((current) => current.includes(account) ? current.filter((item) => item !== account) : [...current, account])
@@ -682,67 +712,70 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     window.location.assign('/admin-login')
   }
   const selectedCodeRows = () => codes.filter((row) => selectedCodeMembers.includes(row.code))
-  const deleteSelectedCodes = async () => {
+  const admitManagementWrite = (kind: 'code' | 'agent', ids: string[]) => {
+    if (batchFlight.current) return false
+    const conflict = batchFences.has('*') || ids.some((id) => [...batchFences].some((pending) => {
+      const identity = `${kind}:${id}`
+      return pending === identity || (kind === 'agent' && (pending.startsWith(`${identity}-`) || identity.startsWith(`${pending}-`)))
+    }))
+    if (conflict) notify('選取項目仍有結果未知的寫入，須先人工核對；禁止重複送出')
+    return !conflict
+  }
+  const runSelectedBatch = async (kind: 'code' | 'agent', jobs: Array<{ id: string; write: () => Promise<unknown> }>, successMessage: string) => {
+    if (!admitManagementWrite(kind, jobs.map((job) => job.id))) return
+    const setBusy = kind === 'code' ? setCodeActionBusy : setAgentActionBusy
+    batchFlight.current = true
+    setBusy(true)
+    try {
+      // Persist before dispatch: reloading this tab must not replay an unknown write.
+      jobs.forEach((job) => batchFences.add(`${kind}:${job.id}`))
+      try { window.sessionStorage.setItem(batchFenceKey, JSON.stringify([...batchFences])) } catch {
+        notify('無法保存寫入防重送狀態，未送出批次')
+        return
+      }
+      // Drain all bounded outcomes, not merely the first rejection. A deadline is
+      // unknown completion, never proof that the server stopped writing.
+      const results = await Promise.allSettled(jobs.map((job) => waitForAdminResult(Promise.resolve().then(job.write))))
+      const failed: string[] = []
+      const unknown: string[] = []
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') return
+        const error = result.reason
+        const rejected = error?.unknown === false && error.status >= 400 && error.status < 500 && error.status !== 408
+        ;(rejected ? failed : unknown).push(jobs[index].id)
+      })
+      let readback = true
+      try { await refreshLicenses(true) } catch { readback = false }
+      if (readback) {
+        jobs.filter((job) => !unknown.includes(job.id)).forEach((job) => batchFences.delete(`${kind}:${job.id}`))
+        try { window.sessionStorage.setItem(batchFenceKey, JSON.stringify([...batchFences])) } catch {
+          batchFences.add('*')
+          readback = false
+        }
+      }
+      if (!failed.length && !unknown.length && readback) notify(successMessage)
+      else {
+        const describe = (ids: string[]) => `${ids.length} 筆${ids.length ? `（${ids.join('、')}）` : ''}`
+        notify(`已回覆成功 ${results.length - failed.length - unknown.length} 筆；失敗 ${describe(failed)}；結果未知 ${describe(unknown)}；${readback ? '已重新讀取' : '讀回失敗'}，勿整批重送；未知結果須先人工核對，勿重複送出`)
+      }
+    } finally {
+      // Partial batches must not leave successful extensions selected for replay.
+      if (kind === 'code') setSelectedCodeMembers([])
+      else setSelectedAgents([])
+      batchFlight.current = false
+      setBusy(false)
+    }
+  }
+  const runCodeBatch = async (write: (row: CodeRow) => Promise<unknown>, successMessage: string) => {
     if (!canManageCodes) return notify('此角色不能管理驗證碼')
     const rows = selectedCodeRows()
     if (!rows.length) return notify('請先勾選驗證碼')
-    setCodeActionBusy(true)
-    try {
-      await Promise.all(rows.map((row) => deleteOnlineLicense({ code: row.code, adminSessionToken })))
-      setSelectedCodeMembers([])
-      await refreshLicenses()
-      notify('已刪除選取驗證碼')
-    } catch (error: any) {
-      notify(error?.message || '刪除驗證碼失敗')
-    } finally {
-      setCodeActionBusy(false)
-    }
+    await runSelectedBatch('code', rows.map((row) => ({ id: row.code, write: () => write(row) })), successMessage)
   }
-  const suspendSelectedCodes = async () => {
-    if (!canManageCodes) return notify('此角色不能管理驗證碼')
-    const rows = selectedCodeRows()
-    if (!rows.length) return notify('請先勾選驗證碼')
-    setCodeActionBusy(true)
-    try {
-      await Promise.all(rows.map((row) => setOnlineLicenseStatus({ code: row.code, status: 'suspended', adminSessionToken })))
-      await refreshLicenses()
-      notify('已暫停選取驗證碼')
-    } catch (error: any) {
-      notify(error?.message || '暫停驗證碼失敗')
-    } finally {
-      setCodeActionBusy(false)
-    }
-  }
-  const activateSelectedCodes = async () => {
-    if (!canManageCodes) return notify('此角色不能管理驗證碼')
-    const rows = selectedCodeRows()
-    if (!rows.length) return notify('請先勾選驗證碼')
-    setCodeActionBusy(true)
-    try {
-      await Promise.all(rows.map((row) => setOnlineLicenseStatus({ code: row.code, status: 'active', adminSessionToken })))
-      await refreshLicenses()
-      notify('已開啟選取驗證碼')
-    } catch (error: any) {
-      notify(error?.message || '開啟驗證碼失敗')
-    } finally {
-      setCodeActionBusy(false)
-    }
-  }
-  const extendSelectedCodes = async () => {
-    if (!canManageCodes) return notify('此角色不能管理驗證碼')
-    const rows = selectedCodeRows()
-    if (!rows.length) return notify('請先勾選驗證碼')
-    setCodeActionBusy(true)
-    try {
-      await Promise.all(rows.map((row) => extendOnlineLicense({ code: row.code, days: clampedPlanDays, adminSessionToken })))
-      await refreshLicenses()
-      notify(`已延長選取驗證碼 ${clampedPlanDays} 天`)
-    } catch (error: any) {
-      notify(error?.message || '延長驗證碼失敗')
-    } finally {
-      setCodeActionBusy(false)
-    }
-  }
+  const deleteSelectedCodes = () => runCodeBatch((row) => deleteOnlineLicense({ code: row.code, adminSessionToken }), '已刪除選取驗證碼')
+  const suspendSelectedCodes = () => runCodeBatch((row) => setOnlineLicenseStatus({ code: row.code, status: 'suspended', adminSessionToken }), '已暫停選取驗證碼')
+  const activateSelectedCodes = () => runCodeBatch((row) => setOnlineLicenseStatus({ code: row.code, status: 'active', adminSessionToken }), '已開啟選取驗證碼')
+  const extendSelectedCodes = () => runCodeBatch((row) => extendOnlineLicense({ code: row.code, days: extensionDays[row.code] ?? 30, adminSessionToken }), '已依各列天數延長選取驗證碼')
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2600) }
   const copyText = async (text: string, message: string) => { await navigator.clipboard?.writeText(text); notify(message) }
   const createAgentFromForm = async () => {
@@ -752,6 +785,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     if (!roleOptions.includes(newAgentRole)) return notify('下級等級不能高於或平級於上級')
     const parentCode = newAgentParent || displayManager
     const code = buildChildAgentAccount(parentCode, rawCode)
+    if (!admitManagementWrite('agent', [code])) return
     setAgentActionBusy(true)
     try {
       const result = await createOnlineAgent({ code, name: code, role: newAgentRole, parentCode, adminSessionToken, permission: rolePermission(newAgentRole) })
@@ -761,6 +795,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       await refreshLicenses()
       notify(`代理帳號已建立：${code}`)
     } catch (error: any) {
+      await refreshLicenses().catch(() => {})
       notify(error?.message || '建立代理失敗')
     } finally {
       setAgentActionBusy(false)
@@ -770,23 +805,18 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     if (!canManageAgents) return notify('此角色不能調整等級')
     if (!selectedAgents.length) return notify('請先勾選代理')
     if (!roleOptions.includes(newAgentRole)) return notify('下級等級不能高於或平級於上級')
-    setAgentActionBusy(true)
-    try {
-      await Promise.all(selectedAgents.map((code) => {
+    await runSelectedBatch('agent', selectedAgents.map((code) => ({
+      id: code,
+      write: () => {
         const current = agents.find((agent) => agent.account === code)
         return createOnlineAgent({ code, name: code, role: newAgentRole, parentCode: current?.parent ?? displayManager, adminSessionToken, permission: rolePermission(newAgentRole) })
-      }))
-      await refreshLicenses()
-      notify('代理角色已調整')
-    } catch (error: any) {
-      notify(error?.message || '調整等級失敗')
-    } finally {
-      setAgentActionBusy(false)
-    }
+      },
+    })), '代理角色已調整')
   }
   const deleteSelectedAgents = async () => {
     if (!canManageAgents) return notify('此角色不能刪除代理')
     if (!selectedAgents.length) return notify('請先勾選代理')
+    if (!admitManagementWrite('agent', selectedAgents)) return
     setAgentActionBusy(true)
     try {
       await deleteOnlineAgents({ codes: selectedAgents, adminSessionToken })
@@ -794,21 +824,39 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
       await refreshLicenses()
       notify('已刪除選取帳號；若選取管理員，其附屬下級也已刪除')
     } catch (error: any) {
+      await refreshLicenses().catch(() => {})
       notify(error?.message || '刪除代理失敗')
     } finally {
       setAgentActionBusy(false)
     }
   }
   const enableMaintenanceMode = async () => {
-    if (!isSuper) return notify('只有超級管理員可以啟用維護模式')
-    await updateOnlineAppSetting({ scope: 'frontend', key: 'ui_defaults', value: { maintenanceMode: true, enabledAt: new Date().toISOString() }, isPublic: true, adminSessionToken })
-    notify('維護模式已啟用')
-    window.location.reload()
+    if (!isSuper || maintenanceFlight.current) return
+    maintenanceFlight.current = true
+    setMaintenanceBusy(true)
+    setMaintenanceError('')
+    const desired = !maintenanceMode
+    try {
+      const current = await checkOnlineCoreStatus()
+      if (current.state !== 'connected') throw new Error('無法讀取現有設定，未送出維護更新')
+      const defaults = current.settings?.frontend?.ui_defaults
+      if (defaults == null || typeof defaults !== 'object' || Array.isArray(defaults)) throw new Error('現有設定格式錯誤，未送出更新')
+      const result = await updateOnlineAppSetting({ scope: 'frontend', key: 'ui_defaults', value: { ...defaults, maintenanceMode: desired, enabledAt: desired ? new Date().toISOString() : defaults?.enabledAt }, isPublic: true, adminSessionToken })
+      if (result?.ok !== true || result?.result?.ok !== true) throw new Error('維護寫入結果未確認')
+      const verified = await checkOnlineCoreStatus()
+      if (verified.state !== 'connected' || verified.maintenanceMode !== desired) throw new Error('維護設定讀回未確認，勿重複送出')
+      setMaintenanceMode(desired)
+      notify(desired ? '維護模式已啟用' : '維護模式已停用')
+    } catch (error: any) {
+      const current = await checkOnlineCoreStatus()
+      if (current.state === 'connected') setMaintenanceMode(Boolean(current.maintenanceMode))
+      setMaintenanceError(error?.message || '維護更新結果未確認，請先重新讀取')
+    } finally { maintenanceFlight.current = false; setMaintenanceBusy(false) }
   }
   const dailyReports = cloudDataStatus.dailyReports ?? []
-  const latestReport = dailyReports[0] ?? memoryCenter.reports[0]
-  const actualRounds = cloudDataStatus.todayRoundCount ?? latestReport?.rounds ?? totalRounds
-  const agents = useMemo(() => normalizeAgents(licenseStatus.configured === false ? initialAgents : licenseStatus.agentRows, displayManager), [licenseStatus.configured, licenseStatus.agentRows, displayManager])
+  const latestReport = dailyReports[0]
+  const actualRounds = cloudDataStatus.todayRoundCount
+  const agents = useMemo(() => normalizeAgents(licenseStatus.agentRows, displayManager), [licenseStatus.configured, licenseStatus.agentRows, displayManager])
   const visibleAgents = useMemo(() => filterCollapsedAgents(agents, collapsedAgents), [agents, collapsedAgents])
   const filteredAgents = useMemo(() => filterAgents(visibleAgents, agentSearch), [visibleAgents, agentSearch])
   const filteredCodes = useMemo(() => filterCodes(codes, codeSearch), [codes, codeSearch])
@@ -819,6 +867,8 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
 
   return <main className="admin-shell admin-v015-shell" data-ui-theme="navy-gold" style={{ width: '100%', maxWidth: 'none' }}>
     {toast ? <div className="toast">{toast}</div> : null}
+    {maintenanceError ? <p role="alert">{maintenanceError}</p> : null}
+    {licenseError ? <div role="alert">{licenseError}<button onClick={() => { void refreshLicenses().catch(() => {}) }}>重新讀取授權</button></div> : null}
     <header className="admin-hero clean-hero v015-hero" style={{ width: '100%', maxWidth: 'none' }}>
       <div className="admin-title-block">
         <span className="eyebrow">管理控制中心</span>
@@ -829,8 +879,8 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
     </header>
 
     <section className="admin-summary-grid auth-summary v015-summary v044-summary-grid" aria-label="管理總覽" style={{ width: '100%', maxWidth: 'none' }}>
-      <article className="admin-metric purple settings-metric"><span>線上設定管理</span>{isSuper ? <button onClick={enableMaintenanceMode}>啟用維護模式</button> : <strong>僅超級管理員</strong>}</article>
-      <AdminMetric title="數據抓取" value={`已抓 ${actualRounds} 局`} tone="cyan" />
+      <article className="admin-metric purple settings-metric"><span>線上設定管理</span>{isSuper ? <button disabled={maintenanceBusy} onClick={enableMaintenanceMode}>{maintenanceBusy ? '更新中…' : maintenanceMode ? '停用維護模式' : '啟用維護模式'}</button> : <strong>僅超級管理員</strong>}</article>
+      <AdminMetric title="數據抓取" value={actualRounds == null ? '尚未讀取' : `已抓 ${actualRounds} 局`} tone="cyan" />
       <AdminMetric title="資料庫" value={formatConnectionMetric(supabaseStatus, '資料庫')} tone={supabaseStatus.state === 'error' ? 'yellow' : 'green'} />
       <AdminMetric title="記憶中心" value={formatConnectionMetric(onlineCoreStatus, '記憶中心')} tone={onlineCoreStatus.state === 'error' ? 'yellow' : 'cyan'} />
     </section>
@@ -895,7 +945,7 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
           {filteredCodes.map((row) => <div className="list-row code-row" key={row.code}>
             <input aria-label={`勾選 ${row.code}`} type="checkbox" checked={selectedCodeMembers.includes(row.code)} onChange={() => toggleCode(row.code)} />
             <span>{row.member}</span><b>{row.code}</b><em>{row.status}｜{row.remain}</em>
-            <input placeholder="延長1-30天" />
+            <input placeholder="延長1-30天" aria-label={`延長天數 ${row.code}`} type="number" min="1" max="30" value={extensionDays[row.code] ?? 30} onChange={(event) => setExtensionDays((current) => ({ ...current, [row.code]: clampPlanDays(event.target.value) }))} />
           </div>)}
         </div>
       </section>
@@ -903,11 +953,15 @@ function AdminApp({ tables, supabaseStatus, onlineCoreStatus }: { tables: LiveTa
 
     <section className="admin-panel list-panel weak-panel" aria-label="弱桌分析">
       <h2>弱桌分析</h2>
-      <div className="weak-grid">{tableDisplayOrder.map((name, index) => <article className="weak-card" key={name}><strong>{name}桌</strong><span>主命中率 {cloudDataStatus.tableStats?.[index]?.mainHitRate ?? tableHitRate(strategyAnalysis, index, 'main')}</span><span>副命中率 {cloudDataStatus.tableStats?.[index]?.sideHitRate ?? tableHitRate(strategyAnalysis, index, 'side')}</span></article>)}</div>
+      <div className="weak-grid">{tableDisplayOrder.map((name) => {
+        const stat = cloudDataStatus.tableStats?.find((row) => row.tableId === `BAV${name.padStart(2, '0')}`.replace('BAV3A', 'BAV03A'))
+        return <article className="weak-card" key={name}><strong>{name}桌</strong><span>主命中率 {stat?.mainHitRate ?? '無資料'}</span><span>副命中率 {stat?.sideHitRate ?? '無資料'}</span></article>
+      })}</div>
     </section>
 
     <section className="admin-panel list-panel report-panel" aria-label="線上記憶與報表">
       <h2>線上記憶與報表</h2>
+      {reportState !== 'ready' ? <p role="status">{reportState === 'loading' ? '報表尚未讀取' : '報表讀取失敗，保留資料已過期'}</p> : null}
       <div className="report-wide-row report-head"><span>日期</span><span>當日總局數</span><span>莊命中率</span><span>閒命中率</span><span>和命中率</span><span>龍寶命中率</span><span>對子命中率</span><span>超六命中率</span></div>
       {(dailyReports.length ? dailyReports : [latestReport]).filter(Boolean).map((report: any) => <div className="report-wide-row" key={report.date ?? report.created_at ?? 'latest'}><span>{report.date ?? new Date().toLocaleDateString('zh-TW')}</span><b>{report.rounds ?? actualRounds}局</b><span>{categoryHitRate(report, 'banker')}</span><span>{categoryHitRate(report, 'player')}</span><span>{categoryHitRate(report, 'tie')}</span><span>{categoryHitRate(report, 'dragon')}</span><span>{categoryHitRate(report, 'pair')}</span><span>{categoryHitRate(report, 'six')}</span></div>)}
     </section>
@@ -981,8 +1035,6 @@ function defaultChildRole(parentLevel: string): 'viewer' | 'agent' | 'manager' {
 function categoryHitRate(report: any, key: string) {
   const direct = report?.[`${key}_hit_rate`] ?? report?.[`${key}HitRate`] ?? report?.raw_summary?.[`${key}_hit_rate`] ?? report?.metadata?.[`${key}_hit_rate`]
   if (direct != null) return formatPercentValue(direct)
-  if (key === 'banker' || key === 'player') return report?.main_hit_rate != null ? formatPercentValue(report.main_hit_rate) : '-'
-  if (['dragon','pair','six','tie'].includes(key)) return formatSideHitRate(report)
   return '-'
 }
 

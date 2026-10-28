@@ -96,6 +96,31 @@ function tableUiHistory(tableId = 'BAV01', shoe: string | number = 12) {
 }
 
 describe('AI百家預測軟體', () => {
+  it('renders unavailable table as sync-only without losing six selectors or member login', async () => {
+    const defaultFetch = fetch
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith('/api/tables')) {
+        const rows: any[] = proxyTablesFromMocks()
+        rows[0] = { tableId: rows[0].tableId, displayName: rows[0].displayName, tableType: rows[0].tableType,
+          buildVersion: 'v105', sourceUpdatedAt: new Date().toISOString(), screenUnavailable: true,
+          publication: { state: 'unavailable', revision: null, readyIdentity: null } }
+        return Promise.resolve({ ok:true,status:200,json:async()=>rows } as Response)
+      }
+      return defaultFetch(url, init)
+    }))
+    await renderApp()
+    const selectors = screen.getByRole('navigation', {name:'桌號選擇'})
+    expect(within(selectors).getAllByRole('button')).toHaveLength(6)
+    expect(within(selectors).getByRole('button', {name:'MT百家樂第1桌 桌況同步中'})).toBeVisible()
+    expect(document.querySelector('.dashboard-main')).toHaveTextContent('桌況同步中')
+    expect(document.querySelector('.dashboard-main')).not.toHaveTextContent('第0局')
+    expect(screen.queryByLabelText('統計資訊')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('傳統大路')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('近十局預測紀錄區')).not.toBeInTheDocument()
+    fireEvent.click(within(selectors).getAllByRole('button')[1])
+    expect(screen.getByLabelText('統計資訊')).toBeVisible()
+    expect(window.sessionStorage.getItem('darven-member-session-token')).toBe('test-member-session')
+  })
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/online-license/member-session')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, sessionExpiresAt: new Date(Date.now() + 600000).toISOString() }) })
@@ -604,25 +629,45 @@ describe('AI百家預測軟體', () => {
 
   it('admin create license and agent actions send real member/admin payloads to backend', async () => {
     const calls: Array<{ url: string; body: any }> = []
-    vi.stubGlobal('prompt', vi.fn()
-      .mockReturnValueOnce('A1688')
-      .mockReturnValueOnce('agent')
-      .mockReturnValueOnce('Admin001'))
+    // HTTP fixtures only: successful writes become visible in the next status read.
+    let licenses: Array<{ code: string; member_account: string; status: string; agent_code: string }> = []
+    const agents = [{ code: 'Admin001', role: 'manager', permission: '可開代理 / 可建碼', parent_code: '' }]
     vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
-      if (init?.body) calls.push({ url, body: JSON.parse(String(init.body)) })
-      if (url.includes('/api/cloud-data/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ mtAutoLoginEnabled: false, message: 'MT自動登入未啟用', tableCount: 15, todayRoundCount: 88 }) })
-      if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ configured: true, agents: [{ code: 'Admin001', role: 'manager', permission: '可開代理 / 可建碼' }], licenses: [] }) })
-      if (url.includes('/api/online-license/licenses')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, row: { code: 'Admin001_001', member_account: 'User1688' } }) })
-      if (url.includes('/api/online-license/agents')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, row: { code: 'A1688' } }) })
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined
+      if (body) calls.push({ url, body })
+      if (url.includes('/api/cloud-data/status')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, mtAutoLoginEnabled: false, message: 'MT自動登入未啟用', tableCount: 15, todayRoundCount: 88, tableStats: [], dailyReports: [] }) })
+      if (url.includes('/api/online-license/status')) {
+        const snapshot = { configured: true, agents: [...agents], licenses: [...licenses] }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(snapshot) })
+      }
+      if (url.endsWith('/api/online-license/licenses') && init?.method === 'POST') {
+        const row = { code: body.code, member_account: body.memberAccount, status: 'active', agent_code: body.agentCode }
+        licenses = [...licenses, row]
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, row }) })
+      }
+      if (url.endsWith('/api/online-license/agents') && init?.method === 'POST') {
+        const row = { code: body.code, role: body.role, permission: body.permission, parent_code: body.parentCode }
+        agents.push(row)
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, row }) })
+      }
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
     }))
     window.sessionStorage.setItem('darven-admin-account', 'Admin001')
-    await renderApp('/admin', false)
+    await act(async () => { await renderApp('/admin', false) })
+    expect(screen.getByText('已抓 88 局')).toBeInTheDocument()
     fireEvent.change(screen.getByPlaceholderText('請輸入會員帳號'), { target: { value: 'User1688' } })
     fireEvent.click(screen.getByRole('button', { name: '建立授權' }))
+    await waitFor(() => expect(screen.getByText('會員帳號：User1688')).toBeInTheDocument(), { timeout: 1000 })
+    expect(screen.getByText('驗證碼：Admin0001_001')).toBeInTheDocument()
     fireEvent.change(screen.getByPlaceholderText('輸入代理帳號尾碼'), { target: { value: 'A1688' } })
     fireEvent.click(screen.getByRole('button', { name: '新增帳號' }))
+    await waitFor(() => expect(screen.getByLabelText('勾選 Admin001-A1688')).toBeInTheDocument(), { timeout: 1000 })
     await waitFor(() => expect(calls.some((call) => call.url.includes('/api/online-license/licenses') && call.body.memberAccount === 'User1688' && call.body.adminSessionToken === 'test-admin-session')).toBe(true))
+    expect(calls.filter((call) => call.url.endsWith('/api/online-license/licenses'))).toHaveLength(1)
+    expect(calls.filter((call) => call.url.endsWith('/api/online-license/agents'))).toEqual([
+      { url: expect.stringContaining('/api/online-license/agents'), body: expect.objectContaining({ code: 'Admin001-A1688', parentCode: 'Admin001', role: 'agent', adminSessionToken: 'test-admin-session' }) },
+    ])
+    expect(screen.queryByText(/建立結果未確認/)).not.toBeInTheDocument()
     expect(document.body.textContent).toMatch(/88/)
   })
 
@@ -1270,7 +1315,16 @@ describe('AI百家預測軟體', () => {
   })
 
   it('admin keeps all four verification-code actions above a labeled five-column list', async () => {
-    await renderApp('/admin')
+    const defaultFetch = fetch
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, status: 200, json: async () => ({
+        configured: true, agentRows: [],
+        licenseRows: [{ member: 'User001', code: 'Agent001_001', status: '啟用中', remain: '30天' }],
+      }) })
+      return defaultFetch(url, init)
+    }))
+    await act(async () => { await renderApp('/admin') })
+    await waitFor(() => expect(screen.getByLabelText('勾選 Agent001_001')).toBeInTheDocument(), { timeout: 1000 })
 
     const codePanel = screen.getByLabelText('已建立驗證碼')
     expect(within(codePanel).getByRole('button', { name: '刪除驗證碼' })).toBeInTheDocument()
@@ -1292,8 +1346,31 @@ describe('AI百家預測軟體', () => {
   })
 
   it('applies requested admin layout, search, checkbox, fixed-agent, and 30-day limit behavior', async () => {
+    // Explicit HTTP read rows replace the retired local demo fallback. Include
+    // both search matches and nonmatches so filtering cannot pass on empty data.
+    const defaultFetch = fetch
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/api/online-license/status')) return Promise.resolve({ ok: true, status: 200, json: async () => ({
+        configured: true,
+        agentRows: [
+          { account: 'DVAI', level: '管理員', permission: '可開代理 / 可建碼' },
+          { account: 'Agent001', level: '代理', permission: '可建碼', parent: 'OtherManager' },
+          { account: 'Agent002', level: '代理', permission: '可建碼', parent: 'DVAI' },
+          { account: 'View001', level: '觀察者', permission: '唯讀', parent: 'DVAI' },
+        ],
+        licenseRows: [
+          { member: 'User001', code: 'DVAI_001', status: '啟用中', remain: '30天' },
+          { member: 'User010', code: 'DVAI_010', status: '啟用中', remain: '30天' },
+        ],
+      }) })
+      return defaultFetch(url, init)
+    }))
     window.sessionStorage.setItem('darven-admin-account', 'DVAI')
-    await renderApp('/admin')
+    await act(async () => { await renderApp('/admin') })
+    await waitFor(() => expect(screen.getByText('User010')).toBeInTheDocument(), { timeout: 1000 })
+    expect(screen.getByText('User001')).toBeInTheDocument()
+    expect(screen.getByText('Agent002')).toBeInTheDocument()
+    expect(screen.getByText('View001')).toBeInTheDocument()
 
     const adminLoginHeading = document.querySelector('.admin-login-title')
     expect(adminLoginHeading).not.toBeInTheDocument()
@@ -1324,6 +1401,7 @@ describe('AI百家預測軟體', () => {
     expect(screen.queryByLabelText('勾選 Agent001')).not.toBeInTheDocument()
 
     fireEvent.change(screen.getByPlaceholderText('尋找代理帳號'), { target: { value: 'View001' } })
+    expect(screen.getByText('View001')).toBeInTheDocument()
     expect(screen.queryByText('Agent002')).not.toBeInTheDocument()
 
     fireEvent.change(screen.getByPlaceholderText('尋找驗證碼'), { target: { value: 'User010' } })
