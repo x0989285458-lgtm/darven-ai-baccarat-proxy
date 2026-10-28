@@ -91,11 +91,11 @@ test('ten identities share flights, keep five-read budgets and one deadline afte
     const id = `T${i}`, k = `${id}:1603:27`, row = { ...table, tableId: id }
     s.remember(k, 250, 'missing')
     const first = s.live(row, 27, k, true)
-    assert.equal(first, s.live(row, 27, k, true))
-    requests.push(first)
+    // Deadlines belong to callers; only the underlying read is shared.
+    requests.push(first, s.live(row, 27, k, true))
   }
   for (const ms of [249, 1, 50, 100, 200, 400]) { t.mock.timers.tick(ms); await flush() }
-  assert.deepEqual(await Promise.all(requests), Array(10).fill(null))
+  assert.deepEqual(await Promise.all(requests), Array(20).fill(null))
   assert.equal(calls.size, 10)
   assert.ok([...calls.values()].every(n => n <= 5 && n >= 2))
   assert.equal(Date.now(), 11000)

@@ -2372,14 +2372,39 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
     })
   }
 
-  function readLiveIssuedPredictionWithinWait(table, targetRound, key, durableIssuanceRequired) {
-    if (liveIssuedPredictionReadPromises.has(key)) return liveIssuedPredictionReadPromises.get(key)
+  async function readLiveIssuedPredictionWithinWait(table, targetRound, key, durableIssuanceRequired) {
     const deadlineAt = Date.now() + resolvedLivePredictionReadWaitMs
+    let remainingReads = 5
+    while (!applicationStopped && Date.now() < deadlineAt && remainingReads > 0) {
+      // A caller owns its deadline, never the remaining milliseconds of a
+      // prefetch. Keep the actual DB read single-flight even after its owner times out.
+      const existing = liveIssuedPredictionReadPromises.get(key)
+      const flight = existing ?? startLiveIssuedPredictionPoll(table, targetRound, key, durableIssuanceRequired, deadlineAt, remainingReads)
+      const joinedAtAttempt = existing ? Math.max(0, flight.readAttempt - 1) : 0
+      // Joining must not let this caller observe more than its remaining budget.
+      flight.maxReads = Math.min(flight.maxReads, joinedAtAttempt + remainingReads)
+      const exact = await waitForPredictionReadUntil(flight.promise, deadlineAt)
+      remainingReads -= Math.max(0, flight.readAttempt - joinedAtAttempt)
+      if (exact || Date.now() >= deadlineAt) return exact
+      const unresolved = readingIssuedPredictionPromises.get(key)
+      if (unresolved && existing) return waitForPredictionReadUntil(unresolved, deadlineAt)
+      const backoff = issuedPredictionReadRetryAt.get(key)
+      if (backoff?.reason === 'error' && backoff.retryAt > now()) return null
+      // Only late joiners may continue a completed older flight, and only
+      // within their original deadline and remaining read allowance.
+      if (!existing) return null
+    }
+    return null
+  }
+
+  function startLiveIssuedPredictionPoll(table, targetRound, key, durableIssuanceRequired, deadlineAt, maxReads) {
+    const flight = { promise: null, readAttempt: 0, maxReads }
     const poll = (async () => {
       let readAttempt = 0
+      let observedReadMs = 0
       while (true) {
         if (applicationStopped) return null
-        if (Date.now() >= deadlineAt || readAttempt >= 5) {
+        if (Date.now() >= deadlineAt || readAttempt >= flight.maxReads) {
           // Waiting alone is not a fresh miss and must not slide the cache due time.
           if (readAttempt > 0) rememberIssuedPredictionReadBackoff(key, 250, 'missing')
           return null
@@ -2393,10 +2418,13 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
           continue
         }
         readAttempt += 1
+        flight.readAttempt = readAttempt
+        const readStartedAt = Date.now()
         const issuedPredictionRead = startIssuedPredictionRead(table, targetRound, key, durableIssuanceRequired, {
           deferMissingBackoff: true,
         })
         const exact = await waitForPredictionReadUntil(issuedPredictionRead, deadlineAt)
+        observedReadMs = Math.max(observedReadMs, Date.now() - readStartedAt)
         if (exact) return exact
         // A deadline with an unresolved read is not evidence of a missing row.
         if (readingIssuedPredictionPromises.has(key)) {
@@ -2405,7 +2433,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
         }
         const backoffAfterRead = issuedPredictionReadRetryAt.get(key)
         if (Number(backoffAfterRead?.retryAt ?? 0) > now() && backoffAfterRead.reason !== 'missing') return null
-        if (readAttempt >= 5) {
+        if (readAttempt >= flight.maxReads) {
           rememberIssuedPredictionReadBackoff(key, 250, 'missing')
           return null
         }
@@ -2414,17 +2442,21 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
           rememberIssuedPredictionReadBackoff(key, 250, 'missing')
           return null
         }
-        // Preserve the fifth (last) read for the end of the admitted window
-        // instead of spending the whole read budget by 750ms. Reserve up to
-        // 50ms for that read; its completion still obeys the original deadline.
+        // Budget the next read using this flight's slowest observed read, plus
+        // scheduling headroom. The hard deadline remains authoritative.
+        const readReserveMs = Math.max(Math.min(50, resolvedLivePredictionReadWaitMs / 20), observedReadMs + 10)
+        const availableDelayMs = Math.max(0, remainingMs - readReserveMs)
         const retryDelayMs = readAttempt === 4
-          ? Math.max(0, remainingMs - Math.min(50, resolvedLivePredictionReadWaitMs / 20))
-          : Math.min(50 * (2 ** Math.min(readAttempt - 1, 4)), remainingMs)
+          ? availableDelayMs
+          : Math.min(50 * (2 ** Math.min(readAttempt - 1, 4)), availableDelayMs)
         await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
       }
-    })().finally(() => liveIssuedPredictionReadPromises.delete(key))
-    liveIssuedPredictionReadPromises.set(key, poll)
-    return poll
+    })().finally(() => {
+      if (liveIssuedPredictionReadPromises.get(key) === flight) liveIssuedPredictionReadPromises.delete(key)
+    })
+    flight.promise = poll
+    liveIssuedPredictionReadPromises.set(key, flight)
+    return flight
   }
 
   function predictionScreen(table) {
