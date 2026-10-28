@@ -1873,7 +1873,24 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
     }
   }
 
-  async function readBestTables({ includePrediction = true, predictionWillBeBroadcast = false } = {}) {
+  async function readBestTables(options = {}) {
+    const publicationCandidates = new WeakSet()
+    const tables = await readBestTablesSnapshot({ ...options, publicationCandidates })
+    if (options.includePrediction === false || applicationStopped) return tables
+    // A table can hit its shared read deadline while another table is still
+    // waiting. Recheck settled exact reads at publication, not the earlier
+    // per-table completion, without starting another read or extending a budget.
+    return tables.map((table) => {
+      if (table.prediction || !publicationCandidates.has(table)) return table
+      const key = predictionTargetKey(table.tableId, table.shoe, Number(table.round))
+      const exact = pendingPredictions.get(key)
+      if (!isExactScreenPrediction(exact, table, Number(table.round), isDurablePredictionIssuanceRequired())
+        || isPendingPredictionExpired(exact)) return table
+      return { ...table, prediction: structuredClone(exact) }
+    })
+  }
+
+  async function readBestTablesSnapshot({ includePrediction = true, predictionWillBeBroadcast = false, publicationCandidates } = {}) {
     const localSnapshot = state.snapshot()
     const localTables = localSnapshot.tables
     const localFreshnessByTable = new Map(localTables.map((table) => {
@@ -1887,7 +1904,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       return includePrediction
         ? Promise.all(localTables.map((table) => {
             const receivedAtMs = tableReceivedAtMsById.get(canonicalProductionTableId(table?.tableId)) ?? tablesReceivedAtMs
-            return withLivePrediction(table, now() - receivedAtMs <= actionablePredictionTtlMs, predictionWillBeBroadcast)
+            return withLivePrediction(table, now() - receivedAtMs <= actionablePredictionTtlMs, predictionWillBeBroadcast, publicationCandidates)
           }))
         : localTables
     }
@@ -1912,7 +1929,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
     const cloudTables = cloudSnapshot?.tables ?? []
     if (localTables.length === 0) {
       return includePrediction
-        ? Promise.all(cloudTables.map((table) => withLivePrediction(table, true, predictionWillBeBroadcast)))
+        ? Promise.all(cloudTables.map((table) => withLivePrediction(table, true, predictionWillBeBroadcast, publicationCandidates)))
         : cloudTables
     }
     const cloudByTableId = new Map(cloudTables.map((table) => [canonicalProductionTableId(table?.tableId), table]))
@@ -1927,7 +1944,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
     }).filter(Boolean)
     for (const table of cloudByTableId.values()) selected.push({ table, actionable: true })
     return includePrediction
-      ? Promise.all(selected.map(({ table, actionable }) => withLivePrediction(table, actionable, predictionWillBeBroadcast)))
+      ? Promise.all(selected.map(({ table, actionable }) => withLivePrediction(table, actionable, predictionWillBeBroadcast, publicationCandidates)))
       : selected.map(({ table }) => table)
   }
 
@@ -2397,7 +2414,12 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
           rememberIssuedPredictionReadBackoff(key, 250, 'missing')
           return null
         }
-        const retryDelayMs = Math.min(50 * (2 ** Math.min(readAttempt - 1, 4)), remainingMs)
+        // Preserve the fifth (last) read for the end of the admitted window
+        // instead of spending the whole read budget by 750ms. Reserve up to
+        // 50ms for that read; its completion still obeys the original deadline.
+        const retryDelayMs = readAttempt === 4
+          ? Math.max(0, remainingMs - Math.min(50, resolvedLivePredictionReadWaitMs / 20))
+          : Math.min(50 * (2 ** Math.min(readAttempt - 1, 4)), remainingMs)
         await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
       }
     })().finally(() => liveIssuedPredictionReadPromises.delete(key))
@@ -2411,7 +2433,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       : table
   }
 
-  async function withLivePrediction(table, actionable = true, predictionWillBeBroadcast = false) {
+  async function withLivePrediction(table, actionable = true, predictionWillBeBroadcast = false, publicationCandidates = null) {
     if (!actionable || !isAdmittedCaptureScreen(table) || table?.tableId == null || table?.shoe == null || table?.round == null) {
       return { ...predictionScreen(table), buildVersion: BUILD_VERSION, prediction: null }
     }
@@ -2462,7 +2484,9 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       }))
       pendingPredictions.set(key, exact)
     }
-    return { ...table, buildVersion: BUILD_VERSION, prediction: exact ? structuredClone(exact) : null }
+    const projected = { ...table, buildVersion: BUILD_VERSION, prediction: exact ? structuredClone(exact) : null }
+    publicationCandidates?.add(projected)
+    return projected
   }
 
   function isDurablePredictionIssuanceRequired() {
