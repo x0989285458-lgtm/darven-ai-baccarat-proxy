@@ -2448,7 +2448,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
         const availableDelayMs = Math.max(0, remainingMs - readReserveMs)
         const retryDelayMs = readAttempt === 4
           ? availableDelayMs
-          : Math.min(50 * (2 ** Math.min(readAttempt - 1, 4)), availableDelayMs)
+          : Math.min(50 * (2 ** Math.min(readAttempt - 1, 4)), remainingMs)
         await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
       }
     })().finally(() => {
