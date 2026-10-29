@@ -1492,7 +1492,7 @@ test('unknown-shoe rejection refreshes all rolled tables single-flight, retries 
   } finally { client.stop() }
 })
 
-test('malformed or contradictory nested identities fail closed before catalog admission', async t => {
+test('malformed or contradictory nested screens are quarantined without revoking catalog membership', async t => {
   const cases = [
     ...['current_shoe', 'current_round', 'total_round'].flatMap(field =>
       [undefined, null, '', ' ', 'abc', '-1', -1, '1.5', '1e2', false, [], 9007199254740992]
@@ -1512,12 +1512,40 @@ test('malformed or contradictory nested identities fail closed before catalog ad
     scenario.change(tables[2])
     const { client, delivered, finals, errors } = await startCatalogHarness(tables)
     try {
-      assert.ok(errors.includes('mt_api_live_catalog_invalid'))
-      assert.deepEqual(delivered, [])
+      assert.deepEqual(errors, [])
+      assert.equal(delivered.at(-1).length, 6)
+      const isolated = delivered.at(-1)[2]
+      assert.equal(isolated.catalogScreenInvalid, true)
+      assert.equal(isolated.shoe, undefined)
+      assert.equal(isolated.round, undefined)
+      assert.equal(isolated.trend, undefined)
       assert.deepEqual(finals, [])
-      assert.equal(client.snapshot().joined, false)
+      assert.equal(client.snapshot().joined, true)
     } finally { client.stop() }
   })
+})
+
+test('screenless refresh cannot clear startup quarantine or authorize a summary', async () => {
+  const valid = nestedCatalog()
+  const invalid = structuredClone(valid)
+  invalid[2].trend.total_round = '54'
+  const { harness, client, delivered, finals } = await startCatalogHarness(invalid)
+  try {
+    const missing = structuredClone(valid)
+    delete missing[2].trend
+    delete missing[2].game_name
+    harness.receive('game', { msg: { tables: missing } })
+    harness.receive('game', summaryPacketFor('BAV03', 1529, 21))
+    await harness.flush(4)
+    assert.equal(finals.length, 0, 'screenless refresh cannot invent trusted shoe chronology')
+    assert.equal(delivered.at(-1)[2].catalogScreenInvalid, true)
+    harness.receive('game', { msg: { tables: valid } })
+    harness.receive('game', summaryPacketFor('BAV03', 1529, 21))
+    await harness.flush(4)
+    assert.equal(finals.length, 1)
+    assert.equal(delivered.at(-1)[2].round, 21)
+    assert.equal(client.snapshot().joined, true)
+  } finally { client.stop() }
 })
 
 function createHarness({

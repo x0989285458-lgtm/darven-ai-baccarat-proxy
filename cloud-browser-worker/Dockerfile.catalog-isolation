@@ -1,0 +1,5 @@
+FROM ghcr.io/x0989285458-lgtm/darven-cloud-browser-worker@sha256:4b3ca9f6e2aac57547f0d782818f8f00bfe34b45635e4f98879fc4b97e9959b1
+WORKDIR /app
+COPY cloud-browser-worker/src/mt-api-client.js ./src/mt-api-client.js
+COPY cloud-browser-worker/src/snapshot-pusher.js ./src/snapshot-pusher.js
+COPY cloud-browser-worker/src/worker-source-runtime.js ./src/worker-source-runtime.js

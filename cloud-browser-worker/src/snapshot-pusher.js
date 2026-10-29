@@ -425,6 +425,12 @@ export function createSnapshotPusher({
       ...publicSnapshot,
       rounds: (Array.isArray(snapshot?.rounds) ? snapshot.rounds : []).map(({ shoeLifecycle: _proof, ...round }) => round),
       tables: (Array.isArray(snapshot?.tables) ? snapshot.tables : []).map((table) => {
+        // Quarantined catalog identity must survive inventory, but durable
+        // Finals cannot turn it into a freshly observed provider screen.
+        if (table.catalogScreenInvalid === true) {
+          const { catalogScreenInvalid: _invalid, ...identity } = table
+          return identity
+        }
         const tableId = canonicalTableId(table?.tableId)
         const proof = lifecycles.get(tableId)
         if (!proof) return table

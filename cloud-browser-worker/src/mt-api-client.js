@@ -42,6 +42,7 @@ export function createMtApiClient({
   let refreshPromise = null
   let refreshCycle = null
   let latestTables = null
+  const quarantinedPreviousTables = new Map()
   const latestFinalScreenByTable = new Map()
   let shoeChronologyByTable = bootstrapShoeChronology(initialShoeLifecycles, latestFinalScreenByTable)
   const resolvedTablesRefreshTimeoutMs = Math.max(1_000, Number(tablesRefreshTimeoutMs) || 10_000)
@@ -209,7 +210,7 @@ export function createMtApiClient({
         joinWhenReady(current)
         const workingChronology = cloneShoeChronology(shoeChronologyByTable)
         const merged = mergeExactTablesMonotonic(
-          latestTables, validated, latestFinalScreenByTable, workingChronology,
+          latestTables, validated, latestFinalScreenByTable, workingChronology, quarantinedPreviousTables,
         )
         if (typeof onShoeLifecycleTransition === 'function') {
           for (const lifecycle of providerLifecycleTransitions(shoeChronologyByTable, workingChronology, merged)) {
@@ -610,8 +611,16 @@ function validateExactTables(tables) {
         || String(alias.room_id) !== roomId || alias.table_type !== 'BAC') return null
     }
     const normalized = normalizeCatalogScreen(source)
-    if (!normalized) return null
-    selected.push(normalized)
+    // Membership is transport authority; a contradictory screen is not.
+    // Publish identity only, never stale/partial roads or guessed rounds.
+    selected.push(normalized ?? {
+      table_id: sourceId, room_id: source.room_id, hall: source.hall,
+      table_type: source.table_type, table_name: source.table_name,
+      catalogScreenInvalid: true, sourceUpdatedAt: '1970-01-01T00:00:00.000Z',
+      // Raw-table readers consume updated_at, not sourceUpdatedAt. Keep both
+      // stale so receipt-time fallback cannot freshen an unknown screen.
+      updated_at: '1970-01-01T00:00:00.000Z',
+    })
   }
   return selected
 }
@@ -650,13 +659,20 @@ function normalizeCatalogScreen(source) {
 }
 
 function mergeExactTablesMonotonic(
-  previousTables, incomingTables, finalScreens = new Map(), shoeChronology = new Map(),
+  previousTables, incomingTables, finalScreens = new Map(), shoeChronology = new Map(), quarantinedPreviousTables = new Map(),
 ) {
   const previousById = new Map((Array.isArray(previousTables) ? previousTables : [])
     .map((table) => [canonicalProductionTableId(table?.tableId ?? table?.table_id), table]))
   return incomingTables.map((incoming) => {
     const tableId = canonicalProductionTableId(incoming?.tableId ?? incoming?.table_id)
-    const previous = previousById.get(tableId)
+    const publishedPrevious = previousById.get(tableId)
+    if (incoming.catalogScreenInvalid === true) {
+      if (publishedPrevious && publishedPrevious.catalogScreenInvalid !== true) {
+        quarantinedPreviousTables.set(tableId, structuredClone(publishedPrevious))
+      }
+      return structuredClone(incoming)
+    }
+    const previous = quarantinedPreviousTables.get(tableId) ?? publishedPrevious
     let selected = incoming
     const previousShoe = Number(previous?.shoe)
     const incomingShoe = Number(incoming?.shoe)
@@ -664,11 +680,14 @@ function mergeExactTablesMonotonic(
     const incomingRound = Number(incoming?.round)
     // Preserve the whole current snapshot, not retired-shoe metadata patched
     // with an active shoe/round below.
-    if (previous && shoeChronology.get(tableId)?.retired.includes(incomingShoe)) return structuredClone(previous)
+    if (previous && shoeChronology.get(tableId)?.retired.includes(incomingShoe)) return structuredClone(publishedPrevious)
     const previousHasScreen = previous?.shoe != null && previous?.shoe !== '' && previous?.round != null && previous?.round !== ''
       && Number.isSafeInteger(previousShoe) && Number.isSafeInteger(previousRound)
     const incomingHasScreen = incoming?.shoe != null && incoming?.shoe !== '' && incoming?.round != null && incoming?.round !== ''
       && Number.isSafeInteger(incomingShoe) && Number.isSafeInteger(incomingRound)
+    // Only a valid provider screen can release quarantine, including cold
+    // start where there is no previous trusted screen to compare against.
+    if (publishedPrevious?.catalogScreenInvalid === true && !incomingHasScreen) return structuredClone(publishedPrevious)
     const missingIncomingScreen = previousHasScreen && !incomingHasScreen
     const staleSameShoeRound = previousHasScreen && incomingHasScreen && incomingShoe === previousShoe && incomingRound < previousRound
     const providerShoeTransition = previousHasScreen && incomingHasScreen && incomingShoe !== previousShoe
@@ -684,6 +703,8 @@ function mergeExactTablesMonotonic(
       && (previousCompleted == null || incomingCompleted >= previousCompleted)
     if (missingIncomingScreen || staleNestedMetadata || (staleSameShoeRound && !freshNestedMetadata)) selected = previous
     else if (staleSameShoeRound) selected = { ...incoming, round: previousRound }
+    if (publishedPrevious?.catalogScreenInvalid === true && selected === previous) return structuredClone(publishedPrevious)
+    quarantinedPreviousTables.delete(tableId)
     const finalScreen = finalScreens.get(tableId)
     const selectedShoe = Number(selected?.shoe)
     const selectedRound = Number(selected?.round)
@@ -729,7 +750,7 @@ function inspectFinalShoe(chronology, final, tables) {
     .find((candidate) => canonicalProductionTableId(candidate?.tableId ?? candidate?.table_id) === tableId)
   const tableShoe = table?.shoe != null && table?.shoe !== '' ? Number(table.shoe) : null
   const state = ensureShoeState(chronology, tableId, Number.isSafeInteger(tableShoe) ? tableShoe : null)
-  if (!state) return { accept: true, transition: true }
+  if (!state) return { accept: table?.catalogScreenInvalid !== true, transition: true }
   if (state.active === shoe) return { accept: true, transition: false }
   return { accept: false, transition: false }
 }
@@ -763,7 +784,8 @@ function transitionActiveShoe(chronology, tableIdValue, shoeValue, origin = 'fin
 function advanceExactTableFromFinal(tables, final, now) {
   const finalTableId = canonicalProductionTableId(final?.tableId)
   const sourceUpdatedAt = new Date(Number(now())).toISOString()
-  return tables.map((table) => canonicalProductionTableId(table?.tableId ?? table?.table_id) === finalTableId
+  return tables.map((table) => table?.catalogScreenInvalid !== true
+    && canonicalProductionTableId(table?.tableId ?? table?.table_id) === finalTableId
     ? (isStrictlyNewerScreen(table, final)
         ? { ...structuredClone(table), shoe: final.shoe, round: final.round, sourceUpdatedAt }
         : structuredClone(table))

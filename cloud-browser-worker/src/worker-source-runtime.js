@@ -247,6 +247,7 @@ export function createWorkerSourceRuntime({
       ...table,
       tableId: canonicalProductionTableId(table?.tableId ?? table?.table_id),
     })).map((table) => {
+      if (table.catalogScreenInvalid === true) return table
       const shoe = Number(table?.shoe)
       const round = Number(table?.round)
       if (Number.isSafeInteger(shoe) && Number.isSafeInteger(round)) return table
