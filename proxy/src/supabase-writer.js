@@ -4,6 +4,7 @@ import { BUILD_VERSION } from './build-version.js'
 import { isVerifiedFinalRoundAction, normalizeExactRealCardEvent } from '../../shared/real-card-validator.js'
 import { V104_DIRECTION_WEIGHTS, V104_SHOE_BIAS } from './v104-main-contract.js'
 import { PRODUCTION_TABLE_IDS } from './cloud-capture.js'
+import { assertUnavailableTable, normalizeStoredUnavailableTable } from './unavailable-table.js'
 
 const SOURCE = 'ofalive99'
 const V105_SHADOW_COMPACT_HISTORY_KEYS = Object.freeze([
@@ -1738,7 +1739,7 @@ export function buildOperationalEventRow({
 }
 
 export function buildCloudTableSnapshotRow({ sessionId = null, tables = [], status = {}, metadata = {} } = {}) {
-  const safeTables = Array.isArray(tables) ? tables.map(enrichTableWithLivePrediction) : []
+  const safeTables = Array.isArray(tables) ? tables.map(assertUnavailableTable).map(enrichTableWithLivePrediction) : []
   return {
     session_id: sessionId,
     capture_source: status.captureSource ?? status.captureMode ?? 'offline',
@@ -3717,7 +3718,10 @@ export function createSupabaseIngestionClient({
     },
     async getLatestCloudTableSnapshot() {
       const rows = await getRest('cloud_table_snapshots', { select: '*', order: 'snapshot_at.desc', limit: '1' }, { requestTimeoutMs: formalTimeoutMs })
-      return Array.isArray(rows) ? rows[0] ?? null : null
+      const snapshot = Array.isArray(rows) ? rows[0] ?? null : null
+      return snapshot && Array.isArray(snapshot.tables)
+        ? { ...snapshot, tables: snapshot.tables.map(normalizeStoredUnavailableTable) }
+        : snapshot
     },
     async getLatestCloudCaptureStatus() {
       const rows = await getRest('cloud_capture_status', { select: '*', order: 'updated_at.desc', limit: '1' }, { requestTimeoutMs: formalTimeoutMs })

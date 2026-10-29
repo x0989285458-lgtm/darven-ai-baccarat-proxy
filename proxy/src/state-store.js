@@ -2,6 +2,7 @@ import { createShoeTracker } from './card-shoe.js'
 import { createRankLedger } from './rank-ledger.js'
 import { BUILD_VERSION } from './build-version.js'
 import { isVerifiedFinalRoundAction } from '../../shared/real-card-validator.js'
+import { isUnavailableTable } from './unavailable-table.js'
 
 const MAX_ROAD_HISTORY_ROUND = 100
 
@@ -407,6 +408,8 @@ function compactCounts(table = {}) {
 function mergeExistingRoundData(nextTables, currentTables) {
   const currentById = new Map(currentTables.map((table) => [String(table.tableId), table]))
   return nextTables.map((table) => {
+    // A catalog tombstone revokes the screen, including cached Final/road data.
+    if (isUnavailableTable(table)) return table
     const existing = currentById.get(String(table.tableId))
     if (!existing) return table
     const nextShoe = table.shoe ?? existing.lastRound?.shoe ?? null

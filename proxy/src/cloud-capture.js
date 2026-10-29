@@ -1,5 +1,6 @@
 import { normalizeMtTables } from './normalize-table.js'
 import { buildOperationalEvent, toStatusEvent } from './event-layer.js'
+import { normalizeUnavailableWire } from './unavailable-table.js'
 
 const DEFAULT_POLL_MS = 5000
 const DEFAULT_REQUEST_TIMEOUT_MS = 15000
@@ -19,8 +20,8 @@ function withFormalSettlementTail(state, task) {
   })
 }
 
-export function parseCloudCapturePayload(payload = {}, receivedAt = new Date().toISOString()) {
-  const tables = selectProductionTables(normalizeCloudTables(payload.tables ?? payload.snapshot?.tables ?? []))
+export function parseCloudCapturePayload(payload = {}, receivedAt = new Date().toISOString(), { strictInventory = false } = {}) {
+  const tables = selectProductionTables(normalizeCloudTables(payload.tables ?? payload.snapshot?.tables ?? [], strictInventory))
     .map((table) => ({ ...table, sourceUpdatedAt: table.sourceUpdatedAt ?? receivedAt }))
   const rawRounds = Array.isArray(payload.rounds) ? payload.rounds : payload.round ? [payload.round] : []
   const rounds = selectProductionRounds(rawRounds)
@@ -449,12 +450,29 @@ function selectProductionRounds(rounds = []) {
   return selected
 }
 
-function normalizeCloudTables(tables) {
+function normalizeCloudTables(tables, strictInventory = false) {
+  // Validate before normalizers/selectors can erase flags, aliases or duplicates.
+  const unavailable = new Map()
+  const seen = new Set()
+  // Legacy discovery intentionally filters/deduplicates arbitrary catalog rows.
+  // Completed Worker inventories and typed tombstones must not use that escape.
+  const strict = strictInventory || (Array.isArray(tables) && tables.some(table =>
+    table?.catalogMissing === true || table?.availability != null || table?.roundBasis === 'completed'))
+  for (const raw of Array.isArray(tables) ? tables : []) {
+    const missing = normalizeUnavailableWire(raw)
+    const id = canonicalProductionTableId(raw?.table_id ?? raw?.tableId)
+    if (strict && (!PRODUCTION_TABLE_IDS.includes(raw?.table_id ?? raw?.tableId)
+      || (raw?.table_id != null && raw?.tableId != null && raw.table_id !== raw.tableId))) throw new Error('invalid cloud table inventory identity')
+    if (strict && seen.has(id)) throw new Error('duplicate cloud table identity')
+    seen.add(id)
+    if (missing) unavailable.set(id, missing)
+  }
   const normalized = normalizeMtTables(tables)
   if (normalized.length || !Array.isArray(tables)) {
     const rawById = new Map((Array.isArray(tables) ? tables : [])
       .map((table) => [canonicalProductionTableId(table?.table_id ?? table?.tableId), table]))
     return normalized.map((table) => {
+      if (unavailable.has(table.tableId)) return unavailable.get(table.tableId)
       const raw = rawById.get(table.tableId)
       // API Worker explicitly supplies completed rounds. Provider current_round
       // is the betting/display round and must not replace completed round zero.
@@ -471,7 +489,7 @@ function normalizeCloudTables(tables) {
       return { ...table, shoe, round, roundBasis: 'completed' }
     })
   }
-  return tables.map((table, index) => ({
+  return tables.map((table, index) => unavailable.get(table.tableId) ?? ({
     tableId: table.tableId ?? table.table_id ?? String(index + 1),
     displayName: table.displayName ?? table.name ?? table.table_name ?? `MT百家樂第${index + 1}桌`,
     tableType: table.tableType ?? table.table_type ?? 'BAC',

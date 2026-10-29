@@ -22,6 +22,7 @@ import { createFormalDailyMemoryRollover } from './formal-daily-memory-rollover.
 import { BUILD_VERSION } from './build-version.js'
 import { hasExactRealCardCodes, isExactTenRawResult, isVerifiedFinalRoundAction } from '../../shared/real-card-validator.js'
 import { createInMemoryIngestSourceFence, normalizeSource } from './ingest-source-fence.js'
+import { assertUnavailableTable, isUnavailableTable, normalizeStoredUnavailableTable } from './unavailable-table.js'
 
 const VERSION = BUILD_VERSION
 const SERVICE = 'Draven MT資料代理伺服器'
@@ -413,7 +414,10 @@ export function resolveProductionConcurrency(env = process.env) {
 
 export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS ?? 'legacy', autoConnect, token = process.env.MT_TOKEN, port = Number(process.env.PORT ?? 8787), host = process.env.HOST, captureUrl = process.env.CHROME_CAPTURE_URL, cloudBrowserUrl = process.env.CLOUD_BROWSER_URL, deployMode = process.env.DEPLOY_MODE ?? 'local', captureSource: requestedCaptureSource = process.env.CAPTURE_SOURCE, frontendOrigin: configuredFrontendOrigin = process.env.PUBLIC_FRONTEND_ORIGIN || '*', controlToken = process.env.PROXY_CONTROL_TOKEN || process.env.WORKER_ADMIN_KEY, controlAllowedOrigin = process.env.CONTROL_ALLOWED_ORIGIN || process.env.PUBLIC_FRONTEND_ORIGIN || '', ingestKey = process.env.INGEST_KEY || process.env.WORKER_ADMIN_KEY, ingestDeadlineMs = Number(process.env.INGEST_REQUEST_DEADLINE_MS ?? 110000), outboxWorkDeadlineMs = Number(process.env.CAPTURE_OUTBOX_WORK_DEADLINE_MS ?? 45000), outboxBackoffMs = Number(process.env.CAPTURE_OUTBOX_BACKOFF_MS ?? 1000), outboxCoalesceMs = process.env.CAPTURE_OUTBOX_COALESCE_MS ?? 1000, captureOutboxBatchLimit = process.env.CAPTURE_OUTBOX_BATCH_LIMIT ?? 30, captureOutboxConsumerEnabled = process.env.CAPTURE_OUTBOX_CONSUMER_ENABLED ?? true, captureOutboxPollMs = process.env.CAPTURE_OUTBOX_POLL_MS ?? 0, latestPredictionRefreshMs = process.env.LATEST_PREDICTION_REFRESH_MS ?? 1000, liveAtomicPublicationsEnabled = process.env.LIVE_ATOMIC_PUBLICATIONS_ENABLED ?? false, now = Date.now, predictionTtlMs = Number(process.env.PREDICTION_TTL_MS ?? 120000), maxExpiredPredictionKeys = Number(process.env.MAX_EXPIRED_PREDICTION_KEYS ?? 10000), production = process.env.NODE_ENV === 'production', requireVerifiedStrategy = production, memberAuthRequired = production, memberSessionTtlMs = Number(process.env.MEMBER_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionSecret = process.env.MEMBER_SESSION_SECRET, adminSessionSecret = process.env.ADMIN_SESSION_SECRET || memberSessionSecret, adminSessionTtlMs: requestedAdminSessionTtlMs = Number(process.env.ADMIN_SESSION_TTL_MS ?? 30 * 60 * 1000), memberSessionValidationTtlMs = Number(process.env.MEMBER_SESSION_VALIDATION_TTL_MS ?? 0), v105FormalHydrationTimeoutMs = Number(process.env.V105_FORMAL_HYDRATION_TIMEOUT_MS ?? 60000), recentPerformanceRetryMs = Number(process.env.RECENT_PERFORMANCE_RETRY_MS ?? 30000), predictionIssuanceRetryMs = Number(process.env.PREDICTION_ISSUANCE_RETRY_MS ?? 10000), streamHeartbeatMs = Number(process.env.STREAM_HEARTBEAT_MS ?? 3000), livePredictionReadWaitMs = process.env.LIVE_PREDICTION_READ_WAIT_MS ?? 1000, serviceShutdownDeadlineMs = 5000, fatalHandler = null, fetchImpl = globalThis.fetch, supabaseClient = createSupabaseIngestionClient({ dbConnectionString: process.env.SUPABASE_DB_CONNECTION_STRING, requestTimeoutMs: Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? 30000), durableWriteRequestTimeoutMs: Number(process.env.DURABLE_INGEST_REQUEST_TIMEOUT_MS ?? 30000) }), onlineCoreClient = createOnlineCoreClient(), licenseAdminClient = createLicenseAdminClient(), v100FormalRuntime = null, v104FormalRuntime = null, pendingPredictionStore = null, dailyMemoryRollover = null, requireFencedIngest = process.env.REQUIRE_FENCED_INGEST === 'true', sourceFenceStore = null } = {}) {
   if (!['legacy', 'completed'].includes(captureRoundBasis)) throw new Error('capture round basis must be legacy or completed')
-  const isAdmittedCaptureScreen = (table) => captureRoundBasis !== 'completed' || table?.roundBasis === 'completed'
+  const isAdmittedCaptureScreen = (table) => !isUnavailableTable(table)
+    && (captureRoundBasis !== 'completed' || table?.roundBasis === 'completed')
+  const unavailableTableIds = new Set()
+  const lastAvailableCloudTables = new Map()
   const ingestSourceFence = sourceFenceStore ?? createInMemoryIngestSourceFence()
   const deployConfig = resolveDeployConfig({
     DEPLOY_MODE: deployMode,
@@ -595,6 +599,12 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       const changedScreenTables = []
       latestStreamScreenSignature = streamScreenSignature
       for (const table of tables) {
+        if (isUnavailableTable(table)) {
+          unavailableTableIds.add(table.tableId)
+          lastSuccessfulLatestPredictionSignatureByTable.delete(table.tableId)
+          continue
+        }
+        unavailableTableIds.delete(canonicalProductionTableId(table?.tableId))
         if (!isAdmittedCaptureScreen(table)) continue
         const observedTableId = canonicalProductionTableId(table?.tableId)
         const observedShoe = table?.shoe == null ? '' : String(table.shoe)
@@ -848,9 +858,25 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       const sessionId = String(row?.session_id ?? '')
       const work = row?.payload?.work
       if (!work || typeof work !== 'object') throw new Error('capture outbox work payload is missing')
-      return work.status && Array.isArray(work.tables) && Array.isArray(work.rounds)
+      const parsed = work.status && Array.isArray(work.tables) && Array.isArray(work.rounds)
         ? { sessionId: work.sessionId ?? sessionId, status: work.status, tables: work.tables, rounds: work.rounds }
-        : parseCloudCapturePayload({ ...work, buildVersion: work.buildVersion ?? WORKER_PROTOCOL_BUILD_VERSION })
+        : parseCloudCapturePayload({ ...work, buildVersion: work.buildVersion ?? WORKER_PROTOCOL_BUILD_VERSION }, undefined,
+          { strictInventory: captureRoundBasis === 'completed' })
+      if (captureRoundBasis === 'completed') {
+        parsed.tables = parsed.tables.map(normalizeStoredUnavailableTable)
+        const seen = new Set()
+        for (const table of parsed.tables) {
+          assertUnavailableTable(table)
+          if (!PRODUCTION_TABLE_IDS.includes(table?.tableId) || seen.has(table.tableId)) throw new Error('invalid claimed table inventory')
+          seen.add(table.tableId)
+          if (!isUnavailableTable(table) && (!isAdmittedCaptureScreen(table)
+            || table.shoe == null || String(table.shoe).trim() === ''
+            || table.round == null || !/^\d+$/.test(String(table.round)) || !Number.isSafeInteger(Number(table.round)))) {
+            throw new Error('invalid claimed completed screen identity')
+          }
+        }
+      }
+      return parsed
     })
     const latest = parsedRows.at(-1)
     const tablesByIdentity = new Map()
@@ -879,11 +905,12 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       }
       if (beforeClaim) setCaptureOutboxPhase('fresh_screen')
       const freshSnapshot = await readLatestCloudSnapshot({ requireFresh: true })
-      const freshTables = Array.isArray(freshSnapshot?.tables) ? freshSnapshot.tables : []
-      if (freshTables.some((table) => !isAdmittedCaptureScreen(table))) {
+      const freshTables = Array.isArray(freshSnapshot?.tables) ? freshSnapshot.tables.map(assertUnavailableTable) : []
+      const availableTables = freshTables.filter((table) => !isUnavailableTable(table))
+      if (availableTables.some((table) => !isAdmittedCaptureScreen(table))) {
         throw new Error('fresh completed round identity is required before latest prediction refresh')
       }
-      const freshTableIds = new Set(freshTables.map((table) => canonicalProductionTableId(table?.tableId)))
+      const freshTableIds = new Set(freshTables.map((table) => table?.tableId))
       const freshSnapshotTimestamp = freshSnapshot?.snapshot_at ?? freshSnapshot?.created_at ?? freshSnapshot?.updated_at
       const hasFreshSnapshotTimestamp = isFreshCloudTimestamp(freshSnapshotTimestamp, 120000)
       const hasCompleteProductionTables = hasFreshSnapshotTimestamp
@@ -897,7 +924,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       const previousTableById = new Map(state.snapshot().tables.map((table) => [
         canonicalProductionTableId(table?.tableId), table,
       ]))
-      for (const table of freshTables) {
+      for (const table of availableTables) {
         const tableId = canonicalProductionTableId(table?.tableId)
         const roundText = table?.round == null ? '' : String(table.round).trim()
         if (!/^\d+$/.test(roundText)) {
@@ -907,7 +934,12 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
         if (!Number.isSafeInteger(round)) {
           throw new Error('fresh cloud table round must be a non-negative integer')
         }
-        const previous = previousTableById.get(tableId)
+        if (table?.shoe == null || String(table.shoe).trim() === '') throw new Error('fresh cloud table shoe is required')
+        const priorScreen = previousTableById.get(tableId)
+        const previous = isUnavailableTable(priorScreen) ? lastAvailableCloudTables.get(tableId) : priorScreen
+        if (isUnavailableTable(priorScreen) && previous && isOlderTableScreen(table, previous)) {
+          throw new Error('unavailable table recovery screen regression')
+        }
         const previousShoeText = previous?.shoe == null ? '' : String(previous.shoe).trim()
         const freshShoeText = table?.shoe == null ? '' : String(table.shoe).trim()
         const previousNumericShoe = numericShoe(previousShoeText)
@@ -928,6 +960,9 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       }
       const previousTables = state.snapshot().tables
       const effectiveFreshTables = mergeMonotonicTableScreens(previousTables, freshTables)
+      for (const table of effectiveFreshTables) {
+        if (!isUnavailableTable(table)) lastAvailableCloudTables.set(canonicalProductionTableId(table.tableId), table)
+      }
       const effectiveFreshRounds = new Map(effectiveFreshTables.map((table) => [
         canonicalProductionTableId(table?.tableId), Number(table?.round),
       ]))
@@ -952,6 +987,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
         return { refreshed: true, durableRequired: false }
       }
       const actionableFreshTables = effectiveFreshTables.filter((table) => {
+        if (isUnavailableTable(table)) return false
         const tableId = canonicalProductionTableId(table?.tableId)
         return visibleScreenRound(effectiveFreshRounds.get(tableId), table?.roundBasis) > 0
           && lastSuccessfulLatestPredictionSignatureByTable.get(tableId) !== freshPredictionSignaturesByTable.get(tableId)
@@ -1069,6 +1105,18 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
             : supabaseClient.failCaptureOutbox({ ...claims[0], error }))
           try {
             const parsed = mergeClaimedCaptureWork(claimedRows)
+            parsed.tables.forEach(assertUnavailableTable)
+            // The fresh preclaim inventory owns availability. Historical outbox
+            // screens (including old tombstones after recovery) cannot change it.
+            // Finals still flow through materializeRoundOnlyTables for settlement.
+            const freshById = new Map(state.snapshot().tables.map(table => [table.tableId, table]))
+            parsed.tables = parsed.tables.map(table => {
+              const fresh = freshById.get(table.tableId)
+              return fresh && (isUnavailableTable(fresh) || isUnavailableTable(table)) ? fresh : table
+            })
+            for (const table of freshById.values()) {
+              if (isUnavailableTable(table) && !parsed.tables.some(item => item.tableId === table.tableId)) parsed.tables.push(table)
+            }
             if (parsed.rounds.length === 0) {
               await runLeasePhase('heartbeat_complete_ack', completeClaims)
               processed += claimedRows.length
@@ -1412,7 +1460,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
             }
           }
           const stableCapturedAt = new Date(Number(envelope.captureTimestamp ?? envelope.timestamp)).toISOString()
-          const parsed = parseCloudCapturePayload(envelope.snapshot, stableCapturedAt)
+          const parsed = parseCloudCapturePayload(envelope.snapshot, stableCapturedAt, { strictInventory: captureRoundBasis === 'completed' })
           if (exactReconciliation) {
             if (typeof supabaseClient?.reconcileCaptureEnvelope !== 'function') {
               return jsonResponse(503, { ok: false, accepted: false, error: 'capture_reconciliation_unavailable' }, frontendOrigin)
@@ -2057,6 +2105,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
 
   function isLatestObservedPredictionTarget(prediction) {
     const tableId = canonicalProductionTableId(prediction?.targetTableId)
+    if (unavailableTableIds.has(tableId)) return false
     const latest = latestObservedScreenByTable.get(tableId)
     if (!latest) return true
     const expectedVisibleRound = Number(prediction?.targetRound) - 1
@@ -2066,6 +2115,7 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
 
   function isLatestObservedTableScreen(table) {
     const tableId = canonicalProductionTableId(table?.tableId)
+    if (unavailableTableIds.has(tableId)) return false
     const latest = latestObservedScreenByTable.get(tableId)
     if (!latest) return true
     return latest.shoe === String(table?.shoe ?? '')
