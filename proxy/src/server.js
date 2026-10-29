@@ -2797,17 +2797,23 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
 
 
   async function readCloudSnapshotStatus() {
-    if (publicationReader) {
-      const tables = await readBestTables()
-      return { tableCount: tables.length, publicationReadyCount: tables.filter(table => table.prediction).length }
-    }
+    // Capture health must hydrate on a read-only cold start. Publication
+    // readiness is separate and must never stand in for source liveness.
+    const publishedTables = publicationReader ? await readBestTables() : null
     const localSnapshot = state.snapshot()
     const localProgressAt = localSnapshot.status?.lastRoundAt
       ?? localSnapshot.status?.lastMessageAt
       ?? (tablesReceivedAtMs > 0 ? new Date(tablesReceivedAtMs).toISOString() : null)
       ?? localSnapshot.tables.map((table) => table?.sourceUpdatedAt).filter(Boolean).sort().at(-1)
-    if (localSnapshot.tables.length > 0 && isFreshCloudTimestamp(localProgressAt)) return null
-    if (!supabaseClient?.configured || typeof supabaseClient.getLatestCloudCaptureStatus !== 'function') return null
+    if (!publicationReader && localSnapshot.tables.length > 0 && isFreshCloudTimestamp(localProgressAt)) return null
+    if (!supabaseClient?.configured || typeof supabaseClient.getLatestCloudCaptureStatus !== 'function') {
+      return publishedTables ? {
+        tableCount: publishedTables.length,
+        publicationReadyCount: publishedTables.filter(table => table.prediction).length,
+        connected: false, authenticated: false, health: 'degraded', degraded: true,
+        reason: 'capture_status_unavailable',
+      } : null
+    }
     try {
       const [status, snapshot] = await Promise.all([
         supabaseClient.getLatestCloudCaptureStatus(),
@@ -2832,7 +2838,10 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
       }
       const snapshotIsFresh = Boolean(snapshot && isFreshCloudTimestamp(snapshot?.snapshot_at ?? snapshot?.updated_at ?? snapshot?.created_at))
       const snapshotTableCount = Array.isArray(snapshot?.tables) ? snapshot.tables.length : Number(snapshot?.table_count ?? 0)
-      const preferSnapshot = snapshotTableCount > Number(statusIsFresh ? status?.table_count ?? 0 : 0)
+      const snapshotIds = new Set((snapshot?.tables ?? []).map(table => canonicalProductionTableId(table?.tableId ?? table?.table_id)))
+      const atomicInventoryComplete = snapshotIsFresh && snapshotTableCount === PRODUCTION_TABLE_IDS.length
+        && snapshotIds.size === PRODUCTION_TABLE_IDS.length && PRODUCTION_TABLE_IDS.every(id => snapshotIds.has(id))
+      const preferSnapshot = !publicationReader && snapshotTableCount > Number(statusIsFresh ? status?.table_count ?? 0 : 0)
       const source = preferSnapshot ? snapshot?.capture_source : (status?.capture_source ?? snapshot?.capture_source)
       const durableHealthy = preferSnapshot
         ? snapshotIsFresh && snapshotTableCount === PRODUCTION_TABLE_IDS.length
@@ -2841,7 +2850,9 @@ export function createApp({ captureRoundBasis = process.env.CAPTURE_ROUND_BASIS 
           && status?.authenticated === true
           && Number(status?.table_count) === PRODUCTION_TABLE_IDS.length
           && isFreshCloudTimestamp(status?.last_round_at)
+          && (!publicationReader || atomicInventoryComplete)
       return {
+        ...(publishedTables ? { publicationReadyCount: publishedTables.filter(table => table.prediction).length } : {}),
         captureSource: source ?? captureSource,
         captureMode: source ?? captureSource,
         captureSessionId: status?.session_id ?? status?.captureSessionId ?? snapshot?.session_id ?? null,
