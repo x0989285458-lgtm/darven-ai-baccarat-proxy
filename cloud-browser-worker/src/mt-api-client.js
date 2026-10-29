@@ -142,8 +142,18 @@ export function createMtApiClient({
       }
     })
     socket.on('message', (raw) => {
+      if (!isCurrent(current)) return
+      const payload = parseJson(raw)
+      if (!payload) return
+      // Revocation is transport authority, not queued application work. It must
+      // fence pending callbacks and late ACKs even when err is zero.
+      if (payload.name === '/api/v1/member/logout' || actionName(payload) === '/api/v1/member/logout') {
+        diagnostic('provider_logout', current, kind)
+        void refreshGeneration(current, { reason: 'provider_logout' })
+        return
+      }
       current.messageChain = current.messageChain
-        .then(() => handleMessage(current, kind, raw))
+        .then(() => handleMessage(current, kind, payload))
         .catch((error) => {
           diagnostic('message_failed', current, kind)
           try { handleError(error) } catch {}
@@ -161,10 +171,8 @@ export function createMtApiClient({
     })
   }
 
-  async function handleMessage(current, kind, raw) {
+  async function handleMessage(current, kind, payload) {
     if (!isCurrent(current)) return
-    const payload = parseJson(raw)
-    if (!payload) return
     current.lastMessageAt = new Date(Number(now())).toISOString()
     const action = actionName(payload)
     if (isAuthenticateAction(kind, action)) {
@@ -242,7 +250,9 @@ export function createMtApiClient({
         if (typeof onShoeLifecycleTransition === 'function') {
           for (const lifecycle of providerLifecycleTransitions(shoeChronologyByTable, workingChronology, merged)) {
             const source = await allocateEventSource(current)
+            if (!isCurrent(current)) return
             await onShoeLifecycleTransition({ ...lifecycle, source })
+            if (!isCurrent(current)) return
           }
         }
         shoeChronologyByTable = workingChronology
@@ -276,6 +286,7 @@ export function createMtApiClient({
     }
     refreshGenerationLease(current)
     const source = await allocateEventSource(current)
+    if (!isCurrent(current)) return
     const acceptedChronology = cloneShoeChronology(shoeChronologyByTable)
     if (shoeDecision.transition) transitionActiveShoe(acceptedChronology, final.tableId, final.shoe)
     const lifecycle = acceptedChronology.get(final.tableId)
@@ -286,6 +297,7 @@ export function createMtApiClient({
     }
     try {
       await onFinal({ ...final, source, shoeLifecycle })
+      if (!isCurrent(current)) return
       diagnostic('final_delivered', current, kind, finalIdentity)
     } catch (error) {
       diagnostic('final_callback_failed', current, kind, finalIdentity)
@@ -369,6 +381,7 @@ export function createMtApiClient({
   }
 
   function refreshGenerationLease(current) {
+    if (!isCurrent(current)) throw new Error('stale_socket_generation')
     const renewed = sourceOwner.lease?.() ?? current.lease
     if (!renewed || renewed.mode !== current.lease?.mode || renewed.ownerId !== current.lease?.ownerId
       || Number(renewed.epoch) !== Number(current.lease?.epoch) || renewed.fence !== current.lease?.fence) {
@@ -410,8 +423,8 @@ export function createMtApiClient({
 
   function refreshGeneration(current, reason) {
     if (!isCurrent(current)) return refreshPromise ?? Promise.resolve()
-    if (refreshPromise) return refreshPromise
     diagnostic('refresh_start', current)
+    reconnecting = true
     clearTimeoutFn(reconnectTimer)
     clearIntervalFn(heartbeatTimer)
     reconnectTimer = null
@@ -425,8 +438,11 @@ export function createMtApiClient({
 
   function runRefreshAttempt(cycle) {
     if (stopped || refreshCycle !== cycle) return Promise.resolve()
-    refreshPromise = (async () => {
+    // A restarted lifecycle may revoke while an older refresh is still pending.
+    // Revoke it immediately, but serialize the next refresh behind that attempt.
+    const attempt = Promise.resolve(refreshPromise).then(async () => {
       try {
+        if (stopped || refreshCycle !== cycle) return
         if (typeof sessionManager.refresh !== 'function') throw new Error('mt_session_refresh_unavailable')
         await sessionManager.refresh(cycle.reason)
         if (stopped || refreshCycle !== cycle) return
@@ -434,16 +450,16 @@ export function createMtApiClient({
         if (stopped || refreshCycle !== cycle) return
         diagnostic('refresh_ok', sockets)
         refreshCycle = null
-        reconnecting = false
       } catch (error) {
         handleError(error)
         diagnostic('refresh_failed', sockets)
         scheduleRefreshRetry(cycle)
       } finally {
-        refreshPromise = null
+        if (refreshPromise === attempt) refreshPromise = null
       }
-    })()
-    return refreshPromise
+    })
+    refreshPromise = attempt
+    return attempt
   }
 
   function scheduleRefreshRetry(cycle) {
@@ -610,7 +626,7 @@ function parseJson(raw) {
 }
 
 function actionName(payload) {
-  return String(typeof payload?.action === 'object' ? payload.action.name ?? payload.action.path ?? '' : payload?.action ?? '')
+  return String(payload?.name ?? (typeof payload?.action === 'object' ? payload.action?.name ?? payload.action?.path ?? '' : payload?.action ?? ''))
 }
 
 function isAuthenticateAction(kind, action) {

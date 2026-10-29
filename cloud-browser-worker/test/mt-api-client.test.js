@@ -1548,6 +1548,213 @@ test('screenless refresh cannot clear startup quarantine or authorize a summary'
   } finally { client.stop() }
 })
 
+test('provider logout revokes immediately despite err=0, refreshes once, and fences late ACKs and summaries', async () => {
+  let releaseRefresh
+  const gate = new Promise(resolve => { releaseRefresh = resolve })
+  const reasons = []
+  const finals = []
+  const harness = createHarness({
+    refresh: async context => { reasons.push(context); await gate },
+    onFinal: async event => finals.push(event),
+  })
+  const client = createMtApiClient(harness.options)
+  try {
+    await client.start()
+    harness.openAll()
+    harness.authenticateAll()
+    harness.acknowledgeJoins()
+    await harness.flush(2)
+    assert.equal(client.snapshot().joined, true)
+    harness.receiveGeneration(1, 'game', { name: '/api/v1/member/logout', err: 0, msg: { code: 3 } })
+    assert.equal(client.snapshot().connected, false)
+    assert.equal(client.snapshot().authenticated, false)
+    assert.equal(client.snapshot().joined, false)
+    assert.equal(client.snapshot().reconnecting, true)
+    assert.equal(client.snapshot().refreshing, true)
+    for (const kind of ['game', 'chat']) {
+      harness.receiveGeneration(1, kind, { name: '/api/v1/member/logout', err: 0 })
+      harness.receiveGeneration(1, kind, { action: kind === 'game' ? '/api/v1/authenticate' : '/api/v1/chat/authenticate', err: 0 })
+    }
+    harness.acknowledgeJoins()
+    harness.receiveGeneration(1, 'game', summaryPacket(9))
+    await harness.flush(2)
+    assert.deepEqual(reasons, [{ reason: 'provider_logout' }])
+    assert.equal(harness.sockets.length, 2)
+    assert.equal(harness.sockets.every(socket => socket.closed), true)
+    assert.deepEqual(finals, [])
+    releaseRefresh()
+    await harness.flush(2)
+    assert.equal(harness.sockets.length, 4)
+    assert.equal(client.snapshot().joined, false)
+    harness.openGeneration(2)
+    harness.receiveGeneration(2, 'game', { name: '/api/v1/authenticate', err: 0 })
+    harness.receiveGeneration(2, 'chat', { name: '/api/v1/chat/authenticate', err: 0 })
+    harness.receiveGeneration(2, 'game', { name: '/api/v1/gametype/*/game/*/room/*/tables', msg: { tables: PRODUCTION_TABLE_IDS.map(table_id => ({ table_id, shoe: 88, round: 8 })) } })
+    harness.receiveGeneration(2, 'game', { name: '/api/v1/gametype/*/game/*/room/*/mulitple_join', err: 0 })
+    await harness.flush(2)
+    assert.equal(client.snapshot().joined, true)
+    harness.receiveGeneration(1, 'game', { name: '/api/v1/member/logout', err: 0 })
+    harness.receiveGeneration(1, 'game', summaryPacket(9))
+    harness.receiveGeneration(2, 'game', summaryPacketFor('BAV01', 89, 1))
+    await harness.flush(2)
+    assert.deepEqual(finals, [], 'unknown shoe and revoked generation remain rejected')
+    harness.receiveGeneration(2, 'game', summaryPacket(9))
+    await harness.flush(2)
+    assert.equal(finals.length, 1)
+    assert.equal(reasons.length, 1)
+  } finally { releaseRefresh(); client.stop() }
+})
+
+test('provider logout fences an in-flight source allocation before any Final can be delivered', async () => {
+  let releaseSource
+  let entered = false
+  const sourceGate = new Promise(resolve => { releaseSource = resolve })
+  const finals = []
+  const harness = createHarness({
+    nextEventSource: async lease => { entered = true; await sourceGate; return { ...lease, sequence: 1 } },
+    onFinal: async event => finals.push(event),
+  })
+  const client = createMtApiClient(harness.options)
+  try {
+    await client.start()
+    harness.openAll()
+    harness.authenticateAll()
+    harness.acknowledgeJoins()
+    await harness.flush(2)
+    harness.receive('game', summaryPacket(9))
+    await harness.flush()
+    assert.equal(entered, true)
+    harness.receive('chat', { name: '/api/v1/member/logout', err: 0 })
+    assert.equal(client.snapshot().joined, false)
+    await harness.flush(2)
+    releaseSource()
+    await harness.flush(2)
+    assert.deepEqual(finals, [])
+    assert.equal(harness.sockets.length, 4)
+  } finally { releaseSource(); client.stop() }
+})
+
+test('provider logout stop during refresh prevents late reconnect and unrelated code 3 is not revocation', async () => {
+  let releaseRefresh
+  const gate = new Promise(resolve => { releaseRefresh = resolve })
+  let calls = 0
+  const harness = createHarness({ refresh: async () => { calls += 1; await gate } })
+  const client = createMtApiClient(harness.options)
+  try {
+    await client.start()
+    harness.openAll()
+    harness.authenticateAll()
+    harness.acknowledgeJoins()
+    await harness.flush(2)
+    harness.receive('game', { name: '/api/v1/ping', err: 0, msg: { code: 3 } })
+    await harness.flush()
+    assert.equal(client.snapshot().joined, true)
+    assert.equal(calls, 0)
+    harness.receive('game', { action: '/api/v1/member/logout', err: 42 })
+    await harness.flush()
+    assert.equal(calls, 1)
+    client.stop()
+    releaseRefresh()
+    await harness.flush(2)
+    assert.equal(harness.sockets.length, 2)
+    assert.equal(client.snapshot().connected, false)
+    assert.equal(client.snapshot().reconnecting, false)
+    assert.equal(client.snapshot().refreshing, false)
+  } finally { releaseRefresh(); client.stop() }
+})
+
+test('provider logout after restart revokes even while an older refresh is pending and stays single flight', async () => {
+  let releaseRefresh
+  const gate = new Promise(resolve => { releaseRefresh = resolve })
+  let calls = 0
+  let active = 0
+  let peak = 0
+  const harness = createHarness({ refresh: async () => {
+    calls += 1
+    active += 1
+    peak = Math.max(peak, active)
+    await gate
+    active -= 1
+  } })
+  const client = createMtApiClient(harness.options)
+  try {
+    await client.start()
+    harness.openAll()
+    harness.receive('game', { name: '/api/v1/member/logout', err: 0 })
+    await harness.flush()
+    client.stop()
+    await client.start()
+    harness.openGeneration(2)
+    harness.receiveGeneration(2, 'chat', { name: '/api/v1/member/logout', err: 0 })
+    assert.equal(client.snapshot().connected, false)
+    assert.equal(harness.sockets.every(socket => socket.closed), true)
+    await harness.flush()
+    assert.equal(calls, 1)
+    releaseRefresh()
+    await harness.flush(2)
+    assert.equal(calls, 2)
+    assert.equal(peak, 1)
+    assert.equal(harness.sockets.length, 6)
+    assert.equal(harness.sockets.filter(socket => !socket.closed).length, 2)
+  } finally { releaseRefresh(); client.stop() }
+})
+
+test('provider logout without refresh capability reports idle refresh and one bounded retry', async () => {
+  const clock = createManualTimers()
+  const errors = []
+  const harness = createHarness({
+    onError: error => errors.push(error), reconnectDelayMs: 10,
+    setTimeoutFn: clock.setTimeout, clearTimeoutFn: clock.clearTimeout,
+  })
+  delete harness.options.sessionManager.refresh
+  const client = createMtApiClient(harness.options)
+  try {
+    await client.start()
+    harness.openAll()
+    harness.receive('game', { name: '/api/v1/member/logout', err: 0 })
+    await harness.flush()
+    assert.deepEqual(errors, ['mt_session_refresh_unavailable'])
+    assert.equal(client.snapshot().refreshing, false)
+    assert.equal(client.snapshot().reconnecting, true)
+    assert.equal(client.snapshot().connected, false)
+    assert.equal(clock.activeCount(), 1)
+    assert.equal(clock.nextDelay(), 10)
+    assert.equal(harness.sockets.length, 2)
+  } finally { client.stop() }
+  assert.equal(clock.activeCount(), 0)
+})
+
+test('provider logout refresh failure stays degraded with capped backoff and stop cancels retry', async () => {
+  const clock = createManualTimers()
+  let calls = 0
+  const harness = createHarness({
+    refresh: async () => { calls += 1; throw new Error('refresh unavailable') },
+    reconnectDelayMs: 10, reconnectMaxDelayMs: 40,
+    setTimeoutFn: clock.setTimeout, clearTimeoutFn: clock.clearTimeout,
+  })
+  const client = createMtApiClient(harness.options)
+  try {
+    await client.start()
+    harness.openAll()
+    harness.receive('chat', { action: { name: '/api/v1/member/logout' }, err: 0, msg: { code: 99 } })
+    await harness.flush()
+    for (const delay of [10, 20, 40, 40]) {
+      assert.equal(clock.activeCount(), 1)
+      assert.equal(clock.nextDelay(), delay)
+      assert.equal(client.snapshot().connected, false)
+      assert.equal(client.snapshot().authenticated, false)
+      assert.equal(client.snapshot().joined, false)
+      assert.equal(client.snapshot().reconnecting, true)
+      assert.equal(client.snapshot().refreshing, false)
+      await clock.runNext()
+    }
+    assert.equal(calls, 5)
+    assert.equal(harness.sockets.length, 2)
+    client.stop()
+    assert.equal(clock.activeCount(), 0)
+  } finally { client.stop() }
+})
+
 function createHarness({
   onFinal = async () => {}, onTables = async () => {}, onError = () => {}, refresh = async () => {},
   getSessionToken = async () => 'opaque-session-value', nextEventSource, now = Date.now,
