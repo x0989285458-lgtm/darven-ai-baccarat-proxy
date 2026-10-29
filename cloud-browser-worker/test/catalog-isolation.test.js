@@ -19,7 +19,7 @@ function catalog(bad = false) {
   return fixture.tables.map(t => ids.includes(t.table_id) ? {...t, trend:{current_shoe:88,current_round:48,total_round:47},game_name:'20261029_88_48', ...(bad && t.table_id===badId ? {trend:{current_shoe:88,current_round:47,total_round:54},game_name:'20261029_88_47'} : {})} : t)
 }
 function summary(id, shoe=88, round=48) { return {action:'/api/v1/summary',body:{table_id:id,room_id:Number(fixture.tables.find(t=>t.table_id===id).room_id),shoe,round,result:[1,2,3,4,0,0,0,0,4,6]}} }
-async function harness(t) {
+async function harness(t, clientOptions = {}) {
   const dir=await mkdtemp(path.join(tmpdir(),'catalog-isolation-'))
   const owner=createWorkerSourceOwner({store:createMemoryLeaseStore(),ownerId:'offline-isolation',mode:'api'})
   const journal=await createFinalJournal({journalPath:path.join(dir,'journal.jsonl')})
@@ -39,7 +39,7 @@ async function harness(t) {
   }
   const runtime = new Function('createWorkerSourceRuntime','createMtApiClient','owner','journal','createGapDetector','replayProvider','sessionManager','WebSocket','snapshotPusher','process','redactUrlSecrets','captureDiagnostics',
     `let lastError = null; return (${expression});`)(
-    createWorkerSourceRuntime, options => { client=createMtApiClient(options); return client }, owner, journal, createGapDetector,
+    createWorkerSourceRuntime, options => { client=createMtApiClient({...options, ...clientOptions}); return client }, owner, journal, createGapDetector,
     {replay:async()=>({ok:false,events:[]})}, {getSessionToken:async()=> 'offline'}, OfflineSocket,
     {trigger:()=>{}}, {env:{MT_FRESH_BASELINE_ONCE:'true',MT_ALLOW_GAP_DELIVERY:'false',MT_FRESH_BASELINE_WARMUP_MS:'0'}}, e=>{errors.push(e);return e}, {record:e=>diagnostics.push(e)})
   const pusher=createSnapshotPusher({targetUrl:'https://offline.invalid/capture',key:'offline',queuePath:path.join(dir,'queue.json'),getSnapshot:runtime.getDeliverySnapshot,
@@ -80,6 +80,93 @@ test('startup contradictory screen isolates one table through real client runtim
   await h.runtime.stop();const before=h.journal.pending().length
   await h.receive('game',summary(badId,88,49));assert.equal(h.journal.pending().length,before)
   assert.deepEqual(h.sockets.map(s=>s.closes),[1,1]);assert.deepEqual(h.errors,[])
+})
+
+const joins = h => h.sockets.find(s=>s.kind==='game').sent.filter(p=>p.action.name.endsWith('/mulitple_join'))
+const absent = () => catalog().filter(t=>t.table_id!==badId)
+function assertMissing(table) {
+  assert.equal(table.catalogMissing,true)
+  for(const key of ['shoe','round','trend','game_name']) assert.equal(table[key],undefined)
+  assert.equal(table.sourceUpdatedAt,'1970-01-01T00:00:00.000Z')
+  assert.equal(table.updated_at,'1970-01-01T00:00:00.000Z')
+}
+test('missing raw startup keeps six identities through composition and rejects missing summaries',async t=>{
+  const h=await harness(t)
+  await h.receive('game',{msg:{tables:absent()}})
+  assert.equal(joins(h)[0]?.action.data.table_id,ids.slice(0,5).join(','))
+  await h.receive('game',summary('BAV01'));assert.equal(h.journal.pending().length,0)
+  await h.join()
+  await h.receive('game',summary(badId));assert.equal(h.journal.pending().length,0)
+  for(const id of ids.slice(0,5)) await h.receive('game',summary(id))
+  assert.equal(h.journal.pending().length,5)
+  assertMissing((await h.runtime.getDeliverySnapshot()).tables.find(t=>t.tableId===badId))
+  assert.equal(await h.pusher.tick(),true)
+  const wire=h.envelopes.at(-1).snapshot
+  assert.equal(wire.tables.length,6);assertMissing(wire.tables.find(t=>t.tableId===badId))
+  const parsed=parseCloudCapturePayload(wire,'2026-10-29T00:00:00.000Z')
+  assert.equal(parsed.tables.find(t=>t.tableId===badId).sourceUpdatedAt,'1970-01-01T00:00:00.000Z')
+  assert.deepEqual(h.errors,[])
+})
+
+test('missing raw after durable Final cannot freshen; reappearance needs fresh Game ACK',async t=>{
+  const h=await harness(t)
+  await h.receive('game',{msg:{tables:catalog()}});await h.join()
+  await h.receive('game',summary(badId));await h.pusher.tick()
+  await h.receive('game',{msg:{tables:absent()}})
+  await h.receive('game',summary(badId,88,49));assert.equal(h.journal.pending().length,0)
+  await h.receive('game',summary('BAV01'))
+  assertMissing((await h.runtime.getDeliverySnapshot()).tables.find(t=>t.tableId===badId))
+  await h.pusher.tick();assertMissing(h.envelopes.at(-1).snapshot.tables.find(t=>t.tableId===badId))
+  const returned=catalog();const row=returned.find(t=>t.table_id===badId)
+  row.trend={current_shoe:88,current_round:49,total_round:48};row.game_name='20261029_88_49'
+  await h.receive('game',{msg:{tables:returned}})
+  assert.equal(joins(h).length,2,'expansion waits for pending shrink ACK')
+  await h.join();assert.equal(joins(h).length,3)
+  await h.receive('game',summary(badId,88,49));assert.equal(h.journal.pending().length,0)
+  await h.join();await h.receive('game',summary(badId,88,49));assert.equal(h.journal.pending().length,1,JSON.stringify(h.errors))
+  assert.equal(h.sockets.length,2);assert.deepEqual(h.errors,[])
+})
+
+test('reappearance requires valid provider screen and persists new shoe before admitting confirmed Final',async t=>{
+  const h=await harness(t)
+  await h.receive('game',{msg:{tables:catalog()}});await h.join()
+  await h.receive('game',{msg:{tables:absent()}});await h.join()
+  await h.receive('game',{msg:{tables:catalog(true)}})
+  const noScreen=catalog();const raw=noScreen.find(t=>t.table_id===badId);delete raw.trend;delete raw.game_name
+  await h.receive('game',{msg:{tables:noScreen}})
+  assert.equal(joins(h).length,2)
+  assertMissing((await h.runtime.getDeliverySnapshot()).tables.find(t=>t.tableId===badId))
+  const returned=catalog();const row=returned.find(t=>t.table_id===badId)
+  row.trend={current_shoe:89,current_round:1,total_round:0};row.game_name='20261029_89_1'
+  await h.receive('game',{msg:{tables:returned}})
+  assert.equal(h.journal.shoeLifecycle(badId).activeShoe,89)
+  assert.ok(h.journal.shoeLifecycle(badId).retiredShoes.includes(88))
+  await h.receive('game',summary(badId,89,1));assert.equal(h.journal.pending().length,0)
+  await h.join();await h.receive('game',summary(badId,88,48));assert.equal(h.journal.pending().length,0)
+  await h.receive('game',summary(badId,89,1));assert.equal(h.journal.pending().length,1)
+  assert.deepEqual(h.errors,[])
+})
+
+test('held Join ACK cannot reauthorize removed then readded membership; zero polls and stop fences ACK',async t=>{
+  let interval, time=0
+  const h=await harness(t,{now:()=>time,setIntervalFn:fn=>{interval=fn;return 1},clearIntervalFn:()=>{}})
+  await h.receive('game',{msg:{tables:catalog()}})
+  await h.receive('game',{msg:{tables:absent()}})
+  await h.receive('game',{msg:{tables:catalog()}})
+  assert.equal(joins(h).length,1)
+  await h.join();assert.equal(joins(h).length,2)
+  await h.receive('game',summary(badId));assert.equal(h.journal.pending().length,0)
+  await h.receive('game',summary('BAV01'));assert.equal(h.journal.pending().length,1)
+  await h.receive('game',{msg:{tables:[]}})
+  await h.join();assert.equal(joins(h).length,2);assert.equal(h.client.snapshot().joined,false)
+  const game=h.sockets.find(s=>s.kind==='game')
+  const count=()=>game.sent.filter(p=>p.action.name.endsWith('/tables')).length
+  const before=count();time=10001;interval();interval();assert.equal(count(),before+1)
+  await h.receive('game',{msg:{tables:catalog()}});assert.equal(joins(h).length,3)
+  await h.receive('game',summary(badId));assert.equal(h.journal.pending().length,1)
+  await h.join();await h.receive('game',summary(badId));assert.equal(h.journal.pending().length,2)
+  await h.runtime.stop();await h.join();await h.receive('game',summary(badId,88,49))
+  assert.equal(h.journal.pending().length,2);assert.deepEqual(h.errors,[])
 })
 
 test('running quarantine retains shoe authority for real summaries but never hydrates a stale screen',async t=>{

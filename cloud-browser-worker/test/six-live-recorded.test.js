@@ -27,7 +27,6 @@ test('recorded six raw summaries share catalog-verified join/table identities',a
  assert.equal(h.finals.length,count)
 })
 for(const [name,mutate] of [
- ['missing raw',a=>a.filter(x=>x.table_id!=='BAV01')],
  ['unknown mapping',a=>a.map(x=>x.table_id==='BAV01_LIVE'?{...x,table_id_t:'BAV99'}:x)],
  ['wrong room',a=>a.map(x=>x.table_id==='BAV01_LIVE'?{...x,room_id:'999'}:x)],
  ['duplicate mapping',a=>[...a,a.find(x=>x.table_id==='BAV01_LIVE')]],
@@ -36,13 +35,17 @@ for(const [name,mutate] of [
  ['swapped mapping',a=>a.map(x=>x.table_id==='BAV01_LIVE'?{...x,table_id_t:'BAV02'}:x)],
 ])test(`catalog rejects ${name} without join or Final`,async t=>{const h=await harness(t);await h.receive({msg:{tables:mutate(structuredClone(fixture.tables))}});assert.equal(h.join(),undefined);await h.receive(packet(fixture.events[0]));assert.deepEqual(h.finals,[]);assert.deepEqual(h.tables,[])})
 
-test('catalog revocation blocks pending tables and Finals even after a late ACK',async t=>{
+test('missing raw blocks its Final after a late ACK while preserving the verified subset',async t=>{
  const h=await harness(t)
+ const missingFinal=fixture.events.find(e=>e.tableId==='BAV01')
  await h.receive({msg:{tables:fixture.tables}})
- await h.receive(packet(fixture.events[0]));assert.equal(h.finals.length,0)
+ await h.receive(packet(missingFinal));assert.equal(h.finals.length,0)
  await h.receive({msg:{tables:fixture.tables.filter(x=>x.table_id!=='BAV01')}})
  await h.receive({action:'/api/v1/gametype/*/game/*/room/*/mulitple_join',err:0})
- await h.receive(packet(fixture.events[0]))
- assert.equal(h.client.snapshot().joined,false)
- assert.deepEqual(h.finals,[]);assert.deepEqual(h.tables,[])
+ await h.receive(packet(missingFinal))
+ assert.equal(h.client.snapshot().joined,true)
+ assert.deepEqual(h.finals,[])
+ assert.equal(h.tables.at(-1).find(t=>t.table_id==='BAV01').catalogMissing,true)
+ assert.deepEqual(h.tables.at(-1).map(t=>t.table_id),ids)
+ assert.equal(h.sockets.game.sent.filter(p=>p.action.name.endsWith('/mulitple_join')).at(-1).action.data.table_id,ids.slice(1).join(','))
 })

@@ -83,6 +83,12 @@ export function createMtApiClient({
       authTimers: { game: null, chat: null },
       pendingTables: null,
       catalogRooms: null,
+      membership: new Map(),
+      membershipSequence: 0,
+      pendingJoin: null,
+      confirmedJoin: new Map(),
+      subscribedIds: [],
+      lastCatalogRequestAtMs: null,
       tablesRefreshRequestedAtMs: null,
       unknownShoeRefreshRequestedAtMs: null,
       lastMessageAt: null,
@@ -178,7 +184,8 @@ export function createMtApiClient({
     }
     const joinKind = joinActionKind(action)
     if (joinKind) {
-      if (joinKind !== kind || !current.authenticated[kind] || !current.joinRequested[kind]) {
+      if (joinKind !== kind || !current.authenticated[kind] || !current.joinRequested[kind]
+        || (kind === 'game' && !current.pendingJoin)) {
         diagnostic('join_protocol_rejected', current, kind)
         handleError(new Error(`mt_join_ack_protocol_violation:${joinKind}`))
         scheduleReconnect(current)
@@ -191,6 +198,14 @@ export function createMtApiClient({
       }
       diagnostic('join_ok', current, kind)
       current.joined[joinKind] = true
+      if (kind === 'game') {
+        current.subscribedIds = [...current.pendingJoin.keys()]
+        current.confirmedJoin = new Map([...current.pendingJoin]
+          .filter(([id, version]) => current.membership.get(id) === version))
+        current.pendingJoin = null
+        current.joinRequested.game = false
+        joinWhenReady(current)
+      }
       if (current.joined.game && current.joined.chat) {
         reconnecting = false
         await deliverPendingTables(current)
@@ -206,12 +221,24 @@ export function createMtApiClient({
         throw new Error('mt_api_live_catalog_invalid')
       }
       if (validated) {
-        current.catalogRooms = new Map(validated.map(table => [table.table_id, Number(table.room_id)]))
-        joinWhenReady(current)
         const workingChronology = cloneShoeChronology(shoeChronologyByTable)
         const merged = mergeExactTablesMonotonic(
           latestTables, validated, latestFinalScreenByTable, workingChronology, quarantinedPreviousTables,
         )
+        current.catalogRooms = new Map(merged.filter(table => table.catalogMissing !== true)
+          .map(table => [table.table_id, Number(table.room_id)]))
+        // Removing membership also invalidates an in-flight ACK for this
+        // incarnation. A remove/reappear cycle must obtain a fresh ACK.
+        for (const id of current.membership.keys()) {
+          if (!current.catalogRooms.has(id)) {
+            current.membership.delete(id)
+            current.confirmedJoin.delete(id)
+          }
+        }
+        for (const id of current.catalogRooms.keys()) {
+          if (!current.membership.has(id)) current.membership.set(id, ++current.membershipSequence)
+        }
+        joinWhenReady(current)
         if (typeof onShoeLifecycleTransition === 'function') {
           for (const lifecycle of providerLifecycleTransitions(shoeChronologyByTable, workingChronology, merged)) {
             const source = await allocateEventSource(current)
@@ -220,7 +247,10 @@ export function createMtApiClient({
         }
         shoeChronologyByTable = workingChronology
         latestTables = merged
-        if (exactJoinComplete(current)) await onTables(merged)
+        if (exactJoinComplete(current) || merged.some(table => table.catalogMissing === true)) {
+          current.pendingTables = null
+          await onTables(merged)
+        }
         else current.pendingTables = merged
       }
     }
@@ -231,7 +261,7 @@ export function createMtApiClient({
     if (!final) { diagnostic('final_reject_invalid', current, kind); return }
     const finalIdentity = { tableId: final.tableId, shoe: final.shoe, round: final.round }
     if (current.catalogRooms?.get(final.tableId) !== final.roomId) { diagnostic('final_reject_room', current, kind, finalIdentity); return }
-    if (!exactJoinComplete(current)) { diagnostic('final_reject_join', current, kind, finalIdentity); return }
+    if (!exactJoinComplete(current) || !current.confirmedJoin.has(final.tableId)) { diagnostic('final_reject_join', current, kind, finalIdentity); return }
     const shoeDecision = inspectFinalShoe(shoeChronologyByTable, final, latestTables)
     if (!shoeDecision.accept) {
       diagnostic(shoeChronologyByTable.get(final.tableId)?.retired.includes(final.shoe) ? 'final_reject_retired_shoe' : 'final_reject_shoe', current, kind, finalIdentity)
@@ -288,15 +318,22 @@ export function createMtApiClient({
   }
 
   function joinWhenReady(current) {
-    if (!isCurrent(current) || (current.joinRequested.game && current.joinRequested.chat)
+    if (!isCurrent(current)
       || !current.authenticated.game || !current.authenticated.chat || !current.catalogRooms) return
     refreshGenerationLease(current)
     if (!current.joinRequested.chat && send(current.chat, chatJoinPacket())) {
       current.joinRequested.chat = true
       current.joined.chat = true
     }
-    if (!current.joinRequested.game && send(current.game, multipleJoinPacket())) current.joinRequested.game = true
-    if (current.joinRequested.game && current.joinRequested.chat) startHeartbeat(current)
+    const ids = [...current.catalogRooms.keys()]
+    if (!current.pendingJoin && ids.length > 0
+      && (ids.join(',') !== current.subscribedIds.join(',') || ids.some(id => !current.confirmedJoin.has(id)))) {
+      if (send(current.game, validatedSubsetJoinPacket(current.catalogRooms))) {
+        current.pendingJoin = new Map(current.membership)
+        current.joinRequested.game = true
+      }
+    }
+    if (heartbeatTimer == null) startHeartbeat(current)
   }
 
   async function deliverPendingTables(current) {
@@ -314,6 +351,7 @@ export function createMtApiClient({
       && currentTimeMs - Number(current.tablesRefreshRequestedAtMs) < resolvedTablesRefreshTimeoutMs) return false
     if (!send(current.game, tablesPacket())) return false
     current.tablesRefreshRequestedAtMs = currentTimeMs
+    current.lastCatalogRequestAtMs = currentTimeMs
     return true
   }
 
@@ -324,6 +362,8 @@ export function createMtApiClient({
       refreshGenerationLease(current)
       send(current.game, pingPacket())
       send(current.chat, pingPacket())
+      if (current.lastCatalogRequestAtMs == null
+        || Number(now()) - current.lastCatalogRequestAtMs >= resolvedTablesRefreshTimeoutMs) requestTables(current)
     }, Math.max(1, Number(heartbeatMs) || 1))
     heartbeatTimer?.unref?.()
   }
@@ -585,7 +625,16 @@ function joinActionKind(action) {
 
 function exactJoinComplete(current) {
   return Boolean(current?.catalogRooms) && current?.authenticated.game === true && current?.authenticated.chat === true
-    && current?.joined.game === true && current?.joined.chat === true
+    && current?.joined.game === true && current?.joined.chat === true && current.confirmedJoin.size > 0
+}
+
+// Internal only: caller supplies the validated catalog, never arbitrary IDs.
+function validatedSubsetJoinPacket(rooms) {
+  const ids = [...rooms.keys()]
+  const ordered = LIVE_CATALOG.filter(([, id]) => rooms.has(id))
+  if (!ids.length || ordered.length !== ids.length || ordered.some(([, id, room], index) =>
+    ids[index] !== id || rooms.get(id) !== Number(room))) throw new Error('mt_api_validated_subset_required')
+  return { method: 'GET', action: { name: '/api/v1/gametype/*/game/*/room/*/mulitple_join', data: { table_id: ids.join(',') } } }
 }
 
 // Raw sources are mandatory capture identities. LIVE aliases are optional evidence;
@@ -602,13 +651,19 @@ function validateExactTables(tables) {
     const aliases = tables.filter(table => table?.table_id === catalogId)
     const sources = tables.filter(table => table?.table_id === sourceId)
     const mappings = tables.filter(table => table?.table_id_t === sourceId)
-    if (sources.length !== 1 || aliases.length > 1 || mappings.length !== aliases.length) return null
+    if (sources.length > 1 || aliases.length > 1 || mappings.length !== aliases.length) return null
     const source = sources[0]
-    if (String(source.room_id) !== roomId || Number(source.hall) !== 3 || source.table_type !== 'BAC') return null
+    if (source && (String(source.room_id) !== roomId || Number(source.hall) !== 3 || source.table_type !== 'BAC')) return null
     if (aliases.length === 1) {
       const alias = aliases[0]
       if (mappings[0] !== alias || alias.table_id_t !== sourceId || Number(alias.hall) !== 9
         || String(alias.room_id) !== roomId || alias.table_type !== 'BAC') return null
+    }
+    if (!source) {
+      selected.push({ table_id: sourceId, room_id: roomId, hall: 3, table_type: 'BAC',
+        catalogMissing: true, catalogScreenInvalid: true,
+        sourceUpdatedAt: '1970-01-01T00:00:00.000Z', updated_at: '1970-01-01T00:00:00.000Z' })
+      continue
     }
     const normalized = normalizeCatalogScreen(source)
     // Membership is transport authority; a contradictory screen is not.
@@ -666,6 +721,10 @@ function mergeExactTablesMonotonic(
   return incomingTables.map((incoming) => {
     const tableId = canonicalProductionTableId(incoming?.tableId ?? incoming?.table_id)
     const publishedPrevious = previousById.get(tableId)
+    if (publishedPrevious?.catalogMissing === true && incoming.catalogMissing !== true
+      && (incoming.catalogScreenInvalid === true || incoming.shoe == null || incoming.round == null)) {
+      return structuredClone(publishedPrevious)
+    }
     if (incoming.catalogScreenInvalid === true) {
       if (publishedPrevious && publishedPrevious.catalogScreenInvalid !== true) {
         quarantinedPreviousTables.set(tableId, structuredClone(publishedPrevious))

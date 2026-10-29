@@ -40,7 +40,6 @@ for(const [name,mutate] of [
  assert.equal(h.finals.length,fixture.events.length);assert.deepEqual(h.errors,[])
 })
 for(const [name,mutate] of [
- ...ids.map(id=>[`missing raw ${id}`,a=>a.filter(x=>x.table_id!==id)]),
  ['duplicate raw',a=>[...a,a.find(x=>x.table_id==='BAV01')]],
  ['raw room changed',a=>a.map(x=>x.table_id==='BAV01'?{...x,room_id:'999'}:x)],
  ['raw hall changed',a=>a.map(x=>x.table_id==='BAV01'?{...x,hall:9}:x)],
@@ -61,7 +60,17 @@ for(const [name,mutate] of [
  await h.receive(packet(fixture.events[0]));assert.deepEqual(h.finals,[]);assert.deepEqual(h.tables,[])
  assert.equal(h.client.snapshot().joined,false)
 })
-test('alias disappearance does not revoke raw admission; raw disappearance blocks late ACK',async t=>{
+for(const id of ids)test(`missing raw ${id} isolates identity even with optional alias present`,async t=>{
+ const h=await harness(t);await h.receive({msg:{tables:fixture.tables.filter(x=>x.table_id!==id)}})
+ assert.equal(h.join()?.action.data.table_id,ids.filter(x=>x!==id).join(','))
+ await h.receive({action:'/api/v1/gametype/*/game/*/room/*/mulitple_join',err:0})
+ for(const e of fixture.events) await h.receive(packet(e))
+ assert.deepEqual(h.finals.map(e=>e.tableId),fixture.events.filter(e=>e.tableId!==id).map(e=>e.tableId))
+ assert.deepEqual(h.tables.at(-1).map(t=>t.table_id),ids)
+ assert.equal(h.tables.at(-1).find(t=>t.table_id===id).catalogMissing,true)
+ assert.deepEqual(h.errors,[])
+})
+test('alias disappearance retains raw admission; raw disappearance isolates only missing table',async t=>{
  const h=await harness(t);await h.receive({msg:{tables:fixture.tables}})
  await h.receive({msg:{tables:fixture.tables.filter(x=>!x.table_id.endsWith('_LIVE'))}})
  await h.receive({action:'/api/v1/gametype/*/game/*/room/*/mulitple_join',err:0})
@@ -69,6 +78,6 @@ test('alias disappearance does not revoke raw admission; raw disappearance block
  const oldTables=h.tables.length
  await h.receive({msg:{tables:fixture.tables.filter(x=>x.table_id!=='BAV06')}})
  await h.receive({action:'/api/v1/gametype/*/game/*/room/*/mulitple_join',err:0})
- await h.receive(packet(fixture.events[1]));assert.equal(h.finals.length,1);assert.equal(h.tables.length,oldTables)
- assert.equal(h.client.snapshot().joined,false)
+ await h.receive(packet(fixture.events[1]));assert.equal(h.finals.length,2);assert.ok(h.tables.length>oldTables)
+ assert.equal(h.client.snapshot().joined,true)
 })
