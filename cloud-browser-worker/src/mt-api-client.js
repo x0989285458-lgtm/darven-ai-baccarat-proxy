@@ -329,7 +329,7 @@ export function createMtApiClient({
     if (!current.pendingJoin && ids.length > 0
       && (ids.join(',') !== current.subscribedIds.join(',') || ids.some(id => !current.confirmedJoin.has(id)))) {
       if (send(current.game, validatedSubsetJoinPacket(current.catalogRooms))) {
-        current.pendingJoin = new Map(current.membership)
+        current.pendingJoin = new Map(ids.map(id => [id, current.membership.get(id)]))
         current.joinRequested.game = true
       }
     }
