@@ -6,6 +6,43 @@ const ready = [{ table: { tableId: 'BAV01' }, prediction: { predictionId: 'exact
 const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve() }
 function make(options) { assert.equal(typeof mod.createPublicationReader, 'function', 'event-driven publication reader must exist'); return mod.createPublicationReader(options) }
 
+for (const startMs of [976, 991]) test(`publication: refresh at ${startMs}ms preserves pending at the original deadline`, async t => {
+ t.mock.timers.enable({apis:['Date','setTimeout'],now:0})
+ let calls=0,release,settled=false
+ const rows=[...structuredClone(pending),...structuredClone(ready)]
+ rows[1].table.tableId='BAV02'
+ const r=make({load:()=>++calls===1 ? rows : new Promise(resolve=>{release=resolve}),waitMs:1000})
+ t.after(()=>r.stop())
+ const result=r.read().then(value=>{settled=true;return value});result.catch(()=>{})
+ await flush();t.mock.timers.tick(startMs);await flush()
+ assert.equal(calls,2);assert.equal(settled,false)
+ t.mock.timers.tick(1000-startMs);await flush()
+ const actual=await result
+ assert.equal(Date.now(),1000);assert.deepEqual(actual,rows)
+ assert.notEqual(actual,rows);assert.equal(actual[0].prediction,null)
+ release(ready);await flush()
+ assert.deepEqual(actual,rows,'late IO must not mutate the returned snapshot')
+})
+
+for (const scenario of ['hint','stop','database','invalid','transport-timeout','absent']) test(`publication: deadline fallback retains ${scenario} contract`, async t => {
+ t.mock.timers.enable({apis:['Date','setTimeout'],now:0})
+ let calls=0,resolveRefresh,rejectRefresh
+ const r=make({load:()=>++calls===1 ? (scenario==='absent' ? [] : pending) : new Promise((resolve,reject)=>{resolveRefresh=resolve;rejectRefresh=reject}),waitMs:1000})
+ t.after(()=>r.stop())
+ const result=r.read();result.catch(()=>{})
+ await flush();t.mock.timers.tick(991);await flush();assert.equal(calls,2)
+ const failure=Object.assign(new Error('fixture database failure'),{code:scenario==='transport-timeout' ? 'PUBLICATION_READ_TIMEOUT' : 'DATABASE_FAILED'})
+ if (scenario==='hint') r.notify()
+ if (scenario==='stop') r.stop()
+ if (scenario==='database' || scenario==='transport-timeout') rejectRefresh(failure)
+ if (scenario==='invalid') resolveRefresh(null)
+ await flush();t.mock.timers.tick(9);await flush()
+ if (scenario==='absent') assert.deepEqual(await result,[],'absent tables must not be synthesized')
+ else if (scenario==='database' || scenario==='transport-timeout') await assert.rejects(result,e=>e===failure)
+ else await assert.rejects(result,e=>e.code===({hint:'PUBLICATION_READ_TIMEOUT',stop:'PUBLICATION_READER_STOPPED',invalid:'PUBLICATION_INVALID_SNAPSHOT'}[scenario]))
+ resolveRefresh(ready);await flush()
+})
+
 test('publication: post-commit hint wakes a pending HTTP reader without polling', async t => {
  t.mock.timers.enable({apis:['Date','setTimeout'],now:0})
  let rows=pending, calls=0

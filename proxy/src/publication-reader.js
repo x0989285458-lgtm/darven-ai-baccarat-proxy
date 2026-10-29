@@ -28,7 +28,9 @@ export function createPublicationReader({ load, waitMs = 1000, cacheMs = 100, no
         done = true; clearTimeout(timer); stopWaiters.delete(onStop); fn(value)
       }
       const onStop = () => finish(reject, error('PUBLICATION_READER_STOPPED'))
-      const timer = setTimeout(() => finish(reject, error('PUBLICATION_READ_TIMEOUT')), Math.max(0, deadline - now()))
+      // Only the caller's deadline ends polling. Loader failures still reject;
+      // the read loop decides whether its last snapshot is safe to return.
+      const timer = setTimeout(() => finish(resolve, null), Math.max(0, deadline - now()))
       stopWaiters.add(onStop)
       promise.then(value => finish(resolve, value), cause => finish(reject, cause))
       if (stopped) onStop()
@@ -57,6 +59,7 @@ export function createPublicationReader({ load, waitMs = 1000, cacheMs = 100, no
       while (!stopped && now() < deadline) {
         const observed = epoch
         const result = await awaitRead(snapshot(), deadline)
+        if (result === null) break
         last = result.rows
         lastEpoch = result.epoch
         if (stopped) throw error('PUBLICATION_READER_STOPPED')
