@@ -625,7 +625,7 @@ function parseJson(raw) {
   try { return JSON.parse(raw.toString()) } catch { return null }
 }
 
-function actionName(payload) {
+export function actionName(payload) {
   return String(payload?.name ?? (typeof payload?.action === 'object' ? payload.action?.name ?? payload.action?.path ?? '' : payload?.action ?? ''))
 }
 
@@ -660,7 +660,7 @@ const LIVE_CATALOG = Object.freeze([
   ['BAV03_LIVE', 'BAV03', '50'], ['BAV03A_LIVE', 'BAV03A', '51'],
   ['BAV05_LIVE', 'BAV05', '52'], ['BAV06_LIVE', 'BAV06', '57'],
 ])
-function validateExactTables(tables) {
+export function validateExactTables(tables) {
   if (!Array.isArray(tables)) return null
   const selected = []
   for (const [catalogId, sourceId, roomId] of LIVE_CATALOG) {

@@ -13,6 +13,7 @@ import { createFixedWindowRateLimiter } from './server-policy.js'
 import { createFileLeaseStore, createWorkerSourceOwner } from './worker-source-owner.js'
 import { createPersistedPortalSessionManager } from './portal-session-manager.js'
 import { createMtApiClient } from './mt-api-client.js'
+import { createApiCandidateCapture } from './api-portal-candidate.js'
 import { createFinalJournal } from './final-journal.js'
 import { createGapDetector } from './gap-detector.js'
 import { createAuthoritativeReplayProvider, createIndependentSessionTokenGate } from './record-replay.js'
@@ -468,10 +469,21 @@ async function refreshApiPersistedSession() {
     sessionPath: MT_SESSION_PATH,
     contextOptions: BROWSER_CONTEXT_OPTIONS,
     timeoutMs: Number(process.env.PORTAL_LOGIN_TIMEOUT_MS ?? PAGE_TIMEOUT_MS),
-    prepareContext: prepareCandidateCapture,
-    validate: validateCandidatePage,
+    prepareContext: createApiCandidateCapture,
+    validate: validateApiCandidatePage,
+    admit: (snapshot, page, capture) => capture.admit(snapshot, page),
     activate: async ({ context }) => { await context.close() },
   })
+}
+
+async function validateApiCandidatePage(page, capture) {
+  const deadline = Date.now() + Number(process.env.PORTAL_CANDIDATE_TIMEOUT_MS ?? PAGE_TIMEOUT_MS)
+  do {
+    const snapshot = capture.snapshot(page)
+    if (capture.admit(snapshot, page)) return snapshot
+    await page.waitForTimeout(1000)
+  } while (Date.now() < deadline)
+  return capture.snapshot(page)
 }
 
 function prepareCandidateCapture(context) {
@@ -492,9 +504,10 @@ function rememberCandidatePayload(capture, payload) {
 
 async function validateCandidatePage(page, capture) {
   const deadline = Date.now() + Number(process.env.PORTAL_CANDIDATE_TIMEOUT_MS ?? PAGE_TIMEOUT_MS)
+  let snapshot
   do {
     const browserPayload = await collectBrowserPayload(page)
-    const snapshot = extractSnapshotFromPayloads([...(capture?.payloads ?? []), browserPayload], {
+    snapshot = extractSnapshotFromPayloads([...(capture?.payloads ?? []), browserPayload], {
       sessionId: captureSessionId(BASE_SESSION_ID, pageGeneration + 1),
       now: new Date().toISOString(),
       url: page.url(),
@@ -502,7 +515,9 @@ async function validateCandidatePage(page, capture) {
     if (isFormalTenTableSnapshot(snapshot)) return snapshot
     await page.waitForTimeout(1000)
   } while (Date.now() < deadline)
-  return { connected: true, authenticated: false, tables: [] }
+  // Keep the last observation: incomplete coverage is not proof of auth failure.
+  // refreshMtSession still applies the full-table gate before persisting/activation.
+  return snapshot
 }
 
 async function activateCandidatePage({ page, context, prepared }) {

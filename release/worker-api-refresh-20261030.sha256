@@ -1,0 +1,10 @@
+1ec9f3a8f10553d9686a502150c3ec08f0a65a968df441bf16ed9a16daef41d7  .github/workflows/build-worker-api-refresh.yml
+5f774aeedbc14174de806e72517aa27540e30f5e2dcfe327e6f6718ede469161  cloud-browser-worker/Dockerfile.api-refresh
+c15adfa8cfd363ffb1b1a11035eb340aafd1423ba6cb78b43e07f88c6e8a9ce7  cloud-browser-worker/package.json
+3c355762fa42b3de6d60a26f21e94d9bf86641df0ce5dad64e444fc5ae5d5a4f  cloud-browser-worker/package-lock.json
+fe4628eb980734eaba6028fd36a5632324df4c1f638faa8e884dbb29c62f3123  cloud-browser-worker/src/mt-api-client.js
+32a2529284348cdfc6e1a5aa6f360f3b7d8daacbf37c2759888304155ccf6789  cloud-browser-worker/src/portal-session.js
+d9f2c77c1dbe13cb239b25f5ee30f712ba59b5cd54518171c99d3cbb7aaf574c  cloud-browser-worker/src/server.js
+e79b564eb298daa169626768caf7a421610edf288f72d95126aaec718c6bc034  cloud-browser-worker/src/api-portal-candidate.js
+67e87b814f8f1933ad6462473c81df7c2643bca033d8a52a6404b8fe2060e070  cloud-browser-worker/test/api-portal-candidate.test.js
+193e46c2384a0928d49035291583ad8ca9cc43b1ba6f33139f0b5ea7427501f8  cloud-browser-worker/test/portal-candidate-observation.test.js

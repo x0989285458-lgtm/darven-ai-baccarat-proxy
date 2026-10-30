@@ -1,5 +1,6 @@
 import path from 'node:path'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { renameSync } from 'node:fs'
 import { PRODUCTION_TABLE_IDS, canonicalProductionTableId } from './table-policy.js'
 import { assertMtNavigationResponse } from './runtime-config.js'
 
@@ -122,7 +123,7 @@ export function parseMtHostAllowlist(value) {
   return normalizeAllowedHosts(String(value ?? '').split(','))
 }
 
-export async function persistCandidateSession(sessionPath, session) {
+export async function persistCandidateSession(sessionPath, session, canCommit = () => true) {
   if (!String(sessionPath ?? '').trim()) throw new Error('MT session path is required')
   const target = String(sessionPath)
   await mkdir(path.dirname(target), { recursive: true })
@@ -132,7 +133,13 @@ export async function persistCandidateSession(sessionPath, session) {
     url: String(session.url),
     storageState: session.storageState,
   }), { encoding: 'utf8', mode: 0o600 })
-  await rename(temporary, target)
+  if (!canCommit()) {
+    await rm(temporary, { force: true })
+    throw new Error('candidate MT session authority was revoked')
+  }
+  // Linearization point: admission and atomic replacement share one JS turn.
+  // An async rename would let logout revoke authority before disk commit.
+  renameSync(temporary, target)
 }
 
 export async function readPersistedSession(sessionPath, configuredMtUrl, allowedHosts = []) {
@@ -178,6 +185,7 @@ export async function refreshMtSession({
   login = loginPortalPage,
   openMt = openPortalMtPage,
   validate,
+  admit = isFormalTenTableSnapshot,
   activate,
   now = Date.now,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
@@ -197,10 +205,15 @@ export async function refreshMtSession({
     await candidatePage.waitForLoadState?.('domcontentloaded', { timeout: timeoutMs }).catch(() => {})
     assertAllowedMtUrl(candidatePage.url(), configuredMtUrl, allowedHosts)
     const snapshot = await validate(candidatePage, prepared)
-    if (!isFormalTenTableSnapshot(snapshot)) throw new Error('candidate MT session did not expose the formal tables')
+    if (!admit(snapshot, candidatePage, prepared)) throw new Error('candidate MT session did not expose the formal tables')
     const candidateUrl = assertAllowedMtUrl(candidatePage.url(), configuredMtUrl, allowedHosts)
     const storageState = await context.storageState()
-    await persistCandidateSession(sessionPath, { url: candidateUrl, storageState })
+    if (!admit(snapshot, candidatePage, prepared)) throw new Error('candidate MT session authority was revoked')
+    await persistCandidateSession(sessionPath, { url: candidateUrl, storageState },
+      () => admit(snapshot, candidatePage, prepared))
+    // Persistence committed while admitted; revocation during the await handoff
+    // must still prevent activation. Do not roll back a completed commit.
+    if (!admit(snapshot, candidatePage, prepared)) throw new Error('candidate MT session authority was revoked')
     await activate({ page: candidatePage, context, snapshot, prepared })
     context = null
   } catch {
